@@ -1,0 +1,49 @@
+-- ============================================================
+--  V26: el id que TODOS conocen viaja con el sobre
+-- ============================================================
+--
+-- ## El defecto
+--
+-- El id de una fila del buzon se deriva por destino:
+--
+--     derivar(base, i) = si i == 0 -> base, si no -> base + i
+--
+-- Eso es correcto y necesario para el buzon: con cifrado de extremo a extremo
+-- cada destino recibe bytes distintos, asi que necesita su propia fila, y
+-- derivar el id del id del cliente es lo que hace que un reintento choque con
+-- ON CONFLICT en vez de duplicar el mensaje.
+--
+-- El problema es que ese id derivado era **lo unico** que el cliente recibia, y
+-- lo guardaba como el id del mensaje. Consecuencia: en una conversacion de tres
+-- o mas dispositivos, el mismo mensaje quedaba guardado con un id distinto en
+-- cada telefono. Solo el primer destino -i == 0- coincidia con el del emisor,
+-- que es la razon por la que en conversaciones DIRECTAS nunca se noto: ahi hay
+-- un solo destino.
+--
+-- ## Que se rompia
+--
+--  1. **Los votos de una encuesta de grupo no se contaban.** El voto viaja
+--     diciendo "esto es sobre la consulta X", y X era el id que conocia quien
+--     votaba, que no era el de nadie mas.
+--  2. **Un mensaje de grupo se quedaba en un solo check.** El acuse devolvia el
+--     id derivado al emisor, que no encontraba esa fila y no marcaba
+--     "entregado".
+--  3. **Responder o reaccionar a un mensaje ajeno en un grupo** apuntaba a un
+--     id que no existe en `mensaje_meta`.
+--
+-- Los tres son el mismo defecto: el id derivado es del BUZON, no del mensaje, y
+-- se estaba usando como identidad compartida.
+--
+-- ## La correccion
+--
+-- La fila del buzon guarda tambien el id original, y es ese el que viaja al
+-- cliente como identidad del mensaje. El id derivado sigue existiendo y sigue
+-- siendo el que se acusa: son dos cosas distintas y ahora se llaman distinto.
+
+ALTER TABLE sobre_pendiente ADD COLUMN IF NOT EXISTS mensaje_id uuid;
+
+-- Las filas que ya estaban en el buzon no tienen de donde sacarlo -`base + i`
+-- no se puede invertir sin saber `i`-, asi que se rellenan con su propio id,
+-- que es el comportamiento anterior. Quedan igual de mal que antes y ninguna
+-- peor; las nuevas quedan bien.
+UPDATE sobre_pendiente SET mensaje_id = id WHERE mensaje_id IS NULL;

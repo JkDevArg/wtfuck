@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Wtfuck" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#0E1313</item>
+        <item name="android:navigationBarColor">#0E1313</item>
+        <item name="android:windowBackground">#0E1313</item>
+    </style>
+</resources>

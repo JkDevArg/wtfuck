@@ -1,0 +1,189 @@
+## wtfuck - catalogo de versiones
+##
+## Verificado contra maven-metadata.xml el 2026-09-15.
+## La base del lado Android viene de NetSwiss (verificado 2026-09-05) porque esa
+## combinacion AGP/Gradle/Kotlin ya esta probada en este equipo.
+##
+## REGLA: no subir una version "porque hay una mas nueva". Ver NOTAS al final.
+
+[versions]
+# --- toolchain (heredado de NetSwiss, combinacion ya probada) ---
+agp = "9.3.1"                   # NO subir a 9.4.0 sin subir Gradle a 9.6
+kotlin = "2.4.10"
+ksp = "2.3.11"
+# Wrapper de Gradle = 9.5.0
+
+# --- sdk ---
+compileSdk = "37"
+targetSdk = "37"
+minSdk = "26"
+buildTools = "37.0.0"
+
+# --- servidor ---
+ktor = "3.5.2"
+postgres = "42.7.13"
+hikari = "7.1.0"
+bouncycastle = "1.86"           # Argon2 puro JVM, sin dependencias nativas
+logback = "1.6.3"
+minio = "9.0.3"           # SDK S3: firma las URLs, no reimplementamos SigV4
+
+# Bus entre instancias (modulo N). Verificado contra maven-metadata.xml el
+# 2026-09-17: ultima 7.7.0.RELEASE. Lettuce y no Jedis porque esta sobre Netty
+# -que el servidor ya trae por Ktor- y porque su pub/sub admite suscribirse y
+# desuscribirse en caliente, que es lo que hace falta: un canal por dispositivo
+# conectado, no un patron que le entregue a cada instancia todo lo de todas.
+lettuce = "7.7.0.RELEASE"
+angusMail = "2.0.5"       # jakarta.mail. 2.1.0-M1 existe pero es un milestone
+
+# --- modulo K: llamadas ---
+# Verificado contra maven-metadata.xml el 2026-09-17: release 150.7871.01.
+# El AAR pesa 49 MB porque trae las cuatro ABIs; con los filtros por buildType
+# de app/build.gradle.kts entra una sola por APK.
+webrtc = "150.7871.01"
+
+# --- compartido ---
+coroutines = "1.11.0"
+serializationJson = "1.11.0"
+
+# --- compose / ui ---
+composeBom = "2026.08.00"
+activityCompose = "1.13.0"
+lifecycle = "2.11.0"
+navigation = "2.9.8"            # ver NOTA 5 de NetSwiss
+androidxCore = "1.19.0"
+
+# --- android: persistencia y red ---
+room = "2.8.5"                  # ver NOTA 1: ultimo del grupo androidx.room
+sqlcipher = "4.19.0"
+sqliteKtx = "2.6.1"
+okhttp = "5.5.0"
+coil = "3.6.2"
+datastore = "1.2.1"
+exif = "1.4.2"               # leer la orientacion de las fotos de camara
+desugar = "2.1.5"               # libsignal exige desugaring de la biblioteca base
+zxing = "3.5.4"                 # el nucleo: generar y LEER el QR, sin actividad ajena
+camerax = "1.6.2"               # estable; 1.7 esta en alpha. Solo para escanear QR
+
+# --- modulo N: avisos con la app cerrada ---
+# Verificado contra maven-metadata.xml de Google el 2026-09-17: ultima 25.1.3.
+# Se usa SIN el plugin google-services: la configuracion la sirve nuestro
+# servidor y Firebase se inicializa a mano. Ver datos/Push.kt.
+firebaseMessaging = "25.1.3"
+
+# --- cripto cliente ---
+libsignal = "0.86.5"
+
+# --- test ---
+junit4 = "4.13.2"
+androidxTestJunit = "1.3.0"
+espresso = "3.7.0"
+kotlinTest = "2.4.10"
+
+[libraries]
+# --- ktor servidor ---
+ktor-server-core           = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
+ktor-server-netty          = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
+ktor-server-content-neg    = { module = "io.ktor:ktor-server-content-negotiation-jvm", version.ref = "ktor" }
+ktor-serialization-json    = { module = "io.ktor:ktor-serialization-kotlinx-json-jvm", version.ref = "ktor" }
+ktor-server-websockets     = { module = "io.ktor:ktor-server-websockets-jvm", version.ref = "ktor" }
+ktor-server-auth           = { module = "io.ktor:ktor-server-auth-jvm", version.ref = "ktor" }
+ktor-server-status-pages   = { module = "io.ktor:ktor-server-status-pages-jvm", version.ref = "ktor" }
+ktor-server-call-logging   = { module = "io.ktor:ktor-server-call-logging-jvm", version.ref = "ktor" }
+ktor-server-cors           = { module = "io.ktor:ktor-server-cors-jvm", version.ref = "ktor" }
+ktor-server-test-host      = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
+
+postgres                   = { module = "org.postgresql:postgresql", version.ref = "postgres" }
+hikari                     = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+bouncycastle               = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+logback                    = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+minio                      = { module = "io.minio:minio", version.ref = "minio" }
+lettuce                    = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
+angus-mail                 = { module = "org.eclipse.angus:angus-mail", version.ref = "angusMail" }
+webrtc                     = { module = "io.github.webrtc-sdk:android", version.ref = "webrtc" }
+
+# --- kotlinx (compartido) ---
+coroutines-core            = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-android         = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+serialization-json         = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serializationJson" }
+
+# --- compose (via BOM: sin version) ---
+compose-bom                     = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+compose-ui                      = { group = "androidx.compose.ui", name = "ui" }
+compose-ui-graphics             = { group = "androidx.compose.ui", name = "ui-graphics" }
+compose-ui-tooling              = { group = "androidx.compose.ui", name = "ui-tooling" }
+compose-ui-tooling-preview      = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+compose-foundation              = { group = "androidx.compose.foundation", name = "foundation" }
+compose-material3               = { group = "androidx.compose.material3", name = "material3" }
+compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+
+# --- androidx base ---
+androidx-core               = { module = "androidx.core:core", version.ref = "androidxCore" }
+androidx-activity-compose   = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+lifecycle-runtime-compose   = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-runtime-ktx       = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+navigation-compose          = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+datastore-preferences       = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+
+# --- room + sqlcipher ---
+room-runtime  = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-ktx      = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+sqlcipher     = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
+sqlite-ktx    = { module = "androidx.sqlite:sqlite-ktx", version.ref = "sqliteKtx" }
+
+# --- red cliente ---
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-okhttp  = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+coil-gif     = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }   # GIF animado
+exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exif" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+camera-core      = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+camera-camera2   = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camera-view      = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+
+# --- modulo N: push ---
+firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebaseMessaging" }
+
+# --- cripto cliente (FASE 4) ---
+libsignal-android = { module = "org.signal:libsignal-android", version.ref = "libsignal" }
+
+# --- test ---
+junit4             = { module = "junit:junit", version.ref = "junit4" }
+kotlin-test        = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlinTest" }
+coroutines-test    = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+androidx-test-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestJunit" }
+espresso-core      = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+
+[plugins]
+android-application  = { id = "com.android.application", version.ref = "agp" }
+kotlin-jvm           = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose       = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp                  = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+
+## ---------------------------------------------------------------------------
+## NOTAS
+##
+## NOTA 1 - Room: el grupo androidx.room termina en 2.8.x; el sucesor androidx.room3
+##   cambia la API y ELIMINA openHelperFactory, que es justamente como se conecta
+##   SQLCipher. wtfuck SI cifra la base local (guarda conversaciones), asi que se
+##   queda en androidx.room 2.8.5 hasta que room3 ofrezca un camino para SQLCipher.
+##
+## NOTA 2 - Desde AGP 9.0 el soporte de Kotlin viene integrado en el plugin de
+##   Android: NO se aplica org.jetbrains.kotlin.android en :app.
+##   https://kotl.in/gradle/agp-built-in-kotlin
+##
+## NOTA 3 - No se usa Exposed. El DDL ya esta escrito a mano y validado; JDBC
+##   directo sobre HikariCP evita que un ORM reinterprete el esquema. Exposed 1.5
+##   ademas es una reescritura reciente de la API.
+##
+## NOTA 4 - Argon2 via BouncyCastle (Argon2BytesGenerator), no argon2-jvm: este
+##   ultimo requiere binarios nativos por plataforma. BouncyCastle es JVM puro.
+##
+## NOTA 5 - libsignal-android trae los .so nativos; el artefacto libsignal-client
+##   es el equivalente para JVM de escritorio. El servidor NO necesita ninguno:
+##   nunca descifra.

@@ -1,0 +1,24 @@
+-- Modulo O · Un sobre puede no pertenecer a ninguna conversacion.
+--
+-- ## Por que hace falta
+--
+-- Hasta ahora todo lo que viajaba cifrado iba dentro de una conversacion:
+-- mensajes, señalizacion de llamadas, historial, votos. Una **historia** no.
+-- Se publica a una audiencia que puede incluir gente con la que no hay ningun
+-- chat abierto —quien te tiene agendado y nunca te escribio— y obligar a abrir
+-- una conversacion con cada uno para poder entregarla seria crear chats vacios
+-- en la pantalla de otra persona solo para que el buzon tenga donde apoyarse.
+--
+-- ## Por que es seguro aflojar esto
+--
+-- La columna **no tenia clave foranea**: nunca fue una garantia de integridad,
+-- solo un dato de enrutado que ademas el servidor no usa para decidir nada. Lo
+-- que autoriza la entrega de un sobre es el dispositivo de destino, que sigue
+-- siendo obligatorio, y en el caso de una historia se comprueba ademas contra
+-- `historia_destino` antes de encolar.
+--
+-- Lo que SI cambia es lo que recibe el cliente: `Bajada.Entrega.conversacionId`
+-- llega vacio para estos sobres. El cliente ya decide que hacer mirando el tipo
+-- de carga —lo hace desde el modulo K con la señalizacion de llamadas—, asi que
+-- esa rama sale antes de que nadie mire la conversacion.
+ALTER TABLE sobre_pendiente ALTER COLUMN conversacion_id DROP NOT NULL;

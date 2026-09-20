@@ -1,0 +1,723 @@
+package com.wtfuck.app.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.wtfuck.app.WtfuckApp
+import com.wtfuck.app.datos.ApiError
+import com.wtfuck.app.datos.Hardware
+import com.wtfuck.app.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+@Composable
+fun AuthPantalla(onListo: () -> Unit) {
+    val ctx = LocalContext.current
+    val app = ctx.applicationContext as WtfuckApp
+    val ambito = rememberCoroutineScope()
+
+    // Si llegue aqui por un cierre involuntario, la sesion guarda el motivo y
+    // el username sobrevive (ver `Sesion.invalidar`).
+    val cierre = remember { app.sesion.motivoCierre }
+    LaunchedEffect(Unit) { app.sesion.olvidarMotivo() }
+
+    // La pantalla arranca en "entrar" -y no en "crear cuenta"- en cuanto esta
+    // instalacion recuerde un usuario. Ofrecer "crear cuenta" a quien ya tuvo
+    // sesion en este aparato es empujarlo a un error garantizado: el hardware
+    // ya tiene cuenta y el registro va a fallar por eso, con un mensaje que no
+    // explica que lo que hacia falta era entrar.
+    var esRegistro by rememberSaveable { mutableStateOf(app.sesion.username == null) }
+    var recuperando by remember { mutableStateOf(false) }
+    var vinculando by remember { mutableStateOf(false) }
+    // Aparte de `error` a proposito: un mensaje de exito en rojo y con un signo
+    // de admiracion se lee como una falla.
+    var exito by remember { mutableStateOf<String?>(null) }
+    // El campo del segundo factor aparece solo cuando el servidor contesta que
+    // esta cuenta lo pide. Mostrarlo siempre haria pensar que toda cuenta lo
+    // necesita, y pedirlo antes de la contrasena seria un oraculo de "esta
+    // cuenta tiene 2FA".
+    var pideTotp by remember { mutableStateOf(false) }
+    var totp by remember { mutableStateOf("") }
+    var usuario by rememberSaveable { mutableStateOf(app.sesion.username.orEmpty()) }
+    var clave by rememberSaveable { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var cargando by remember { mutableStateOf(false) }
+
+    // La identidad de hardware se calcula una vez: genera el par de claves en el
+    // Keystore si aun no existe.
+    val identidad by produceState<Hardware.Identidad?>(initialValue = null) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { Hardware.identidad(ctx) }.getOrNull()
+        }
+    }
+
+    fun enviar() {
+        val id = identidad ?: return
+        val u = usuario.trim().lowercase()
+        error = null
+
+        if (u.length < 3) { error = "El usuario necesita al menos 3 caracteres."; return }
+        if (!Regex("^[a-z0-9_]+$").matches(u)) { error = "Solo letras, numeros y guion bajo."; return }
+        if (clave.length < 8) { error = "La contrasena necesita al menos 8 caracteres."; return }
+
+        cargando = true
+        ambito.launch {
+            val r = runCatching {
+                if (esRegistro) app.repo.registrar(u, clave, id, android.os.Build.MODEL ?: "dispositivo")
+                else app.repo.login(u, clave, id, totp.trim().ifBlank { null })
+            }
+            cargando = false
+            r.onSuccess { onListo() }
+                .onFailure { e ->
+                    val msg = (e as? ApiError)?.message ?: "No se pudo conectar con el servidor."
+                    // El servidor pide el segundo factor con un 401 y un mensaje
+                    // concreto. Se reconoce por el mensaje y no por el codigo
+                    // porque un 401 tambien es "contrasena incorrecta", y los
+                    // dos casos necesitan pantallas distintas.
+                    if (msg.contains("dos pasos", true)) {
+                        pideTotp = true
+                        error = if (totp.isBlank()) null else msg
+                    } else {
+                        error = msg
+                    }
+                }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .padding(top = 72.dp, bottom = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("wtfuck", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Cian)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Sin numero de telefono. Solo tu usuario.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextoSecundario,
+        )
+
+        if (cierre != null) {
+            Spacer(Modifier.height(28.dp))
+            Surface(
+                color = Ambar.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(
+                        "Sesion cerrada",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Ambar,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        cierre,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Tus chats de este aparato siguen aqui. Vuelve a entrar.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+        } else {
+            Spacer(Modifier.height(40.dp))
+        }
+
+        OutlinedTextField(
+            value = usuario,
+            onValueChange = { usuario = it.filter { c -> !c.isWhitespace() }; exito = null },
+            label = { Text("Usuario") },
+            prefix = { Text("@", color = TextoTerciario) },
+            singleLine = true,
+            enabled = !cargando,
+            isError = error != null,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = clave,
+            onValueChange = { clave = it },
+            label = { Text("Contrasena") },
+            singleLine = true,
+            enabled = !cargando,
+            isError = error != null,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (pideTotp) {
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = totp,
+                onValueChange = { totp = it },
+                label = { Text("Codigo de dos pasos") },
+                supportingText = {
+                    Text(
+                        "De tu app de autenticacion, o uno de respaldo.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextoTerciario,
+                    )
+                },
+                singleLine = true,
+                enabled = !cargando,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        if (error != null) {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("!", color = Coral, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
+                Text(error!!, color = Coral, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        exito?.let { msg ->
+            Spacer(Modifier.height(10.dp))
+            Text(msg, color = Cian, style = MaterialTheme.typography.bodyMedium)
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Button(
+            onClick = { enviar() },
+            enabled = !cargando && identidad != null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+        ) {
+            if (cargando) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = TextoSobreAcento,
+                )
+            } else {
+                Text(
+                    if (esRegistro) "Crear cuenta" else "Entrar",
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        TextButton(
+            onClick = { esRegistro = !esRegistro; error = null; pideTotp = false; totp = "" },
+            enabled = !cargando,
+        ) {
+            Text(
+                if (esRegistro) "Ya tengo cuenta" else "Crear una cuenta nueva",
+                color = Cian,
+            )
+        }
+
+        // Solo al ingresar: en el registro no hay nada que recuperar todavia.
+        if (!esRegistro) {
+            TextButton(onClick = { recuperando = true; error = null }, enabled = !cargando) {
+                Text("Olvide mi contrasena", color = TextoSecundario)
+            }
+        }
+
+        // El tercer camino, y el que la gente no busca hasta que lo necesita:
+        // este aparato es NUEVO y la cuenta ya existe en otro. No es registrar
+        // -eso crearia una cuenta aparte- ni ingresar -el hardware no esta
+        // vinculado y el servidor lo rechaza-.
+        TextButton(onClick = { vinculando = true; error = null }, enabled = !cargando) {
+            Text("Vincular a una cuenta que ya tengo", color = TextoSecundario)
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        // Transparencia deliberada: el usuario ve a que dispositivo queda atada
+        // la cuenta y con que nivel de garantia. Ver docs/04-DEVICE-BINDING.md
+        identidad?.let { id ->
+            Surface(
+                color = BgElev,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Lock, null, tint = nivelColor(id.nivel), modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Una cuenta por dispositivo",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextoPrimario,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        nivelTexto(id.nivel),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Huella: " + id.hardwareHash.take(24) + "...",
+                        style = estiloHuella,
+                        color = TextoTerciario,
+                    )
+                }
+            }
+        }
+    }
+
+    if (vinculando) {
+        DialogoVincular(
+            usuarioInicial = usuario,
+            identidad = identidad,
+            onCerrar = { vinculando = false },
+            onVinculado = { vinculando = false; onListo() },
+        )
+    }
+
+    if (recuperando) {
+        DialogoRecuperar(
+            usuarioInicial = usuario,
+            onCerrar = { recuperando = false },
+            onRecuperada = {
+                recuperando = false
+                pideTotp = false
+                // Se limpia el error y se deja el usuario puesto: lo que sigue
+                // es entrar con la contrasena nueva, y hacerle volver a
+                // escribir el usuario seria friccion sin motivo.
+                exito = "Contrasena cambiada. Ya puedes entrar."
+                error = null
+            },
+        )
+    }
+}
+
+private fun nivelColor(nivel: String) = when (nivel) {
+    "STRONGBOX", "TEE" -> Cian
+    else -> Ambar
+}
+
+private fun nivelTexto(nivel: String) = when (nivel) {
+    "STRONGBOX" -> "Tu clave vive en un chip de seguridad dedicado. Es el nivel mas alto."
+    "TEE" -> "Tu clave vive en el enclave seguro del procesador y no puede salir de ahi."
+    else -> "Este dispositivo no tiene enclave seguro (es un emulador o build de prueba). " +
+        "Se permite solo en desarrollo."
+}
+
+
+
+/**
+ * Recuperar la cuenta.
+ *
+ * ## Lo que hay que decir aqui, y no despues
+ *
+ * Que esto **no devuelve el acceso desde otro telefono**. El vinculo con el
+ * hardware se comprueba al ingresar y no cambia al recuperar la contrasena, asi
+ * que quien perdio el telefono va a recuperar la clave y seguir sin poder
+ * entrar. Decirlo al final seria hacerle pasar por tres pasos para llegar a un
+ * "no". Se dice arriba.
+ *
+ * ## Por que vuelve a pedir el correo
+ *
+ * El servidor guarda solo una huella de la direccion, nunca la direccion. Es lo
+ * que hace que una fuga de la base no entregue ni un correo, y el precio es que
+ * hay que escribirla de nuevo. Sin explicarlo parece que el sistema la perdio.
+ */
+@Composable
+private fun DialogoRecuperar(
+    usuarioInicial: String,
+    onCerrar: () -> Unit,
+    onRecuperada: () -> Unit,
+) {
+    val app = LocalContext.current.applicationContext as WtfuckApp
+    val ambito = rememberCoroutineScope()
+
+    var usuario by remember { mutableStateOf(usuarioInicial) }
+    var telefono by remember { mutableStateOf("") }
+    var codigo by remember { mutableStateOf("") }
+    var claveNueva by remember { mutableStateOf("") }
+    var pedido by remember { mutableStateOf(false) }
+    var trabajando by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var deprueba by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!trabajando) onCerrar() },
+        containerColor = BgElev,
+        title = { Text("Recuperar mi cuenta", color = TextoPrimario, fontSize = 18.sp) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "Te enviamos un codigo por SMS al numero que verificaste, y con el " +
+                        "cambias la contrasena.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextoSecundario,
+                )
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = Ambar.copy(alpha = 0.10f),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        "Esto NO sirve si cambiaste de telefono: la cuenta sigue atada al " +
+                            "dispositivo donde se creo.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Ambar,
+                        modifier = Modifier.padding(10.dp),
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+                OutlinedTextField(
+                    value = usuario,
+                    onValueChange = { usuario = it.filter { c -> !c.isWhitespace() } },
+                    label = { Text("Usuario") },
+                    prefix = { Text("@", color = TextoTerciario) },
+                    enabled = !pedido,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = telefono,
+                    onValueChange = { telefono = it },
+                    label = { Text("El numero que verificaste") },
+                    placeholder = { Text("+51 987 654 321", color = TextoTerciario) },
+                    enabled = !pedido,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    supportingText = {
+                        Text(
+                            "Guardamos solo una huella, no el numero. Por eso hay que escribirlo.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextoTerciario,
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                if (pedido) {
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = codigo,
+                        onValueChange = { if (it.length <= 6) codigo = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("Codigo de 6 digitos") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    deprueba?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Servidor sin pasarela de SMS. Codigo: $it",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Ambar,
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = claveNueva,
+                        onValueChange = { claveNueva = it },
+                        label = { Text("Contrasena nueva") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        supportingText = {
+                            Text(
+                                "Al menos 10 caracteres. Se cierran todas tus sesiones.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextoTerciario,
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                error?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = Coral)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !trabajando,
+                onClick = {
+                    trabajando = true
+                    error = null
+                    ambito.launch {
+                        if (!pedido) {
+                            app.repo.pedirCodigoRecuperar(usuario.trim().lowercase(), telefono.trim())
+                                .onSuccess {
+                                    pedido = true
+                                    deprueba = it.codigoDePrueba
+                                    // Si los datos no coincidian, el servidor
+                                    // responde igual y sin codigo: no se puede
+                                    // usar esta pantalla para averiguar de quien
+                                    // es un numero.
+                                    if (it.codigoDePrueba == null) {
+                                        error = "Si los datos son correctos, el codigo ya va en camino."
+                                    }
+                                }
+                                .onFailure { error = it.message }
+                        } else {
+                            app.repo.recuperarCuenta(
+                                usuario.trim().lowercase(), telefono.trim(), codigo, claveNueva,
+                            )
+                                .onSuccess { onRecuperada() }
+                                .onFailure { error = it.message }
+                        }
+                        trabajando = false
+                    }
+                },
+            ) { Text(if (pedido) "Cambiar la contrasena" else "Enviarme el codigo", color = Cian) }
+        },
+        dismissButton = {
+            TextButton(enabled = !trabajando, onClick = onCerrar) {
+                Text("Cancelar", color = TextoSecundario)
+            }
+        },
+    )
+}
+
+
+/**
+ * Vincular ESTE aparato a una cuenta que ya existe.
+ *
+ * ## El tercer camino, y por que hace falta explicarlo
+ *
+ * Con varios dispositivos hay tres formas de llegar a una cuenta y la gente
+ * solo conoce dos. "Crear cuenta" haria una cuenta nueva; "Entrar" falla
+ * porque este hardware todavia no esta vinculado y el servidor lo rechaza con
+ * un 403 que suena a contrasena equivocada. El camino correcto es este, y sin
+ * nombrarlo nadie lo encuentra.
+ *
+ * ## El codigo se genera en el OTRO aparato
+ *
+ * No aqui. Es la direccion que importa: para meter un dispositivo hay que
+ * tener en la mano el que ya esta dentro. Al reves seria el patron de la
+ * estafa de WhatsApp Web, donde el atacante manda su codigo y convence a la
+ * victima de aprobarlo.
+ *
+ * ## Lo que este aparato NO va a ver
+ *
+ * El historial anterior. El servidor nunca lo tuvo, asi que solo puede
+ * llegarle desde otro dispositivo de la misma persona, y solo si ese esta
+ * encendido. Se dice ANTES de vincular, no despues de que el usuario mire una
+ * lista de chats vacia y crea que algo se rompio.
+ */
+@Composable
+private fun DialogoVincular(
+    usuarioInicial: String,
+    identidad: Hardware.Identidad?,
+    onCerrar: () -> Unit,
+    onVinculado: () -> Unit,
+) {
+    val ctx = LocalContext.current
+    val app = ctx.applicationContext as WtfuckApp
+    val ambito = rememberCoroutineScope()
+
+    var usuario by remember { mutableStateOf(usuarioInicial) }
+    var codigo by remember { mutableStateOf("") }
+    var trabajando by remember { mutableStateOf(false) }
+    var escaneando by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var sincronizando by remember { mutableStateOf(false) }
+    var resultado by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!trabajando) onCerrar() },
+        containerColor = BgElev,
+        title = {
+            Text(
+                if (resultado != null) "Dispositivo vinculado" else "Vincular este dispositivo",
+                color = TextoPrimario,
+                fontSize = 18.sp,
+            )
+        },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                val res = resultado
+                if (res != null) {
+                    Text(res, style = MaterialTheme.typography.bodyMedium, color = TextoPrimario)
+                    if (sincronizando) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                color = Cian, modifier = Modifier.size(16.dp), strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "Pidiendo historial a tu otro dispositivo...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextoSecundario,
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        "Genera un codigo en el dispositivo donde ya tienes la cuenta, en " +
+                            "Perfil → Cuenta y seguridad → Mis dispositivos.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        color = Ambar.copy(alpha = 0.10f),
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            "Este aparato arranca sin historial: el servidor no lo tiene. " +
+                                "Si tu otro dispositivo esta encendido, te manda los mensajes " +
+                                "recientes.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Ambar,
+                            modifier = Modifier.padding(10.dp),
+                        )
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = usuario,
+                        onValueChange = { usuario = it.filter { c -> !c.isWhitespace() } },
+                        label = { Text("Tu usuario") },
+                        prefix = { Text("@", color = TextoTerciario) },
+                        singleLine = true,
+                        enabled = !trabajando,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = codigo,
+                        onValueChange = { if (it.length <= 9) codigo = it.uppercase() },
+                        label = { Text("Codigo de vinculacion") },
+                        placeholder = { Text("XXXX-XXXX", color = TextoTerciario) },
+                        singleLine = true,
+                        enabled = !trabajando,
+                        // J.6: escanear rellena este mismo campo en vez de
+                        // llevar a otro flujo. Asi un escaneo que lee mal se
+                        // corrige a mano sin volver a empezar, y el codigo
+                        // queda a la vista antes de enviarlo.
+                        trailingIcon = {
+                            IconButton(onClick = { escaneando = true }, enabled = !trabajando) {
+                                Icon(
+                                    Icons.Filled.QrCodeScanner,
+                                    "Escanear el codigo",
+                                    tint = Cian,
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                error?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = Coral)
+                }
+            }
+        },
+        confirmButton = {
+            if (resultado != null) {
+                TextButton(enabled = !sincronizando, onClick = onVinculado) {
+                    Text(if (sincronizando) "Espera..." else "Entrar", color = Cian)
+                }
+            } else {
+                TextButton(
+                    enabled = !trabajando && identidad != null &&
+                        usuario.isNotBlank() && codigo.length >= 8,
+                    onClick = {
+                        val id = identidad ?: return@TextButton
+                        trabajando = true
+                        error = null
+                        ambito.launch {
+                            app.repo.vincularEsteDispositivo(
+                                username = usuario.trim().lowercase(),
+                                codigo = codigo.trim(),
+                                id = id,
+                                etiqueta = android.os.Build.MODEL ?: "dispositivo",
+                            )
+                                .onSuccess { r ->
+                                    // El orden importa: primero el socket y las
+                                    // claves, porque sin claves publicadas los
+                                    // demas no tienen con que cifrarle y el
+                                    // pedido de historial no llegaria a nada.
+                                    app.repo.iniciar()
+                                    sincronizando = true
+                                    resultado = "Este es el dispositivo ${r.dispositivos} de tu cuenta."
+                                    app.repo.sincronizar()
+                                    val h = app.repo.pedirHistorial()
+                                    sincronizando = false
+                                    if (h?.hayQuienResponda == false) {
+                                        resultado = "Este es el dispositivo ${r.dispositivos} de tu " +
+                                            "cuenta. Tu otro dispositivo no esta conectado, asi que " +
+                                            "no hay de donde traer el historial: empiezas desde aqui."
+                                    }
+                                    trabajando = false
+                                }
+                                .onFailure {
+                                    trabajando = false
+                                    error = (it as? ApiError)?.message
+                                        ?: "No se pudo conectar con el servidor."
+                                }
+                        }
+                    },
+                ) { Text(if (trabajando) "Vinculando..." else "Vincular", color = Cian) }
+            }
+        },
+        dismissButton = {
+            if (resultado == null) {
+                TextButton(enabled = !trabajando, onClick = onCerrar) {
+                    Text("Cancelar", color = TextoSecundario)
+                }
+            }
+        },
+    )
+
+
+    if (escaneando) {
+        EscanerQr(
+            onCodigo = { texto ->
+                // Se rellena el campo y se cierra el escaner: NO se envia
+                // solo. Un escaneo que leyo mal -o el QR de otra cosa- tiene
+                // que poder corregirse antes de gastar uno de los cinco
+                // intentos del codigo.
+                codigo = texto.trim().uppercase().take(9)
+                escaneando = false
+            },
+            onCerrar = { escaneando = false },
+        )
+    }
+}

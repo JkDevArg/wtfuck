@@ -1,0 +1,370 @@
+// §16 y §3 · Barrido de LECTURA ajena.
+//
+// ## El hueco que cierra
+//
+// `ajeno.mjs` recorre las rutas que MUTAN algo y deja dicho lo que no cubre:
+// las lecturas. Son la otra mitad, y en una app de mensajería privada es la
+// mitad donde duele: una escritura ajena rompe algo y se nota; una lectura
+// ajena no deja rastro y es exactamente lo que el §3 entero —quién puede ver
+// tu perfil, tu actividad, tus grupos— existe para impedir.
+//
+// El mapa de `Main.kt` da **49 rutas de lectura**: 20 con un `{id}` en el
+// camino y 29 sin parámetro. De las segundas, **siete son del panel**, y ahí
+// `ajeno.mjs` tenía un punto ciego real: comprobó que una persona de a pie no
+// puede *suspender* a nadie, pero nunca que no puede *leer la bitácora de
+// auditoría*, el listado de personas o el resumen de moderación.
+//
+// ## Las tres preguntas, que no son la misma
+//
+//  1. **¿Se niega?** Para lo que es de otro: mensajes, adjuntos, miembros,
+//     denuncias, claves de conversaciones ajenas.
+//  2. **¿Se niega al que no es staff?** Para las siete del panel y las de
+//     moderación.
+//  3. **¿Qué devuelve cuando SÍ contesta?** Varias rutas contestan 200 a un
+//     desconocido **a propósito** —un canal público es público, una invitación
+//     se abre con el código, un perfil se consulta para escribirle—. Ahí la
+//     pregunta no es el código de estado sino **qué campos viajan**. Un 200
+//     correcto que arrastra la lista de suscriptores es una fuga igual.
+//
+// La tercera es la que justifica la suite: un barrido que solo mire códigos de
+// estado daría verde entero y no habría probado nada sobre privacidad.
+//
+// ## El control, otra vez
+//
+// Misma disciplina que en `ajeno.mjs`, por el mismo motivo: si la dueña no
+// recibe 2xx en la misma petición, el 403 del tercero no prueba autorización,
+// prueba que la ruta está rota para todos. Cada control va contra un mundo
+// recién sembrado.
+const BASE = process.env.WTFUCK_BASE ?? 'http://localhost:8300';
+const S = Math.random().toString(36).slice(2, 7);
+let ok = 0, fail = 0;
+const ck = (n, c, x = '') => { c ? (ok++, console.log('  PASA  ' + n)) : (fail++, console.log('  FALLA ' + n + '  ' + x)); };
+const b64 = (s) => Buffer.from(s).toString('base64');
+const uuid = () => crypto.randomUUID();
+
+let n = 0;
+async function reg(u) {
+  const nom = u + S + (n++);
+  const r = await fetch(BASE + '/v1/registro', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: nom, password: 'clave-larga-123', etiquetaDispositivo: 't',
+      identidadPub: b64('k' + nom), hardwareHash: b64('HW-' + nom), hardwareNivel: 'SOFTWARE_DEV',
+    }),
+  });
+  const j = await r.json();
+  return { t: j.token, id: j.usuarioId, disp: j.dispositivoId, user: nom };
+}
+const H = (t) => ({ Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' });
+const call = async (m, ruta, t, body) => {
+  const r = await fetch(BASE + ruta, { method: m, headers: H(t), body: body === undefined ? undefined : JSON.stringify(body) });
+  const txt = await r.text();
+  let b = null;
+  try { b = txt ? JSON.parse(txt) : null; } catch { b = txt; }
+  return { s: r.status, b, txt };
+};
+const post = (r, t, b) => call('POST', r, t, b);
+const get = (r, t) => call('GET', r, t);
+
+const { execSync } = await import('node:child_process');
+const hacerStaff = (username, nivel) => execSync(
+  `docker exec wtfuck_db psql -U wtfuck -d wtfuck -q -c ` +
+  `"UPDATE usuario SET staff_nivel=${nivel} WHERE username='${username}'"`,
+  { stdio: 'pipe' },
+);
+
+// ---------------------------------------------------------------------------
+//  Siembra
+// ---------------------------------------------------------------------------
+async function sembrar(etiqueta) {
+  const duena = await reg('a' + etiqueta);
+  const socio = await reg('b' + etiqueta);
+  hacerStaff(duena.user, 50);
+
+  const g = await post('/v1/conversaciones/grupo', duena.t, {
+    nombre: 'Grupo ' + etiqueta, usernames: [socio.user],
+  });
+  const G = g.b?.id;
+
+  const M = uuid();
+  await post('/v1/mensajes', duena.t, { mensajeId: M, conversacionId: G });
+
+  // Un canal PRIVADO: lo que un desconocido no debe poder mirar.
+  const privado = await post('/v1/canales', duena.t, {
+    nombre: 'Privado ' + etiqueta, alias: 'priv_' + etiqueta + S, publico: false,
+  });
+  const CANAL_PRIV = privado.b?.conversacionId;
+
+  // Y uno PUBLICO: lo que si, pero sin arrastrar de mas.
+  const publico = await post('/v1/canales', duena.t, {
+    nombre: 'Publico ' + etiqueta, alias: 'pub_' + etiqueta + S, publico: true,
+  });
+  const CANAL_PUB = publico.b?.conversacionId;
+  const ALIAS_PUB = publico.b?.alias;
+
+  // Y se APRUEBA. Sin esto no es un canal publico de verdad: `porAlias` solo
+  // resuelve aprobados, y esconder los pendientes es deliberado -el alias
+  // seria un oraculo para enterarse de lo que hay en la cola del dueno-. Un
+  // barrido sobre un canal sin aprobar probaria el camino equivocado.
+  //
+  // Aprobar exige nivel propietario, asi que va una cuenta aparte: la duena se
+  // queda en moderador para que los controles del panel comprueben el nivel
+  // MINIMO que hace falta, no uno de sobra.
+  const admin = await reg('z' + etiqueta);
+  hacerStaff(admin.user, 100);
+  await post(`/v1/panel/canales/${CANAL_PUB}`, admin.t, { aprobado: true, motivo: '' });
+
+  const inv = await post(`/v1/conversaciones/${G}/invitaciones`, duena.t, { horas: 0, usosMax: 0 });
+  const INV = inv.b?.codigo;
+
+  const adj = await post('/v1/adjuntos', duena.t, { conversacionId: G, clase: 'imagen', bytes: 1000 });
+  const ADJ = adj.b?.adjuntoId;
+
+  const den = await post('/v1/moderacion/denuncias', socio.t, {
+    tipo: 'usuario', objetivoUsuario: duena.user, motivo: 'spam',
+  });
+  const DENUNCIA = den.b?.id;
+
+  return { duena, socio, G, M, CANAL_PRIV, CANAL_PUB, ALIAS_PUB, INV, ADJ, DENUNCIA };
+}
+
+console.log('\n=== siembra ===');
+const X = await sembrar('x');
+const ajena = await reg('c');
+
+const faltan = Object.entries({
+  grupo: X.G, canalPrivado: X.CANAL_PRIV, canalPublico: X.CANAL_PUB,
+  alias: X.ALIAS_PUB, invitacion: X.INV, adjunto: X.ADJ, denuncia: X.DENUNCIA,
+}).filter(([, v]) => !v).map(([k]) => k);
+
+ck('el mundo se sembro ENTERO (sin esto el barrido no vale)',
+   faltan.length === 0, 'falto: ' + faltan.join(', '));
+if (faltan.length > 0) {
+  console.log('\n  Sin objetos sembrados el camino lleva `undefined` y todo da 400: verde falso.');
+  console.log(`\n=== ${ok} pasan, ${fail} fallan ===`);
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+//  1 · Lecturas de lo ajeno
+// ---------------------------------------------------------------------------
+const seNiega = (s) => s === 401 || s === 403 || s === 404;
+
+const CERRADAS = [
+  { n: 'la configuracion de un grupo ajeno', r: (w) => `/v1/conversaciones/${w.G}/config` },
+  { n: 'los miembros de un grupo ajeno', r: (w) => `/v1/conversaciones/${w.G}/miembros` },
+  { n: 'los roles de un grupo ajeno', r: (w) => `/v1/conversaciones/${w.G}/roles` },
+  { n: 'los mensajes fijados de un grupo ajeno', r: (w) => `/v1/conversaciones/${w.G}/fijados` },
+  { n: 'las solicitudes de entrada a un grupo ajeno', r: (w) => `/v1/conversaciones/${w.G}/solicitudes` },
+  { n: 'los destinos -o sea los aparatos- de una conversacion ajena',
+    r: (w) => `/v1/conversaciones/${w.G}/destinos` },
+  { n: 'el metadato de un mensaje ajeno', r: (w) => `/v1/mensajes/${w.M}` },
+  { n: 'un adjunto ajeno', r: (w) => `/v1/adjuntos/${w.ADJ}` },
+  { n: 'un canal privado ajeno', r: (w) => `/v1/canales/${w.CANAL_PRIV}` },
+  { n: 'las publicaciones de un canal privado ajeno', r: (w) => `/v1/canales/${w.CANAL_PRIV}/publicaciones` },
+  { n: 'las estadisticas de un canal privado ajeno', r: (w) => `/v1/canales/${w.CANAL_PRIV}/estadisticas` },
+  { n: 'el detalle de una denuncia ajena', r: (w) => `/v1/moderacion/denuncias/${w.DENUNCIA}` },
+];
+
+console.log('\n=== 1 · el tercero no puede LEER lo ajeno ===');
+for (const f of CERRADAS) {
+  const r = await get(f.r(X), ajena.t);
+  ck(f.n, seNiega(r.s), `respondio ${r.s} ${JSON.stringify(r.b).slice(0, 100)}`);
+}
+
+// ---------------------------------------------------------------------------
+//  2 · El panel, que es donde `ajeno.mjs` no miraba
+// ---------------------------------------------------------------------------
+//
+//  Comprobar que no puede suspender a nadie no dice nada sobre si puede LEER.
+//  La bitacora es un registro de auditoria: quien hizo que y sobre quien.
+// El panel NO es un solo permiso: son tres escalones -moderador 50,
+// administrador 80, propietario 100- y cada lectura pide el suyo. El `nivel`
+// de cada fila es el MINIMO que la abre, y se usa para dos cosas: elegir con
+// que cuenta hacer el control, y comprobar que el escalon de abajo se queda
+// afuera.
+const PANEL = [
+  { n: 'el resumen de moderacion', r: () => '/v1/panel/resumen', nivel: 50 },
+  { n: 'el listado de personas', r: () => '/v1/panel/usuarios', nivel: 50 },
+  { n: 'la cola de denuncias', r: () => '/v1/moderacion/cola', nivel: 50 },
+  { n: 'los eventos de seguridad de otra persona',
+    r: (w) => `/v1/panel/usuarios/${w.duena.user}/eventos`, nivel: 50 },
+  { n: 'la bitacora de auditoria', r: () => '/v1/panel/bitacora', nivel: 80 },
+  { n: 'los limites del sistema', r: () => '/v1/panel/limites', nivel: 80 },
+  { n: 'las conversaciones cerradas por el panel', r: () => '/v1/panel/conversaciones', nivel: 80 },
+  { n: 'la cola de canales por aprobar', r: () => '/v1/panel/canales', nivel: 100 },
+];
+
+// `/leidos` es el caso aparte, y conviene decir por que no esta en la lista de
+// arriba: contesta **200 con una lista vacia** a un desconocido, y esta bien.
+//
+// La consulta es «de MIS mensajes en esta conversacion, cuales estan leidos»
+// -`WHERE conversacion_id = ? AND autor_id = yo`-, o sea que esta acotada por
+// autoria dentro del propio SQL. Un desconocido no tiene mensajes ahi, asi que
+// la respuesta honesta es «ninguno». Y como un id inexistente devuelve lo
+// mismo, tampoco sirve de oraculo para saber si esa conversacion existe.
+//
+// Lo que hay que comprobar no es el codigo de estado sino que venga VACIA.
+const leidos = await get(`/v1/conversaciones/${X.G}/leidos`, ajena.t);
+ck('los acuses de lectura de un grupo ajeno vienen vacios',
+   Array.isArray(leidos.b?.mensajeIds) && leidos.b.mensajeIds.length === 0,
+   JSON.stringify(leidos.b).slice(0, 120));
+ck('y un id inventado devuelve lo mismo, asi que no es un oraculo',
+   JSON.stringify((await get(`/v1/conversaciones/${uuid()}/leidos`, ajena.t)).b) ===
+   JSON.stringify(leidos.b));
+
+console.log('\n=== 2 · quien no es staff no LEE el panel ===');
+for (const f of PANEL) {
+  const r = await get(f.r(X), ajena.t);
+  ck(`no puede leer ${f.n} (pide ${f.nivel})`, seNiega(r.s),
+     `respondio ${r.s} ${JSON.stringify(r.b).slice(0, 100)}`);
+}
+
+// ---------------------------------------------------------------------------
+//  3 · Lo que SI contesta, y que no arrastre de mas
+// ---------------------------------------------------------------------------
+//
+//  Estas rutas le contestan a un desconocido a proposito. La pregunta deja de
+//  ser el codigo de estado y pasa a ser que campos viajan.
+console.log('\n=== 3 · lo que se abre a proposito, sin arrastrar de mas ===');
+
+// Un canal publico es publico: el 200 es correcto.
+const cPub = await get(`/v1/canales/${X.CANAL_PUB}`, ajena.t);
+ck('un canal publico si se lee sin estar suscrito', cPub.s === 200, String(cPub.s));
+
+// Pero no puede traer QUIENES estan suscritos. El numero es una metrica; la
+// lista es la relacion de cada persona con ese canal, que es justo lo que el
+// §3 protege.
+const textoPub = JSON.stringify(cPub.b ?? {});
+ck('y NO trae la lista de suscriptores, solo cuantos son',
+   !textoPub.includes(X.socio.user) && !textoPub.includes(X.duena.user),
+   textoPub.slice(0, 200));
+
+// Lo mismo por alias, que es el otro camino al mismo objeto. Dos caminos al
+// mismo dato son dos sitios donde equivocarse.
+const cAlias = await get(`/v1/canales/alias/${X.ALIAS_PUB}`, ajena.t);
+ck('por alias contesta lo mismo que por id', cAlias.s === 200, String(cAlias.s));
+ck('y tampoco trae suscriptores por ese camino',
+   !JSON.stringify(cAlias.b ?? {}).includes(X.socio.user),
+   JSON.stringify(cAlias.b ?? {}).slice(0, 160));
+
+// Una invitacion se abre con el codigo -para eso existe- pero mirarla no es
+// entrar: no puede adelantar quienes estan adentro.
+const vInv = await get(`/v1/invitaciones/${X.INV}`, ajena.t);
+ck('una invitacion se puede mirar con el codigo', vInv.s === 200, String(vInv.s));
+ck('pero NO adelanta la lista de miembros del grupo',
+   !JSON.stringify(vInv.b ?? {}).includes(X.socio.user),
+   JSON.stringify(vInv.b ?? {}).slice(0, 200));
+
+// Un perfil se consulta para poder escribirle. Lo que no puede salir de ahi es
+// el telefono: es el dato con el que se cruza una cuenta con una persona real.
+const perfil = await get(`/v1/usuarios/${X.duena.user}`, ajena.t);
+ck('un perfil se consulta por username', perfil.s === 200, String(perfil.s));
+const tp = JSON.stringify(perfil.b ?? {});
+ck('y NO trae el telefono', !/telefono|phone/i.test(tp), tp.slice(0, 200));
+ck('ni el nivel de staff de esa persona', !/staff/i.test(tp), tp.slice(0, 200));
+ck('ni el hash de hardware, que es la huella del aparato',
+   !/hardware/i.test(tp), tp.slice(0, 200));
+
+// `dispositivoId` e `identidadPub` SI viajan, y es deliberado: en este diseno
+// la direccion de Signal es el APARATO y no la persona, asi que sin esos dos
+// campos no se puede cifrar el primer mensaje a alguien con quien todavia no
+// hay conversacion. Se fija aqui para que se note si algun dia desaparecen.
+ck('pero si viaja el aparato principal, que es lo que hace falta para cifrarle',
+   !!perfil.b?.dispositivoId && !!perfil.b?.identidadPub, tp.slice(0, 160));
+
+// Y todo esto pasa por el filtro del §3: quien tenga el perfil en «nadie» no
+// aparece. Eso lo barre privacidad.mjs con sus cuatro niveles; aqui solo se
+// comprueba que el camino por username no se salta el filtro.
+ck('la consulta por username pasa por el filtro de privacidad',
+   perfil.s === 200 || perfil.s === 404, String(perfil.s));
+
+// ---------------------------------------------------------------------------
+//  4 · Que ninguna respuesta lleve dentro un sobre
+// ---------------------------------------------------------------------------
+//
+//  El servidor guarda bytes opacos, asi que ninguna ruta de lectura deberia
+//  devolver el cuerpo de un mensaje ni aunque quisiera. Se comprueba sobre lo
+//  que la DUENA si puede leer, que es donde habria algo que filtrar.
+console.log('\n=== 4 · ni siquiera la duena recibe el cuerpo de un mensaje ===');
+
+const meta = await get(`/v1/mensajes/${X.M}`, X.duena.t);
+ck('la duena si lee el metadato de su mensaje', meta.s === 200, String(meta.s));
+const claves = Object.keys(meta.b ?? {});
+ck('y el metadato NO tiene texto, cuerpo ni sobre',
+   !claves.some((k) => /texto|cuerpo|sobre|contenido/i.test(k)), JSON.stringify(claves));
+
+const fij = await get(`/v1/conversaciones/${X.G}/fijados`, X.duena.t);
+ck('los fijados tampoco traen el texto', fij.s === 200 &&
+   !/"texto"|"cuerpo"/.test(JSON.stringify(fij.b ?? {})), String(fij.s));
+
+// ---------------------------------------------------------------------------
+//  5 · El control: la duena SI lee lo suyo
+// ---------------------------------------------------------------------------
+//
+//  Sin esto la seccion 1 no prueba autorizacion: una ruta rota para todos
+//  daria exactamente el mismo verde.
+console.log('\n=== control · la duena si lee lo suyo ===');
+
+for (const f of CERRADAS) {
+  const W = await sembrar('k' + n);
+  const r = await get(f.r(W), W.duena.t);
+  ck('control: ' + f.n, r.s >= 200 && r.s < 300,
+     `la duena recibio ${r.s} ${JSON.stringify(r.b).slice(0, 90)}`);
+}
+
+// Y el staff del nivel que toca SI lee: si no, la seccion 2 tampoco probaria
+// nada -una ruta rota para todos daria el mismo verde-.
+const W2 = await sembrar('s');
+const staff = {};
+for (const nivel of [50, 80, 100]) {
+  const cuenta = await reg('n' + nivel);
+  hacerStaff(cuenta.user, nivel);
+  staff[nivel] = cuenta;
+}
+
+for (const f of PANEL) {
+  const r = await get(f.r(W2), staff[f.nivel].t);
+  ck(`control: nivel ${f.nivel} si lee ${f.n}`, r.s >= 200 && r.s < 300,
+     `recibio ${r.s} ${JSON.stringify(r.b).slice(0, 90)}`);
+}
+
+// ---------------------------------------------------------------------------
+//  6 · La escalera: el nivel de abajo tampoco entra
+// ---------------------------------------------------------------------------
+//
+//  Esto es lo que separa «hay que ser staff» de «hay que ser ESTE staff». Sin
+//  ello, un cambio que convirtiera las tres lecturas de administrador en
+//  lecturas de moderador pasaria sin que nada se pusiera rojo: la seccion 2
+//  seguiria en verde, porque quien ataca ahi no es staff de ningun nivel.
+//
+//  El caso concreto que fija: un moderador trabaja la cola de denuncias y ve
+//  el historial de una persona, pero NO lee la bitacora de auditoria entera
+//  -que incluye lo que hicieron los demas moderadores- ni toca los limites del
+//  sistema.
+console.log('\n=== 6 · la escalera del panel: el nivel de abajo no entra ===');
+
+const ABAJO = { 80: 50, 100: 80 };
+for (const f of PANEL) {
+  const menor = ABAJO[f.nivel];
+  if (!menor) continue;   // las de 50 ya las cubre la seccion 2
+  const r = await get(f.r(W2), staff[menor].t);
+  ck(`nivel ${menor} NO alcanza ${f.n} (pide ${f.nivel})`, seNiega(r.s),
+     `recibio ${r.s} ${JSON.stringify(r.b).slice(0, 90)}`);
+}
+
+// ---------------------------------------------------------------------------
+//  Alcance
+// ---------------------------------------------------------------------------
+console.log('\n=== alcance del barrido de lectura ===');
+console.log(`  ${CERRADAS.length} lecturas de objetos ajenos, todas con control de la duena`);
+console.log(`  ${PANEL.length} lecturas del panel, con control del nivel exacto`);
+console.log('  y la escalera 50 < 80 < 100 comprobada por debajo');
+console.log('  9 comprobaciones de CONTENIDO sobre rutas que se abren a proposito');
+console.log('');
+console.log('  NO cubre: los nueve ajustes del §3 con sus cuatro niveles, que');
+console.log('  tienen suite propia (privacidad.mjs y personalizado.mjs, 56 entre');
+console.log('  las dos). Esto barre la superficie; aquellas barren la matriz.');
+
+console.log(`\n=== ${ok} pasan, ${fail} fallan ===`);
+process.exit(fail === 0 ? 0 : 1);

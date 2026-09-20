@@ -1,0 +1,15 @@
+-- ============================================================
+--  V22: el ajuste de "estoy escribiendo" (L.1)
+-- ============================================================
+--
+-- La senal NO se guarda en ninguna parte -se reenvia por el socket y se
+-- olvida-, asi que aqui solo vive la preferencia.
+--
+-- Es booleano y reciproco, como las confirmaciones de lectura: quien lo apaga
+-- deja de mandarlo y deja de verlo. Un nivel "conocidos" solo serviria para
+-- ver sin ser visto dentro de un subconjunto.
+--
+-- Y va aparte del ajuste de lectura porque son dos cosas distintas: una dice
+-- que ya leiste -y crea la expectativa de que contestes-, la otra que estas
+-- contestando ahora.
+ALTER TABLE usuario ADD COLUMN IF NOT EXISTS priv_escribiendo boolean NOT NULL DEFAULT true;

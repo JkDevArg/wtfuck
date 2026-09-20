@@ -1,0 +1,101 @@
+package com.wtfuck.app.datos
+
+import com.wtfuck.protocol.Base64Util
+import com.wtfuck.protocol.Carga
+import com.wtfuck.protocol.CopiaCifrada
+import com.wtfuck.protocol.DestinoDispositivo
+import com.wtfuck.protocol.TipoCifrado
+
+/**
+ * De donde viene un sobre. Lo que hace falta para poder abrirlo.
+ *
+ * Lleva el DISPOSITIVO y no solo la persona porque una sesion de Signal es
+ * entre dos dispositivos: dos telefonos de la misma persona son dos sesiones
+ * distintas y no se pueden confundir.
+ */
+data class OrigenSobre(
+    val usuarioId: String,
+    val username: String,
+    val dispositivoId: String,
+    val tipo: Int,
+)
+
+/**
+ * La frontera del cifrado.
+ *
+ * Todo lo que sale de la app pasa por `cifrar`; todo lo que entra, por
+ * `descifrar`. El resto del codigo solo maneja [Carga] en claro y bytes
+ * opacos, nunca las dos cosas a la vez.
+ *
+ * `cifrar` devuelve una LISTA porque con cifrado de extremo a extremo no hay
+ * un cuerpo que el servidor pueda copiar: hay uno por dispositivo destino. Esa
+ * firma es la que obliga al resto del sistema a respetarlo.
+ */
+interface Cifrador {
+
+    /**
+     * Cifra para todos los destinos.
+     *
+     * `esGrupo` no es cosmetico: decide el esquema. Uno a uno usa sesiones por
+     * pares -un cuerpo por dispositivo-; un grupo usa clave de emisor, y
+     * entonces un mismo cuerpo sirve para todos los que ya la tengan.
+     */
+    suspend fun cifrar(
+        conversacionId: String,
+        esGrupo: Boolean,
+        destinos: List<DestinoDispositivo>,
+        carga: Carga,
+    ): List<CopiaCifrada>
+
+    suspend fun descifrar(conversacionId: String, origen: OrigenSobre, bytes: ByteArray): Carga
+
+    /**
+     * El transporte acepto el envio.
+     *
+     * Existe por las claves de emisor: hasta que el servidor no acepta, no se
+     * puede dar por repartida la clave. Si se marcara antes y el envio fallara,
+     * el proximo mensaje iria sin la clave y quien recibe no podria abrirlo
+     * nunca. Para el cifrado por pares no hace nada.
+     */
+    suspend fun confirmarEnvio(conversacionId: String, destinos: List<DestinoDispositivo>) {}
+
+    /** Se llama al arrancar con sesion: publica o repone claves si hace falta. */
+    suspend fun prepararClaves() {}
+
+    /** Nombre corto para la UI: la persona tiene derecho a saber que protege su chat. */
+    val etiqueta: String
+}
+
+/**
+ * SIN CIFRADO. El cuerpo viaja como JSON.
+ *
+ * Existe solo para depurar el transporte: permite mirar en la base del
+ * servidor que llego y comparar con lo que se mando. El servidor igual no lo
+ * interpreta -lo guarda como bytea opaco-, pero un administrador de la base SI
+ * podria leerlo.
+ *
+ * NO usar en produccion. [CifradorSignal] es el que cumple la promesa.
+ */
+class CifradorPlano : Cifrador {
+
+    override val etiqueta = "Sin cifrar (desarrollo)"
+
+    override suspend fun cifrar(
+        conversacionId: String,
+        esGrupo: Boolean,
+        destinos: List<DestinoDispositivo>,
+        carga: Carga,
+    ): List<CopiaCifrada> {
+        // Un solo cuerpo para todos: sin cifrar, todos los destinos pueden
+        // compartir los mismos bytes.
+        if (destinos.isEmpty()) return emptyList()
+        val cuerpo = Base64Util.enc(jsonApp.encodeToString(Carga.serializer(), carga).toByteArray())
+        return listOf(CopiaCifrada(destinos.map { it.dispositivoId }, cuerpo, TipoCifrado.PLANO))
+    }
+
+    override suspend fun descifrar(
+        conversacionId: String,
+        origen: OrigenSobre,
+        bytes: ByteArray,
+    ): Carga = jsonApp.decodeFromString(Carga.serializer(), String(bytes))
+}

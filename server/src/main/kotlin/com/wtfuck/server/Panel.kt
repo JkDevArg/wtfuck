@@ -1,0 +1,582 @@
+package com.wtfuck.server
+
+import com.wtfuck.protocol.*
+import java.time.Duration
+import java.util.UUID
+
+/**
+ * Modulo H: panel administrativo.
+ *
+ * Va pegado al modulo G y no antes: un panel sin denuncias no tiene nada que
+ * mostrar, y se habria disenado a ciegas sobre datos inventados.
+ *
+ * ## Lo que el panel NO puede hacer
+ *
+ * No puede mostrar mensajes. Ni buscarlos, ni leerlos, ni exportarlos. Un panel
+ * administrativo en una app normal se llena de eso, y aqui es imposible por
+ * construccion: el servidor solo tiene bytes opacos. Lo unico legible que
+ * existe es lo que un denunciante entrego, y eso vive dentro de su denuncia y
+ * se borra al cerrarla.
+ *
+ * Tampoco puede ver la libreta de nadie, ni sus conversaciones, ni con quien
+ * habla. Se puede contar cuantas tiene, no cuales.
+ *
+ * ## Los dos niveles
+ *
+ * Moderador (50) trabaja la cola: lee denuncias, advierte, silencia, expulsa.
+ * Administrador (80) es el unico que suspende cuentas por mano propia y el
+ * unico que puede nombrar staff. La linea esta ahi porque suspender una cuenta
+ * y repartir poder son las dos cosas que no se pueden deshacer del todo.
+ */
+object Panel {
+
+    fun resumen(yo: Auth): ResumenPanel = Db.query { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId)
+
+        val n = c.prepareStatement(
+            """SELECT
+                 (SELECT count(*) FROM denuncia WHERE estado = 'pendiente'),
+                 (SELECT count(*) FROM denuncia WHERE estado = 'en_revision'),
+                 (SELECT count(*) FROM denuncia
+                   WHERE resuelta_en >= date_trunc('day', now())),
+                 (SELECT count(*) FROM usuario
+                   WHERE suspendido_en IS NOT NULL
+                     AND (suspendido_hasta IS NULL OR suspendido_hasta > now())),
+                 (SELECT count(*) FROM advertencia
+                   WHERE revocada_en IS NULL AND (vence_en IS NULL OR vence_en > now())),
+                 (SELECT count(*) FROM evento_seguridad
+                   WHERE tipo = 'limite_excedido' AND creado_en >= date_trunc('day', now())),
+                 (SELECT count(*) FROM canal WHERE estado = 'pendiente')"""
+        ).use { st ->
+            st.executeQuery().use { rs ->
+                rs.primero {
+                    listOf(
+                        it.getInt(1), it.getInt(2), it.getInt(3),
+                        it.getInt(4), it.getInt(5), it.getInt(6), it.getInt(7),
+                    )
+                }
+            }
+        } ?: List(7) { 0 }
+
+        // Por motivo, solo lo abierto: el reparto historico no ayuda a decidir
+        // que revisar ahora.
+        val porMotivo = c.prepareStatement(
+            """SELECT motivo, count(*) FROM denuncia
+               WHERE estado IN ('pendiente','en_revision')
+               GROUP BY motivo ORDER BY count(*) DESC"""
+        ).use { st ->
+            st.executeQuery().use { rs -> rs.mapear { it.getString(1) to it.getInt(2) } }.toMap()
+        }
+
+        ResumenPanel(
+            denunciasPendientes = n[0],
+            denunciasEnRevision = n[1],
+            denunciasResueltasHoy = n[2],
+            usuariosSuspendidos = n[3],
+            advertenciasVigentes = n[4],
+            limitesExcedidosHoy = n[5],
+            canalesPendientes = n[6],
+            porMotivo = porMotivo,
+            miNivel = Moderacion.nivel(c, yo.usuarioId),
+        )
+    }
+
+    /**
+     * Buscar personas.
+     *
+     * Exige al menos dos caracteres: con uno, esto seria un listado completo de
+     * la plataforma disfrazado de busqueda.
+     */
+    fun usuarios(yo: Auth, consulta: String, limite: Int = 50): List<UsuarioPanel> = Db.query { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId)
+        val q = consulta.trim().removePrefix("@").lowercase()
+        if (q.length < 2) return@query emptyList()
+
+        c.prepareStatement(
+            """SELECT u.username,
+                      (EXTRACT(EPOCH FROM u.creado_en) * 1000)::bigint,
+                      u.staff_nivel,
+                      u.suspendido_en IS NOT NULL
+                        AND (u.suspendido_hasta IS NULL OR u.suspendido_hasta > now()),
+                      (EXTRACT(EPOCH FROM u.suspendido_hasta) * 1000)::bigint,
+                      u.suspendido_motivo,
+                      (SELECT count(*) FROM advertencia a
+                        WHERE a.usuario_id = u.id AND a.revocada_en IS NULL
+                          AND (a.vence_en IS NULL OR a.vence_en > now())),
+                      (SELECT count(*) FROM denuncia d WHERE d.objetivo_usuario_id = u.id),
+                      (SELECT count(*) FROM denuncia d WHERE d.denunciante_id = u.id)
+               FROM usuario u
+               WHERE u.username LIKE ? || '%'
+               ORDER BY u.username
+               LIMIT ?"""
+        ).use { st ->
+            st.setString(1, q)
+            st.setInt(2, limite.coerceIn(1, 100))
+            st.executeQuery().use { rs ->
+                rs.mapear {
+                    val suspendido = it.getBoolean(4)
+                    UsuarioPanel(
+                        username = it.getString(1),
+                        creadoEn = it.getLong(2),
+                        staffNivel = it.getInt(3),
+                        suspendido = suspendido,
+                        suspendidoHasta = it.getLong(5).takeIf { v -> v > 0 && suspendido },
+                        suspensionMotivo = it.getString(6)?.takeIf { suspendido },
+                        advertenciasVigentes = it.getInt(7),
+                        denunciasRecibidas = it.getInt(8),
+                        denunciasHechas = it.getInt(9),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Suspender a mano. Solo administrador: es lo que no se deshace del todo. */
+    fun suspender(yo: Auth, username: String, req: SuspenderReq): UsuarioPanel {
+        Db.tx { c ->
+            Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+            val objetivo = Moderacion.idDeUsername(c, username)
+            if (objetivo == yo.usuarioId) throw ErrorNegocio(400, "No puedes suspenderte a ti mismo.")
+            if (Moderacion.nivel(c, objetivo) >= Moderacion.nivel(c, yo.usuarioId)) {
+                throw ErrorNegocio(403, "No puedes suspender a alguien de tu mismo nivel o superior.")
+            }
+            if (req.motivo.isBlank()) {
+                // Sin motivo no hay nada que explicarle al suspendido, y una
+                // sancion que no se explica no corrige nada.
+                throw ErrorNegocio(400, "Una suspension necesita un motivo.")
+            }
+
+            Moderacion.suspender(
+                c, objetivo, yo.usuarioId, req.motivo,
+                req.horas?.let { Duration.ofHours(it.toLong()) },
+            )
+            Autz.auditar(
+                c, yo.usuarioId, "usuario.suspender", "usuario", objetivo,
+                objetivoId = objetivo,
+                detalle = """{"horas":${req.horas ?: "null"}}""",
+            )
+        }
+        // Se lee DESPUES de confirmar: `uno` abre su propia conexion y una
+        // conexion nueva no ve lo que otra transaccion no confirmo todavia.
+        // Leerlo dentro devolvia el estado anterior a la suspension.
+        return uno(yo, username)
+    }
+
+    fun restaurar(yo: Auth, username: String): UsuarioPanel {
+        Db.tx { c ->
+            Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+            val objetivo = Moderacion.idDeUsername(c, username)
+            c.prepareStatement(
+                """UPDATE usuario
+                   SET suspendido_en = NULL, suspendido_hasta = NULL,
+                       suspendido_motivo = NULL, suspendido_por = NULL
+                   WHERE id = ?"""
+            ).use { st -> st.setObject(1, objetivo); st.executeUpdate() }
+
+            Seguridad.anotar(c, objetivo, "cuenta_restaurada")
+            Autz.auditar(c, yo.usuarioId, "usuario.restaurar", "usuario", objetivo, objetivoId = objetivo)
+        }
+        return uno(yo, username)
+    }
+
+    /**
+     * Nombrar o degradar staff.
+     *
+     * Solo administrador, y nunca a un nivel igual o mayor al propio. Sin esa
+     * segunda regla, el primer administrador puede fabricar propietarios y el
+     * nivel 100 deja de significar algo.
+     */
+    fun staff(yo: Auth, username: String, req: StaffReq): UsuarioPanel {
+        Db.tx { c ->
+            Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+            if (req.nivel !in listOf(
+                    0, Moderacion.MODERADOR, Moderacion.ADMINISTRADOR, Moderacion.PROPIETARIO,
+                )
+            ) throw ErrorNegocio(400, "Nivel invalido. Es 0, 50, 80 o 100.")
+
+            val mio = Moderacion.nivel(c, yo.usuarioId)
+            if (req.nivel >= mio) throw ErrorNegocio(403, "No puedes dar un nivel igual o mayor al tuyo.")
+
+            val objetivo = Moderacion.idDeUsername(c, username)
+            if (objetivo == yo.usuarioId) throw ErrorNegocio(400, "No puedes cambiar tu propio nivel.")
+            if (Moderacion.nivel(c, objetivo) >= mio) {
+                throw ErrorNegocio(403, "No puedes tocar a alguien de tu mismo nivel o superior.")
+            }
+
+            c.prepareStatement("UPDATE usuario SET staff_nivel = ? WHERE id = ?").use { st ->
+                st.setInt(1, req.nivel); st.setObject(2, objetivo); st.executeUpdate()
+            }
+            Seguridad.anotar(
+                c, objetivo,
+                if (req.nivel > 0) "staff_otorgado" else "staff_retirado",
+                detalle = """{"nivel":${req.nivel}}""",
+            )
+            Autz.auditar(
+                c, yo.usuarioId, "usuario.staff", "usuario", objetivo,
+                objetivoId = objetivo, detalle = """{"nivel":${req.nivel}}""",
+            )
+        }
+        return uno(yo, username)
+    }
+
+    /** Una persona concreta. Reusa la busqueda para no repetir la consulta. */
+    fun uno(yo: Auth, username: String): UsuarioPanel {
+        val u = username.trim().removePrefix("@").lowercase()
+        return usuarios(yo, u, 5).firstOrNull { it.username.equals(u, true) }
+            ?: throw ErrorNegocio(404, "No existe el usuario @$u.")
+    }
+
+    /**
+     * Semilla del primer propietario.
+     *
+     * Hay un problema de arranque real: solo un administrador puede nombrar
+     * staff, y al principio no hay ninguno. Se resuelve por variable de entorno
+     * y una sola vez, al levantar: `WTFUCK_PROPIETARIO=joaquin`.
+     *
+     * No es una ruta a proposito. Una ruta de "hazme administrador" protegida
+     * por un secreto es la clase de cosa que termina abierta en produccion.
+     */
+    fun sembrarPropietario(username: String?) {
+        val u = username?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return
+        Db.tx { c ->
+            val filas = c.prepareStatement(
+                "UPDATE usuario SET staff_nivel = ? WHERE username = ? AND staff_nivel < ?"
+            ).use { st ->
+                st.setInt(1, Moderacion.PROPIETARIO)
+                st.setString(2, u)
+                st.setInt(3, Moderacion.PROPIETARIO)
+                st.executeUpdate()
+            }
+            if (filas > 0) {
+                Seguridad.anotar(
+                    c, null, "staff_otorgado",
+                    detalle = """{"username":"$u","nivel":100,"via":"WTFUCK_PROPIETARIO"}""",
+                )
+            }
+        }
+    }
+
+    /** Ultimos eventos de seguridad de una cuenta. Solo staff. */
+    fun eventosDe(yo: Auth, username: String, limite: Int = 50): List<EventoSeguridad> = Db.query { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId)
+        val objetivo = Moderacion.idDeUsername(c, username)
+        Autz.auditar(c, yo.usuarioId, "usuario.eventos", "usuario", objetivo, objetivoId = objetivo)
+        Seguridad.mios(c, objetivo, limite)
+    }
+
+    // ==================================================================
+    //  H.6 · Limites ajustables
+    // ==================================================================
+
+    /**
+     * Exige **administrador**, no moderador.
+     *
+     * Un moderador decide sobre personas y contenidos; los limites de abuso
+     * son infraestructura de toda la plataforma y relajarlos es una decision
+     * de seguridad con consecuencias que no se ven en una denuncia. Por eso
+     * esta un nivel mas arriba.
+     */
+    fun limites(yo: Auth): List<LimiteAjustable> = Db.query { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+
+        val filas = c.prepareStatement(
+            """SELECT l.clave, l.tope, l.ventana_s, coalesce(u.username, ''),
+                      (EXTRACT(EPOCH FROM l.actualizado_en) * 1000)::bigint
+               FROM limite_config l LEFT JOIN usuario u ON u.id = l.actualizado_por"""
+        ).use { st ->
+            st.executeQuery().use { rs ->
+                rs.mapear {
+                    it.getString(1) to Triple(it.getInt(2), it.getInt(3), it.getString(4) to it.getLong(5))
+                }
+            }.toMap()
+        }
+
+        Limitador.AJUSTABLES.map { a ->
+            val def = Limitador.porDefecto(a.clave) ?: a.leer()
+            val fila = filas[a.clave]
+            LimiteAjustable(
+                clave = a.clave,
+                etiqueta = a.etiqueta,
+                detalle = a.detalle,
+                tope = fila?.first ?: def.cuantas,
+                ventanaSegundos = fila?.second ?: def.ventana.seconds.toInt(),
+                topeDefecto = def.cuantas,
+                ventanaDefectoSegundos = def.ventana.seconds.toInt(),
+                esDefecto = fila == null,
+                actualizadoPor = fila?.third?.first?.takeIf { it.isNotBlank() },
+                actualizadoEn = fila?.third?.second ?: 0,
+            )
+        }
+    }
+
+    fun ajustarLimite(yo: Auth, clave: String, req: AjustarLimiteReq): LimiteAjustable {
+        val r = ajustarEnBase(yo, clave, req)
+        // La cache se invalida DESPUES del commit, no dentro de la
+        // transaccion: invalidar antes deja que otro hilo refresque leyendo el
+        // estado viejo y lo cachee, con lo que el cambio no surtiria efecto
+        // durante los siguientes 30 segundos.
+        Limitador.invalidarCache()
+        return r
+    }
+
+    private fun ajustarEnBase(yo: Auth, clave: String, req: AjustarLimiteReq): LimiteAjustable = Db.tx { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+        val a = Limitador.AJUSTABLES.firstOrNull { it.clave == clave }
+            ?: throw ErrorNegocio(404, "Ese limite no existe.")
+
+        // Los rangos los valida tambien la base con CHECKs. Aqui se validan
+        // para poder decir QUE esta mal: un 400 con motivo sirve, un error de
+        // restriccion de Postgres no.
+        if (req.tope !in 1..1_000_000) {
+            throw ErrorNegocio(400, "El tope tiene que estar entre 1 y 1000000.")
+        }
+        if (req.ventanaSegundos !in 1..86_400) {
+            throw ErrorNegocio(400, "La ventana tiene que estar entre 1 segundo y 24 horas.")
+        }
+
+        c.prepareStatement(
+            """INSERT INTO limite_config (clave, tope, ventana_s, actualizado_por, actualizado_en)
+               VALUES (?, ?, ?, ?, now())
+               ON CONFLICT (clave) DO UPDATE
+                 SET tope = excluded.tope, ventana_s = excluded.ventana_s,
+                     actualizado_por = excluded.actualizado_por, actualizado_en = now()"""
+        ).use { st ->
+            st.setString(1, clave)
+            st.setInt(2, req.tope)
+            st.setInt(3, req.ventanaSegundos)
+            st.setObject(4, yo.usuarioId)
+            st.executeUpdate()
+        }
+
+        // Relajar un limite es una decision de seguridad: queda en la bitacora
+        // con nombre y fecha, como cualquier sancion.
+        Autz.auditar(
+            c, yo.usuarioId, "limite.ajustado", "limite", null,
+            detalle = """{"clave":"$clave","tope":${req.tope},"ventana_s":${req.ventanaSegundos}}""",
+        )
+
+        val def = Limitador.porDefecto(clave) ?: a.leer()
+        LimiteAjustable(
+            clave = clave,
+            etiqueta = a.etiqueta,
+            detalle = a.detalle,
+            tope = req.tope,
+            ventanaSegundos = req.ventanaSegundos,
+            topeDefecto = def.cuantas,
+            ventanaDefectoSegundos = def.ventana.seconds.toInt(),
+            esDefecto = false,
+            actualizadoPor = yo.username,
+            actualizadoEn = System.currentTimeMillis(),
+        )
+    }
+
+    /** Vuelve al valor de fabrica borrando la fila. */
+    fun restaurarLimite(yo: Auth, clave: String) {
+        restaurarEnBase(yo, clave)
+        Limitador.invalidarCache()
+    }
+
+    private fun restaurarEnBase(yo: Auth, clave: String) = Db.tx { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+        if (Limitador.AJUSTABLES.none { it.clave == clave }) {
+            throw ErrorNegocio(404, "Ese limite no existe.")
+        }
+        c.prepareStatement("DELETE FROM limite_config WHERE clave = ?").use { st ->
+            st.setString(1, clave); st.executeUpdate()
+        }
+        Autz.auditar(
+            c, yo.usuarioId, "limite.restaurado", "limite", null,
+            detalle = """{"clave":"$clave"}""",
+        )
+    }
+
+    // ==================================================================
+    //  H.6 · La bitacora
+    // ==================================================================
+
+    /**
+     * Quien hizo que.
+     *
+     * Existia desde el modulo A -`Autz.auditar` escribe en cada accion con
+     * consecuencias- y no habia forma de LEERLA sin entrar a la base. Una
+     * bitacora que nadie puede leer no disuade a nadie ni resuelve ninguna
+     * discusion, que son sus dos unicas funciones.
+     *
+     * Exige **administrador**: la bitacora dice lo que hizo cada moderador, y
+     * la vigilancia entre pares del mismo nivel es una forma rapida de que un
+     * equipo deje de escribir cosas.
+     */
+    fun bitacora(yo: Auth, limite: Int, filtro: String?): List<LineaBitacora> = Db.query { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+        val q = filtro?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+        c.prepareStatement(
+            """SELECT a.id, coalesce(ac.username, ''), a.accion, a.recurso_tipo, a.recurso_id,
+                      ob.username, a.detalle::text,
+                      (EXTRACT(EPOCH FROM a.creado_en) * 1000)::bigint
+               FROM auditoria a
+                 LEFT JOIN usuario ac ON ac.id = a.actor_id
+                 LEFT JOIN usuario ob ON ob.id = a.objetivo_id
+               WHERE (?::text IS NULL
+                      OR lower(a.accion) LIKE '%' || ?::text || '%'
+                      OR lower(coalesce(ac.username,'')) LIKE '%' || ?::text || '%'
+                      OR lower(coalesce(ob.username,'')) LIKE '%' || ?::text || '%')
+               ORDER BY a.id DESC
+               LIMIT ?"""
+        ).use { st ->
+            st.setString(1, q); st.setString(2, q); st.setString(3, q); st.setString(4, q)
+            st.setInt(5, limite.coerceIn(1, 300))
+            st.executeQuery().use { rs ->
+                rs.mapear {
+                    LineaBitacora(
+                        id = it.getObject(1, UUID::class.java).toString(),
+                        actor = it.getString(2),
+                        accion = it.getString(3),
+                        recursoTipo = it.getString(4),
+                        recursoId = it.getObject(5, UUID::class.java)?.toString(),
+                        objetivo = it.getString(6),
+                        detalle = it.getString(7),
+                        creadoEn = it.getLong(8),
+                    )
+                }
+            }
+        }
+    }
+
+
+    // ==================================================================
+    //  H.3 · Gobierno de grupos y canales
+    // ==================================================================
+
+    /**
+     * Los grupos y canales de la plataforma, con lo que hace falta para
+     * decidir: cuanta gente hay dentro, cuanto se habla y cuantas denuncias
+     * acumula.
+     *
+     * Sin buscador esto seria la lista completa de la plataforma, que no cabe
+     * en una pantalla y no ayuda a nada. Se exige texto por el mismo motivo
+     * que en la busqueda de personas.
+     */
+    fun conversaciones(yo: Auth, q: String?, soloCerradas: Boolean): List<ConversacionPanel> =
+        Db.query { c ->
+            Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+            val texto = q?.trim()?.lowercase()?.takeIf { it.length >= 2 }
+            c.prepareStatement(
+                """SELECT v.id, v.tipo, coalesce(v.nombre, ''), coalesce(u.username, ''),
+                          (SELECT count(*) FROM participante p
+                            WHERE p.conversacion_id = v.id AND p.salido_en IS NULL),
+                          (SELECT count(*) FROM mensaje_meta m
+                            WHERE m.conversacion_id = v.id AND m.retirado_en IS NULL),
+                          (SELECT count(*) FROM denuncia d
+                            WHERE d.objetivo_conversacion_id = v.id),
+                          (EXTRACT(EPOCH FROM v.creada_en) * 1000)::bigint,
+                          v.cerrada_en IS NOT NULL, v.cierre_motivo,
+                          cp.username
+                   FROM conversacion v
+                     LEFT JOIN usuario u  ON u.id = v.creador_id
+                     LEFT JOIN usuario cp ON cp.id = v.cerrada_por
+                   WHERE v.tipo IN ('grupo', 'canal')
+                     AND (?::boolean = false OR v.cerrada_en IS NOT NULL)
+                     AND (?::text IS NULL OR lower(coalesce(v.nombre,'')) LIKE '%' || ?::text || '%')
+                   ORDER BY 7 DESC, 5 DESC
+                   LIMIT 60"""
+            ).use { st ->
+                st.setBoolean(1, soloCerradas)
+                st.setString(2, texto); st.setString(3, texto)
+                st.executeQuery().use { rs ->
+                    rs.mapear {
+                        ConversacionPanel(
+                            id = it.getObject(1, UUID::class.java).toString(),
+                            tipo = it.getString(2),
+                            nombre = it.getString(3).ifBlank {
+                                if (it.getString(2) == "canal") "Canal" else "Grupo"
+                            },
+                            creador = it.getString(4),
+                            miembros = it.getInt(5),
+                            mensajes = it.getInt(6),
+                            denuncias = it.getInt(7),
+                            creadoEn = it.getLong(8),
+                            cerrada = it.getBoolean(9),
+                            cierreMotivo = it.getString(10),
+                            cerradaPor = it.getString(11),
+                        )
+                    }
+                }
+            }
+        }
+
+    /**
+     * Cierra una conversacion: nadie escribe mas.
+     *
+     * Lo que NO hace, y hay que decirlo en la pantalla: no borra lo que ya se
+     * entrego. Esos mensajes estan cifrados en aparatos ajenos y el servidor no
+     * los tiene ni podria leerlos.
+     */
+    fun cerrarConversacion(
+        yo: Auth,
+        convId: UUID,
+        req: CerrarConversacionReq,
+    ): List<Pair<UUID, Bajada.Evento>> = Db.tx { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+        val motivo = req.motivo.trim().take(500)
+        if (motivo.isEmpty()) {
+            throw ErrorNegocio(400, "Cerrar una conversacion necesita un motivo: sus miembros tienen que saber que paso.")
+        }
+
+        val tipo = c.prepareStatement(
+            "SELECT tipo FROM conversacion WHERE id = ? AND cerrada_en IS NULL"
+        ).use { st ->
+            st.setObject(1, convId)
+            st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+        } ?: throw ErrorNegocio(409, "Esa conversacion no existe o ya estaba cerrada.")
+
+        if (tipo == "directa") {
+            // Una directa no se cierra desde el panel: eso seria decidir que
+            // dos personas no pueden hablar entre si, y para eso existe la
+            // suspension de una cuenta, que al menos tiene nombre y plazo.
+            throw ErrorNegocio(400, "Una conversacion directa no se cierra: se suspende la cuenta.")
+        }
+
+        c.prepareStatement(
+            """UPDATE conversacion
+               SET cerrada_en = now(), cerrada_por = ?, cierre_motivo = ?
+               WHERE id = ?"""
+        ).use { st ->
+            st.setObject(1, yo.usuarioId); st.setString(2, motivo); st.setObject(3, convId)
+            st.executeUpdate()
+        }
+
+        Autz.auditar(
+            c, yo.usuarioId, "conversacion.cerrada", "conversacion", convId,
+            detalle = """{"tipo":"$tipo"}""",
+        )
+
+        val miembros = c.prepareStatement(
+            "SELECT usuario_id FROM participante WHERE conversacion_id = ? AND salido_en IS NULL"
+        ).use { st ->
+            st.setObject(1, convId)
+            st.executeQuery().use { rs -> rs.mapear { it.getObject(1, UUID::class.java) } }
+        }
+        Eventos.emitir(c, miembros, "conversacion_cerrada", convId, yo.username, motivo)
+    }
+
+    fun reabrirConversacion(yo: Auth, convId: UUID): List<Pair<UUID, Bajada.Evento>> = Db.tx { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+        val n = c.prepareStatement(
+            """UPDATE conversacion
+               SET cerrada_en = NULL, cerrada_por = NULL, cierre_motivo = NULL
+               WHERE id = ? AND cerrada_en IS NOT NULL"""
+        ).use { st -> st.setObject(1, convId); st.executeUpdate() }
+        if (n == 0) throw ErrorNegocio(409, "Esa conversacion no estaba cerrada.")
+
+        Autz.auditar(c, yo.usuarioId, "conversacion.reabierta", "conversacion", convId)
+
+        val miembros = c.prepareStatement(
+            "SELECT usuario_id FROM participante WHERE conversacion_id = ? AND salido_en IS NULL"
+        ).use { st ->
+            st.setObject(1, convId)
+            st.executeQuery().use { rs -> rs.mapear { it.getObject(1, UUID::class.java) } }
+        }
+        Eventos.emitir(c, miembros, "conversacion_reabierta", convId, yo.username, null)
+    }
+
+}

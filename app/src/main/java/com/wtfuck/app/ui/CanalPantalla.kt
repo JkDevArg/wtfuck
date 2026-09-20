@@ -1,0 +1,477 @@
+package com.wtfuck.app.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Comment
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.wtfuck.app.WtfuckApp
+import com.wtfuck.app.ui.theme.*
+import com.wtfuck.protocol.ConfigCanal
+import com.wtfuck.protocol.EstadisticasCanal
+import com.wtfuck.protocol.EstadoCanal
+import com.wtfuck.protocol.Publicacion
+import kotlinx.coroutines.launch
+
+/**
+ * Un canal (módulo F).
+ *
+ * Se parece a un chat pero **no lo es**, y la pantalla lo refleja: publicar y
+ * leer son papeles distintos, así que el campo de texto solo aparece para
+ * quien puede publicar. A un suscriptor no se le muestra un campo que el
+ * servidor va a rechazar.
+ *
+ * El contenido se lee del servidor, no de la base local. En un canal público
+ * eso es lo correcto: el historial vive allá y tiene que estar disponible para
+ * quien se suscriba mañana. Es la misma razón por la que un canal público no
+ * va cifrado de extremo a extremo, y la pantalla lo dice en vez de esconderlo.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CanalPantalla(
+    conversacionId: String,
+    onAtras: () -> Unit,
+) {
+    val app = LocalContext.current.applicationContext as WtfuckApp
+    val ambito = rememberCoroutineScope()
+
+    var cfg by remember { mutableStateOf<ConfigCanal?>(null) }
+    var feed by remember { mutableStateOf<List<Publicacion>>(emptyList()) }
+    var texto by remember { mutableStateOf("") }
+    var cargando by remember { mutableStateOf(true) }
+    var aviso by remember { mutableStateOf<String?>(null) }
+    var stats by remember { mutableStateOf<EstadisticasCanal?>(null) }
+    var menuAbierto by remember { mutableStateOf(false) }
+    var mostrarInfo by remember { mutableStateOf(false) }
+
+    suspend fun refrescar() {
+        cfg = app.repo.canal(conversacionId)
+        feed = app.repo.publicaciones(conversacionId)
+        cargando = false
+    }
+
+    LaunchedEffect(conversacionId) { refrescar() }
+
+    // Una publicación nueva llega como aviso del servidor, no como mensaje:
+    // se recarga el feed en vez de insertar nada a mano.
+    LaunchedEffect(conversacionId) {
+        app.repo.avisos.collect { e ->
+            // La decision del dueno tambien recarga: quien creo el canal
+            // suele estar mirando ESTA pantalla mientras espera, y dejarla
+            // diciendo "pendiente" despues de que se aprobo obliga a salir y
+            // volver a entrar para descubrir que ya estaba aprobado.
+            val suyo = e.conversacionId == conversacionId
+            if (suyo && e.tipo in setOf("canal_publicacion", "canal_aprobado", "canal_rechazado")) {
+                refrescar()
+            }
+        }
+    }
+
+    Scaffold(
+        containerColor = BgBase,
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = BgSurface),
+                navigationIcon = {
+                    IconButton(onClick = onAtras) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atras", tint = TextoPrimario)
+                    }
+                },
+                title = {
+                    Column {
+                        Text(
+                            cfg?.nombre.orEmpty(),
+                            color = TextoPrimario,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        val sub = cfg?.let { c ->
+                            buildString {
+                                append("${c.suscriptores} ")
+                                append(if (c.suscriptores == 1) "suscriptor" else "suscriptores")
+                                c.alias?.let { append(" · @$it") }
+                            }
+                        }.orEmpty()
+                        if (sub.isNotBlank()) Text(sub, color = TextoSecundario, fontSize = 13.sp)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { menuAbierto = true }) {
+                        Icon(Icons.Filled.MoreVert, "Mas opciones", tint = TextoPrimario)
+                    }
+                    DropdownMenu(
+                        expanded = menuAbierto,
+                        onDismissRequest = { menuAbierto = false },
+                        containerColor = BgElev,
+                    ) {
+                        OpcionMenu("Info del canal", Icons.Filled.Info) {
+                            menuAbierto = false; mostrarInfo = true
+                        }
+                        if (cfg?.puedoGestionar == true) {
+                            OpcionMenu("Estadisticas", Icons.Filled.BarChart) {
+                                menuAbierto = false
+                                ambito.launch { stats = app.repo.estadisticasCanal(conversacionId) }
+                            }
+                        }
+                        if (cfg?.suscrito == true && cfg?.puedoGestionar != true) {
+                            HorizontalDivider(color = Slate.copy(alpha = 0.3f))
+                            OpcionMenu("Dejar de seguir", Icons.Filled.NotificationsOff, Coral) {
+                                menuAbierto = false
+                                ambito.launch {
+                                    runCatching { app.repo.desuscribirCanal(conversacionId) }
+                                        .onSuccess { onAtras() }
+                                        .onFailure { aviso = it.message }
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            val c = cfg ?: return@Scaffold
+            Surface(color = BgSurface) {
+                when {
+                    // Quien puede publicar escribe; quien no, no ve un campo
+                    // que el servidor le va a rechazar.
+                    c.puedoPublicar -> Row(
+                        Modifier
+                            .navigationBarsPadding()
+                            .imePadding()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        OutlinedTextField(
+                            value = texto,
+                            onValueChange = { texto = it },
+                            placeholder = { Text("Publicar en el canal", color = TextoTerciario) },
+                            modifier = Modifier.weight(1f),
+                            maxLines = 6,
+                            shape = RoundedCornerShape(20.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Cian,
+                                unfocusedBorderColor = Slate,
+                                focusedContainerColor = BgElev,
+                                unfocusedContainerColor = BgElev,
+                            ),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        FilledIconButton(
+                            onClick = {
+                                val t = texto
+                                texto = ""
+                                ambito.launch {
+                                    app.repo.publicar(conversacionId, t)
+                                        .onSuccess { refrescar() }
+                                        .onFailure { aviso = it.message; texto = t }
+                                }
+                            },
+                            enabled = texto.isNotBlank(),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = Cian,
+                                contentColor = TextoSobreAcento,
+                                disabledContainerColor = Slate.copy(alpha = 0.4f),
+                            ),
+                            modifier = Modifier.size(48.dp),
+                        ) { Icon(Icons.AutoMirrored.Filled.Send, "Publicar") }
+                    }
+
+                    !c.suscrito -> Box(
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
+                    ) {
+                        Button(
+                            onClick = {
+                                ambito.launch {
+                                    runCatching { app.repo.suscribirCanal(conversacionId) }
+                                        .onSuccess { refrescar() }
+                                        .onFailure { aviso = it.message }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Cian, contentColor = TextoSobreAcento,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Seguir el canal")
+                        }
+                    }
+
+                    else -> Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 20.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(Icons.Filled.Campaign, null, tint = TextoTerciario, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(9.dp))
+                        Text(
+                            "Solo los administradores publican aqui",
+                            color = TextoTerciario,
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
+            }
+        },
+    ) { pad ->
+        Column(Modifier.fillMaxSize().padding(pad)) {
+
+            // F.7: el estado de revision, arriba de todo.
+            //
+            // Quien crea un canal tiene que saber por que no aparece en
+            // ninguna lista y por que nadie se suscribe. Sin este cartel, un
+            // canal pendiente se ve exactamente igual que un canal aprobado
+            // que no le interesa a nadie, y esa confusion dura dias.
+            cfg?.let { c ->
+                if (c.estado != EstadoCanal.APROBADO) {
+                    val rechazado = c.estado == EstadoCanal.RECHAZADO
+                    val tinte = if (rechazado) Coral else Ambar
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(tinte.copy(alpha = 0.14f))
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (rechazado) Icons.Filled.Block else Icons.Filled.HourglassEmpty,
+                            null, tint = tinte, modifier = Modifier.size(15.dp),
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Text(
+                            if (rechazado) {
+                                "Canal rechazado" + (c.motivoRechazo?.let { ": $it" } ?: "")
+                            } else {
+                                "Pendiente de aprobacion: todavia no se lista ni se puede seguir"
+                            },
+                            color = tinte,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            }
+
+            // El aviso de cifrado va ARRIBA y siempre visible, no en un menú.
+            cfg?.let { c ->
+                if (!c.cifrado) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Ambar.copy(alpha = 0.14f))
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.LockOpen, null, tint = Ambar, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(9.dp))
+                        Text(
+                            "Canal publico: el contenido no va cifrado de extremo a extremo",
+                            color = Ambar,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            }
+
+            when {
+                cargando -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Cian, strokeWidth = 2.5.dp)
+                }
+
+                feed.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(
+                        Modifier.padding(36.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(Icons.Filled.Campaign, null, tint = Slate, modifier = Modifier.size(40.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            if (cfg?.puedoPublicar == true) "Todavia no publicaste nada."
+                            else "Este canal todavia no tiene publicaciones.",
+                            color = TextoSecundario,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                        )
+                        if (cfg?.cifrado == true) {
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Es un canal privado: su historial no se guarda en el " +
+                                    "servidor, asi que solo se ve lo que llego a este telefono.",
+                                color = TextoTerciario,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    items(feed, key = { it.mensajeId }) { p ->
+                        TarjetaPublicacion(p, cfg?.comentarios == true)
+                    }
+                }
+            }
+        }
+    }
+
+    stats?.let { e ->
+        AlertDialog(
+            onDismissRequest = { stats = null },
+            containerColor = BgElev,
+            title = { Text("Estadisticas", color = TextoPrimario) },
+            text = {
+                Column {
+                    FilaDatoCanal("Suscriptores", e.suscriptores.toString())
+                    FilaDatoCanal("Altas esta semana", e.altasSemana.toString())
+                    FilaDatoCanal("Publicaciones", e.publicaciones.toString())
+                    FilaDatoCanal("Comentarios", e.comentarios.toString())
+                    FilaDatoCanal("Reacciones", e.reacciones.toString())
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "No hay cuenta de lecturas: saber quien leyo cada publicacion " +
+                            "exigiria que cada suscriptor lo reporte, y eso es un problema " +
+                            "de privacidad antes que de escala.",
+                        color = TextoTerciario,
+                        fontSize = 11.sp,
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { stats = null }) { Text("Cerrar", color = Cian) } },
+        )
+    }
+
+    if (mostrarInfo) {
+        val c = cfg
+        AlertDialog(
+            onDismissRequest = { mostrarInfo = false },
+            containerColor = BgElev,
+            title = { Text(c?.nombre.orEmpty(), color = TextoPrimario) },
+            text = {
+                Column {
+                    c?.alias?.let { FilaDatoCanal("Alias", "@$it") }
+                    FilaDatoCanal("Tipo", if (c?.publico == true) "Publico" else "Privado")
+                    FilaDatoCanal("Cifrado", if (c?.cifrado == true) "De extremo a extremo" else "No")
+                    FilaDatoCanal("Comentarios", if (c?.comentarios == true) "Activados" else "Desactivados")
+                    FilaDatoCanal("Reacciones", if (c?.reacciones == true) "Activadas" else "Desactivadas")
+                    if (!c?.descripcion.isNullOrBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(c.descripcion, color = TextoSecundario, fontSize = 13.sp)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { mostrarInfo = false }) { Text("Cerrar", color = Cian) } },
+        )
+    }
+
+    aviso?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { aviso = null },
+            containerColor = BgElev,
+            text = { Text(msg, color = TextoPrimario) },
+            confirmButton = { TextButton(onClick = { aviso = null }) { Text("Entendido", color = Cian) } },
+        )
+    }
+}
+
+/**
+ * Una publicación.
+ *
+ * Es una tarjeta a lo ancho y no una burbuja: en un canal no hay dos lados de
+ * la conversación, hay una voz y una audiencia. Alinearla a la derecha sería
+ * mentir sobre la forma de la conversación.
+ */
+@Composable
+private fun TarjetaPublicacion(p: Publicacion, comentariosActivos: Boolean) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(BgSurface)
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "@${p.autor}",
+                color = colorDeNombre(p.autor),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            if (p.fijado) {
+                Spacer(Modifier.width(7.dp))
+                Icon(Icons.Filled.PushPin, "Fijada", tint = Cian, modifier = Modifier.size(13.dp))
+            }
+            Spacer(Modifier.weight(1f))
+            Text(hora(p.creadoEn), color = TextoTerciario, fontSize = 11.sp)
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(p.cuerpo, color = TextoPrimario, fontSize = 16.sp)
+
+        if (p.editado || p.comentarios > 0 || p.reacciones.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (p.editado) {
+                    Text("editada", color = TextoTerciario, fontSize = 11.sp)
+                    Spacer(Modifier.width(10.dp))
+                }
+                p.reacciones.forEach { r ->
+                    Row(
+                        Modifier
+                            .clip(CircleShape)
+                            .background(BgElev)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(r.emoji, fontSize = 12.sp)
+                        Spacer(Modifier.width(4.dp))
+                        Text("${r.total}", color = TextoSecundario, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                }
+                if (comentariosActivos && p.comentarios > 0) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Comment, null,
+                        tint = TextoTerciario, modifier = Modifier.size(13.dp),
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        "${p.comentarios} ${if (p.comentarios == 1) "comentario" else "comentarios"}",
+                        color = TextoTerciario,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilaDatoCanal(etiqueta: String, valor: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(etiqueta, color = TextoTerciario, fontSize = 13.sp, modifier = Modifier.width(140.dp))
+        Text(valor, color = TextoPrimario, fontSize = 13.sp)
+    }
+}

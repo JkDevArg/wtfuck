@@ -1,0 +1,429 @@
+package com.wtfuck.app.datos
+
+import android.content.Context
+import android.util.Log
+import org.webrtc.AudioSource
+import org.webrtc.AudioTrack
+import org.webrtc.Camera1Enumerator
+import org.webrtc.Camera2Enumerator
+import org.webrtc.DefaultVideoDecoderFactory
+import org.webrtc.DefaultVideoEncoderFactory
+import org.webrtc.EglBase
+import org.webrtc.IceCandidate
+import org.webrtc.MediaConstraints
+import org.webrtc.MediaStreamTrack
+import org.webrtc.PeerConnection
+import org.webrtc.PeerConnectionFactory
+import org.webrtc.SdpObserver
+import org.webrtc.SessionDescription
+import org.webrtc.SurfaceTextureHelper
+import org.webrtc.VideoCapturer
+import org.webrtc.VideoSource
+import org.webrtc.VideoTrack
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
+
+/**
+ * El motor de una llamada: una sola conexion WebRTC contra un dispositivo.
+ *
+ * ## Que hace y que NO hace
+ *
+ * Hace el medio: captura, codecs, ICE, y el cifrado DTLS-SRTP que WebRTC trae
+ * de fabrica. **No hace señalizacion.** El SDP y los candidatos salen por aqui
+ * como texto y quien los mueve es el repositorio, dentro de sobres cifrados.
+ *
+ * Esa separacion es el punto del modulo: si la señalizacion fuera por una ruta
+ * del servidor en claro, el servidor podria cambiar las huellas DTLS del SDP,
+ * montar dos llamadas -una con cada lado- y escuchar todo, con cada tramo
+ * perfectamente cifrado *contra el*. Metiendola en sobres cifrados, el servidor
+ * mueve bytes opacos.
+ *
+ * ## Una conexion por DISPOSITIVO, no por persona
+ *
+ * Con multi-dispositivo y con llamadas de grupo hay varias conexiones a la vez,
+ * y cada una es una instancia de esto. Por eso la clase no sabe nada de
+ * "la llamada": sabe de un tunel contra un aparato. El servicio de arriba es el
+ * que junta N motores y decide cuando la llamada empezo o termino.
+ */
+interface MotorLlamada {
+    /** Crea la oferta local. Devuelve el SDP para mandar cifrado. */
+    suspend fun ofertar(): String
+
+    /** Aplica la oferta remota y devuelve la respuesta local. */
+    suspend fun responder(sdpRemoto: String): String
+
+    /** Aplica la respuesta remota a una oferta que hicimos. */
+    suspend fun aplicarRespuesta(sdpRemoto: String)
+
+    fun agregarCandidato(candidato: String, sdpMid: String?, indice: Int)
+
+    /** Micro abierto o cerrado. */
+    fun silenciar(silenciado: Boolean)
+
+    /** Camara encendida o apagada. Sin efecto en una llamada de solo audio. */
+    fun verVideo(activo: Boolean)
+
+    fun colgar()
+}
+
+/**
+ * Lo que el motor necesita avisar hacia arriba.
+ *
+ * Son callbacks y no un Flow porque llegan desde hilos de WebRTC y el servicio
+ * los reenvia: meter un Flow aqui obligaria a cada motor a tener su propio
+ * ambito de corrutinas para algo que solo se reenvia.
+ */
+interface OyenteLlamada {
+    /** Un candidato ICE local, listo para mandar cifrado (trickle). */
+    fun onCandidato(candidato: String, sdpMid: String?, indice: Int)
+
+    /** Cambio de estado de la conexion. `conectado` es cuando ya se oye. */
+    fun onEstado(conectado: Boolean, terminado: Boolean)
+
+    /** Llego una pista remota. El servicio decide si la pinta o solo la oye. */
+    fun onPistaRemota(pista: MediaStreamTrack)
+}
+
+/**
+ * Fabrica de conexiones, una sola por proceso.
+ *
+ * `PeerConnectionFactory.initialize` **no se puede llamar dos veces** y crear
+ * dos fabricas duplica los hilos de audio nativos. Con llamadas de grupo en
+ * malla hay varias conexiones a la vez y todas comparten esto.
+ */
+object FabricaWebRtc {
+
+    private const val TAG = "WebRtc"
+
+    @Volatile private var fabrica: PeerConnectionFactory? = null
+    private var eglBase: EglBase? = null
+
+    val egl: EglBase.Context? get() = eglBase?.eglBaseContext
+
+    @Synchronized
+    fun obtener(ctx: Context): PeerConnectionFactory {
+        fabrica?.let { return it }
+
+        PeerConnectionFactory.initialize(
+            PeerConnectionFactory.InitializationOptions.builder(ctx.applicationContext)
+                // Sin trazas nativas: WebRTC en verbose llena la bitacora y en
+                // una llamada eso compite con la propia llamada por la CPU.
+                .setEnableInternalTracer(false)
+                .createInitializationOptions()
+        )
+
+        val base = EglBase.create()
+        eglBase = base
+
+        val nueva = PeerConnectionFactory.builder()
+            // El hardware primero: el software cae a 320x240 y calienta el
+            // telefono. `true, true` = intentar H264 y VP8 por hardware.
+            .setVideoEncoderFactory(DefaultVideoEncoderFactory(base.eglBaseContext, true, true))
+            .setVideoDecoderFactory(DefaultVideoDecoderFactory(base.eglBaseContext))
+            .createPeerConnectionFactory()
+
+        fabrica = nueva
+        Log.i(TAG, "PeerConnectionFactory lista")
+        return nueva
+    }
+}
+
+/**
+ * Un tunel WebRTC contra un dispositivo.
+ *
+ * ## Por que Unified Plan y trickle ICE
+ *
+ * Unified Plan es el unico que admite el navegador moderno y el unico que
+ * permite varias pistas del mismo tipo, que es lo que hace falta para una
+ * llamada de grupo. Trickle ICE manda los candidatos a medida que aparecen en
+ * vez de esperar a tenerlos todos: juntarlos ahorraria unos sobres y agregaria
+ * uno o dos segundos hasta que se oye la voz, que es justo lo que se nota.
+ */
+class MotorWebRtc(
+    private val ctx: Context,
+    private val turn: com.wtfuck.protocol.ConfigTurn,
+    private val conVideo: Boolean,
+    private val oyente: OyenteLlamada,
+) : MotorLlamada {
+
+    private val TAG = "MotorWebRtc"
+
+    private val fabrica = FabricaWebRtc.obtener(ctx)
+
+    private var audioSource: AudioSource? = null
+    private var audioTrack: AudioTrack? = null
+    private var videoSource: VideoSource? = null
+    private var videoTrack: VideoTrack? = null
+    private var captura: VideoCapturer? = null
+    private var ayudante: SurfaceTextureHelper? = null
+
+    private val pc: PeerConnection = crearConexion()
+
+    /**
+     * Candidatos que llegaron ANTES de tener descripcion remota.
+     *
+     * Pasa de verdad: con trickle, el otro lado empieza a mandar candidatos en
+     * cuanto hace la oferta, y pueden llegar antes de que nosotros hayamos
+     * aplicado esa oferta. `addIceCandidate` antes de la descripcion remota se
+     * descarta en silencio, y el sintoma es una llamada que nunca conecta sin
+     * ningun error. Por eso se guardan y se aplican despues.
+     */
+    private val pendientes = mutableListOf<IceCandidate>()
+    @Volatile private var hayRemoto = false
+
+    /** Que ya se colgo. Ver [colgar]: liberar dos veces es una caida nativa. */
+    private val colgado = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun crearConexion(): PeerConnection {
+        val servidores = buildList {
+            // STUN publico de Google para descubrir la IP publica. No ve el
+            // medio: solo responde "te veo desde aqui".
+            add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
+            if (turn.hay) {
+                add(
+                    PeerConnection.IceServer.builder(turn.urls)
+                        .setUsername(turn.usuario)
+                        .setPassword(turn.clave)
+                        .createIceServer()
+                )
+            }
+        }
+
+        val cfg = PeerConnection.RTCConfiguration(servidores).apply {
+            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+            // Todas las rutas: host, STUN y TURN. Con `RELAY` funcionaria
+            // siempre pero pagando relevo incluso en la misma red.
+            iceTransportsType = PeerConnection.IceTransportsType.ALL
+            // No hay nada que activar para el cifrado del medio.
+            //
+            // `enableDtlsSrtp` existia y se quito de la API: DTLS-SRTP dejo de
+            // ser opcional en WebRTC y ya no hay forma de negociar SDES ni de
+            // apagarlo. Que la bandera no compile es la mejor noticia posible
+            // -significa que no se puede configurar mal-, y vale anotarlo aqui
+            // porque su ausencia se lee como si nadie hubiera pensado en el
+            // cifrado.
+        }
+
+        val conexion = fabrica.createPeerConnection(cfg, object : PeerConnection.Observer {
+            override fun onIceCandidate(c: IceCandidate) {
+                oyente.onCandidato(c.sdp, c.sdpMid, c.sdpMLineIndex)
+            }
+
+            override fun onIceConnectionChange(estado: PeerConnection.IceConnectionState) {
+                Log.i(TAG, "ICE: $estado")
+                when (estado) {
+                    PeerConnection.IceConnectionState.CONNECTED,
+                    PeerConnection.IceConnectionState.COMPLETED,
+                    -> oyente.onEstado(conectado = true, terminado = false)
+
+                    // FAILED es la unica caida de verdad.
+                    //
+                    // CLOSED NO se avisa, aunque parezca lo mismo: solo ocurre
+                    // porque nosotros cerramos la conexion, y `close()` lo
+                    // dispara de forma sincrona en el hilo de señalizacion. Si
+                    // se avisara, el servicio -que interpreta "terminado" como
+                    // "se cayo"- volveria a colgar ESTE motor desde dentro del
+                    // callback, mientras el colgado original sigue en curso:
+                    // dos `dispose()` sobre el mismo objeto nativo y SIGSEGV.
+                    // Se veia como la app cerrandose entera al colgar.
+                    PeerConnection.IceConnectionState.FAILED,
+                    -> oyente.onEstado(conectado = false, terminado = true)
+
+                    // DISCONNECTED no es el final: puede recuperarse solo
+                    // cuando cambia la red. Tratarlo como fin cortaria la
+                    // llamada cada vez que el telefono pasa de wifi a datos.
+                    else -> Unit
+                }
+            }
+
+            override fun onTrack(transceiver: org.webrtc.RtpTransceiver?) {
+                transceiver?.receiver?.track()?.let { oyente.onPistaRemota(it) }
+            }
+
+            override fun onSignalingChange(p0: PeerConnection.SignalingState?) = Unit
+            override fun onIceConnectionReceivingChange(p0: Boolean) = Unit
+            override fun onIceGatheringChange(p0: PeerConnection.IceGatheringState?) = Unit
+            override fun onIceCandidatesRemoved(p0: Array<out IceCandidate>?) = Unit
+            override fun onAddStream(p0: org.webrtc.MediaStream?) = Unit
+            override fun onRemoveStream(p0: org.webrtc.MediaStream?) = Unit
+            override fun onDataChannel(p0: org.webrtc.DataChannel?) = Unit
+            override fun onRenegotiationNeeded() = Unit
+        }) ?: error("No se pudo crear la conexion WebRTC")
+
+        agregarMedioLocal(conexion)
+        return conexion
+    }
+
+    private fun agregarMedioLocal(conexion: PeerConnection) {
+        val restricciones = MediaConstraints().apply {
+            // Los tres de siempre. Sin cancelacion de eco, una llamada con
+            // altavoz se realimenta y es inusable.
+            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
+        }
+        audioSource = fabrica.createAudioSource(restricciones)
+        audioTrack = fabrica.createAudioTrack("audio0", audioSource).also {
+            conexion.addTrack(it, listOf("wtfuck"))
+        }
+
+        if (!conVideo) return
+
+        val cap = abrirCamara() ?: run {
+            Log.w(TAG, "Sin camara disponible: la llamada sigue con audio")
+            return
+        }
+        captura = cap
+        val helper = SurfaceTextureHelper.create("captura", FabricaWebRtc.egl)
+        ayudante = helper
+        videoSource = fabrica.createVideoSource(cap.isScreencast).also { src ->
+            cap.initialize(helper, ctx, src.capturerObserver)
+            // 640x480 a 24 fps. No es un numero mágico: es lo que cabe en el
+            // enlace de subida de datos moviles cuando hay que subir el video
+            // una vez por participante en una llamada en malla.
+            cap.startCapture(640, 480, 24)
+        }
+        videoTrack = fabrica.createVideoTrack("video0", videoSource).also {
+            conexion.addTrack(it, listOf("wtfuck"))
+        }
+    }
+
+    private fun abrirCamara(): VideoCapturer? {
+        val enumerador = if (Camera2Enumerator.isSupported(ctx)) {
+            Camera2Enumerator(ctx)
+        } else {
+            Camera1Enumerator(false)
+        }
+        // La frontal primero: en una videollamada uno se filma a si mismo.
+        val nombres = enumerador.deviceNames
+        val frontal = nombres.firstOrNull { enumerador.isFrontFacing(it) } ?: nombres.firstOrNull()
+        return frontal?.let { enumerador.createCapturer(it, null) }
+    }
+
+    val pistaLocal: VideoTrack? get() = videoTrack
+
+    // ============================================================
+    //  Señalizacion: entra y sale como texto
+    // ============================================================
+
+    override suspend fun ofertar(): String {
+        val sdp = crearSdp(oferta = true)
+        aplicarLocal(sdp)
+        return sdp.description
+    }
+
+    override suspend fun responder(sdpRemoto: String): String {
+        aplicarRemoto(SessionDescription(SessionDescription.Type.OFFER, sdpRemoto))
+        val sdp = crearSdp(oferta = false)
+        aplicarLocal(sdp)
+        return sdp.description
+    }
+
+    override suspend fun aplicarRespuesta(sdpRemoto: String) {
+        aplicarRemoto(SessionDescription(SessionDescription.Type.ANSWER, sdpRemoto))
+    }
+
+    override fun agregarCandidato(candidato: String, sdpMid: String?, indice: Int) {
+        val c = IceCandidate(sdpMid, indice, candidato)
+        // Si todavia no hay descripcion remota, se guarda. `addIceCandidate`
+        // antes de eso se descarta EN SILENCIO y la llamada no conecta nunca
+        // sin dar ningun error.
+        synchronized(pendientes) {
+            if (!hayRemoto) {
+                pendientes += c
+                return
+            }
+        }
+        pc.addIceCandidate(c)
+    }
+
+    override fun silenciar(silenciado: Boolean) {
+        audioTrack?.setEnabled(!silenciado)
+    }
+
+    override fun verVideo(activo: Boolean) {
+        videoTrack?.setEnabled(activo)
+    }
+
+    override fun colgar() {
+        // ================================================================
+        //  El orden de esto NO es estetico: al reves, la app se cae
+        // ================================================================
+        //
+        // La PeerConnection se cierra PRIMERO. Liberar una fuente de audio o
+        // de video mientras la conexion sigue viva deja al track nativo
+        // apuntando a memoria liberada, y el proceso se muere de SIGSEGV en el
+        // hilo de señalizacion de WebRTC en cuanto llega el siguiente callback
+        // de estado. No es una excepcion de Kotlin: es una caida nativa, asi
+        // que ningun `runCatching` la atrapa -de hecho aqui habia seis y la
+        // app se moria igual, sin dejar ni un rastro en el log de la app-.
+        //
+        // `close()` detiene los transportes y deja de emitir callbacks; a
+        // partir de ahi las fuentes se pueden soltar. `dispose()` va al final,
+        // porque libera el objeto nativo entero.
+        //
+        // La captura se para antes de soltarla para que la camara quede libre:
+        // si no, la siguiente llamada abre una pantalla en negro.
+        // Colgar dos veces libera dos veces, y lo segundo es una caida
+        // nativa. Pasa mas facil de lo que parece: colgar a mano y una caida
+        // de red pueden llegar a la vez desde hilos distintos.
+        if (!colgado.compareAndSet(false, true)) return
+
+        runCatching { captura?.stopCapture() }
+        // `dispose()` cierra y libera. Va ANTES de soltar las fuentes: una
+        // fuente liberada bajo una conexion viva deja al track nativo
+        // apuntando a memoria muerta.
+        runCatching { pc.dispose() }
+        runCatching { captura?.dispose() }
+        runCatching { ayudante?.dispose() }
+        runCatching { videoSource?.dispose() }
+        runCatching { audioSource?.dispose() }
+    }
+
+    // ============================================================
+    //  Puentes a la API de callbacks de WebRTC
+    // ============================================================
+
+    private suspend fun crearSdp(oferta: Boolean): SessionDescription =
+        suspendCoroutine { cont ->
+            val restricciones = MediaConstraints().apply {
+                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                mandatory.add(
+                    MediaConstraints.KeyValuePair("OfferToReceiveVideo", conVideo.toString())
+                )
+            }
+            val obs = object : SdpObserver {
+                override fun onCreateSuccess(sdp: SessionDescription) = cont.resume(sdp)
+                override fun onCreateFailure(e: String?) =
+                    cont.resumeWithException(IllegalStateException("No se pudo crear el SDP: $e"))
+                override fun onSetSuccess() = Unit
+                override fun onSetFailure(e: String?) = Unit
+            }
+            if (oferta) pc.createOffer(obs, restricciones) else pc.createAnswer(obs, restricciones)
+        }
+
+    private suspend fun aplicarLocal(sdp: SessionDescription) = suspendCoroutine<Unit> { cont ->
+        pc.setLocalDescription(observadorSet(cont), sdp)
+    }
+
+    private suspend fun aplicarRemoto(sdp: SessionDescription) {
+        suspendCoroutine<Unit> { cont -> pc.setRemoteDescription(observadorSet(cont), sdp) }
+        // Recien ahora los candidatos guardados sirven.
+        val cola = synchronized(pendientes) {
+            hayRemoto = true
+            pendientes.toList().also { pendientes.clear() }
+        }
+        cola.forEach { pc.addIceCandidate(it) }
+        if (cola.isNotEmpty()) Log.i(TAG, "Aplicados ${cola.size} candidatos que llegaron antes")
+    }
+
+    private fun observadorSet(cont: kotlin.coroutines.Continuation<Unit>) = object : SdpObserver {
+        override fun onCreateSuccess(p0: SessionDescription?) = Unit
+        override fun onCreateFailure(p0: String?) = Unit
+        override fun onSetSuccess() = cont.resume(Unit)
+        override fun onSetFailure(e: String?) =
+            cont.resumeWithException(IllegalStateException("No se pudo aplicar el SDP: $e"))
+    }
+}

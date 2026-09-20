@@ -1,0 +1,72 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: wtfuck_db
+    environment:
+      POSTGRES_USER: wtfuck
+      POSTGRES_PASSWORD: wtfuck_dev
+      POSTGRES_DB: wtfuck
+    ports:
+      - "5433:5432"
+    volumes:
+      - wtfuck_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wtfuck -d wtfuck"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Almacen de objetos para multimedia (modulo D).
+  # Los archivos NO van a Postgres: un blob de 40 MB por mensaje revienta la
+  # base y arruina los backups. Van aqui, cifrados, y en el mensaje viaja solo
+  # la URL y la clave.
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: wtfuck_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: wtfuck
+      MINIO_ROOT_PASSWORD: wtfuck_dev_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - wtfuck_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Bus entre instancias (modulo N).
+  #
+  # OPCIONAL: con una sola instancia el servidor no lo usa y arranca igual.
+  # Hace falta cuando hay dos o mas procesos detras de un balanceador, porque
+  # los sockets viven en la memoria de cada uno: sin bus, un mensaje para
+  # alguien conectado a la instancia B no llega si lo manda alguien conectado a
+  # la A. Ver server/.../Bus.kt.
+  #
+  # No lleva volumen a proposito: aqui no se guarda nada que haga falta
+  # sobrevivir a un reinicio. Lo que pasa por Redis son avisos en vuelo -sobres
+  # ya cifrados, que ademas estan en la base- y marcas de presencia que vencen
+  # en 90 segundos. Un Redis vacio tras un reinicio es correcto.
+  redis:
+    image: redis:8-alpine
+    container_name: wtfuck_redis
+    command: redis-server --save "" --appendonly no
+    ports:
+      # Solo loopback. El bus es un canal de CONTROL entre instancias: lo que
+      # pasa por el son avisos que el cliente obedece. Publicarlo en todas las
+      # interfaces convierte cualquier cosa de la red en algo que puede
+      # escribirle al bus. En produccion va en red privada y con contrasena;
+      # aqui, atado a 127.0.0.1.
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  wtfuck_pgdata:
+  wtfuck_minio:

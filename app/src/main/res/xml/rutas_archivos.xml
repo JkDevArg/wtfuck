@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Solo las carpetas de adjuntos.
+
+    No se expone filesDir completo: ahi vive tambien la base de datos cifrada,
+    y un proveedor que la alcance seria un agujero gratuito.
+-->
+<paths>
+    <files-path name="media" path="media/" />
+    <cache-path name="temporales" path="subiendo/" />
+</paths>

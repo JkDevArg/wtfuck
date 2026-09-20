@@ -1,0 +1,20 @@
+# Compilacion
+build/
+.gradle/
+*.apk
+*.aab
+local.properties
+
+# Android Studio / IDE
+.idea/
+*.iml
+.kotlin/
+
+# Secretos y entorno local
+*.pem
+.env
+
+# Salidas de pruebas
+app/build/
+server/build/
+protocol/build/

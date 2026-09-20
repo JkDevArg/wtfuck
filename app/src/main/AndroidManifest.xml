@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Notas de voz y llamadas. Se pide en el momento, no al abrir la app. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Modulo K: videollamadas. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Cambiar a altavoz durante una llamada. No es peligroso y no se pide. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!--
+      Modulo M. Se usa UNA vez, cuando la persona toca "compartir ubicacion",
+      y nunca en segundo plano: no se pide ACCESS_BACKGROUND_LOCATION porque
+      esta app no sigue a nadie. Las dos variantes se declaran para que quien
+      solo conceda la aproximada pueda compartir igual.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- K.8: la llamada vive en un servicio en primer plano. Sin esto una
+         llamada se corta al salir de la app, porque Android mata procesos en
+         segundo plano sin avisar. Los permisos POR TIPO son obligatorios desde
+         Android 14: el sistema comprueba que la app tenga el permiso del tipo
+         declarado en el momento de arrancar, y si no, no arranca. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <!-- Que una llamada entrante se vea con el telefono bloqueado. Android 14
+         lo reserva para apps de llamadas y alarmas: esta es una de llamadas. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- La camara NO es obligatoria: sin ella la app sirve igual para audio y
+         para mensajes, y declararla `required` la sacaria de la tienda para
+         cualquier aparato sin camara. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <application
+        android:name=".WtfuckApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/reglas_extraccion"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Wtfuck"
+        android:usesCleartextTraffic="true">
+
+        <!--
+            `exported=false`: lo arranca solo esta app. Y NO es "stopWithTask"
+            por defecto sin decirlo: la llamada tiene que sobrevivir a que se
+            cierre la Activity, que es el motivo entero del servicio.
+        -->
+        <!--
+          Modulo N. El servicio que recibe el aviso de que hay algo que bajar.
+          `exported="false"` y sin permiso propio: solo lo invoca el servicio de
+          mensajeria del sistema, que usa su propio permiso firmado.
+        -->
+        <service
+            android:name=".datos.ServicioPush"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".datos.ServicioLlamadaFg"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera"
+            android:stopWithTask="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Wtfuck">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            Para abrir un adjunto con otra app.
+
+            Desde Android 7 pasar un file:// a otra aplicacion lanza
+            FileUriExposedException. El proveedor entrega un content:// con
+            permiso de lectura acotado a ese archivo y a ese intent.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.archivos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/rutas_archivos" />
+        </provider>
+    </application>
+</manifest>
