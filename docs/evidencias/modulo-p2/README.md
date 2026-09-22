@@ -36,3 +36,20 @@ La ficha viaja también en los `participantes` de `GET /v1/conversaciones`, y es
 es otra consulta: es donde estaba el defecto que ninguna captura habría mostrado
 —un 500 al abrir cualquier chat—. Eso lo cubre la sección 6 de
 [`pruebas/empresa-publica.mjs`](../../../pruebas/empresa-publica.mjs).
+
+---
+
+## Módulo P.3 · Los límites de ritmo
+
+[`limites-antes-y-despues.md`](limites-antes-y-despues.md) tiene la salida de la
+suite antes y después. El antes en una línea:
+
+```
+FALLA en algun momento responde 429 y no 200 indefinidamente  {"200":45}
+```
+
+Cuarenta y cinco guardados seguidos de la ficha, cuarenta y cinco respuestas
+200. Después, 19 de 19 en verde.
+
+No hay captura de esto y no la habría: un límite de ritmo no se ve en una
+pantalla, se ve en la respuesta. La evidencia útil es la salida de la suite.

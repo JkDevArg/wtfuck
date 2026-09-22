@@ -59,6 +59,51 @@ object Limitador {
     val CREAR_CANAL get() = efectiva("crear_canal", Regla(20, Duration.ofHours(1)))
     val PUBLICAR_CANAL get() = efectiva("publicar_canal", Regla(20, Duration.ofMinutes(10)))
     val BUSCAR get() = efectiva("buscar", Regla(60, Duration.ofMinutes(1)))
+
+    /**
+     * Guardar la ficha de empresa. **La rafaga, no el uso sostenido.**
+     *
+     * La ficha es lo unico que una cuenta escribe y otra gente lee como dato
+     * de la plataforma, y cada guardado deja una fila de auditoria y retira la
+     * verificacion. Sin ningun tope, un script la reescribe a la velocidad de
+     * la red.
+     *
+     * 30 en diez minutos parece mucho para un limite de abuso, y lo es a
+     * proposito: **este limite no es el que protege del abuso**. Lo que
+     * protege de la rotacion sostenida es [Cupos.FICHAS_POR_DIA], que vive en
+     * la base. Este de aqui solo corta la rafaga, y por eso puede ser holgado:
+     * llenar un formulario de siete campos y guardarlo varias veces mientras
+     * se corrigen erratas es lo normal, y un tope que salta al tercer guardado
+     * convierte corregir una coma en un error.
+     */
+    val FICHA_EMPRESA get() = efectiva("ficha_empresa", Regla(30, Duration.ofMinutes(10)))
+
+    /**
+     * Cambiar el tipo de cuenta propio (`normal` <-> `empresa`).
+     *
+     * Presupuesto **aparte** del de la ficha, y la separacion importa: si
+     * compartieran cuenta, agotar el de la ficha impediria volver a cuenta
+     * personal, que es justamente como uno se quita la ficha de encima. Un
+     * limite que bloquea la salida no es un limite, es una trampa.
+     *
+     * No lleva cupo diario porque no hay nada publico que rotar —es una
+     * columna con tres valores—: lo unico rotable es la ficha, y escribirla
+     * sigue costando su propio cupo.
+     *
+     * **20 por hora, y el numero empezo en 10.** La ventana de una hora es
+     * larga para un limitador de rafagas, y quien esta decidiendo de verdad
+     * hace varias vueltas dentro de ella: declararse empresa, llenar la ficha,
+     * mirarla desde otra cuenta, volver a personal, probar otra vez. Quien
+     * desarrolla contra esta API hace exactamente eso. El dato que lo dejo
+     * claro es que `pruebas/cuentas.mjs` consume **9** cambios de tipo en una
+     * sola pasada haciendo uso legitimo del modulo: con 10, el margen era de
+     * uno, y la primera prueba que alguien anadiera habria fallado con un 429
+     * que no se parece en nada a su causa.
+     *
+     * Entre 10 y 20 no hay diferencia de seguridad —las dos cifras dicen "no
+     * sos un script"— y si la hay de usabilidad, asi que gana la holgura.
+     */
+    val TIPO_CUENTA get() = efectiva("tipo_cuenta", Regla(20, Duration.ofHours(1)))
     val SUBIR_ARCHIVO get() = efectiva("subir_archivo", Regla(40, Duration.ofMinutes(5)))
 
     /**
@@ -308,6 +353,14 @@ object Limitador {
             "consumir_vinculacion", "Consumir codigos de vinculacion",
             "Higiene, no defensa: la defensa son los 5 intentos por codigo",
         ) { CONSUMIR_VINCULACION },
+        Ajustable(
+            "ficha_empresa", "Guardar la ficha de empresa",
+            "Solo la rafaga; la rotacion sostenida la corta el cupo diario",
+        ) { FICHA_EMPRESA },
+        Ajustable(
+            "tipo_cuenta", "Cambiar el tipo de cuenta propio",
+            "Presupuesto aparte del de la ficha, para no bloquear la salida",
+        ) { TIPO_CUENTA },
     )
 
     class Ajustable(
@@ -441,6 +494,23 @@ object Cupos {
      * protege al denunciado, protege a la cola.
      */
     const val DENUNCIAS_POR_DIA = 20
+
+    /**
+     * Guardados de la ficha de empresa por dia.
+     *
+     * Este es **el limite que importa** de los dos que tiene la ficha, y el
+     * motivo no es la carga: es que rotar el nombre comercial es una forma de
+     * evadir la moderacion. Se denuncia una ficha que dice "Banco Nacional",
+     * y cuando el moderador abre el caso la ficha dice otra cosa. El cupo pone
+     * un techo a cuantas veces al dia puede cambiar el dato que otros leen.
+     *
+     * Va en la base y no en memoria por la misma razon que las denuncias: un
+     * limite diario que se olvida en cada despliegue se evade esperando uno.
+     *
+     * 40 al dia deja de sobra para montar la ficha, corregirla y retocarla
+     * durante semanas; lo que no deja es rotarla como mecanica.
+     */
+    const val FICHAS_POR_DIA = 40
 
     /**
      * Suma uno y devuelve el total de la ventana. Una sola ida a la base:

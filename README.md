@@ -17,9 +17,9 @@ docs/       decisiones de arquitectura, hoja de ruta, API, despliegue
 ## Estado
 
 Servidor y app funcionando, verificados en dos emuladores.
-**1479 pruebas en verde** con todo levantado (1304 de integración en 34 suites,
-69 de JUnit en el servidor, 106 en la app). En la configuración mínima —una
-instancia, sin Redis ni push— son **1388**: dos suites se omiten cuando les
+**1504 pruebas en verde** con todo levantado (1323 de integración en 35 suites,
+75 de JUnit en el servidor, 106 en la app). En la configuración mínima —una
+instancia, sin Redis ni push— son **1413**: dos suites se omiten cuando les
 falta el entorno, y el runner las marca `OMIT` en vez de `OK`.
 
 Tres de ellas **hacen ataques de verdad**:
@@ -68,6 +68,7 @@ quien no debe.
 | Q | 15 ajustes de privacidad, solicitudes de mensaje y métricas del panel | ✅ |
 | R | La suspensión congela el perfil público; auditar a prueba de fallos | ✅ |
 | P.2 | La ficha de empresa se ve desde fuera, no solo en el perfil propio | ✅ |
+| P.3 | Límites de ritmo en las escrituras de autoservicio del módulo P | ✅ |
 
 **Lo que falta, y por qué:**
 

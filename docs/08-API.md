@@ -496,12 +496,12 @@ quien responde por lo que se publica.
 
 ## Límites de abuso
 
-Un 429 trae el motivo con los segundos que faltan. Los quince límites se
+Un 429 trae el motivo con los segundos que faltan. Los diecisiete límites se
 consultan y se ajustan en `/v1/panel/limites`; el valor de fábrica sigue en el
 código con su explicación al lado, y la tabla sólo lo sobreescribe —borrar la
 fila devuelve el valor probado, no "sin límite"—.
 
-Dos que conviene entender porque su forma es una lección aprendida:
+Tres que conviene entender porque su forma es una lección aprendida:
 
 - **Ingreso**: se limitan los **fallos**, no los intentos, y con dos reglas —8
   por cuenta y 50 por IP cada 15 minutos—. Contar intentos por IP dejaba fuera a
@@ -510,6 +510,21 @@ Dos que conviene entender porque su forma es una lección aprendida:
 - **Códigos por SMS**: el límite fuerte es **por destino** (10/hora), no por IP.
   Cinco códigos a cinco personas desde una red compartida es un martes normal;
   cinco al mismo número es acosar a alguien.
+- **Ficha de empresa**: lleva **dos** límites, y el que manda no es el de
+  ráfaga. La ráfaga (30/10 min, en memoria) para el script; el **cupo diario**
+  (40/día, en la base) para la rotación sostenida, que es lo que de verdad
+  importa: se denuncia una ficha que dice "Banco Nacional", y cuando el
+  moderador abre el caso la ficha dice otra cosa. El cupo vive en la base
+  porque un límite diario que se olvida en cada despliegue se evade esperando
+  uno.
+
+  Cambiar el tipo de cuenta tiene **presupuesto aparte** (20/hora). Si lo
+  compartieran, agotar el de la ficha impediría volver a cuenta personal, que
+  es justamente como uno se quita la ficha de encima.
+
+  Los dos se comprueban **después** de la puerta de la beta: al revés, quien
+  está fuera distinguiría un 429 de un 404 y con esa diferencia confirmaría que
+  la ruta existe.
 
 ---
 

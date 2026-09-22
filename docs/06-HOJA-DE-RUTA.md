@@ -3659,3 +3659,88 @@ de la lista es `"1"`: una empresa de una sola persona se anunciaba en su propio
 perfil público como **"1 personas"**. Ahora hay `TamanoEmpresa.legible`, en el
 contrato y no en la app por lo mismo que `CategoriaEmpresa.legible`: si lo
 arregla quien dibuja, el siguiente que dibuje lo vuelve a escribir mal.
+
+---
+
+## Módulo P.3 · Límites de ritmo en el autoservicio ✅
+
+*La deuda que la auditoría del módulo P dejó marcada como "resolver antes de
+abrir la beta".*
+
+- [x] P.3.1 Ráfaga y cupo diario en `elegirTipo` y `guardarFicha`
+- [x] P.3.2 Los dos límites se ven y se ajustan desde el panel
+- [x] P.3.3 Dos arreglos de interfaz que salieron de mirar las capturas
+
+### P.3.1 · El hueco, medido antes de taparlo
+
+`PUT /v1/cuenta/tipo` y `PUT /v1/cuenta/empresa` no tenían ningún límite, y la
+maquinaria ya existía y se usaba en cinco archivos. Aquí simplemente no se había
+enchufado. Medido: **45 guardados seguidos, 45 doscientos.** 12 de 16
+afirmaciones en rojo contra el código sin límite.
+
+**Por qué importa en esta ruta.** La ficha es texto público que otros leen, y
+cada guardado deja una fila de auditoría y retira la verificación. El riesgo que
+de verdad manda no es la carga: es que **rotar el nombre comercial es una forma
+de evadir la moderación**. Se denuncia una ficha que dice "Banco Nacional", y
+cuando el moderador abre el caso la ficha dice otra cosa.
+
+**Dos límites, y la división no es por importancia sino por duración** — la
+misma regla que ya tenía escrita `Limites.kt`:
+
+| | Dónde vive | Para qué | Número |
+|---|---|---|---|
+| Ráfaga de ficha | memoria | el script | 30 / 10 min |
+| **Cupo de ficha** | **la base** | **la rotación sostenida** | **40 / día** |
+| Cambio de tipo | memoria | el script | 20 / hora |
+
+El cupo va en la base porque un límite diario que se olvida en cada despliegue
+se evade esperando uno. La ráfaga puede vivir en memoria porque dura segundos.
+
+**Tres decisiones de orden, cada una con su motivo:**
+
+1. **La puerta de la beta va antes que el límite.** Al revés, quien está fuera
+   distinguiría un 429 de un 404 y con esa diferencia confirmaría que la ruta
+   existe. Es la misma regla que ya costó una corrección en `verificarEmpresa`.
+2. **El límite va antes de validar el cuerpo**, que es lo contrario de lo que se
+   hace con la autorización. Aquí no hay nada que filtrar —la cuenta ya está
+   dentro de la beta— y validar primero significaría que mandar basura sale
+   gratis.
+3. **El cupo va dentro de la transacción y antes del INSERT.** Si fuera después,
+   el guardado número 41 se escribiría y el 429 llegaría con el dato ya
+   cambiado, que es exactamente lo que el cupo evita.
+
+**Presupuestos separados, y eso es una invariante.** Si la ficha y el tipo
+compartieran clave, agotar el de la ficha impediría volver a cuenta personal,
+que es justamente como uno se quita la ficha de encima. Un límite que bloquea la
+salida no es un límite, es una trampa. Está fijado en `LimitesDeCuentaTest`.
+
+**El número del cambio de tipo empezó en 10 y subió a 20.** El dato que lo
+decidió: `pruebas/cuentas.mjs` consume **9** cambios de tipo en una sola pasada
+haciendo uso legítimo del módulo. Con 10, el margen era de uno, y la primera
+prueba que alguien añadiera habría fallado con un 429 que no se parece en nada a
+su causa. Entre 10 y 20 no hay diferencia de seguridad —las dos dicen "no sos un
+script"— y sí de usabilidad.
+
+**Y un test que detecta el desarme silencioso del cupo.** Si alguien sube la
+ráfaga "un poco", puede dejar el cupo diario por encima de lo que la ráfaga
+permite en un día, y entonces el cupo no corta nunca sin que nadie lo haya
+tocado. `el cupo diario es mas estricto que la rafaga extrapolada` se cae en ese
+caso. Validado por reversión: con `FICHAS_POR_DIA = 5000` la prueba se pone
+roja.
+
+### P.3.2 · Un límite que no está en el panel es un número que solo se cambia desplegando
+
+Los dos entran en `Limitador.AJUSTABLES`, con los otros quince. La suite lo
+aprovecha: para poder llegar al cupo diario hay que apartar la ráfaga, y lo hace
+**subiéndola desde el panel** en vez de reiniciando el servidor, que es la vía
+legítima y de paso ejercita el override. Lo restaura al terminar, porque un
+ajuste de prueba que se queda puesto es un límite desactivado en el próximo
+arranque.
+
+### P.3.3 · Dos cosas que salieron de mirar las capturas
+
+- **El contacto repetía el nombre.** En una conversación directa el diálogo
+  mostraba "@fulano / Conversación directa / @fulano": la lista de miembros
+  repetía a la única persona, que ya estaba de título. La lista ahora sale solo
+  en grupos.
+- Un `import` duplicado de `Verified` en `PerfilPantalla.kt`.

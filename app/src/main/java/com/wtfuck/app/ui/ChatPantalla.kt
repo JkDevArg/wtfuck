@@ -1048,15 +1048,25 @@ fun ChatPantalla(
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextoSecundario,
                     )
-                    Spacer(Modifier.height(12.dp))
-                    miembros.forEach { u ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Avatar(nombre = u, url = null, tamano = 30.dp)
-                            Spacer(Modifier.width(9.dp))
-                            Text("@$u", style = MaterialTheme.typography.bodyMedium, color = TextoPrimario)
+                    // La lista de miembros solo en un grupo. En una directa
+                    // el unico miembro es la persona cuyo nombre ya esta de
+                    // titulo dos lineas mas arriba, asi que se leia
+                    // "@fulano / Conversacion directa / @fulano".
+                    if (chat.tipo == "grupo") {
+                        Spacer(Modifier.height(12.dp))
+                        miembros.forEach { u ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Avatar(nombre = u, url = null, tamano = 30.dp)
+                                Spacer(Modifier.width(9.dp))
+                                Text(
+                                    "@$u",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextoPrimario,
+                                )
+                            }
                         }
                     }
                     // La ficha de empresa de la otra persona. Va aqui y no en

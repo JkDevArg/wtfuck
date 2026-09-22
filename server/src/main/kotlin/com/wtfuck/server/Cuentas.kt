@@ -2,6 +2,7 @@ package com.wtfuck.server
 
 import com.wtfuck.protocol.*
 import java.sql.Connection
+import java.time.Duration
 import java.util.UUID
 
 /**
@@ -130,6 +131,16 @@ object Cuentas {
      */
     fun elegirTipo(yo: Auth, req: CambiarTipoReq): CapacidadesCuenta {
         exigirBeta(yo)
+
+        // El limite va DESPUES de la puerta de la beta, no antes. Al reves,
+        // quien esta fuera distinguiria un 429 de un 404 y con esa diferencia
+        // confirmaria que la ruta existe y que se usa. Es la misma regla que
+        // ya costo una correccion en `verificarEmpresa`: **el control de
+        // acceso va primero que cualquier otra cosa**.
+        Limitador.exigir(
+            yo.usuarioId, yo.usuarioId.toString(), "tipo_cuenta", Limitador.TIPO_CUENTA,
+        )
+
         if (req.tipo == TipoCuenta.DESARROLLADOR) {
             throw ErrorNegocio(403, "El modo desarrollador lo asigna el equipo, no se pide.")
         }
@@ -189,6 +200,17 @@ object Cuentas {
     fun guardarFicha(yo: Auth, req: FichaEmpresaReq): FichaEmpresa {
         exigirBeta(yo)
 
+        // Igual que en `elegirTipo`: la beta primero, el limite despues.
+        //
+        // Y el limite antes de validar el cuerpo, que es lo contrario de lo
+        // que se hace con la autorizacion: aqui no hay nada que filtrar -la
+        // cuenta ya esta dentro de la beta y ya se sabe quien es-, y validar
+        // primero significaria que mandar basura sale gratis. Un bucle de
+        // peticiones invalidas consume CPU igual que uno de peticiones buenas.
+        Limitador.exigir(
+            yo.usuarioId, yo.usuarioId.toString(), "ficha_empresa", Limitador.FICHA_EMPRESA,
+        )
+
         // Se limpia ANTES de medir y de guardar. La ficha es lo unico de esta
         // plataforma que una cuenta escribe y otra gente lee como si fuera un
         // dato de la plataforma, asi que es el sitio donde un nombre dado
@@ -223,6 +245,20 @@ object Cuentas {
             if (tipoDe(c, yo.usuarioId) != TipoCuenta.EMPRESA) {
                 throw ErrorNegocio(409, "Primero cambia la cuenta a tipo empresa.")
             }
+
+            // El cupo diario, que es el que de verdad importa: rotar el nombre
+            // comercial es una forma de evadir la moderacion -se denuncia una
+            // ficha y cuando el moderador la abre dice otra cosa-. Va en la
+            // base para que un reinicio no lo perdone.
+            //
+            // Dentro de la transaccion y ANTES del INSERT: si fuera despues,
+            // el guardado numero 41 se escribiria y el 429 llegaria con el
+            // dato ya cambiado, que es exactamente lo que el cupo evita. El
+            // `Db.tx` deshace el contador junto con todo lo demas si algo de
+            // aqui falla, asi que un rechazo no gasta cupo de balde.
+            Cupos.exigir(
+                c, yo.usuarioId, "ficha_empresa", Cupos.FICHAS_POR_DIA, Duration.ofDays(1),
+            )
 
             c.prepareStatement(
                 """INSERT INTO perfil_empresa

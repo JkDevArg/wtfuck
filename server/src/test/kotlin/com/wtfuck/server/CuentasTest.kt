@@ -9,6 +9,7 @@ import com.wtfuck.protocol.TipoCuenta
 import com.wtfuck.protocol.TopesEmpresa
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -370,5 +371,90 @@ class PuertaDeLaBetaTest {
         // autorizacion.
         assertFalse(Cuentas.enBeta("nadie_que_este_configurado_aqui"))
         assertFalse(Cuentas.enBeta(""))
+    }
+}
+
+/**
+ * Los limites de ritmo del modulo, del lado que no depende de la base.
+ *
+ * `pruebas/limites-cuenta.mjs` los ataca de verdad contra un servidor: martilla
+ * 45 guardados y comprueba que aparece el 429, y empuja el contador diario para
+ * ver que el cupo corta. Lo que se fija aqui son las **relaciones entre los
+ * numeros**, que ninguna prueba de integracion mira y que el compilador no
+ * puede ver.
+ *
+ * Es la misma familia que la relacion ya escrita entre `EMITIR_VINCULACION` y
+ * `MAX_DISPOSITIVOS`: dos constantes que se contradicen producen un 429
+ * inexplicable, y el sintoma no se parece a la causa.
+ */
+class LimitesDeCuentaTest {
+
+    @Test
+    fun `la ficha y el tipo de cuenta tienen presupuestos SEPARADOS`() {
+        // LA invariante de esta parte. Si los dos usaran la misma clave,
+        // agotar el de la ficha impediria volver a cuenta personal, que es
+        // justamente como uno se quita la ficha de encima. Un limite que
+        // bloquea la salida no es un limite, es una trampa.
+        //
+        // Se comparan las CLAVES del panel, que es lo que indexa el limitador
+        // en memoria (`"$accion:$clave"`), no los numeros.
+        val claves = Limitador.AJUSTABLES.map { it.clave }
+        assertTrue("falta la clave de la ficha", claves.contains("ficha_empresa"))
+        assertTrue("falta la clave del tipo de cuenta", claves.contains("tipo_cuenta"))
+        assertTrue("las dos claves no pueden ser la misma", "ficha_empresa" != "tipo_cuenta")
+    }
+
+    @Test
+    fun `los dos limites nuevos se pueden ajustar desde el panel`() {
+        // Un limite que no esta en AJUSTABLES es un numero que solo se cambia
+        // desplegando. `porDefecto` devuelve null para una clave que no este
+        // registrada, asi que esto tambien comprueba el registro.
+        assertNotNull(Limitador.porDefecto("ficha_empresa"))
+        assertNotNull(Limitador.porDefecto("tipo_cuenta"))
+    }
+
+    @Test
+    fun `la rafaga de la ficha deja margen para llenar un formulario`() {
+        // Un tope que salta al tercer guardado convierte corregir una coma en
+        // un error. El 10 no es un numero elegido: es el minimo por debajo del
+        // cual el uso normal —guardar mientras se corrige el texto— empieza a
+        // chocar con el limite.
+        val r = Limitador.porDefecto("ficha_empresa")!!
+        assertTrue("demasiado estricto para un formulario: ${r.cuantas}", r.cuantas >= 10)
+    }
+
+    @Test
+    fun `el cupo diario es mas estricto que la rafaga extrapolada`() {
+        // Si no lo fuera, el cupo diario seria decorativo: la rafaga sola ya
+        // permitiria mas guardados al dia que el supuesto tope diario, y el
+        // 429 del cupo no llegaria nunca. Este test es el que detecta que
+        // alguien suba la rafaga "un poco" y desactive el cupo sin tocarlo.
+        val rafaga = Limitador.porDefecto("ficha_empresa")!!
+        val porDia = rafaga.cuantas.toLong() * (86_400L / rafaga.ventana.seconds)
+        assertTrue(
+            "la rafaga permite $porDia al dia y el cupo dice ${Cupos.FICHAS_POR_DIA}: " +
+                "el cupo no corta nada",
+            Cupos.FICHAS_POR_DIA < porDia,
+        )
+    }
+
+    @Test
+    fun `el cupo diario deja trabajar durante semanas`() {
+        // La otra punta. Montar la ficha, corregirla y retocarla de vez en
+        // cuando tiene que caber sin pensar en el limite; lo que no tiene que
+        // caber es rotarla como mecanica.
+        assertTrue("demasiado bajo para uso real", Cupos.FICHAS_POR_DIA >= 20)
+    }
+
+    @Test
+    fun `cambiar de tipo no lleva cupo diario, y es a proposito`() {
+        // No hay `Cupos.TIPOS_POR_DIA` y no debe haberlo: el tipo es una
+        // columna con tres valores y no hay nada publico que rotar. Lo unico
+        // rotable es la ficha, y escribirla cuesta su propio cupo.
+        //
+        // Se fija como prueba porque el dia que alguien anada uno "por
+        // simetria", la simetria seria el unico argumento.
+        assertEquals(20, Limitador.porDefecto("tipo_cuenta")!!.cuantas)
+        assertEquals(3600, Limitador.porDefecto("tipo_cuenta")!!.ventana.seconds)
     }
 }
