@@ -1232,18 +1232,42 @@ fun Application.modulo() {
 
         // Lo de staff va bajo /v1/panel porque es del panel, no de mi cuenta.
         put("$RUTA_PANEL/cuentas/tipo") {
+            // Autenticar ANTES de leer el cuerpo. Al reves, un anonimo
+            // distingue un 400 -"el cuerpo no tiene la forma esperada"- de un
+            // 404, y con eso confirma que la ruta existe y deduce su esquema.
+            // Es el mismo oraculo que `exigirStaff` evita devolviendo 404.
+            val yo = call.autenticar()
             val req: AsignarTipoReq = call.receive()
-            call.respond(mapOf("tipo" to Cuentas.asignarTipo(call.autenticar(), req)))
+            call.respond(mapOf("tipo" to Cuentas.asignarTipo(yo, req)))
         }
 
         put("$RUTA_PANEL/cuentas/{username}/verificar") {
+            val yo = call.autenticar()
             val u = call.parameters["username"].orEmpty()
-            val v = call.request.queryParameters["valor"]?.toBooleanStrictOrNull() ?: true
-            call.respond(mapOf("verificada" to Cuentas.verificarEmpresa(call.autenticar(), u, v)))
+            // El parametro se pasa SIN validar y lo valida `verificarEmpresa`
+            // despues de comprobar que quien llama es staff.
+            //
+            // Validarlo aqui parecia mas limpio y reintrodujo el mismo oraculo
+            // que esta ruta acababa de cerrar, un escalon mas arriba: quien no
+            // es staff recibia un 400 "falta valor" en vez del 404 que debe
+            // recibir, y con esa diferencia confirmaba que la ruta existe.
+            // **El control de acceso va primero que la validacion de entrada,
+            // siempre.**
+            val v = call.request.queryParameters["valor"]?.toBooleanStrictOrNull()
+            call.respond(mapOf("verificada" to Cuentas.verificarEmpresa(yo, u, v)))
         }
 
         get("$RUTA_CLAVES/dispositivo/{id}") {
             call.respond(Claves.paquete(call.autenticar(), call.idRuta()))
+        }
+
+        // §3 del brief: las solicitudes de mensaje. La decide quien la
+        // recibio; ver `Repo.decidirSolicitud`.
+        put("$RUTA_CONVERSACIONES/{id}/solicitud") {
+            val yo = call.autenticar()
+            val req: DecidirSolicitudReq = call.receive()
+            Repo.decidirSolicitud(yo, call.idRuta(), req.aceptar)
+            call.respond(HttpStatusCode.NoContent)
         }
 
         get("$RUTA_CONVERSACIONES/{id}/destinos") {
@@ -1550,12 +1574,18 @@ private suspend fun DefaultWebSocketServerSession.atender(yo: Auth) {
                             "escribiendo", Limitador.ESCRIBIENDO,
                         )
                         val conv = UUID.fromString(msg.conversacionId)
-                        Repo.destinosDeEscritura(yo, conv).forEach { dispositivo ->
-                            Hub.empujar(
-                                dispositivo,
-                                Bajada.Escribiendo(msg.conversacionId, yo.username),
-                            )
-                        }
+                        // El ajuste lo comprueba `destinosDeEscritura`: si esta
+                        // apagado devuelve la lista vacia y no se reenvia nada.
+                        // Ver la nota de esa funcion.
+                        Repo.destinosDeEscritura(yo, conv, msg.grabando)
+                            .forEach { dispositivo ->
+                                Hub.empujar(
+                                    dispositivo,
+                                    Bajada.Escribiendo(
+                                        msg.conversacionId, yo.username, msg.grabando,
+                                    ),
+                                )
+                            }
                     }
                 }
 

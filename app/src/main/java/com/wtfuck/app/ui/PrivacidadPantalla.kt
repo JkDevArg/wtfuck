@@ -12,6 +12,10 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.MarkEmailUnread
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Notes
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -87,6 +91,14 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 valor = priv.estado,
             ) { abierto = "estado" }
 
+            // Va pegada al estado y no al final: son los dos textos del
+            // perfil y se deciden mirandolos juntos.
+            Ajuste(
+                icono = Icons.Filled.Notes,
+                titulo = "Quien ve mi biografia",
+                valor = priv.biografia,
+            ) { abierto = "biografia" }
+
             Ajuste(
                 icono = Icons.Filled.Chat,
                 titulo = "Quien me puede escribir",
@@ -104,6 +116,15 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 titulo = "Quien me puede llamar",
                 valor = priv.llamadas,
             ) { abierto = "llamadas" }
+
+            // Debajo de las llamadas, porque se aplica ADEMAS de ese ajuste:
+            // si el audio esta cerrado, el video tambien. Ponerla lejos haria
+            // creer que son dos puertas independientes.
+            Ajuste(
+                icono = Icons.Filled.Videocam,
+                titulo = "Quien me puede hacer videollamadas",
+                valor = priv.videollamadas,
+            ) { abierto = "videollamadas" }
 
             Ajuste(
                 icono = Icons.Filled.Badge,
@@ -213,6 +234,89 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
             }
 
             Spacer(Modifier.height(10.dp))
+            // Aparte del de escribir, y no dentro: son dos avisos distintos y
+            // hay gente a la que no le importa uno y si el otro.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = priv.grabando,
+                        role = Role.Switch,
+                        onValueChange = { guardar(priv.copy(grabando = it)) },
+                    )
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.Mic,
+                    null,
+                    tint = if (priv.grabando) Cian else Slate,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Avisar cuando grabo un audio", color = TextoPrimario)
+                    Text(
+                        "Va aparte de \"cuando escribo\": teclear dice que hay algo en camino, grabar dice ademas que el microfono esta abierto ahora.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+                Switch(
+                    checked = priv.grabando,
+                    onCheckedChange = null,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = TextoSobreAcento,
+                        checkedTrackColor = Cian,
+                        uncheckedThumbColor = TextoTerciario,
+                        uncheckedTrackColor = BgElev,
+                        uncheckedBorderColor = Slate,
+                    ),
+                )
+            }
+
+            // Solo hace algo con «quien me escribe» en «conocidos». Se deja
+            // visible igual: esconderlo obligaria a descubrir que existe
+            // justo cuando ya cerraste la puerta.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = priv.solicitudes,
+                        role = Role.Switch,
+                        onValueChange = { guardar(priv.copy(solicitudes = it)) },
+                    )
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.MarkEmailUnread,
+                    null,
+                    tint = if (priv.solicitudes) Cian else Slate,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Aceptar solicitudes de mensaje", color = TextoPrimario)
+                    Text(
+                        "Quien no puede escribirte directamente puede mandar una solicitud. Vive aparte y la aceptas o la rechazas vos.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+                Switch(
+                    checked = priv.solicitudes,
+                    onCheckedChange = null,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = TextoSobreAcento,
+                        checkedTrackColor = Cian,
+                        uncheckedThumbColor = TextoTerciario,
+                        uncheckedTrackColor = BgElev,
+                        uncheckedBorderColor = Slate,
+                    ),
+                )
+            }
+
 
             // La entrada a las listas va DESPUES de los ajustes: primero se
             // elige el nivel y solo entonces las listas significan algo.
@@ -290,6 +394,8 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
             "estado" -> priv.estado
             "escribe" -> priv.escribe
             "llamadas" -> priv.llamadas
+            "biografia" -> priv.biografia
+            "videollamadas" -> priv.videollamadas
             "nombre" -> priv.nombre
             "ultimaVez" -> priv.ultimaVez
             "busqueda" -> priv.busqueda
@@ -305,6 +411,8 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                         "estado" -> "Quien ve mi estado"
                         "escribe" -> "Quien me puede escribir"
                         "llamadas" -> "Quien me puede llamar"
+                        "biografia" -> "Quien ve mi biografia"
+                        "videollamadas" -> "Quien me puede hacer videollamadas"
                         "nombre" -> "Quien ve mi nombre"
                         "ultimaVez" -> "Quien ve mi ultima conexion"
                         "busqueda" -> "Quien me encuentra por mi usuario"
@@ -326,6 +434,8 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                                             "estado" -> priv.copy(estado = nivel)
                                             "escribe" -> priv.copy(escribe = nivel)
                                             "llamadas" -> priv.copy(llamadas = nivel)
+                                            "biografia" -> priv.copy(biografia = nivel)
+                                            "videollamadas" -> priv.copy(videollamadas = nivel)
                                             "nombre" -> priv.copy(nombre = nivel)
                                             "ultimaVez" -> priv.copy(ultimaVez = nivel)
                                             "busqueda" -> priv.copy(busqueda = nivel)

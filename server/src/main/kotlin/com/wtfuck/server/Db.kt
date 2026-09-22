@@ -69,6 +69,8 @@ object Db {
         29 to "/db/V29__sobre_sin_conversacion.sql",
         30 to "/db/V30__adjunto_de_historia.sql",
         31 to "/db/V31__tipos_de_cuenta.sql",
+        32 to "/db/V32__indices.sql",
+        33 to "/db/V33__privacidad_fina.sql",
     )
 
     /**

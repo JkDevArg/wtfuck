@@ -30,6 +30,16 @@ import java.util.UUID
  */
 object Panel {
 
+    /**
+     * A partir de cuantas filas se deja de contar `mensaje_meta` de verdad.
+     *
+     * Por debajo el `count(*)` cuesta milisegundos y el numero exacto es
+     * gratis; por encima es un recorrido secuencial de la tabla mas grande de
+     * la plataforma cada vez que alguien abre el panel, y un tablero que tarda
+     * es un tablero que no se mira.
+     */
+    private const val UMBRAL_CONTEO_EXACTO = 1_000_000L
+
     fun resumen(yo: Auth): ResumenPanel = Db.query { c ->
         Moderacion.exigirStaff(c, yo.usuarioId)
 
@@ -46,17 +56,57 @@ object Panel {
                    WHERE revocada_en IS NULL AND (vence_en IS NULL OR vence_en > now())),
                  (SELECT count(*) FROM evento_seguridad
                    WHERE tipo = 'limite_excedido' AND creado_en >= date_trunc('day', now())),
-                 (SELECT count(*) FROM canal WHERE estado = 'pendiente')"""
+                 (SELECT count(*) FROM canal WHERE estado = 'pendiente'),
+
+                 -- Metricas de plataforma (§10). Van pegadas a las de
+                 -- moderacion en la MISMA sentencia a proposito: son catorce
+                 -- subconsultas independientes y Postgres las resuelve en un
+                 -- viaje, mientras que catorce viajes de red desde el panel se
+                 -- notan aunque cada consulta sea barata.
+
+                 -- Total historico, sin descontar desactivadas: "registrados"
+                 -- es cuanta gente entro alguna vez, no cuanta queda.
+                 (SELECT count(*) FROM usuario),
+
+                 -- Personas, no sesiones: quien tiene el telefono y el
+                 -- portatil abiertos es un usuario activo, no dos. Y no se
+                 -- filtra por revocada: alguien que uso la cuenta el martes y
+                 -- cerro sesion el jueves estuvo activo igual, y descontarlo
+                 -- haria que cerrar sesion pareciera abandonar la plataforma.
+                 (SELECT count(DISTINCT d.usuario_id)
+                    FROM sesion s JOIN dispositivo d ON d.id = s.dispositivo_id
+                   WHERE s.ultimo_uso_en >= now() - interval '7 days'),
+
+                 (SELECT count(*) FROM conversacion WHERE tipo = 'grupo'),
+                 (SELECT count(*) FROM conversacion WHERE tipo = 'canal'),
+
+                 -- Solo lo confirmado, igual que la vista `uso_almacenamiento`:
+                 -- una reserva abandonada a mitad de subida no ocupa nada en el
+                 -- almacen y contarla inflaria la factura que este numero
+                 -- sirve para explicar.
+                 --
+                 -- Estas dos si se cuentan de verdad, al contrario que los
+                 -- mensajes. Hay una fila por ARCHIVO, no por mensaje: son
+                 -- ordenes de magnitud menos, y ademas `sum(bytes)` no tiene
+                 -- estimacion honesta -`reltuples` estima filas, no lo que
+                 -- suman-, de modo que aproximarlo seria exactamente inventar
+                 -- el numero que este panel no se puede permitir inventar.
+                 (SELECT count(*) FROM adjunto WHERE confirmado_en IS NOT NULL),
+                 (SELECT coalesce(sum(bytes), 0) FROM adjunto WHERE confirmado_en IS NOT NULL)"""
         ).use { st ->
             st.executeQuery().use { rs ->
                 rs.primero {
                     listOf(
-                        it.getInt(1), it.getInt(2), it.getInt(3),
-                        it.getInt(4), it.getInt(5), it.getInt(6), it.getInt(7),
+                        it.getLong(1), it.getLong(2), it.getLong(3),
+                        it.getLong(4), it.getLong(5), it.getLong(6), it.getLong(7),
+                        it.getLong(8), it.getLong(9), it.getLong(10), it.getLong(11),
+                        it.getLong(12), it.getLong(13),
                     )
                 }
             }
-        } ?: List(7) { 0 }
+        } ?: List(13) { 0L }
+
+        val (mensajes, mensajesAprox) = contarMensajes(c)
 
         // Por motivo, solo lo abierto: el reparto historico no ayuda a decidir
         // que revisar ahora.
@@ -69,16 +119,71 @@ object Panel {
         }
 
         ResumenPanel(
-            denunciasPendientes = n[0],
-            denunciasEnRevision = n[1],
-            denunciasResueltasHoy = n[2],
-            usuariosSuspendidos = n[3],
-            advertenciasVigentes = n[4],
-            limitesExcedidosHoy = n[5],
-            canalesPendientes = n[6],
+            denunciasPendientes = n[0].toInt(),
+            denunciasEnRevision = n[1].toInt(),
+            denunciasResueltasHoy = n[2].toInt(),
+            usuariosSuspendidos = n[3].toInt(),
+            advertenciasVigentes = n[4].toInt(),
+            limitesExcedidosHoy = n[5].toInt(),
+            canalesPendientes = n[6].toInt(),
             porMotivo = porMotivo,
+
+            usuariosRegistrados = n[7].toInt(),
+            usuariosActivos7d = n[8].toInt(),
+            gruposCreados = n[9].toInt(),
+            canalesCreados = n[10].toInt(),
+            almacenamientoArchivos = n[11].toInt(),
+            almacenamientoBytes = n[12],
+            mensajesEnviados = mensajes,
+            mensajesAproximados = mensajesAprox,
+
             miNivel = Moderacion.nivel(c, yo.usuarioId),
         )
+    }
+
+    /**
+     * Cuantos sobres pasaron por aqui, y si el numero es de verdad.
+     *
+     * Ojo con lo que cuenta: son filas de `mensaje_meta`, o sea **sobres, no
+     * cartas**. El servidor no guarda el contenido -recibe bytes que no puede
+     * abrir- asi que esto no es "mensajes que alguien pudo leer" ni se puede
+     * convertir en eso. Se aclara aqui porque "mensajes enviados" en un panel
+     * de administracion suena justo a lo contrario.
+     *
+     * ## Por que no siempre es un conteo
+     *
+     * `mensaje_meta` es la tabla que mas crece de toda la plataforma: una sola
+     * persona activa le mete miles de filas al mes. Un `count(*)` ahi no tiene
+     * atajo -Postgres no mantiene un contador y el indice no le sirve por la
+     * visibilidad de MVCC-, asi que es un recorrido completo que con millones
+     * de filas deja el panel colgado varios segundos cada vez que alguien lo
+     * abre.
+     *
+     * Por encima de [UMBRAL_CONTEO_EXACTO] se usa la estimacion que el
+     * planificador ya mantiene (`pg_class.reltuples`, que ANALYZE refresca):
+     * cuesta una lectura de catalogo y se equivoca en un porcentaje pequeno.
+     * A esa escala la diferencia entre 12.400.000 y 12.431.208 no cambia
+     * ninguna decision; entre 0 y 12 millones, si. Pero el resumen viaja con
+     * `mensajesAproximados` y la pantalla lo dice: un numero estimado que se
+     * presenta como exacto es peor que no dar ninguno.
+     *
+     * `reltuples` vale -1 en una tabla que nunca paso por ANALYZE (una base
+     * recien creada, por ejemplo). Ese caso cae solo del lado del conteo
+     * exacto, que es lo correcto: si nadie analizo la tabla, es que es nueva.
+     */
+    private fun contarMensajes(c: java.sql.Connection): Pair<Long, Boolean> {
+        val estimado = c.prepareStatement(
+            "SELECT reltuples::bigint FROM pg_class WHERE oid = 'mensaje_meta'::regclass"
+        ).use { st ->
+            st.executeQuery().use { rs -> rs.primero { it.getLong(1) } }
+        } ?: -1L
+
+        if (estimado >= UMBRAL_CONTEO_EXACTO) return estimado to true
+
+        val exacto = c.prepareStatement("SELECT count(*) FROM mensaje_meta").use { st ->
+            st.executeQuery().use { rs -> rs.primero { it.getLong(1) } }
+        } ?: 0L
+        return exacto to false
     }
 
     /**

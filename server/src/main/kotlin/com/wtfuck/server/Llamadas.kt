@@ -119,7 +119,7 @@ object Llamadas {
             // dejan llamar- y comprobar el ajuste de cada miembro convertiria
             // una llamada de grupo en una negociacion.
             if (tipo == "directa") {
-                exigirPuedeLlamar(c, yo.usuarioId, otros.first())
+                exigirPuedeLlamar(c, yo.usuarioId, otros.first(), req.conVideo)
             }
 
             // Quien esta ocupado no recibe el timbre, pero SI queda en la
@@ -183,32 +183,60 @@ object Llamadas {
         }
 
     /**
-     * K.6 · Quien puede llamarme.
+     * K.6 · Quien puede llamarme, y quien ademas puede verme.
      *
      * Por defecto 'conocidos' y no 'todos', al contrario que el resto de la
      * privacidad. Una llamada suena, interrumpe y despierta; un mensaje espera.
+     *
+     * ## Dos ajustes y no uno
+     *
+     * `priv_videollamadas` se comprueba **ademas** de `priv_llamadas`, nunca en
+     * su lugar: si el audio esta cerrado, el video tambien. La separacion sirve
+     * en la otra direccion, que es la que la gente quiere —aceptar la voz de
+     * alguien no es aceptar que te vea la cara ni lo que tenes detras—, y esa
+     * diferencia importa justo con quien menos confianza hay.
+     *
+     * El mensaje de rechazo dice **cual de los dos** lo impidio. Un "no puedes
+     * llamar" generico haria que alguien reintentara en video para nada, o que
+     * no probara en audio cuando si podia.
      */
-    private fun exigirPuedeLlamar(c: Connection, yo: UUID, objetivo: UUID) {
+    private fun exigirPuedeLlamar(
+        c: Connection,
+        yo: UUID,
+        objetivo: UUID,
+        conVideo: Boolean = false,
+    ) {
         if (Autz.hayBloqueo(c, yo, objetivo)) {
             throw ErrorNegocio(403, "No puedes llamar a esta persona.")
         }
         val fila = c.prepareStatement(
-            "SELECT priv_llamadas, username FROM usuario WHERE id = ?"
+            "SELECT priv_llamadas, username, priv_videollamadas FROM usuario WHERE id = ?"
         ).use { st ->
             st.setObject(1, objetivo)
-            st.executeQuery().use { rs -> rs.primero { it.getString(1) to it.getString(2) } }
+            st.executeQuery().use { rs ->
+                rs.primero { Triple(it.getString(1), it.getString(2), it.getString(3)) }
+            }
         } ?: throw ErrorNegocio(404, "Esa persona no existe.")
 
-        val permitido = when (fila.first) {
+        fun permite(nivel: String) = when (nivel) {
             "todos" -> true
             "nadie" -> false
             else -> Autz.meConoce(c, duenio = objetivo, otro = yo)
         }
-        if (!permitido) {
+
+        if (!permite(fila.first)) {
             throw ErrorNegocio(
                 403,
                 if (fila.first == "nadie") "@${fila.second} no acepta llamadas."
                 else "@${fila.second} solo acepta llamadas de sus contactos.",
+            )
+        }
+
+        if (conVideo && !permite(fila.third)) {
+            throw ErrorNegocio(
+                403,
+                if (fila.third == "nadie") "@${fila.second} no acepta videollamadas."
+                else "@${fila.second} solo acepta videollamadas de sus contactos.",
             )
         }
     }

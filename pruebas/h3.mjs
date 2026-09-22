@@ -52,8 +52,11 @@ const duenio = await reg('gc');
 const socio = await reg('gd');
 
 // Un grupo con dos personas y un mensaje, para que haya algo que cerrar.
+// El nombre lleva el sufijo de la corrida y se guarda: es lo que hace que la
+// busqueda del panel encuentre ESTE grupo y no los de las corridas anteriores.
+const NOMBRE_GRUPO = 'Grupo a cerrar ' + S;
 let r = await post('/v1/conversaciones/grupo', duenio.t, {
-  nombre: 'Grupo a cerrar ' + S, usernames: [socio.user],
+  nombre: NOMBRE_GRUPO, usernames: [socio.user],
 });
 ck('se crea el grupo', r.s === 200, JSON.stringify(r.b).slice(0, 140));
 const GRUPO = r.b.id;
@@ -67,7 +70,11 @@ ck('un usuario cualquiera no ve las conversaciones de la plataforma', r.s === 40
 r = await get('/v1/panel/conversaciones', mod.t);
 ck('un moderador (50) tampoco', r.s === 404, String(r.s));
 
-r = await get(`/v1/panel/conversaciones?q=cerrar`, jefe.t);
+// Se busca por el nombre COMPLETO del grupo y no por un trozo generico:
+// "cerrar" lo comparten todos los grupos que dejaron las corridas anteriores,
+// y con el corpus crecido el de esta prueba se cae de la pagina de resultados.
+// Un rojo asi no dice nada del panel, solo de cuantas veces se corrio la suite.
+r = await get(`/v1/panel/conversaciones?q=${encodeURIComponent(NOMBRE_GRUPO)}`, jefe.t);
 ck('un administrador si', r.s === 200, String(r.s));
 const fila = (r.b.conversaciones || []).find((x) => x.id === GRUPO);
 ck('con el grupo y sus numeros', fila && fila.miembros === 2, JSON.stringify(fila));

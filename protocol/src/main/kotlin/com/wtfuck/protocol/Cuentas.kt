@@ -109,6 +109,59 @@ object TamanoEmpresa {
     val TODOS = listOf(UNO, PEQUENA, MEDIANA, GRANDE, MAYOR, CORPORACION)
 }
 
+/**
+ * Deja un texto en condiciones de dibujarse como una etiqueta de la plataforma.
+ *
+ * ## Por que vive en el contrato y no en la app
+ *
+ * La limpieza la hace el **servidor** antes de guardar, no el cliente al
+ * dibujar. Si la hiciera el cliente, cada app que consuma esta API tendria que
+ * acordarse de repetirla, y la que se olvidara mostraria el nombre crudo. Un
+ * dato que la plataforma presenta a terceros se limpia una vez, donde se
+ * escribe.
+ *
+ * ## Que quita, y por que cada cosa
+ *
+ *  - **Controles de direccion** (U+202A..U+202E, isolates, marcas LTR/RTL):
+ *    invierten el orden de lo que se ve sin cambiar lo que esta escrito. Con
+ *    ellos, `"\u202Eacme@ocnaB lanoicaN"` se dibuja como "Banco Nacional
+ *    @acme". En un nombre comercial eso no es un adorno: es la suplantacion
+ *    entera.
+ *  - **Controles C0/C1 y saltos de linea**: un `\n` en un nombre rompe la
+ *    fila de la tarjeta y empuja el resto; los de ancho cero parten palabras
+ *    para que un filtro no las reconozca.
+ *  - **Espacios repetidos**: se colapsan, porque cuarenta espacios son una
+ *    forma barata de empujar fuera de la vista lo que viene detras.
+ *
+ * Lo que NO hace es normalizar homoglifos (la "B" cirilica que parece latina).
+ * Eso no se resuelve filtrando: se resuelve con la verificacion, que es
+ * precisamente para lo que existe el distintivo.
+ */
+fun etiquetaLimpia(texto: String): String =
+    texto
+        .filterNot { c ->
+            c in CONTROLES_DE_DIRECCION ||
+                // C0 y C1 menos los espacios normales, que ya se colapsan abajo.
+                (c.code in 0x00..0x1F) || (c.code in 0x7F..0x9F) ||
+                c == '\u200B' || c == '\uFEFF'
+        }
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+/**
+ * Los caracteres que reordenan lo que se ve sin cambiar lo que dice.
+ *
+ * Van escapados y no literales a proposito: son invisibles, asi que en el
+ * archivo se verian comillas vacias y en un diff no se veria nada. Un fuente
+ * con overrides de direccion escondidos dentro es exactamente el problema que
+ * esta lista existe para resolver.
+ */
+val CONTROLES_DE_DIRECCION = setOf(
+    '\u202A', '\u202B', '\u202C', '\u202D', '\u202E',   // embedding y override
+    '\u2066', '\u2067', '\u2068', '\u2069',             // isolates
+    '\u200E', '\u200F',                                   // marcas LTR y RTL
+)
+
 /** Topes de la ficha. Es un perfil publico: todo lo de aqui lo lee otra gente. */
 object TopesEmpresa {
     const val NOMBRE = 80

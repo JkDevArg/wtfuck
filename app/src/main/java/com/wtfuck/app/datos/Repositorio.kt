@@ -2323,6 +2323,25 @@ class Repositorio(
     suspend fun restaurarUsuario(username: String): Result<UsuarioPanel> =
         runCatching { api.restaurarUsuario(username) }
 
+    /**
+     * Asigna un tipo de cuenta a otra persona. Solo administrador.
+     *
+     * Este es el **unico** camino por el que se reparte `desarrollador`: la
+     * ruta de autoservicio lo rechaza a proposito. Ver `Cuentas.kt`.
+     */
+    suspend fun asignarTipoCuenta(username: String, tipo: String): Result<Unit> =
+        runCatching { api.asignarTipoCuenta(username, tipo) }
+
+    /**
+     * Pone o quita el distintivo de empresa verificada.
+     *
+     * Lo mas delicado del modulo P: es la plataforma diciendo "comprobamos que
+     * esta cuenta es quien dice ser". El servidor lo deja por escrito en la
+     * bitacora con quien lo firmo.
+     */
+    suspend fun verificarEmpresa(username: String, valor: Boolean): Result<Unit> =
+        runCatching { api.verificarEmpresa(username, valor) }
+
     // ============================================================
     //  Modulo F: canales
     // ============================================================

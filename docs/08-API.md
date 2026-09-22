@@ -1,6 +1,6 @@
 # La API, endpoint por endpoint
 
-**123 rutas HTTP y un WebSocket.** Este documento se escribió leyendo
+**140 rutas HTTP y un WebSocket.** Este documento se escribió leyendo
 `Main.kt`, no de memoria: si una ruta está aquí, existe.
 
 ---
@@ -212,6 +212,36 @@ cualquiera que adivinara su id, y no serviría de nada haber cifrado el sobre.
 
 ---
 
+## Historias
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /v1/historias/destinos` | A quién le toca esta historia, con las claves de sus aparatos |
+| `POST /v1/historias/{id}/sobres` | Encola un **sobre** cifrado por aparato destino |
+| `POST /v1/historias` | Registra el metadato y **congela la audiencia** |
+| `GET /v1/historias` | Las que me tocan a mí |
+| `GET /v1/historias/mias` | Las mías |
+| `POST /v1/historias/{id}/vista` | "La vi" |
+| `GET /v1/historias/{id}/vistas` | Quién la vio. Sólo su autor |
+| `DELETE /v1/historias/{id}` | Retirarla antes de que caduque |
+
+**Publicar son dos pasos, y el orden importa.** El contenido va cifrado y el
+servidor no puede armarlo: primero se piden los destinos, el cliente cifra un
+sobre por aparato y los encola, y **recién entonces** se registra la historia.
+Al revés, una historia existiría sin sobres y aparecería en la lista de alguien
+que no puede abrirla.
+
+**La audiencia se congela** al registrar. Quien entró en la lista al publicar la
+sigue viendo aunque después cambie `historias` o la relación; quien no entró no
+la ve aunque después califique. Sin congelar, la audiencia de una historia ya
+publicada cambiaría sola, y los sobres ya repartidos no se pueden recoger.
+
+Una historia **caduca a las 24 horas**. Vencida deja de existir y su archivo
+también — ver *De quién cuelga un adjunto*. Responder una historia **no es un
+permiso nuevo**: es un mensaje directo a quien publicó, y lo decide `escribe`.
+
+---
+
 ## Tipos de cuenta
 
 | Ruta | Qué hace |
@@ -253,9 +283,32 @@ enlace en el perfil de alguien.
 
 ---
 
+## Perfil y ficha de otra persona
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /v1/perfil` | Mi perfil entero, sin recortar: es mío |
+| `PUT /v1/perfil` | Guardar el perfil (nombre, estado, biografía…) |
+| `PUT /v1/perfil/{campo}` | Subir una imagen. `{campo}` es `avatar` o `portada`, y nada más |
+| `GET /v1/usuarios/{username}` | La ficha de otra persona, ya filtrada por su privacidad |
+| `GET /v1/usuarios/{username}/{campo}` | Los **bytes** de su `avatar` o su `portada` |
+
+El filtrado ocurre **en el servidor**, no en la app: lo que la otra persona
+ocultó no viaja. Con el nombre oculto se devuelve vacío y la app cae al
+`@usuario`; el username nunca se oculta, porque es la dirección con la que
+existís en la plataforma.
+
+Las dos rutas de imagen aceptan sólo esos dos nombres y cualquier otro es un
+**404**. La subida se lee acotada a 1 MiB: sin el tope, un cliente empuja el
+heap del servidor con un `PUT`. La descarga va con
+`Cache-Control: immutable` y la URL lleva `?v=<marca de tiempo>`, así que
+cambiar la foto genera otra URL y el cache nunca sirve una vieja.
+
+---
+
 ## Privacidad
 
-`GET`/`PUT /v1/perfil/privacidad` — nueve ajustes, **aplicados en el servidor**:
+`GET`/`PUT /v1/perfil/privacidad` — diez ajustes, **aplicados en el servidor**:
 
 | Ajuste | Niveles | Nota |
 |---|---|---|
@@ -264,6 +317,7 @@ enlace en el perfil de alguien.
 | `grupos` | todos / conocidos / nadie | Quién me agrega a grupos |
 | `llamadas` | todos / conocidos / nadie | Empieza en `conocidos`: una llamada suena e interrumpe |
 | `busqueda` | todos / conocidos / nadie | Con `nadie`, quien ya habla contigo sigue alcanzándote |
+| `historias` | todos / conocidos / nadie | Quién ve mis historias (módulo O). Empieza en `conocidos`: una historia es contenido que se publica, no un dato del perfil |
 | `ultimaVez` | todos / conocidos / nadie | **Recíproco** |
 | `lectura` | sí / no | **Recíproco**, en las dos mitades |
 | `escribiendo` | sí / no | Recíproco; lo aplican los clientes porque no se guarda nada |
@@ -274,6 +328,31 @@ enlace en el perfil de alguien.
 >
 > **Recíproco** significa que quien oculta un dato tampoco lo ve. Sin esa regla,
 > el ajuste sería un espejo de una sola dirección: ver sin ser visto.
+
+### El nivel `personalizado` y sus listas
+
+`GET`/`PUT /v1/perfil/privacidad/excepciones`
+
+`todos`, `conocidos` y `nadie` son valores y caben en una columna. "Todos menos
+Fulano" y "sólo Mengano" son **listas**, así que hay un cuarto nivel —
+`personalizado`— que apunta a una tabla de excepciones con dos modos:
+`salvo` (lista negra) y `solo` (lista blanca). Los dos hacen falta: una lista
+negra no puede expresar "sólo mi familia" sin enumerar la plataforma entera.
+
+Admiten lista `foto`, `estado`, `nombre`, `grupos`, `llamadas`, `busqueda`,
+`ultima_vez` e `historias`. **`escribe` no**, a propósito: una lista blanca de
+quién puede escribirte convierte la cuenta en un club cerrado, y para eso están
+los bloqueos. `lectura` y `escribiendo` tampoco, porque son booleanos recíprocos
+y una lista de "a quién sí le aviso" es justo el espejo de una sola dirección
+que la reciprocidad evita.
+
+El `GET` devuelve **siempre** todos los ajustes personalizables, incluso vacíos:
+una lista que sólo aparece cuando ya tiene contenido es una lista que nadie
+descubre.
+
+> Con la lista vacía, el modo `solo` se comporta como `nadie`. Si un fallo
+> dejara las excepciones sin leer, el resultado es no mostrar el dato — nunca
+> mostrárselo a todos.
 
 ---
 
@@ -308,9 +387,14 @@ curada; es la puerta normal)*, `GET /v1/canales/buscar` *(el filtro)*,
 > alguien la agrega.
 
 **Cuenta e identidad** — `/v1/cuenta/codigo`, `/v1/cuenta/telefono`,
-`/v1/cuenta/recuperar`, `GET`/`PUT /v1/cuenta`, `/v1/cuenta/totp`,
-`/v1/cuenta/eliminar`, `/v1/sesiones` *(listar, cerrar una, cerrar las otras)*,
-`/v1/contactos`, `/v1/contactos/descubrir`.
+`/v1/cuenta/recuperar`, `GET`/`PUT /v1/cuenta`, `/v1/cuenta/totp` *(pedir,
+`/confirmar`, quitar)*, `/v1/cuenta/eliminar`, `/v1/sesiones` *(listar, cerrar
+la propia, cerrar una, cerrar las otras)*, `/v1/contactos`,
+`/v1/contactos/descubrir`.
+
+> **Cerrar la sesión propia es una ruta y no sólo un botón.** Hasta el módulo I
+> "salir" tiraba el token del lado del cliente y el servidor no se enteraba, así
+> que un token robado seguía sirviendo noventa días.
 
 > El teléfono se guarda como **HMAC con un pepper que sólo vive en el
 > servidor**. Permite el cruce de agendas y una copia de la base no permite
@@ -318,11 +402,41 @@ curada; es la puerta normal)*, `GET /v1/canales/buscar` *(el filtro)*,
 
 **Dispositivos** — `GET /v1/dispositivos`, `/v1/dispositivos/codigo`,
 `/v1/dispositivos/vincular`, `DELETE /v1/dispositivos/{id}`,
-`.../principal`, `/v1/dispositivos/historial`.
+`.../principal`, `/v1/dispositivos/historial`,
+`POST /v1/dispositivos/{id}/historial-enviado`.
+
+**GIFs** — `GET /v1/gifs/buscar`, `GET /v1/gifs/{id}/bytes`. La app **nunca**
+habla con el proveedor: el servidor hace de intermediario, así que la clave no
+sale de aquí y el proveedor no ve quién busca qué.
+
+> Es el **único** sitio donde este servidor sale a internet por su cuenta, y por
+> eso mismo el único donde se lo puede empujar a pedirle algo a quien no debe.
+> La URL de descarga sale de la **respuesta de un tercero**, o sea que es el
+> tercero quien elige a dónde va este servidor: por eso hay lista blanca de
+> host, **no** se siguen redirecciones —un salto ya no pasaría por la lista— y
+> hay un tope de 6 MB. Sin `WTFUCK_GIPHY_KEY` la búsqueda contesta que no está
+> configurada.
 
 > El historial **no lo tiene el servidor**: al vincular un aparato nuevo, es
 > otro aparato tuyo el que le manda los mensajes recientes, cifrados. Si no hay
 > ninguno encendido, el aparato nuevo empieza vacío y la app lo dice.
+
+---
+
+## Moderación, del lado de la persona
+
+Estas cuatro **no** son del panel: las usa cualquiera con sesión.
+
+| Ruta | Qué hace |
+|---|---|
+| `POST /v1/moderacion/denuncias` | Denunciar. Lleva la evidencia **en claro** |
+| `GET /v1/moderacion/mi-estado` | Si estoy sancionado, **por qué** y hasta cuándo |
+| `GET /v1/moderacion/mis-eventos` | Mis eventos de seguridad. Acepta `limite` |
+| `POST /v1/moderacion/advertencias/{id}/reconocer` | "La leí". `204` |
+
+`mi-estado` es la única de este bloque que un **suspendido** puede usar de
+verdad, y tiene que serlo: si no pudiera, no tendría cómo enterarse de por qué
+dejó de poder escribir. Reconocer una advertencia **no la borra**.
 
 ---
 

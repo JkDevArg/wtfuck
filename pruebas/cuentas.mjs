@@ -328,5 +328,129 @@ ck('y el servidor tambien, antes de llegar a la base', r.s === 400, String(r.s))
 r = await put('/v1/cuenta/tipo', dentro.t, { tipo: 'superadmin' });
 ck('tampoco por la via de autoservicio', r.s === 400, String(r.s));
 
+// ---------------------------------------------------------------------------
+//  8 · Lo que encontro la auditoria
+// ---------------------------------------------------------------------------
+//
+//  Cuatro defectos que una revision de seguridad saco del modulo recien
+//  escrito. Cada uno tiene su prueba porque cada uno se puede volver a colar:
+//  son de los que compilan, pasan las demas pruebas y no se notan hasta que
+//  alguien los usa.
+console.log('\n=== 8 · correcciones de la auditoria ===');
+
+// --- M-1: autenticar antes de leer el cuerpo ---------------------------
+//
+// Al reves, un anonimo distingue un 400 -"el cuerpo no tiene la forma
+// esperada"- de un 404, y con eso confirma que la ruta existe y deduce su
+// esquema. Es el mismo oraculo que `exigirStaff` evita devolviendo 404.
+let sinToken = await fetch(BASE + '/v1/panel/cuentas/tipo', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: '{ esto no es json',
+});
+ck('un cuerpo roto SIN sesion da 401, no 400', sinToken.status === 401, String(sinToken.status));
+
+sinToken = await fetch(BASE + '/v1/panel/cuentas/tipo', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username: 'x', tipo: 'normal' }),
+});
+ck('y un cuerpo bien formado tambien da 401', sinToken.status === 401, String(sinToken.status));
+
+// --- M-2: `valor` no puede fallar hacia "verificada" -------------------
+//
+// EL DEFECTO: antes caia en `?: true`. Pedir `?valor=0` para RETIRAR un
+// distintivo lo volvia a poner, y la bitacora registraba una verificacion que
+// nadie quiso hacer. En la operacion que afirma una identidad, la ausencia de
+// instruccion no puede significar "si".
+sql(`UPDATE usuario SET tipo_cuenta = 'empresa' WHERE username = '${staff.user}'`);
+sql(`INSERT INTO perfil_empresa (usuario_id, nombre_comercial, categoria) SELECT id, 'Auditada', 'otra' FROM usuario WHERE username = '${staff.user}' ON CONFLICT (usuario_id) DO NOTHING`);
+
+r = await put(`/v1/panel/cuentas/${staff.user}/verificar`, dentro.t);
+ck('sin sesion de staff no se verifica igual', r.s === 404, String(r.s));
+
+// El administrador es `staff`, pero no puede firmarse a si mismo (M-3), asi
+// que para probar M-2 hace falta un segundo administrador.
+const staff2 = await reg('cs2');
+sql(`UPDATE usuario SET staff_nivel = 80 WHERE username = '${staff2.user}'`);
+
+r = await put(`/v1/panel/cuentas/${staff.user}/verificar`, staff2.t);
+ck('sin el parametro `valor` se RECHAZA en vez de asumir que si', r.s === 400, String(r.s));
+
+r = await put(`/v1/panel/cuentas/${staff.user}/verificar?valor=0`, staff2.t);
+ck('un `valor` que no es booleano estricto tambien se rechaza', r.s === 400, String(r.s));
+
+r = await put(`/v1/panel/cuentas/${staff.user}/verificar?valor=False`, staff2.t);
+ck('ni siquiera False con mayuscula cuela', r.s === 400, String(r.s));
+
+const sigueSin = sql(
+  `SELECT count(*) FROM perfil_empresa p JOIN usuario u ON u.id = p.usuario_id WHERE u.username = '${staff.user}' AND p.verificada_en IS NULL`);
+ck('y despues de los tres intentos la ficha sigue SIN verificar', sigueSin === '1', sigueSin);
+
+r = await put(`/v1/panel/cuentas/${staff.user}/verificar?valor=true`, staff2.t);
+ck('con valor=true explicito si verifica', r.s === 200, String(r.s));
+
+r = await put(`/v1/panel/cuentas/${staff.user}/verificar?valor=false`, staff2.t);
+ck('y con valor=false explicito retira de verdad', r.s === 200, String(r.s));
+
+// --- M-3: nadie se firma a si mismo ------------------------------------
+//
+// Es lo unico que separa la verificacion de una declaracion: si el mismo
+// administrador que escribe "Banco Nacional" en su ficha puede ponerse el
+// distintivo que dice que alguien lo comprobo, el distintivo no acredita nada.
+r = await put(`/v1/panel/cuentas/${staff.user}/verificar?valor=true`, staff.t);
+ck('un administrador NO verifica su propia ficha', r.s === 403, `${r.s} ${JSON.stringify(r.b)}`);
+
+r = await put('/v1/panel/cuentas/tipo', staff.t, { username: staff.user, tipo: 'desarrollador' });
+ck('ni se asigna a si mismo un tipo desde el panel', r.s === 403, String(r.s));
+
+// Ni hacia arriba: dos administradores no se reparten modos mutuamente.
+sql(`UPDATE usuario SET staff_nivel = 100 WHERE username = '${staff2.user}'`);
+r = await put('/v1/panel/cuentas/tipo', staff.t, { username: staff2.user, tipo: 'normal' });
+ck('ni toca la cuenta de alguien de nivel igual o superior', r.s === 403, String(r.s));
+sql(`UPDATE usuario SET staff_nivel = 80 WHERE username = '${staff2.user}'`);
+
+// --- M-4: la ficha es un perfil publico --------------------------------
+//
+// La cuenta `dentro` acabo la seccion 6 como normal: hay que devolverla a
+// empresa para poder guardarle una ficha.
+await put('/v1/cuenta/tipo', dentro.t, { tipo: 'empresa' });
+//
+// EL DEFECTO: `nombreComercial` se guardaba crudo. Con un override de
+// direccion, "\u202Eacme@ocnaB lanoicaN" se dibuja como "Banco Nacional
+// @acme" — la suplantacion entera, sin tocar una sola letra.
+r = await put('/v1/cuenta/empresa', dentro.t, {
+  nombreComercial: '\u202Eacme@ocnaB lanoicaN', categoria: 'otra',
+});
+ck('una ficha con un override de direccion se acepta...', r.s === 200, String(r.s));
+ck('...pero el nombre sale LIMPIO', !/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/.test(r.b?.nombreComercial || ''),
+   JSON.stringify(r.b?.nombreComercial));
+
+r = await put('/v1/cuenta/empresa', dentro.t, {
+  nombreComercial: 'Acme\nSA\u0007', categoria: 'otra', ubicacion: 'Lima      Peru',
+});
+ck('un salto de linea no rompe la fila de la tarjeta',
+   !(r.b?.nombreComercial || '').includes('\n'), JSON.stringify(r.b?.nombreComercial));
+ck('ni los controles C0', !(r.b?.nombreComercial || '').includes('\u0007'));
+ck('y los espacios repetidos se colapsan', r.b?.ubicacion === 'Lima Peru', JSON.stringify(r.b?.ubicacion));
+
+// Un nombre que solo tiene basura invisible se queda en nada, y una empresa
+// sin nombre no se guarda: el rechazo llega igual.
+r = await put('/v1/cuenta/empresa', dentro.t, {
+  nombreComercial: '\u202E\u200B\u0007', categoria: 'otra',
+});
+ck('un nombre hecho solo de caracteres invisibles se rechaza', r.s === 400, String(r.s));
+
+// El sitio web se lee, aunque no se toque: una URL dada vuelta engana igual.
+r = await put('/v1/cuenta/empresa', dentro.t, {
+  nombreComercial: 'Acme', categoria: 'otra', sitioWeb: 'https://banco.example\u202E',
+});
+ck('un sitio con un override de direccion se rechaza', r.s === 400, String(r.s));
+
+r = await put('/v1/cuenta/empresa', dentro.t, {
+  nombreComercial: 'Acme', categoria: 'otra', sitioWeb: 'https://con espacio.example',
+});
+ck('y uno con espacios tambien', r.s === 400, String(r.s));
+
 console.log(`\n=== ${ok} pasan, ${fail} fallan ===`);
 process.exit(fail === 0 ? 0 : 1);

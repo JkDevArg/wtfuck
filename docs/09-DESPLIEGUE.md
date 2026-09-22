@@ -82,10 +82,10 @@ En Windows, Hyper-V reserva rangos al azar en cuanto Docker Desktop arranca, y
 node pruebas/correr.mjs
 ```
 
-26 de JUnit y 830 de integración en 23 suites. El runner necesita el servidor
-levantado y lo comprueba **una vez** antes de empezar: veintitrés suites
-fallando por "connection refused" son veintitrés veces el mismo error y ninguna
-pista. Para correr sólo algunas:
+138 de JUnit y 1175 de integración en 31 suites. El runner necesita el servidor
+levantado y lo comprueba **una vez** antes de empezar: treinta y una suites
+fallando por "connection refused" son treinta y una veces el mismo error y
+ninguna pista. Para correr sólo algunas:
 
 ```bash
 node pruebas/correr.mjs mensajes l1 contenido

@@ -9,10 +9,11 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-19: 1313 pruebas en verde** (1175 de integración + 133 de
-JUnit) con todo levantado; **1242** en la configuración mínima, porque dos
+**Estado al 2026-09-22: 1413 pruebas en verde** (1248 de integración + 165 de
+JUnit) con todo levantado; **1322** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
-Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M y N completos**.
+Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
+beta cerrada**.
 
 Lo que queda es **una credencial y dos cosas de alcance declarado**: la clave de
 Firebase para el push (el camino está entero y probado contra un FCM de
@@ -27,21 +28,21 @@ cliente web de mensajería.
 |---|---|---|---|
 | 1 | Objetivo general | ✅ 13 de 13 · push construido, falta la credencial | varios |
 | 2 | Sistema de usuarios | ✅ | 0, I |
-| 3 | Sistema de privacidad | ✅ 10 ajustes + `personalizado` con listas + historias con respuesta | 0, L.1, O |
+| 3 | Sistema de privacidad | ✅ **15 ajustes** en el servidor + `personalizado` con listas + solicitudes | 0, L.1, O, Q |
 | 4 | Sistema de permisos | ✅ 34 permisos, RBAC completo | A |
 | 5 | Grupos | ✅ | B |
 | 6 | Roles personalizados | ✅ | B.4 |
 | 7 | Canales | ✅ | F |
 | 8 | Chats privados | ✅ con ubicación, contacto, encuesta y evento | C, D, M |
 | 9 | Seguridad | ✅ E2EE, huella, 2FA, límites, sesiones | E, G.5, I |
-| 10 | Administración | ✅ cola, personas, canales, grupos, límites, bitácora | H |
+| 10 | Administración | ✅ cola, personas, canales, grupos, límites, bitácora + métricas de plataforma | H, Q.1 |
 | 11 | Notificaciones | ✅ cinco categorías · push construido, falta la credencial | L.6, N.1 |
 | 12 | Almacenamiento | ✅ | D.7 |
 | 13 | Moderación | ✅ | B, G |
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero | A, N.7, N.8 |
-| 17 | Calidad y pruebas | ✅ 1313 con todo levantado · 1242 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1413 con todo levantado · 1322 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -95,7 +96,8 @@ niveles `todos` / `conocidos` / `nadie`.
 > `conocidos` = gente con la que ya hay una conversación directa. Sin teléfonos
 > no hay agenda que cruzar, así que "mis contactos" se define así.
 
-Cerrado en L.1, con nueve ajustes aplicados **en el servidor**: foto, estado,
+Cerrado en L.1 y completado en el módulo Q, con **quince** ajustes aplicados
+**en el servidor**. Los nueve primeros: foto, estado,
 quién me escribe, quién me agrega a grupos, quién me llama, quién ve mi nombre,
 quién ve mi última conexión, quién me encuentra por mi usuario, confirmaciones de
 lectura y avisos de "escribiendo".
@@ -418,22 +420,22 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1313 pruebas con todo levantado**: 1175 de integración en 31 suites de Node,
-32 de JUnit en el servidor (RBAC, seguridad y el intermediario de GIFs) y 101 en
+**1413 pruebas con todo levantado**: 1248 de integración en 32 suites de Node,
+32 de JUnit en el servidor (RBAC, seguridad y el intermediario de GIFs) y 106 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el
 contenido de un sobre que no escribió esta app: miniaturas y duraciones
 incluidas).
 
 ```
-=== 31 suites · 1175 pasan, 0 fallan ===
+=== 32 suites · 1248 pasan, 0 fallan ===
 ```
 
-**1242 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
+**1322 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
 diferencia no es un fallo: dos suites necesitan más que el servidor y lo dicen
 en vez de fingir.
 
 ```
-=== 28 suites · 1057 pasan, 0 fallan · 2 omitidas (bus, bus-inyeccion) ===
+=== 29 suites · 1155 pasan, 0 fallan · 2 omitidas (bus, bus-inyeccion) ===
 ```
 
 - `push.mjs` da 30 apuntado a un FCM de mentira y **18** sin push configurado:
@@ -496,7 +498,7 @@ Sin configurar es un no-op y una sola instancia sigue siendo el caso normal.
 con confirmación de asistencia · búsqueda dentro de la conversación · marcar
 como no leído.
 
-✅ documentación de API (`docs/08-API.md`, las 123 rutas) · instrucciones de
+✅ documentación de API (`docs/08-API.md`, las 140 rutas) · instrucciones de
 despliegue (`docs/09-DESPLIEGUE.md`).
 
 ---

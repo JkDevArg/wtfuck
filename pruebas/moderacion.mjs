@@ -425,6 +425,68 @@ ck('cuenta advertencias vigentes', r.b.advertenciasVigentes >= 3, String(r.b.adv
 ck('agrupa lo abierto por motivo', typeof r.b.porMotivo === 'object', JSON.stringify(r.b.porMotivo));
 ck('cuenta los limites excedidos del dia', r.b.limitesExcedidosHoy >= 1, String(r.b.limitesExcedidosHoy));
 
+// §10: el tablero tambien tiene que decir de que tamano es la plataforma, no
+// solo que hay pendiente. Se comprueba por DELTAS y no por valores absolutos:
+// la base la comparten todas las pruebas, asi que lo unico que se puede
+// afirmar de un contador global es cuanto se movio cuando movimos algo.
+console.log('\n=== §10: las metricas de plataforma ===');
+const antes = (await get('/v1/panel/resumen', jefe.t)).b;
+
+ck('cuenta las cuentas registradas', antes.usuariosRegistrados >= 6, String(antes.usuariosRegistrados));
+ck('cuenta a quien uso la cuenta en los ultimos 7 dias', antes.usuariosActivos7d >= 6, String(antes.usuariosActivos7d));
+// Un activo es un registrado; si esto se invierte, se estan contando sesiones
+// y no personas, que es justo el error que la consulta evita con DISTINCT.
+ck('nadie puede estar activo sin estar registrado',
+   antes.usuariosActivos7d <= antes.usuariosRegistrados,
+   `${antes.usuariosActivos7d} > ${antes.usuariosRegistrados}`);
+ck('cuenta los sobres que pasaron', antes.mensajesEnviados >= 1, String(antes.mensajesEnviados));
+// Con una base de pruebas el conteo tiene que ser el de verdad: la estimacion
+// solo entra pasado el millon de filas. Si esto fallara, el panel estaria
+// dando un numero aproximado sin necesidad.
+ck('con pocas filas el conteo es exacto, no estimado',
+   antes.mensajesAproximados === false, String(antes.mensajesAproximados));
+ck('cuenta los grupos creados', antes.gruposCreados >= 1, String(antes.gruposCreados));
+ck('el almacenamiento viene en bytes y en numero de archivos',
+   typeof antes.almacenamientoBytes === 'number' && typeof antes.almacenamientoArchivos === 'number',
+   `${antes.almacenamientoBytes} / ${antes.almacenamientoArchivos}`);
+ck('no se inventa uso de CPU ni memoria: el servidor no lo mide',
+   antes.cpu === undefined && antes.memoria === undefined && antes.usoServidores === undefined,
+   JSON.stringify(antes).slice(0, 160));
+
+r = await post('/v1/conversaciones/grupo', jefe.t, { nombre: 'Grupo de conteo ' + S, usernames: [ajeno.user] });
+ck('se crea un grupo para medir el delta', r.s === 200, String(r.s));
+const GRUPO_CONTEO = r.b.id;
+r = await post('/v1/canales', jefe.t, { nombre: 'Canal de conteo ' + S, publico: false });
+ck('se crea un canal para medir el delta', r.s === 200, String(r.s) + JSON.stringify(r.b).slice(0, 120));
+r = await post('/v1/mensajes', jefe.t, { mensajeId: uuid(), conversacionId: GRUPO_CONTEO });
+ck('se manda un mensaje para medir el delta', r.s === 200, String(r.s));
+
+const despues = (await get('/v1/panel/resumen', jefe.t)).b;
+ck('un grupo nuevo mueve el contador de grupos',
+   despues.gruposCreados === antes.gruposCreados + 1,
+   `${antes.gruposCreados} -> ${despues.gruposCreados}`);
+ck('un canal nuevo mueve el contador de canales',
+   despues.canalesCreados === antes.canalesCreados + 1,
+   `${antes.canalesCreados} -> ${despues.canalesCreados}`);
+ck('un canal no se cuenta como grupo, ni al reves',
+   despues.gruposCreados - antes.gruposCreados === 1 && despues.canalesCreados - antes.canalesCreados === 1,
+   `${despues.gruposCreados - antes.gruposCreados} / ${despues.canalesCreados - antes.canalesCreados}`);
+ck('un mensaje nuevo mueve el contador de mensajes',
+   despues.mensajesEnviados === antes.mensajesEnviados + 1,
+   `${antes.mensajesEnviados} -> ${despues.mensajesEnviados}`);
+// El brief separa "suspendidos" de "registrados"; no puede salir la misma
+// cifra en las dos casillas porque se copio el campo de al lado.
+ck('los suspendidos siguen siendo su propia cuenta',
+   despues.usuariosSuspendidos < despues.usuariosRegistrados,
+   `${despues.usuariosSuspendidos} / ${despues.usuariosRegistrados}`);
+
+// Son metricas del PANEL: el mismo listón que la cola, ni mas bajo ni mas alto.
+r = await get('/v1/panel/resumen', ajeno.t);
+ck('quien no es staff no ve las metricas de plataforma', r.s === 404, String(r.s));
+r = await get('/v1/panel/resumen', modera.t);
+ck('un moderador si las ve, como ve la cola',
+   r.s === 200 && r.b.usuariosRegistrados >= 6, String(r.s) + ' ' + String(r.b?.usuariosRegistrados));
+
 r = await get(`/v1/panel/usuarios?q=${acosa.user.slice(0, 4)}`, jefe.t);
 ck('se buscan personas', r.s === 200 && (r.b.usuarios || []).length > 0, JSON.stringify(r.b).slice(0, 140));
 const ficha = (r.b.usuarios || []).find((u) => u.username === acosa.user);

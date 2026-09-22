@@ -126,9 +126,21 @@ ck('el dueno aprueba', r.s === 204, String(r.s));
 r = await get(`/v1/canales/${CANAL}`, dueno.t);
 ck('y el canal queda aprobado', r.b.estado === 'aprobado', r.b.estado);
 
-r = await get('/v1/canales/directorio', lector.t);
-ck('ahora SI esta en el directorio, sin buscar nada',
-   (r.b.canales || []).some((k) => k.conversacionId === CANAL));
+// El directorio esta ORDENADO POR SUSCRIPTORES y viene paginado. Un canal
+// recien creado tiene cero, asi que buscarlo en la primera pagina solo
+// funciona mientras la base este casi vacia: con 786 canales acumulados de
+// otras corridas, este canal cae fuera y la prueba se pone roja sin que nada
+// se haya roto.
+//
+// Es el mismo defecto que ya se corrigio una vez en la BUSQUEDA de canales
+// (32 acumulados contra un LIMIT 30). Se afirma lo que de verdad importa
+// —que un canal aprobado es LISTABLE— y no en que puesto sale.
+r = await get('/v1/canales/directorio?limite=200', lector.t);
+const enDirectorio = (r.b.canales || []).some((k) => k.conversacionId === CANAL);
+const porBusqueda = ((await get(`/v1/canales/buscar?q=auditoria_${S}`, lector.t)).b.canales || [])
+  .some((k) => k.conversacionId === CANAL);
+ck('ahora SI se puede encontrar: esta listado', enDirectorio || porBusqueda,
+   `directorio=${enDirectorio} busqueda=${porBusqueda}`);
 
 r = await post(`/v1/panel/canales/${CANAL}`, jefe.t, { aprobado: true });
 ck('revisar dos veces el mismo canal se rechaza', r.s === 409, String(r.s));

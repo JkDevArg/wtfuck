@@ -52,6 +52,9 @@ console.log('\n=== la pantalla recibe todos los ajustes, incluso vacios ===');
 const ESPERADOS = [
   'foto', 'estado', 'nombre', 'grupos', 'llamadas', 'busqueda', 'ultima_vez',
   'historias',
+  // Los dos del §3 que son niveles. `grabando` y `solicitudes` NO estan:
+  // "todos menos Fulano" no significa nada sobre un interruptor de si/no.
+  'biografia', 'videollamadas',
 ].sort();
 let r = await get('/v1/perfil/privacidad/excepciones', ana.t);
 const llegaron = (r.b.ajustes || []).map((a) => a.ajuste).sort();

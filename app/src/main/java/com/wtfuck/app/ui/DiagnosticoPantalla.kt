@@ -9,7 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +17,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -92,7 +97,13 @@ fun DiagnosticoPantalla(onAtras: () -> Unit) {
                 title = { Text("Diagnóstico", color = TextoPrimario) },
                 navigationIcon = {
                     IconButton(onClick = onAtras) {
-                        Icon(Icons.Filled.ArrowBack, "Atras", tint = TextoPrimario)
+                        // `AutoMirrored` y no `Filled` como el resto de la
+                        // app: la flecha de volver apunta al otro lado cuando
+                        // la escritura va de derecha a izquierda.
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack, "Atras",
+                            tint = TextoPrimario,
+                        )
                     }
                 },
                 actions = {
@@ -136,7 +147,14 @@ fun DiagnosticoPantalla(onAtras: () -> Unit) {
             }
 
             Spacer(Modifier.height(18.dp))
-            Text("ACCIONES", color = TextoTerciario, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            // A la vista esto separa la tabla de los botones porque esta en
+            // versalitas y despegado; como encabezado de verdad, TalkBack
+            // permite saltar hasta aqui en vez de recorrer las nueve filas.
+            Text(
+                "ACCIONES", color = TextoTerciario, fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.semantics { heading() },
+            )
             Spacer(Modifier.height(8.dp))
 
             OutlinedButton(
@@ -184,17 +202,32 @@ fun DiagnosticoPantalla(onAtras: () -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
                     .background(Cian)
-                    .padding(horizontal = 16.dp, vertical = 9.dp),
+                    .padding(horizontal = 16.dp, vertical = 9.dp)
+                    // "Copiado" y "Sincronizado" son el UNICO acuse de que el
+                    // toque hizo algo, y duran 1,5 s. Sin region viva, quien
+                    // no ve la pantalla toca el boton y no se entera de nada.
+                    .semantics { liveRegion = LiveRegionMode.Polite },
                 fontSize = 13.sp,
             )
         }
     }
 }
 
+/**
+ * Una fila clave-valor de la tabla.
+ *
+ * A la vista la clave y el valor estan en la misma linea y se leen juntos; sin
+ * fusionar eran dos paradas, y la segunda —"0 pendientes"— no dice de que. Peor
+ * todavia con los valores cortos: "8" sin su clave delante no es un dato, es
+ * ruido. Se fusiona y se dice entera.
+ */
 @Composable
 private fun FilaDato(clave: String, valor: String) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
+        Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) { contentDescription = "$clave: $valor" }
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(clave, color = TextoSecundario, fontSize = 13.sp, modifier = Modifier.weight(1f))

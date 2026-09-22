@@ -188,7 +188,11 @@ object Cuentas {
     fun guardarFicha(yo: Auth, req: FichaEmpresaReq): FichaEmpresa {
         exigirBeta(yo)
 
-        val nombre = req.nombreComercial.trim()
+        // Se limpia ANTES de medir y de guardar. La ficha es lo unico de esta
+        // plataforma que una cuenta escribe y otra gente lee como si fuera un
+        // dato de la plataforma, asi que es el sitio donde un nombre dado
+        // vuelta se convierte en suplantacion. Ver `etiquetaLimpia`.
+        val nombre = etiquetaLimpia(req.nombreComercial)
         if (nombre.isBlank()) throw ErrorNegocio(400, "La empresa necesita un nombre.")
         if (nombre.length > TopesEmpresa.NOMBRE) {
             throw ErrorNegocio(400, "El nombre es demasiado largo.")
@@ -237,10 +241,20 @@ object Cuentas {
                 st.setObject(1, yo.usuarioId)
                 st.setString(2, nombre)
                 st.setString(3, req.categoria)
-                st.setString(4, req.descripcion.trim().take(TopesEmpresa.DESCRIPCION).ifBlank { null })
+                // La descripcion conserva sus saltos de linea -es un parrafo, no
+                // una etiqueta- pero pierde igual los controles de direccion.
+                st.setString(
+                    4,
+                    req.descripcion
+                        .filterNot { it in CONTROLES_DE_DIRECCION }
+                        .trim().take(TopesEmpresa.DESCRIPCION).ifBlank { null },
+                )
                 st.setString(5, sitio.take(TopesEmpresa.SITIO).ifBlank { null })
                 st.setString(6, req.tamano.ifBlank { null })
-                st.setString(7, req.ubicacion.trim().take(TopesEmpresa.UBICACION).ifBlank { null })
+                st.setString(
+                    7,
+                    etiquetaLimpia(req.ubicacion).take(TopesEmpresa.UBICACION).ifBlank { null },
+                )
                 if (anio == 0) st.setNull(8, java.sql.Types.SMALLINT) else st.setInt(8, anio)
                 st.executeUpdate()
             }
@@ -253,9 +267,18 @@ object Cuentas {
         }
     }
 
-    /** Un sitio web es https. Ni `javascript:`, ni `data:`, ni http a secas. */
+    /**
+     * Un sitio web es https. Ni `javascript:`, ni `data:`, ni http a secas.
+     *
+     * Tambien se rechazan los espacios y los controles de direccion: aunque
+     * hoy el sitio se dibuja como texto y no como enlace tocable, un
+     * `https://banco.example@evil.example` o una URL dada vuelta enganan al
+     * leerla, que es justo lo que se hace con ella.
+     */
     private fun sitioValido(url: String): Boolean =
-        url.startsWith("https://", ignoreCase = true) && url.length > "https://".length
+        url.startsWith("https://", ignoreCase = true) &&
+            url.length > "https://".length &&
+            url.none { it.isWhitespace() || it in CONTROLES_DE_DIRECCION }
 
     private fun anioActual(): Int =
         java.time.LocalDate.now(java.time.ZoneOffset.UTC).year
@@ -277,6 +300,19 @@ object Cuentas {
         if (req.tipo !in TipoCuenta.TODOS) throw ErrorNegocio(400, "Ese tipo de cuenta no existe.")
 
         val objetivo = Moderacion.idDeUsername(c, req.username)
+
+        // Ni a uno mismo, ni hacia arriba. Es la misma regla que para
+        // sancionar (ver `Moderacion.exigirPorEncima`) y por el mismo motivo:
+        // sin ella, la frase "lo otorga staff, nunca uno mismo" se cumple en
+        // la ruta de autoservicio y se salta por la puerta de al lado, y dos
+        // administradores pueden repartirse modos mutuamente sin que el
+        // registro sirva para revisar nada.
+        if (objetivo == yo.usuarioId) {
+            throw ErrorNegocio(403, "El tipo de cuenta propio no se asigna desde el panel.")
+        }
+        if (Moderacion.nivel(c, objetivo) >= Moderacion.nivel(c, yo.usuarioId)) {
+            throw ErrorNegocio(403, "No puedes cambiar la cuenta de alguien de tu nivel o superior.")
+        }
 
         c.prepareStatement("UPDATE usuario SET tipo_cuenta = ? WHERE id = ?").use { st ->
             st.setString(1, req.tipo); st.setObject(2, objetivo)
@@ -303,11 +339,32 @@ object Cuentas {
      * bitacora con quien lo firmo —sin eso, un distintivo puesto por error no
      * tendria a quien preguntarle—.
      */
-    fun verificarEmpresa(yo: Auth, username: String, verificada: Boolean): Boolean = Db.tx { c ->
+    fun verificarEmpresa(yo: Auth, username: String, verificada: Boolean?): Boolean = Db.tx { c ->
+        // Staff PRIMERO, y despues la validacion del parametro. Al reves, quien
+        // no es staff distinguiria "falta valor" (400) de "no existe" (404), y
+        // esa diferencia ya confirma que la ruta existe.
         Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+
+        // Sin `valor`, o con algo que no es un booleano estricto, se RECHAZA en
+        // vez de asumir. Antes caia en un `?: true`: pedir `?valor=0` para
+        // retirar un distintivo lo volvia a poner, y la bitacora registraba una
+        // verificacion que nadie quiso hacer. En la operacion que afirma una
+        // identidad, la ausencia de instruccion no puede significar "si".
+        val valor = verificada
+            ?: throw ErrorNegocio(400, "Falta valor=true o valor=false.")
+
         val objetivo = Moderacion.idDeUsername(c, username)
 
-        val filas = if (verificada) {
+        // **La verificacion la firma otra persona.** Es lo unico que la
+        // distingue de una declaracion: si el mismo administrador que escribe
+        // "Banco Nacional" en su ficha puede ponerse el distintivo que dice
+        // que alguien lo comprobo, el distintivo no acredita nada y la
+        // plataforma estaria prestando su credibilidad a una autoafirmacion.
+        if (objetivo == yo.usuarioId) {
+            throw ErrorNegocio(403, "La verificacion de tu propia ficha la firma otra persona.")
+        }
+
+        val filas = if (valor) {
             c.prepareStatement(
                 "UPDATE perfil_empresa SET verificada_en = now(), verificada_por = ? WHERE usuario_id = ?"
             ).use { st ->
@@ -325,8 +382,8 @@ object Cuentas {
         Autz.auditar(
             c, yo.usuarioId, "empresa.verificar", "usuario", objetivo,
             objetivoId = objetivo,
-            detalle = """{"verificada":$verificada}""",
+            detalle = """{"verificada":$valor}""",
         )
-        verificada
+        valor
     }
 }

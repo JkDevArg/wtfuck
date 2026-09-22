@@ -727,6 +727,20 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun restaurarUsuario(username: String): UsuarioPanel =
         pedir("$RUTA_PANEL/usuarios/$username/restaurar", "POST", null, true)
 
+    // --- modulo P: tipos de cuenta desde el panel ---------------------
+    //
+    // Cuelgan de /v1/panel y no de /v1/cuenta porque son de staff actuando
+    // SOBRE otra persona, que es otra cosa que administrar la propia.
+
+    suspend fun asignarTipoCuenta(username: String, tipo: String): Unit =
+        pedir(
+            "$RUTA_PANEL/cuentas/tipo", "PUT",
+            jsonApp.encodeToString(AsignarTipoReq(username, tipo)), true,
+        )
+
+    suspend fun verificarEmpresa(username: String, valor: Boolean): Unit =
+        pedir("$RUTA_PANEL/cuentas/$username/verificar?valor=$valor", "PUT", null, true)
+
     // --- modulo E: claves publicas ------------------------------------
 
     suspend fun publicarClaves(req: PublicarClavesReq): Unit =

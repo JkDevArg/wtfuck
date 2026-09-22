@@ -89,7 +89,20 @@ data class UsuarioPublico(
      */
     val avatarVersion: Long = 0,
     val portadaVersion: Long = 0,
+    /**
+     * La biografia, o vacia si su duena no deja verla.
+     *
+     * Vacia y no null, como [nombreMostrado]: la app ya sabe dibujar una
+     * biografia vacia —la de quien no puso ninguna— y no hace falta un caso
+     * nuevo. Distinguir "no tiene" de "no te deja verla" seria, ademas, un
+     * dato deducible sobre sus ajustes.
+     */
+    val biografia: String = "",
 )
+
+/** Aceptar o rechazar una solicitud de mensaje. */
+@Serializable
+data class DecidirSolicitudReq(val aceptar: Boolean)
 
 /** Lo que el usuario puede editar de si mismo. */
 @Serializable
@@ -188,6 +201,71 @@ data class Privacidad(
      * expectativa de que contestes-, la otra que estas contestando ahora.
      */
     val escribiendo: Boolean = true,
+
+    /**
+     * Quien ve mi biografia. §3 del brief.
+     *
+     * Iba pegada a [estado] y son dos cosas. El estado es una frase que cambia
+     * cada semana ("de viaje"); la biografia dice quien sos y suele llevar
+     * donde trabajas. Quien la escribio para sus contactos no la escribio para
+     * cualquiera que le busque el usuario.
+     */
+    val biografia: String = TODOS,
+
+    /**
+     * Quien puede hacerme videollamadas. §3 del brief.
+     *
+     * Se aplica **ademas** de [llamadas], no en su lugar: si el audio ya esta
+     * cerrado, el video tambien. Separarlos tiene sentido en la otra
+     * direccion, que es la que la gente quiere: aceptar la voz de alguien no
+     * es aceptar que te vea la cara ni lo que tenes detras, y esa diferencia
+     * importa justo con quien menos confianza hay.
+     *
+     * Nace en `conocidos` como [llamadas], y por lo mismo: quien no toca nunca
+     * los ajustes es justo quien mas necesita que el defecto sea el seguro.
+     */
+    val videollamadas: String = CONOCIDOS,
+
+    /**
+     * Si aviso cuando estoy grabando una nota de voz. §3 del brief.
+     *
+     * Hoy grabar emitia el mismo aviso que teclear, y son dos cosas: "esta
+     * escribiendo" dice que hay algo en camino; "esta grabando" dice ademas
+     * que tiene el microfono abierto ahora mismo. Hay gente a la que no le
+     * importa lo primero y no quiere anunciar lo segundo.
+     *
+     * Booleano y no nivel, igual que [escribiendo]: es un aviso que se manda o
+     * no; un "solo a mis contactos" no significa nada cuando el aviso solo
+     * viaja dentro de una conversacion que ya existe.
+     */
+    val grabando: Boolean = true,
+
+    /**
+     * Si acepto solicitudes de quien no puede escribirme. §3 del brief.
+     *
+     * Con [escribe] en `conocidos`, un desconocido recibe un 403 y se acabo.
+     * Eso protege, y tambien deja fuera a quien tenia algo legitimo que decir.
+     *
+     * Con esto encendido puede mandar **una solicitud**: la conversacion nace
+     * marcada, vive aparte de la bandeja normal, y quien la recibe decide.
+     * Aceptar la vuelve un chat cualquiera; rechazar la borra.
+     *
+     * No tiene efecto si [escribe] es `todos`: ahi no hay a quien dejar fuera.
+     *
+     * ## Por que nace APAGADO, al contrario que el resto
+     *
+     * Porque encenderlo por defecto **cambiaria el significado de un ajuste que
+     * ya existia**. Quien puso [escribe] en `conocidos` lo puso para que no le
+     * escriban desconocidos, y con esto encendido de fabrica le empezarian a
+     * entrar solicitudes sin haber tocado nada. Un ajuste de privacidad no se
+     * relaja en una actualizacion.
+     *
+     * Se vio al correr las pruebas: siete afirmaciones que llevaban meses en
+     * verde —"un desconocido no puede abrir conversacion con ella"— se
+     * pusieron en rojo. No eran pruebas viejas: eran el contrato anterior
+     * avisando de que lo estaba rompiendo.
+     */
+    val solicitudes: Boolean = false,
 ) {
     companion object {
         const val TODOS = "todos"
@@ -224,6 +302,10 @@ data class Privacidad(
             // Las historias son de los ajustes donde la lista se usa mas: lo
             // habitual no es "todos" ni "nadie" sino "todos menos tres".
             "historias",
+            // Los dos nuevos del §3 que son niveles. `grabando` y
+            // `solicitudes` NO estan: "todos menos Fulano" no significa nada
+            // sobre un interruptor de si/no.
+            "biografia", "videollamadas",
         )
 
         /** "todos menos la lista". */
@@ -264,6 +346,14 @@ data class ConversacionResumen(
     val silenciadoHasta: Long? = null,
     val archivado: Boolean = false,
     val fijado: Boolean = false,
+    /**
+     * Si esta conversacion todavia es una solicitud sin decidir.
+     *
+     * Quien la recibio la ve aparte de la bandeja normal y decide. Quien la
+     * mando la ve marcada: es lo honesto, porque hasta que la acepten sus
+     * mensajes no llegan como los de un chat cualquiera.
+     */
+    val esSolicitud: Boolean = false,
 )
 
 @Serializable
@@ -352,7 +442,18 @@ sealed interface Subida {
      */
     @Serializable
     @SerialName("escribiendo")
-    data class Escribiendo(val conversacionId: String) : Subida
+    data class Escribiendo(
+        val conversacionId: String,
+        /**
+         * Si lo que esta pasando es grabar una nota de voz, no teclear.
+         *
+         * Un campo y no un tipo nuevo porque es la misma senal con dos
+         * variantes: efimera, sin fila en la base, con el mismo limitador y el
+         * mismo reenvio. Lo unico que cambia es que la decide otro ajuste
+         * —ver `Privacidad.grabando`— y que la pantalla escribe otra frase.
+         */
+        val grabando: Boolean = false,
+    ) : Subida
 
     @Serializable
     @SerialName("ping")
@@ -455,6 +556,8 @@ sealed interface Bajada {
     data class Escribiendo(
         val conversacionId: String,
         val username: String,
+        /** Si esta grabando una nota de voz en vez de teclear. */
+        val grabando: Boolean = false,
     ) : Bajada
 
     /** El servidor entrego el sobre al destinatario. Palomita doble. */

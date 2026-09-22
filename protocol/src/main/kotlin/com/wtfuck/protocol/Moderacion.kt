@@ -247,6 +247,56 @@ data class ResumenPanel(
 
     val porMotivo: Map<String, Int> = emptyMap(),
 
+    // ------------------------------------------------------------
+    //  Metricas de plataforma (§10 del brief)
+    // ------------------------------------------------------------
+    //
+    // Las de arriba responden "¿que tengo que atender hoy?"; estas responden
+    // "¿de que tamano es esto?". Van en el mismo resumen y no en una ruta
+    // aparte porque se miran en la misma pantalla y de la misma consulta: dos
+    // viajes para un tablero que se refresca a mano es latencia sin motivo.
+    //
+    // Lo que NO esta y no va a estar: uso de CPU, memoria y disco de los
+    // servidores. El brief lo pide, pero este servidor no tiene telemetria de
+    // maquina, y rellenar esos tres numeros con algo plausible convertiria el
+    // panel en un sitio donde no se puede confiar en ninguno de los otros.
+    // Un hueco que se explica vale mas que un dato que se inventa.
+
+    /** Cuentas creadas, incluidas las desactivadas: es el total historico. */
+    val usuariosRegistrados: Int = 0,
+
+    /**
+     * Personas con al menos una sesion usada en los ultimos 7 dias.
+     *
+     * Personas, no sesiones: quien tiene el telefono y el portatil abiertos es
+     * un usuario activo, no dos.
+     */
+    val usuariosActivos7d: Int = 0,
+
+    /**
+     * Filas de `mensaje_meta`, que **no** es "mensajes leidos".
+     *
+     * El servidor no guarda el contenido -son bytes opacos que ni el remitente
+     * le confia-, asi que esto cuenta sobres, no cartas. Se dice aqui porque
+     * "mensajes enviados" en un panel de administracion suena a que alguien los
+     * puede abrir, y no hay ninguna version de este panel que pueda.
+     */
+    val mensajesEnviados: Long = 0,
+
+    /**
+     * Si [mensajesEnviados] viene de la estimacion del planificador y no de un
+     * conteo real. La interfaz tiene que decirlo: un numero aproximado que se
+     * presenta como exacto es peor que no tenerlo.
+     */
+    val mensajesAproximados: Boolean = false,
+
+    val gruposCreados: Int = 0,
+    val canalesCreados: Int = 0,
+
+    /** Bytes del archivo **cifrado**, que es lo que de verdad ocupa el almacen. */
+    val almacenamientoBytes: Long = 0,
+    val almacenamientoArchivos: Int = 0,
+
     /** Nivel de plataforma de quien pregunta. La interfaz decide con esto. */
     val miNivel: Int = 0,
 )

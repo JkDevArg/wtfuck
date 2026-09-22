@@ -9,7 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeveloperMode
@@ -21,8 +21,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -71,7 +78,13 @@ fun TipoCuentaPantalla(onAtras: () -> Unit) {
                 title = { Text("Tipo de cuenta", color = TextoPrimario) },
                 navigationIcon = {
                     IconButton(onClick = onAtras) {
-                        Icon(Icons.Filled.ArrowBack, "Atras", tint = TextoPrimario)
+                        // `AutoMirrored` y no `Filled` como el resto de la
+                        // app: la flecha de volver apunta al otro lado cuando
+                        // la escritura va de derecha a izquierda.
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack, "Atras",
+                            tint = TextoPrimario,
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BgSurface),
@@ -80,7 +93,16 @@ fun TipoCuentaPantalla(onAtras: () -> Unit) {
     ) { pad ->
         val c = cap
         if (c == null) {
-            Box(Modifier.fillMaxSize().padding(pad), Alignment.Center) {
+            Box(
+                // A la vista la espera es un circulo que gira; sin vista la
+                // pantalla esta sencillamente vacia y no hay forma de saber si
+                // esta cargando o si no hay nada que mostrar.
+                Modifier
+                    .fillMaxSize()
+                    .padding(pad)
+                    .semantics { contentDescription = "Cargando el tipo de cuenta" },
+                Alignment.Center,
+            ) {
                 CircularProgressIndicator(color = Cian)
             }
             return@Scaffold
@@ -102,12 +124,24 @@ fun TipoCuentaPantalla(onAtras: () -> Unit) {
             )
             Spacer(Modifier.height(16.dp))
 
+            // A la vista, una opcion bloqueada se distingue porque esta
+            // atenuada; eso no llega a un lector de pantalla y, aunque
+            // llegara, "desactivado" no dice POR QUE. El motivo se calcula
+            // aqui una sola vez porque es el mismo para las dos elegibles.
+            val razonComun = when {
+                c.tipo == TipoCuenta.DESARROLLADOR ->
+                    "una cuenta de desarrollador no se cambia desde aquí"
+                guardando -> "espera a que termine el cambio anterior"
+                else -> null
+            }
+
             OpcionTipo(
                 icono = Icons.Filled.Person,
                 titulo = "Personal",
                 detalle = "Una cuenta como cualquier otra",
                 elegido = c.tipo == TipoCuenta.NORMAL,
                 habilitado = !guardando && c.tipo != TipoCuenta.DESARROLLADOR,
+                razonBloqueo = razonComun,
                 onElegir = {
                     ambito.launch {
                         guardando = true
@@ -125,6 +159,7 @@ fun TipoCuentaPantalla(onAtras: () -> Unit) {
                 detalle = "Añade una ficha pública: nombre comercial, rubro y sitio",
                 elegido = c.tipo == TipoCuenta.EMPRESA,
                 habilitado = !guardando && c.tipo != TipoCuenta.DESARROLLADOR,
+                razonBloqueo = razonComun,
                 onElegir = {
                     ambito.launch {
                         guardando = true
@@ -144,6 +179,10 @@ fun TipoCuentaPantalla(onAtras: () -> Unit) {
                 detalle = "Lo asigna el equipo. Añade herramientas de diagnóstico",
                 elegido = c.tipo == TipoCuenta.DESARROLLADOR,
                 habilitado = false,
+                // El mismo motivo que a la vista explica el gris: existe, y no
+                // se pide aqui. Sin esto la opcion suena igual que las otras
+                // dos y parece que el toque simplemente no funciona.
+                razonBloqueo = "lo asigna el equipo, no se pide desde aquí",
                 onElegir = {},
             )
 
@@ -189,14 +228,32 @@ fun TipoCuentaPantalla(onAtras: () -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
                     .background(Cian)
-                    .padding(horizontal = 16.dp, vertical = 9.dp),
+                    .padding(horizontal = 16.dp, vertical = 9.dp)
+                    // Aparece y se va sola en 1,6 s: nadie va a llegar a
+                    // enfocarla a tiempo. Como region viva se anuncia al
+                    // salir, que es la unica forma de que el aviso llegue.
+                    .semantics { liveRegion = LiveRegionMode.Polite },
                 fontSize = 13.sp,
             )
         }
     }
 }
 
-/** Una opcion de tipo, con su marca cuando esta elegida. */
+/**
+ * Una opcion de tipo, con su marca cuando esta elegida.
+ *
+ * ## Por que la semantica no se deduce sola del `clickable`
+ *
+ * A la vista estas tres filas son un grupo de exclusion: el borde cian y el
+ * check dicen cual esta puesta, y el gris dice cual no se puede tocar. Las dos
+ * cosas se pierden juntas, y lo que queda de un `clickable` a secas es una fila
+ * que se lee como tres textos sueltos y que, cuando esta bloqueada, ni siquiera
+ * dice que lo esta.
+ *
+ * Por eso se declara a mano: rol de boton de opcion —una y solo una—, `selected`
+ * para que "elegida" sea un estado y no un adorno, y el motivo del bloqueo en
+ * palabras. "Desactivado" a secas obliga a adivinar si es un fallo de la app.
+ */
 @Composable
 private fun OpcionTipo(
     icono: ImageVector,
@@ -204,6 +261,7 @@ private fun OpcionTipo(
     detalle: String,
     elegido: Boolean,
     habilitado: Boolean,
+    razonBloqueo: String?,
     onElegir: () -> Unit,
 ) {
     Row(
@@ -219,7 +277,22 @@ private fun OpcionTipo(
             )
             .clickable(enabled = habilitado && !elegido, onClick = onElegir)
             .padding(14.dp)
-            .semantics { contentDescription = "$titulo. $detalle" },
+            // Se fusiona porque a la vista es UN bloque: titulo y detalle no
+            // son dos paradas, son una frase.
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$titulo. $detalle"
+                role = Role.RadioButton
+                selected = elegido
+                // El estado va en `stateDescription` y no pegado al texto: asi
+                // TalkBack lo vuelve a anunciar cuando CAMBIA, que es justo el
+                // momento en el que hace falta saberlo.
+                stateDescription = when {
+                    elegido -> "elegida"
+                    razonBloqueo != null -> "no seleccionable: $razonBloqueo"
+                    else -> "sin elegir"
+                }
+                if (!habilitado) disabled()
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -246,7 +319,10 @@ private fun OpcionTipo(
             Text(detalle, color = TextoTerciario, fontSize = 12.5.sp)
         }
         if (elegido) {
-            Icon(Icons.Filled.Check, "Elegido", tint = Cian, modifier = Modifier.size(20.dp))
+            // Sin descripcion a proposito: al fusionar la fila, "Elegido" se
+            // sumaria a la frase y se diria dos veces, porque el estado ya va
+            // en el `stateDescription` de la fila.
+            Icon(Icons.Filled.Check, null, tint = Cian, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -403,7 +479,14 @@ private fun FichaEmpresaForm(
         color = TextoTerciario,
         fontSize = 11.sp,
         textAlign = TextAlign.End,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // Leido tal cual, "137 / 300" es un acertijo. El contador solo
+            // sirve para saber cuanto queda, asi que eso es lo que se dice.
+            .semantics {
+                contentDescription =
+                    "${descripcion.length} de ${TopesEmpresa.DESCRIPCION} caracteres usados"
+            },
     )
 
     Spacer(Modifier.height(14.dp))
@@ -422,7 +505,16 @@ private fun FichaEmpresaForm(
             )
         },
         enabled = nombre.isNotBlank() && !guardando,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // El boton apagado solo dice "desactivado", y a la vista tampoco
+            // dice mas: se queda gris. Quien no ve el formulario entero no
+            // tiene como atar ese gris al campo que falta, asi que se nombra.
+            .semantics(mergeDescendants = true) {
+                if (nombre.isBlank()) {
+                    stateDescription = "no disponible: falta el nombre comercial"
+                }
+            },
         colors = ButtonDefaults.buttonColors(containerColor = Cian, contentColor = TextoSobreAcento),
     ) {
         Text(if (guardando) "Guardando…" else "Guardar ficha")

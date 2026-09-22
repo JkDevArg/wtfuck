@@ -24,9 +24,13 @@ Convención: `[x]` hecho y verificado · `[ ]` pendiente · `[~]` parcial
 | J · Multi-dispositivo | 5/5 | ✅ servidor + interfaz |
 | K · Llamadas | 7/8 | ✅ audio, vídeo, TURN, ventana flotante, servicio en primer plano · falta K.5 (SFU) |
 | L · Interfaz completa | 8/8 | ✅ privacidad, presencia, notificaciones, consola web |
+| M · Contenido con estructura | 6/6 | ✅ ubicación, contacto, encuesta, evento · buscar en el chat |
+| N · Lo que faltaba del brief | 13/13 | ✅ push construido, tema claro, tablet, bus firmado, barridos §16 |
+| O · Historias | 10/10 | ✅ texto, foto y vídeo · responder · quién la vio · 24 h |
+| P · Tipos de cuenta | 6/6 | ✅ personal, desarrollador y empresa con ficha · **en beta cerrada** |
 
-**812 pruebas en verde**: 786 de integración en 21 suites, 22 de JUnit en el
-servidor y 4 en la app. Todos los módulos verificados de punta a punta en dos
+**1313 pruebas en verde**: 1175 de integración en 31 suites, 32 de JUnit en el
+servidor y 106 en la app. Todos los módulos verificados de punta a punta en dos
 emuladores; lo único abierto del plan es `K.5` (SFU), declarado fuera de alcance.
 
 > **Estado del cifrado:** desde el módulo E el cuerpo de los mensajes es
@@ -3388,11 +3392,12 @@ saberlo fue revertir el arreglo dos minutos y volver a correrla.
 | Cliente web de **mensajería** | Exige libsignal en el navegador (WASM, claves en IndexedDB) y la pregunta seria de si un navegador es sitio para claves de largo plazo. En web está la consola de **administración**, que es otra cosa |
 | SFU para llamadas de más de 4 | La malla tiene techo declarado: con N participantes son N-1 conexiones por aparato |
 | Bots e integraciones | No está planificado. Requiere su propio modelo de seguridad |
-| Historias/estados | Mencionado de pasada en el brief; no incluido |
 
 Lo que **salió** de esta tabla en el módulo N: el tema claro (se rederivó la
 escala y está medido), la interfaz de tablet y escritorio (dos paneles), y el
-`Hub` fuera del proceso (segunda instancia verificada).
+`Hub` fuera del proceso (segunda instancia verificada). Y en el módulo O, las
+**historias**: texto, foto y vídeo, con respuesta, quién la vio y caducidad a
+las 24 horas.
 
 ---
 
@@ -3402,3 +3407,123 @@ escala y está medido), la interfaz de tablet y escritorio (dos paneles), y el
 2. Servidor con autorización y pruebas.
 3. Recién después, la interfaz.
 4. No se abre un módulo con el anterior en rojo.
+
+
+---
+
+## Módulo Q · Los cuatro ajustes finos y el panel completo ✅
+
+*Lo que faltaba del §3 y del §10 del brief, revisado contra el código.*
+
+- [x] Q.1 Dashboard de plataforma (§10)
+- [x] Q.2 `biografia` — la bio no es el estado
+- [x] Q.3 `videollamadas` — el vídeo no es el audio
+- [x] Q.4 `grabando` — grabar no es escribir
+- [x] Q.5 `solicitudes` — la alternativa al portazo
+- [x] Q.6 Correcciones de la auditoría del módulo P
+
+### Q.1 · El dashboard tenía solo media cara
+
+El panel medía **moderación** —denuncias, suspendidos, advertencias— y nada de
+**plataforma**. Ahora trae usuarios registrados y activos en 7 días, mensajes,
+grupos, canales y almacenamiento.
+
+Dos decisiones que merecen decirse:
+
+**`mensaje_meta` se aproxima por encima del millón de filas**, leyendo
+`pg_class.reltuples`, y la tarjeta lo dice: "Mensajes (aprox.)". Un `count(*)`
+sobre esa tabla no tiene atajo por la visibilidad MVCC y bloquearía el panel. Lo
+que **no** se aproxima es `sum(bytes)` de los adjuntos: `reltuples` estima filas,
+no lo que suman, así que aproximarlo habría sido inventar el número.
+
+**"Uso de servidores" no está, y está dicho en la pantalla.** El brief lo pide,
+pero este servidor no tiene telemetría de CPU ni memoria. Un hueco explicado vale
+más que un número inventado en un panel de administración.
+
+La tarjeta de mensajes lleva el pie **"metadatos, sin contenido"**: el servidor no
+guarda mensajes, y un panel que dice "5.173 mensajes" sin esa aclaración hace
+pensar lo contrario.
+
+### Q.2–Q.5 · Cada ajuste separa dos cosas que estaban pegadas
+
+| Ajuste | Qué separa | Dónde se aplica |
+|---|---|---|
+| `biografia` | la bio del estado | `Repo.leerPublico` |
+| `videollamadas` | el vídeo del audio | `Llamadas.exigirPuedeLlamar` |
+| `grabando` | grabar de escribir | `Repo.destinosDeEscritura` |
+| `solicitudes` | el portazo de la puerta entornada | `Repo.crearDirecta` |
+
+**La biografía no viajaba en el perfil público**, así que el ajuste no habría
+tenido dónde aplicarse: habría sido un interruptor sin nada detrás. Ahora viaja,
+filtrada, y vacía cuando no se puede ver —no null: distinguir "no tiene" de "no
+te deja verla" sería un dato deducible sobre sus ajustes—.
+
+**El vídeo se comprueba ADEMÁS del audio, nunca en su lugar.** Si el audio está
+cerrado, el vídeo también: no hay puerta trasera. Y el mensaje de rechazo dice
+**cuál de los dos** lo impidió, porque un "no puedes llamar" genérico hace que
+alguien reintente en vídeo para nada.
+
+#### Un defecto del §16 que apareció de paso
+
+`priv_escribiendo` **lo miraba solo el cliente**: si no quería avisar, no mandaba
+el mensaje. Eso deja la privacidad de una persona en manos del programa que tenga
+instalado, y el §16 lo prohíbe con todas las letras. Un cliente modificado —o
+simplemente viejo— seguía anunciando.
+
+Ahora lo comprueba `destinosDeEscritura`: si está apagado devuelve la lista vacía
+y el servidor no reenvía nada. El cliente sigue sin mandarlo —correcto por ancho
+de banda— pero ya no es lo único que lo impide.
+
+#### Las solicitudes, y el defecto que las pruebas cazaron
+
+Una solicitud **es** una conversación en otro estado, no una tabla aparte: con
+tabla habría que copiar la conversación y sus mensajes al aceptar, y mover
+mensajes entre tablas se rompe una vez y se nota un mes después. Es una columna
+`conversacion.solicitud_de` con índice **parcial**, porque casi todas las filas
+son NULL.
+
+Tres reglas: **solo quien la recibió decide** (quien la mandó no se la acepta a
+sí mismo —sería saltarse el ajuste con una petición más—), **rechazar borra la
+conversación** —una lista de rechazados no le sirve a nadie y el otro lado podría
+sondearla— y **rechazar no bloquea**, que son dos decisiones distintas.
+
+> **Nace APAGADO, y eso lo decidieron las pruebas.** Lo puse encendido por
+> defecto, y siete afirmaciones que llevaban meses en verde —"un desconocido no
+> puede abrir conversación con ella"— se pusieron en rojo. No eran pruebas
+> viejas: era el contrato anterior avisando de que lo estaba rompiendo. Quien
+> puso `escribe: conocidos` lo puso para que no le escriban desconocidos, y un
+> ajuste de privacidad **no se relaja en una actualización**.
+
+### Q.6 · Lo que encontró la auditoría del módulo P
+
+Cuatro hallazgos reales, los cuatro corregidos y con prueba:
+
+1. **`call.receive()` antes de `autenticar()`** en la ruta de staff. Un anónimo
+   distinguía un 400 "cuerpo mal formado" de un 404 y con eso confirmaba que la
+   ruta existe. **El control de acceso va antes que la validación de entrada.**
+2. **`?valor=` fallaba hacia "verificada".** Pedír `?valor=0` para **retirar** un
+   distintivo lo volvía a poner, y la bitácora registraba una verificación que
+   nadie quiso hacer. En la operación que afirma una identidad, la ausencia de
+   instrucción no puede significar "sí".
+3. **Staff podía verificarse y otorgarse tipos a sí mismo.** Es lo único que
+   separa la verificación de una declaración.
+4. **La ficha de empresa no aplicaba ninguna defensa de suplantación.** Con un
+   override de dirección, `"\u202Eacme@ocnaB lanoicaN"` se dibuja como "Banco
+   Nacional @acme": la suplantación entera sin tocar una letra. `etiquetaLimpia`
+   vive ahora en el contrato y limpia **en el servidor**, porque un dato que la
+   plataforma presenta a terceros se limpia donde se escribe, no en cada cliente.
+
+Y al arreglar el segundo reintroduje el primero un escalón más arriba: validar
+`valor` en la ruta hacía que el 400 llegara **antes** del 404 de staff. Lo vio la
+prueba que había escrito para el caso anterior.
+
+### Dos pruebas que dependían del corpus
+
+`canales` buscaba su canal en la primera página de un directorio **ordenado por
+suscriptores**: con 786 canales acumulados, un canal nuevo con cero suscriptores
+cae fuera. `h3` buscaba en el panel por la palabra "cerrar", que comparten todos
+los grupos de las corridas anteriores.
+
+Ninguna de las dos decía nada del producto: decían cuántas veces se había corrido
+la suite. Es el mismo defecto que ya se corrigió una vez en la búsqueda de
+canales, reaparecido en otro sitio.

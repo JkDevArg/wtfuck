@@ -122,7 +122,11 @@ fun PanelPantalla(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atras", tint = TextoPrimario)
                     }
                 },
-                title = { Text("Moderacion", color = TextoPrimario) },
+                // "Panel" y no "Moderacion": con las cinco acciones de la
+                // derecha, el titulo largo se partia en dos lineas y se
+                // leia "Moderacio / n". Ademas ya no es solo moderacion:
+                // desde que hay metricas de plataforma, es el panel.
+                title = { Text("Panel", color = TextoPrimario, maxLines = 1) },
                 actions = {
                     // H.6. Solo para administrador (80) o mas: el servidor
                     // responde 404 a un moderador, asi que ofrecer el boton
@@ -427,6 +431,74 @@ private fun Tablero(rs: ResumenPanel) {
             }
         }
 
+        // ------------------------------------------------------------
+        //  Plataforma (§10)
+        // ------------------------------------------------------------
+        //
+        // Separado de lo de arriba con un titulo porque se leen de forma
+        // distinta: las metricas de moderacion son una lista de tareas y estas
+        // son el tamano de la casa. Mezcladas en la misma retahila de tarjetas,
+        // un "12.400" al lado de un "3 pendientes" hace que el 3 se pierda.
+        Spacer(Modifier.height(16.dp))
+        Text("Plataforma", style = MaterialTheme.typography.labelLarge, color = TextoSecundario)
+        Spacer(Modifier.height(8.dp))
+        Row {
+            MetricaTexto("Registrados", miles(rs.usuariosRegistrados.toLong()), Slate, Modifier.weight(1f))
+            Spacer(Modifier.width(10.dp))
+            // Activo = uso la cuenta esta semana. Junto al total dice lo unico
+            // que el total solo no dice: cuanta de esa gente sigue aqui.
+            MetricaTexto("Activos (7 d)", miles(rs.usuariosActivos7d.toLong()), Cian, Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(10.dp))
+        Row {
+            // "Mensajes" es un recuento de SOBRES. El servidor guarda metadatos
+            // y bytes que no puede abrir, no texto: el pie lo dice en la
+            // pantalla y no solo en el codigo, porque quien mira el panel es
+            // justo quien podria creer que aqui se leen mensajes.
+            MetricaTexto(
+                titulo = if (rs.mensajesAproximados) "Mensajes (aprox.)" else "Mensajes",
+                valor = miles(rs.mensajesEnviados),
+                color = Cian,
+                modifier = Modifier.weight(1f),
+                pie = "metadatos, sin contenido",
+            )
+            Spacer(Modifier.width(10.dp))
+            MetricaTexto(
+                titulo = "Almacenamiento",
+                valor = enBytes(rs.almacenamientoBytes),
+                color = Taupe,
+                modifier = Modifier.weight(1f),
+                pie = "${miles(rs.almacenamientoArchivos.toLong())} archivos cifrados",
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row {
+            MetricaTexto("Grupos", miles(rs.gruposCreados.toLong()), Slate, Modifier.weight(1f))
+            Spacer(Modifier.width(10.dp))
+            MetricaTexto("Canales", miles(rs.canalesCreados.toLong()), Slate, Modifier.weight(1f))
+        }
+        if (rs.mensajesAproximados) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "El total de mensajes es una estimacion: contarlos uno a uno a " +
+                    "esta escala dejaria el panel colgado cada vez que se abre.",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextoTerciario,
+            )
+        }
+
+        // El brief pedia tambien "uso de servidores" (CPU, memoria, disco). No
+        // esta, y el hueco es deliberado: este servidor no tiene telemetria de
+        // maquina, y poner tres barras con numeros plausibles haria que no se
+        // pudiera confiar en ninguno de los de arriba.
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "No se muestra uso de CPU ni memoria: el servidor no lo mide todavia, " +
+                "y un numero inventado en un panel de administracion vale menos que un hueco.",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextoTerciario,
+        )
+
         if (rs.porMotivo.isNotEmpty()) {
             Spacer(Modifier.height(14.dp))
             Text("Lo abierto, por motivo", style = MaterialTheme.typography.labelLarge, color = TextoSecundario)
@@ -448,12 +520,69 @@ private fun Tablero(rs: ResumenPanel) {
 
 @Composable
 private fun Metrica(titulo: String, valor: Int, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
+    MetricaTexto(titulo, miles(valor.toLong()), color, modifier)
+}
+
+/**
+ * La misma tarjeta, pero con el valor ya formateado.
+ *
+ * Existe porque las metricas de plataforma no son enteros que quepan crudos:
+ * unas van con separador de miles, otra es "4,2 GB" y una puede necesitar un
+ * pie que la matice. Meter todo eso en [Metrica] obligaria a pasarle el numero
+ * y ademas como escribirlo.
+ */
+@Composable
+private fun MetricaTexto(
+    titulo: String,
+    valor: String,
+    color: androidx.compose.ui.graphics.Color,
+    modifier: Modifier,
+    pie: String? = null,
+) {
     Surface(color = BgSurface, shape = RoundedCornerShape(12.dp), modifier = modifier) {
         Column(Modifier.padding(14.dp)) {
-            Text("$valor", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = color)
+            Text(valor, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = color)
             Text(titulo, style = MaterialTheme.typography.labelSmall, color = TextoTerciario)
+            if (pie != null) {
+                Text(pie, style = MaterialTheme.typography.labelSmall, color = TextoTerciario)
+            }
         }
     }
+}
+
+/**
+ * Separador de miles a mano.
+ *
+ * `NumberFormat` seguiria la configuracion regional del telefono, y un panel de
+ * administracion que escribe el mismo numero de dos formas segun quien lo abra
+ * es un panel del que se desconfia cuando dos personas lo comparan.
+ */
+private fun miles(n: Long): String {
+    val s = kotlin.math.abs(n).toString()
+    val sb = StringBuilder()
+    s.forEachIndexed { i, ch ->
+        if (i > 0 && (s.length - i) % 3 == 0) sb.append('.')
+        sb.append(ch)
+    }
+    return if (n < 0) "-$sb" else sb.toString()
+}
+
+/**
+ * Bytes en la unidad que se entiende de un vistazo.
+ *
+ * Con una cifra decimal y nunca mas: la tercera cifra significativa de un total
+ * de almacenamiento no cambia ninguna decision y solo invita a comparar
+ * lecturas de dos momentos distintos como si fueran la misma medida.
+ */
+private fun enBytes(b: Long): String {
+    if (b < 1024) return "$b B"
+    val unidades = listOf("KB", "MB", "GB", "TB", "PB")
+    var v = b.toDouble() / 1024
+    var i = 0
+    while (v >= 1024 && i < unidades.lastIndex) { v /= 1024; i++ }
+    val entero = v.toLong()
+    val decimo = ((v - entero) * 10).toLong()
+    return if (entero >= 100) "$entero ${unidades[i]}" else "$entero,$decimo ${unidades[i]}"
 }
 
 @Composable

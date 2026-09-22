@@ -21,8 +21,8 @@ wtfuck/
 │               El contrato. Define el Sobre y los tipos de carga.
 │               Lo compilan el servidor y la app. Fuente única de verdad.
 │
-├── server/     Ktor + PostgreSQL
-│               HTTP para registro/login/prekeys. WebSocket para entrega.
+├── server/     Ktor + PostgreSQL + MinIO
+│               HTTP para registro, ingreso y claves. WebSocket para entrega.
 │               La sesión y el buzón viven en Postgres. El registro de
 │               sockets vivos vive en memoria, con bus opcional a Redis.
 │
@@ -71,17 +71,22 @@ Si esta capa no existe desde el día uno, `msg off` obliga a rehacer todo.
 | **Fan-out en escritura** | Al enviar, el sobre se copia al buzón de **cada dispositivo destino**. Leer es un `SELECT` por índice, no un JOIN. Es el modelo de Signal y WhatsApp |
 | **Buzón que se vacía** | El sobre se **borra** al confirmarse la entrega. La tabla caliente se mantiene pequeña sin importar cuánto crezca el historial |
 | **Historial solo en el cliente** | El servidor no guarda historial. No hay tabla que crezca sin límite, ni backup que filtre conversaciones |
-| **`dispositivo` separado de `usuario`** | Hoy es 1:1 por regla de negocio, pero el esquema ya admite N dispositivos. Multi-dispositivo será una migración, no una reescritura |
+| **`dispositivo` separado de `usuario`** | El esquema admitió N dispositivos desde el día uno, y por eso el módulo J fue una migración y no una reescritura: hasta 8 por cuenta, con vinculación por QR |
 | **`conversacion` unifica 1:1 y grupo** | Chat directo y grupo son la **misma** tabla con distinto `tipo`. La fase 5 (grupos) no toca el esquema de mensajes |
 | **Cuerpo opaco (`bytea`)** | El servidor no parsea. Cambiar el formato interno del mensaje no requiere migrar la base |
 
 ---
 
-## Lo que deliberadamente NO está en el MVP
+## Lo que deliberadamente NO está
 
-- Multi-dispositivo por usuario (el esquema lo admite, la regla lo prohíbe)
-- Llamadas de voz/video (es otro proyecto: WebRTC + SFU + TURN)
-- Federación entre servidores
-- Historial en servidor
+- **Federación entre servidores**
+- **Historial en servidor** — no es una carencia, es el principio rector
+- **SFU para llamadas de más de 4** (`K.5`): la malla tiene techo declarado
+- **Cliente web de mensajería**: exige libsignal en el navegador
 
-Cada uno de estos, metido temprano, dobla el tiempo del MVP.
+Cada uno de estos, metido temprano, doblaba el tiempo del MVP.
+
+> Dos que **estuvieron** en esta lista y ya no: el **multi-dispositivo** (módulo
+> J, hasta 8 aparatos, vinculación por QR) y las **llamadas de audio y vídeo**
+> (módulo K, WebRTC + TURN). El esquema ya los admitía, que era justamente el
+> motivo de separar `dispositivo` de `usuario` desde el día uno.

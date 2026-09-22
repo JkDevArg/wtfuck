@@ -337,7 +337,8 @@ object Repo {
            coalesce(extract(epoch FROM u.portada_actualizada) * 1000, 0),
            u.priv_foto, u.priv_estado, u.priv_nombre, u.priv_ultima_vez,
            coalesce(extract(epoch FROM u.ultima_vez) * 1000, 0),
-           u.priv_modo::text"""
+           u.priv_modo::text,
+           coalesce(u.biografia,''), u.priv_biografia"""
 
     /**
      * Arma el perfil publico YA FILTRADO por la privacidad del dueno.
@@ -406,6 +407,10 @@ object Repo {
             // siempre en cuanto un proceso muera sin limpiarla.
             enLinea = veUltima && ultima > 0 &&
                 Hub.conectado(rs.getObject(1, UUID::class.java)),
+            // La biografia tiene su propio ajuste y no el del estado. Son dos
+            // cosas: el estado es una frase que cambia cada semana, la
+            // biografia dice quien sos y suele llevar donde trabajas.
+            biografia = if (esMio || ve(rs.getString(16), "biografia")) rs.getString(15) else "",
         )
     }
 
@@ -595,7 +600,8 @@ object Repo {
         c.prepareStatement(
             """SELECT priv_foto, priv_estado, priv_escribe, priv_grupos, priv_llamadas,
                       priv_ultima_vez, priv_nombre, priv_busqueda, priv_lectura,
-                      priv_escribiendo, priv_historias
+                      priv_escribiendo, priv_historias,
+                      priv_biografia, priv_videollamadas, priv_grabando, priv_solicitudes
                FROM usuario WHERE id = ?"""
         ).use { st ->
             st.setObject(1, usuarioId)
@@ -613,6 +619,10 @@ object Repo {
                         lectura = it.getBoolean(9),
                         escribiendo = it.getBoolean(10),
                         historias = it.getString(11),
+                        biografia = it.getString(12),
+                        videollamadas = it.getString(13),
+                        grabando = it.getBoolean(14),
+                        solicitudes = it.getBoolean(15),
                     )
                 }
             } ?: Privacidad()
@@ -623,7 +633,8 @@ object Repo {
             p.grupos !in Privacidad.NIVELES || p.escribe !in Privacidad.NIVELES_ESCRIBE ||
             p.llamadas !in Privacidad.NIVELES || p.ultimaVez !in Privacidad.NIVELES ||
             p.nombre !in Privacidad.NIVELES || p.busqueda !in Privacidad.NIVELES ||
-            p.historias !in Privacidad.NIVELES
+            p.historias !in Privacidad.NIVELES ||
+            p.biografia !in Privacidad.NIVELES || p.videollamadas !in Privacidad.NIVELES
         ) {
             throw ErrorNegocio(400, "Nivel de privacidad invalido.")
         }
@@ -631,7 +642,9 @@ object Repo {
             """UPDATE usuario SET priv_foto = ?, priv_estado = ?, priv_escribe = ?,
                                   priv_grupos = ?, priv_llamadas = ?, priv_ultima_vez = ?,
                                   priv_nombre = ?, priv_busqueda = ?, priv_lectura = ?,
-                                  priv_escribiendo = ?, priv_historias = ?
+                                  priv_escribiendo = ?, priv_historias = ?,
+                                  priv_biografia = ?, priv_videollamadas = ?,
+                                  priv_grabando = ?, priv_solicitudes = ?
                WHERE id = ?"""
         ).use { st ->
             st.setString(1, p.foto); st.setString(2, p.estado)
@@ -641,7 +654,11 @@ object Repo {
             st.setBoolean(9, p.lectura)
             st.setBoolean(10, p.escribiendo)
             st.setString(11, p.historias)
-            st.setObject(12, yo.usuarioId)
+            st.setString(12, p.biografia)
+            st.setString(13, p.videollamadas)
+            st.setBoolean(14, p.grabando)
+            st.setBoolean(15, p.solicitudes)
+            st.setObject(16, yo.usuarioId)
             st.executeUpdate()
         }
         p
@@ -803,7 +820,21 @@ object Repo {
 
         // "Quien me puede escribir". Si ya existe la conversacion, ambos son
         // conocidos y esto pasa solo; el filtro muerde en el primer contacto.
-        exigirPermiso(c, yo.usuarioId, otro, "escribe")
+        //
+        // Cuando NO deja pasar, todavia queda una salida: si esa persona acepta
+        // solicitudes, la conversacion nace **marcada** en vez de no nacer. Ver
+        // `esSolicitud` y la migracion V33.
+        val puedeEscribirDirecto = runCatching {
+            exigirPermiso(c, yo.usuarioId, otro, "escribe")
+        }.isSuccess
+
+        val otroId = UUID.fromString(otro.usuarioId)
+        if (!puedeEscribirDirecto && !aceptaSolicitudes(c, otroId)) {
+            // Sin solicitudes, el portazo de siempre. Se repite la llamada para
+            // que el mensaje de error salga de un solo sitio.
+            exigirPermiso(c, yo.usuarioId, otro, "escribe")
+        }
+        val esSolicitud = !puedeEscribirDirecto
 
         val a = yo.usuarioId.toString()
         val b = otro.usuarioId
@@ -817,17 +848,82 @@ object Repo {
         }
         val convId = existente ?: run {
             val id = c.prepareStatement(
-                "INSERT INTO conversacion (tipo, creador_id, clave_directa) VALUES ('directa', ?, ?) RETURNING id"
+                """INSERT INTO conversacion (tipo, creador_id, clave_directa, solicitud_de)
+                   VALUES ('directa', ?, ?, ?) RETURNING id"""
             ).use { st ->
                 st.setObject(1, yo.usuarioId)
                 st.setString(2, clave)
+                // NULL = conversacion normal. Con valor, es una solicitud y
+                // quien la recibe decide.
+                if (esSolicitud) st.setObject(3, yo.usuarioId) else st.setNull(3, java.sql.Types.OTHER)
                 st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
             }
             agregarParticipantes(c, id, listOf(yo.usuarioId, UUID.fromString(otro.usuarioId)), "miembro")
             id
         }
 
-        ConversacionResumen(convId.toString(), "directa", otro.username, listOf(otro))
+        ConversacionResumen(
+            convId.toString(), "directa", otro.username, listOf(otro),
+            esSolicitud = esSolicitud,
+        )
+    }
+
+    /** Si esta persona acepta solicitudes de quien no puede escribirle. */
+    private fun aceptaSolicitudes(c: Connection, usuarioId: UUID): Boolean =
+        c.prepareStatement("SELECT priv_solicitudes FROM usuario WHERE id = ?").use { st ->
+            st.setObject(1, usuarioId)
+            st.executeQuery().use { rs -> rs.primero { it.getBoolean(1) } }
+        } ?: true
+
+    /**
+     * Acepta o rechaza una solicitud de mensaje.
+     *
+     * ## Quien decide, y quien no
+     *
+     * Solo **quien la recibio**. Quien la mando no puede aceptarse a si mismo
+     * —seria saltarse el ajuste entero con una peticion mas—, y por eso la
+     * comprobacion no es "soy participante" sino "soy participante **y no soy
+     * quien la pidio**".
+     *
+     * ## Rechazar borra la conversacion
+     *
+     * Y no la deja marcada como rechazada. Una lista de solicitudes rechazadas
+     * es una lista de gente a la que dijiste que no, que no le sirve a nadie y
+     * que el otro lado podria sondear. Al borrarse, quien la mando ve lo mismo
+     * que antes de mandarla: nada.
+     *
+     * Lo que NO hace rechazar es bloquear. Son dos decisiones distintas y
+     * juntarlas convertiria un "ahora no" en un portazo permanente.
+     */
+    fun decidirSolicitud(yo: Auth, conversacionId: UUID, aceptar: Boolean) = Db.tx { c ->
+        val quienPidio = c.prepareStatement(
+            """SELECT cv.solicitud_de
+               FROM conversacion cv
+                 JOIN participante p ON p.conversacion_id = cv.id
+                                    AND p.usuario_id = ? AND p.salido_en IS NULL
+               WHERE cv.id = ? AND cv.solicitud_de IS NOT NULL"""
+        ).use { st ->
+            st.setObject(1, yo.usuarioId); st.setObject(2, conversacionId)
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+        // 404 y no 403: quien no participa no deberia enterarse de que esa
+        // conversacion existe probando la ruta.
+        } ?: throw ErrorNegocio(404, "Esa solicitud no existe.")
+
+        if (quienPidio == yo.usuarioId) {
+            throw ErrorNegocio(403, "La solicitud la acepta quien la recibio.")
+        }
+
+        if (aceptar) {
+            c.prepareStatement("UPDATE conversacion SET solicitud_de = NULL WHERE id = ?").use { st ->
+                st.setObject(1, conversacionId); st.executeUpdate()
+            }
+        } else {
+            // Se borra la conversacion entera. `mensaje_meta`, `participante` y
+            // los sobres pendientes cuelgan de ella con ON DELETE CASCADE.
+            c.prepareStatement("DELETE FROM conversacion WHERE id = ?").use { st ->
+                st.setObject(1, conversacionId); st.executeUpdate()
+            }
+        }
     }
 
     fun crearGrupo(yo: Auth, req: GrupoReq): ResultadoGrupo = Db.tx { c ->
@@ -1396,7 +1492,40 @@ object Repo {
      * Excluye los aparatos de quien escribe -verse a uno mismo escribiendo no
      * es informacion- y a quien ya no pertenece a la conversacion.
      */
-    fun destinosDeEscritura(yo: Auth, conversacionId: UUID): List<UUID> = Db.query { c ->
+    /**
+     * A que aparatos se les reenvia "esta escribiendo" o "esta grabando".
+     *
+     * ## El ajuste se comprueba AQUI, y antes no se comprobaba en ningun lado
+     *
+     * `priv_escribiendo` lo miraba solo el cliente: si no queria avisar, no
+     * mandaba el mensaje. Eso deja la privacidad de una persona en manos del
+     * programa que tenga instalado, y el §16 del brief lo prohibe con todas las
+     * letras: *"nunca confiar unicamente en permisos enviados por el cliente"*.
+     * Un cliente modificado —o simplemente viejo— seguia anunciando.
+     *
+     * Ahora el servidor no reenvia lo que su duena apago, venga de donde venga.
+     * El cliente sigue sin mandarlo, que es lo correcto por ancho de banda,
+     * pero ya no es lo unico que lo impide.
+     *
+     * `grabando` es un ajuste aparte porque es otra cosa: teclear dice que hay
+     * algo en camino; grabar dice ademas que hay un microfono abierto ahora
+     * mismo.
+     */
+    fun destinosDeEscritura(
+        yo: Auth,
+        conversacionId: UUID,
+        grabando: Boolean = false,
+    ): List<UUID> = Db.query { c ->
+        val avisa = c.prepareStatement(
+            "SELECT priv_escribiendo, priv_grabando FROM usuario WHERE id = ?"
+        ).use { st ->
+            st.setObject(1, yo.usuarioId)
+            st.executeQuery().use { rs ->
+                rs.primero { if (grabando) it.getBoolean(2) else it.getBoolean(1) }
+            } ?: true
+        }
+        if (!avisa) return@query emptyList()
+
         c.prepareStatement(
             """SELECT d.id
                FROM participante p
