@@ -733,6 +733,8 @@ object Repo {
     // ============================================================
 
     fun guardarPerfil(yo: Auth, r: PerfilReq) = Db.tx { c ->
+        // El nombre y el estado los ve otra gente. Ver `exigirNoSuspendido`.
+        Autz.exigirNoSuspendido(c, yo.usuarioId)
         val nombre = r.nombreMostrado.trim().take(48)
         val estado = r.estadoTexto.trim().take(140)
         c.prepareStatement("UPDATE usuario SET nombre_mostrado = ?, estado_texto = ? WHERE id = ?").use { st ->
@@ -755,6 +757,9 @@ object Repo {
         if (!pareceImagen(bytes)) throw ErrorNegocio(400, "El archivo no es una imagen valida.")
 
         Db.tx { c ->
+            // Una imagen es lo mas visible de un perfil: un logo ajeno vale
+            // mas que cualquier texto para hacerse pasar por alguien.
+            Autz.exigirNoSuspendido(c, yo.usuarioId)
             c.prepareStatement("UPDATE usuario SET $col = ?, $colFecha = now() WHERE id = ?").use { st ->
                 st.setBytes(1, bytes)
                 st.setObject(2, yo.usuarioId)

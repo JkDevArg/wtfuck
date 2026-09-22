@@ -733,6 +733,11 @@ object Identidad {
 
     fun ajustar(yo: Auth, req: AjustesCuentaReq): EstadoCuenta {
         Db.tx { c ->
+            // La biografia es perfil publico. `descubrible` no lo es —decide si
+            // te encuentran, no que ven— pero se agrupa aqui porque es la misma
+            // peticion y separar la guardia por campo seria una invitacion a
+            // olvidarse de uno.
+            Autz.exigirNoSuspendido(c, yo.usuarioId)
             req.biografia?.let { bio ->
                 c.prepareStatement("UPDATE usuario SET biografia = ? WHERE id = ?").use { st ->
                     st.setString(1, bio.trim().take(500).ifBlank { null })

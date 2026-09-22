@@ -17,9 +17,9 @@ docs/       decisiones de arquitectura, hoja de ruta, API, despliegue
 ## Estado
 
 Servidor y app funcionando, verificados en dos emuladores.
-**1413 pruebas en verde** con todo levantado (1248 de integración en 32 suites,
+**1441 pruebas en verde** con todo levantado (1269 de integración en 33 suites,
 32 de JUnit en el servidor, 106 en la app). En la configuración mínima —una
-instancia, sin Redis ni push— son **1322**: dos suites se omiten cuando les
+instancia, sin Redis ni push— son **1350**: dos suites se omiten cuando les
 falta el entorno, y el runner las marca `OMIT` en vez de `OK`.
 
 Tres de ellas **hacen ataques de verdad**:
@@ -66,6 +66,7 @@ quien no debe.
 | O | Historias: texto, foto y video; responder; quién la vio; 24 h | ✅ |
 | P | Tipos de cuenta: personal, desarrollador y empresa con ficha | ✅ beta |
 | Q | 15 ajustes de privacidad, solicitudes de mensaje y métricas del panel | ✅ |
+| R | La suspensión congela el perfil público; auditar a prueba de fallos | ✅ |
 
 **Lo que falta, y por qué:**
 

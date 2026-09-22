@@ -3527,3 +3527,75 @@ los grupos de las corridas anteriores.
 Ninguna de las dos decía nada del producto: decían cuántas veces se había corrido
 la suite. Es el mismo defecto que ya se corrigió una vez en la búsqueda de
 canales, reaparecido en otro sitio.
+
+---
+
+## Módulo R · Lo que la auditoría dejó pendiente ✅
+
+*Dos deudas que no eran del módulo P sino de todo el proyecto.*
+
+- [x] R.1 Una suspensión congela también el perfil público
+- [x] R.2 Auditar no puede tumbar la acción ni perder el rastro
+
+### R.1 · Suspendido por suplantar, y seguía suplantando
+
+La política del proyecto es deliberada y no se tocó: **una suspensión no corta
+la sesión**. Corta lo que produce contenido y deja entrar a ver por qué, porque
+una sanción que no se explica no corrige nada.
+
+El problema era el **alcance**. La suspensión se comprobaba en `Autz.puede`, que
+es autorización *de conversación*. Todo lo que no pasa por ahí se quedaba fuera:
+
+| Qué | Pasaba por `Autz.puede` |
+|---|---|
+| Escribir en un grupo | sí |
+| Nombre, estado, biografía | **no** |
+| Foto y portada | **no** |
+| Publicar una historia | **no** |
+| Tipo de cuenta y ficha de empresa | **no** |
+
+Es decir, **justo lo que otros ven**. Medido antes de arreglarlo: una cuenta
+suspendida con el motivo *"Suplantar a una institución"* cambió su nombre a
+"Banco Nacional" y su biografía a "Entidad financiera regulada", y publicó una
+historia. Nueve afirmaciones en rojo contra el código vulnerable.
+
+La corrección es `Autz.exigirNoSuspendido`, aplicado en las seis escrituras que
+no tenían conversación de la que colgar. **403 y no 404**: aquí no hay nada que
+esconder —la persona sabe que está sancionada, se lo dijimos— y un 404 la
+dejaría pensando que la ruta se rompió.
+
+La suite cubre también los dos límites que hacen que la sanción sea una sanción
+y no una condena: **una suspensión vencida no bloquea nada** —sin la condición
+de `suspendido_hasta`, toda suspensión temporal sería permanente— y **no se
+contagia** a otras cuentas.
+
+### R.2 · Un `detalle` mal formado se llevaba la acción por delante
+
+El `detalle` de una auditoría entra como `?::jsonb`. Si no es JSON válido,
+Postgres falla la sentencia, y **una sentencia fallida aborta la transacción
+entera**: el `commit()` posterior se vuelve un ROLLBACK silencioso. La acción
+devuelve 200 y no pasó nada.
+
+El proyecto ya había perdido una tarde con esto en `Seguridad.anotar`. Aquí el
+riesgo estaba **latente**: todos los `detalle` interpolaban valores de listas
+cerradas, así que funcionaba *por accidente de orden*. Dos sitios lo delataban
+—el motivo de rechazo de un canal y la etiqueta de un dispositivo llevaban un
+`.replace("\"", "")` a mano—: alguien ya había visto el problema y lo había
+parcheado quitando comillas, que para las comillas sirve, para una barra
+invertida final no, y encima **cambia el dato que se guarda**.
+
+Dos arreglos, uno de fondo y otro de causa:
+
+**SAVEPOINT alrededor del INSERT, y reintento sin detalle.** Un detalle
+malformado ya no se lleva la acción. Y como un audit log sin fila es peor que
+uno sin adorno, se reintenta sin el detalle: la fila queda siempre y lo único
+que se pierde es el JSON que venía mal. Queda en el log del servidor, porque un
+detalle que se pierde en producción es un defecto que alguien tiene que
+arreglar.
+
+Validado por reversión: sin el savepoint, dos de las siete pruebas caen.
+
+**`Autz.detalleDe(vararg Pair)`**, que construye el JSON en vez de
+interpolarlo. Respeta los tipos —un `24` sin comillas, para que
+`detalle->'horas' > 12` funcione en una consulta— y omite los nulos en vez de
+escribir `null`. Los sitios con texto libre ya no interpolan.

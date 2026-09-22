@@ -138,6 +138,7 @@ object Cuentas {
         }
 
         Db.tx { c ->
+            Autz.exigirNoSuspendido(c, yo.usuarioId)
             val antes = tipoDe(c, yo.usuarioId)
             if (antes == TipoCuenta.DESARROLLADOR) {
                 // Quien es desarrollador no se quita el modo solo. Si pudiera,
@@ -163,7 +164,7 @@ object Cuentas {
             Autz.auditar(
                 c, yo.usuarioId, "cuenta.tipo", "usuario", yo.usuarioId,
                 objetivoId = yo.usuarioId,
-                detalle = """{"de":"$antes","a":"${req.tipo}"}""",
+                detalle = Autz.detalleDe("de" to antes, "a" to req.tipo),
             )
         }
         return mias(yo)
@@ -216,6 +217,9 @@ object Cuentas {
         }
 
         return Db.tx { c ->
+            // La ficha es el perfil publico de una empresa: es lo ultimo que
+            // deberia poder retocar quien esta cumpliendo una sancion.
+            Autz.exigirNoSuspendido(c, yo.usuarioId)
             if (tipoDe(c, yo.usuarioId) != TipoCuenta.EMPRESA) {
                 throw ErrorNegocio(409, "Primero cambia la cuenta a tipo empresa.")
             }
@@ -326,7 +330,7 @@ object Cuentas {
         Autz.auditar(
             c, yo.usuarioId, "cuenta.asignar_tipo", "usuario", objetivo,
             objetivoId = objetivo,
-            detalle = """{"tipo":"${req.tipo}"}""",
+            detalle = Autz.detalleDe("tipo" to req.tipo),
         )
         req.tipo
     }
@@ -382,7 +386,7 @@ object Cuentas {
         Autz.auditar(
             c, yo.usuarioId, "empresa.verificar", "usuario", objetivo,
             objetivoId = objetivo,
-            detalle = """{"verificada":$valor}""",
+            detalle = Autz.detalleDe("verificada" to valor),
         )
         valor
     }

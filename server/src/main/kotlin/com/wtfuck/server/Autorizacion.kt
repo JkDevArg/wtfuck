@@ -250,7 +250,7 @@ object Autz {
      * la fila al vencer a proposito: que la suspension siga anotada es lo que
      * permite ver el historial de alguien con tres suspensiones cumplidas.
      */
-    private fun suspendido(c: Connection, usuarioId: UUID): Boolean =
+    fun suspendido(c: Connection, usuarioId: UUID): Boolean =
         c.prepareStatement(
             """SELECT suspendido_en IS NOT NULL
                       AND (suspendido_hasta IS NULL OR suspendido_hasta > now())
@@ -259,6 +259,43 @@ object Autz {
             st.setObject(1, usuarioId)
             st.executeQuery().use { rs -> rs.primero { it.getBoolean(1) } } ?: false
         }
+
+    /**
+     * Lanza si esta cuenta esta suspendida. Para todo lo que produce contenido.
+     *
+     * ## Por que hace falta aparte de `puede`
+     *
+     * `puede` es autorizacion **de conversacion**: pregunta que puede hacer
+     * alguien DENTRO de un grupo o un chat, y ahi la suspension ya se miraba.
+     * Lo que se quedaba fuera era todo lo que no tiene conversacion: el nombre,
+     * el estado, la biografia, la foto, la portada, el tipo de cuenta, la ficha
+     * de empresa y las historias.
+     *
+     * Es decir, **justo lo que otros ven**. Una cuenta suspendida por
+     * suplantar a una institucion podia seguir editando el perfil con el que
+     * suplantaba: cambiarse el nombre a "Banco Nacional" y la biografia a
+     * "Entidad financiera regulada" mientras cumplia la sancion. Lo encontro
+     * una auditoria de solo lectura y estaba medido antes de arreglarse.
+     *
+     * ## Lo que NO hace
+     *
+     * No corta la sesion. Eso es deliberado y no se toca: una suspension deja
+     * entrar a ver POR QUE, porque una sancion que no se explica no corrige
+     * nada. Lo que corta es producir, no leer.
+     *
+     * 403 y no 404: aqui no hay nada que esconder —la persona sabe que esta
+     * sancionada, se lo dijimos— y un 404 la dejaria pensando que la ruta se
+     * rompio.
+     */
+    fun exigirNoSuspendido(c: Connection, usuarioId: UUID) {
+        if (suspendido(c, usuarioId)) {
+            throw ErrorNegocio(
+                403,
+                "Tu cuenta esta suspendida: no puedes cambiar tu perfil ni publicar " +
+                    "mientras dure la sancion.",
+            )
+        }
+    }
 
     /**
      * Devuelve null si no aplica. En una conversacion directa, un bloqueo en
@@ -376,6 +413,27 @@ object Autz {
      * Se llama DENTRO de la misma transaccion que la accion: si la accion se
      * revierte, el registro tambien. Un audit log que sobrevive a un rollback
      * miente.
+     *
+     * ## Por que hay un SAVEPOINT, y por que se reintenta sin detalle
+     *
+     * El `detalle` entra como `?::jsonb`. Si no es JSON valido, Postgres falla
+     * la sentencia, y **una sentencia fallida aborta la transaccion entera**:
+     * el `commit()` posterior se vuelve un ROLLBACK silencioso. La accion
+     * devuelve 200 y no paso nada. Este proyecto ya perdio una tarde con eso
+     * en `Seguridad.anotar` —ver su nota— y aqui el riesgo estaba latente:
+     * todos los `detalle` de hoy interpolan valores de listas cerradas, asi
+     * que funciona **por accidente de orden**. El dia que alguien escriba
+     * `{"nombre":"${'$'}{req.nombre}"}`, una comilla en un nombre tumba la
+     * operacion sin dejar rastro de por que.
+     *
+     * Con el savepoint, un detalle malformado no se lleva la accion por
+     * delante. Y como un audit log sin fila es peor que uno sin adorno, se
+     * **reintenta sin el detalle**: la fila queda siempre, y lo unico que se
+     * pierde es el JSON que venia mal.
+     *
+     * Lo que NO se hace es tragarse el fallo en silencio: queda en el log del
+     * servidor con la accion concreta, porque un detalle que se pierde en
+     * produccion es un defecto que alguien tiene que arreglar.
      */
     fun auditar(
         c: Connection,
@@ -386,19 +444,64 @@ object Autz {
         objetivoId: UUID? = null,
         detalle: String? = null,
     ) {
-        c.prepareStatement(
-            """INSERT INTO auditoria (actor_id, accion, recurso_tipo, recurso_id, objetivo_id, detalle)
-               VALUES (?, ?, ?, ?, ?, ?::jsonb)"""
-        ).use { st ->
-            st.setObject(1, actorId)
-            st.setString(2, accion)
-            st.setString(3, recursoTipo)
-            st.setObject(4, recursoId)
-            st.setObject(5, objetivoId)
-            st.setString(6, detalle)
-            st.executeUpdate()
+        fun insertar(conDetalle: String?) {
+            c.prepareStatement(
+                """INSERT INTO auditoria (actor_id, accion, recurso_tipo, recurso_id, objetivo_id, detalle)
+                   VALUES (?, ?, ?, ?, ?, ?::jsonb)"""
+            ).use { st ->
+                st.setObject(1, actorId)
+                st.setString(2, accion)
+                st.setString(3, recursoTipo)
+                st.setObject(4, recursoId)
+                st.setObject(5, objetivoId)
+                st.setString(6, conDetalle)
+                st.executeUpdate()
+            }
+        }
+
+        // Sin transaccion, un savepoint no aplica ni hace falta: un fallo solo
+        // afecta a esta sentencia.
+        val enTransaccion = runCatching { !c.autoCommit }.getOrDefault(false)
+        val punto = if (enTransaccion) runCatching { c.setSavepoint("auditar") }.getOrNull() else null
+
+        try {
+            insertar(detalle)
+            punto?.let { runCatching { c.releaseSavepoint(it) } }
+        } catch (e: Exception) {
+            if (punto != null) runCatching { c.rollback(punto) }
+            bitacoraAuditoria.warn(
+                "Detalle invalido al auditar {}: {}. Se registra sin detalle.", accion, e.message,
+            )
+            // El rastro importa mas que el adorno. Si esto tambien falla, se
+            // deja subir: quedarse sin fila de auditoria en una accion
+            // administrativa si es motivo para que la operacion no cuente.
+            if (punto != null) runCatching { c.rollback(punto) }
+            insertar(null)
         }
     }
+
+    /**
+     * Construye el `detalle` de una auditoria sin poder romperlo.
+     *
+     * Interpolar a mano —`"""{"x":"${'$'}v"}"""`— funciona hasta que `v` trae
+     * una comilla, y entonces revienta el cast a `jsonb` en el peor momento
+     * posible: dentro de la transaccion de la accion. Esto escapa por
+     * construccion, asi que el caso no existe.
+     *
+     * Los nulos se omiten en vez de escribirse como `null`: en un registro que
+     * alguien va a leer, una clave ausente dice lo mismo y ocupa menos.
+     */
+    fun detalleDe(vararg datos: Pair<String, Any?>): String =
+        kotlinx.serialization.json.buildJsonObject {
+            datos.forEach { (clave, valor) ->
+                when (valor) {
+                    null -> Unit
+                    is Boolean -> put(clave, kotlinx.serialization.json.JsonPrimitive(valor))
+                    is Number -> put(clave, kotlinx.serialization.json.JsonPrimitive(valor))
+                    else -> put(clave, kotlinx.serialization.json.JsonPrimitive(valor.toString()))
+                }
+            }
+        }.toString()
 
     // ============================================================
     //  Mensajes al usuario
@@ -427,3 +530,5 @@ object Autz {
         else -> "No tienes permiso para hacer esto."
     }
 }
+
+private val bitacoraAuditoria = org.slf4j.LoggerFactory.getLogger("auditoria")

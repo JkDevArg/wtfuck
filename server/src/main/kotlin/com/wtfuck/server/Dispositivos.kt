@@ -223,7 +223,9 @@ object Dispositivos {
 
             Seguridad.anotar(
                 c, usuarioId, "dispositivo_nuevo", ip = ip, agente = agente,
-                detalle = """{"etiqueta":"${req.etiquetaDispositivo.take(40).replace("\"", "")}"}""",
+                // Ver la nota de `Autz.detalleDe`: la etiqueta la escribe
+                // quien vincula y no hay forma de interpolarla sin riesgo.
+                detalle = Autz.detalleDe("etiqueta" to req.etiquetaDispositivo.take(40)),
             )
             Autz.auditar(c, usuarioId, "dispositivo.vinculado", "dispositivo", nuevoId)
 
@@ -387,7 +389,7 @@ object Dispositivos {
 
         Seguridad.anotar(
             c, yo.usuarioId, "dispositivo_revocado",
-            detalle = """{"etiqueta":"${fila.second.take(40).replace("\"", "")}"}""",
+            detalle = Autz.detalleDe("etiqueta" to fila.second.take(40)),
         )
         Autz.auditar(c, yo.usuarioId, "dispositivo.revocado", "dispositivo", objetivoId)
         avisos

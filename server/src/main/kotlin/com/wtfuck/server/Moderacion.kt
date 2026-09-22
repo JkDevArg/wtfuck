@@ -192,11 +192,11 @@ object Moderacion {
 
             Seguridad.anotar(
                 c, yo.usuarioId, "denuncia_creada",
-                detalle = """{"tipo":"${req.tipo}","motivo":"${req.motivo}"}""",
+                detalle = Autz.detalleDe("tipo" to req.tipo, "motivo" to req.motivo),
             )
             Autz.auditar(
                 c, yo.usuarioId, "denuncia.crear", "denuncia", id,
-                objetivoId = objUsuario, detalle = """{"motivo":"${req.motivo}"}""",
+                objetivoId = objUsuario, detalle = Autz.detalleDe("motivo" to req.motivo),
             )
 
             DenunciaCreada(id.toString(), "pendiente") to emptyList()

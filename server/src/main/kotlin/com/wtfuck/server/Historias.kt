@@ -167,6 +167,11 @@ object Historias {
         val id = runCatching { UUID.fromString(req.historiaId) }.getOrNull()
             ?: throw ErrorNegocio(400, "Identificador de historia invalido.")
 
+        // Una historia la ve la audiencia entera y no pertenece a ninguna
+        // conversacion, asi que no pasa por `Autz.puede`. Sin esta linea,
+        // publicar seria la forma mas facil de saltarse una suspension.
+        Autz.exigirNoSuspendido(c, yo.usuarioId)
+
         // Reintentar no duplica: si ya existe y es mia, se devuelve la que hay.
         yaMia(c, id, yo.usuarioId)?.let { return@tx it }
 

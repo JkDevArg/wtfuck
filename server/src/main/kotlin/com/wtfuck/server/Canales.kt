@@ -611,7 +611,11 @@ object Canales {
                 c, yo.usuarioId,
                 if (req.aprobado) "canal.aprobar" else "canal.rechazar",
                 "conversacion", convId,
-                detalle = """{"motivo":"${motivo.replace("\"", "")}"}""",
+                // `detalleDe` y no interpolacion: el motivo es texto libre.
+                // El `.replace("\"", "")` que habia aqui paraba las comillas
+                // -alguien ya habia visto el problema- pero no una barra
+                // invertida final, y encima cambiaba el dato que se guardaba.
+                detalle = Autz.detalleDe("motivo" to motivo),
             )
 
             // El aviso va a quien lo creo, no a los suscriptores: mientras
