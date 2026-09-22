@@ -414,6 +414,13 @@ class Repositorio(
                 dao.idsLocales().filter { it !in vigentes }.forEach { dao.marcarFuera(it) }
             }
             .onFailure { Log.w(TAG, "No se pudo sincronizar: ${it.message}") }
+
+        // La libreta entra en la sincronizacion normal: el alias de un contacto
+        // es parte de como se ve la lista, y si solo se refrescara al abrir la
+        // pestaña de Contactos, cambiarlo en otro aparato no llegaria nunca
+        // aqui. Falla en silencio a proposito: sin libreta la lista sale con
+        // usernames, que es exactamente lo que hacia antes.
+        contactos()
     }
 
     private suspend fun guardarResumen(r: ConversacionResumen) {
@@ -2213,8 +2220,24 @@ class Repositorio(
     suspend fun cerrarOtrasSesiones(): Result<Int> =
         runCatching { api.cerrarOtrasSesiones()["cerradas"] ?: 0 }
 
+    /**
+     * Como llamo yo a cada uno de estos usernames.
+     *
+     * Devuelve el username cuando no esta en la libreta, para que quien lo use
+     * no tenga que decidir que poner: siempre hay algo que mostrar y nunca es
+     * un hueco. Lo usa el selector de menciones.
+     */
+    suspend fun nombresDeLibreta(usernames: List<String>): Map<String, String> {
+        val libreta = runCatching { dao.libreta() }.getOrDefault(emptyList())
+            .filter { it.alias.isNotBlank() }
+            .associate { it.username to it.alias }
+        return usernames.associateWith { libreta[it.lowercase()] ?: it }
+    }
+
     suspend fun contactos(): List<Contacto> =
-        runCatching { api.contactos().contactos }.getOrElse { emptyList() }
+        runCatching { api.contactos().contactos }
+            .onSuccess { guardarLibretaLocal(it) }
+            .getOrElse { emptyList() }
 
     suspend fun guardarContacto(
         username: String,
@@ -2222,9 +2245,42 @@ class Repositorio(
         favorito: Boolean? = null,
     ): Result<List<Contacto>> =
         runCatching { api.guardarContacto(GuardarContactoReq(username, alias, favorito)).contactos }
+            .onSuccess { guardarLibretaLocal(it) }
 
     suspend fun borrarContacto(username: String): Result<List<Contacto>> =
         runCatching { api.borrarContacto(username).contactos }
+            .onSuccess { guardarLibretaLocal(it) }
+
+    /**
+     * Copia la libreta a la base local, que es de donde sale la lista de chats.
+     *
+     * Reemplaza y **poda**: sin la poda, borrar un contacto lo quitaria del
+     * servidor y su nombre seguiria saliendo en la lista de este aparato para
+     * siempre, porque un REPLACE solo pisa lo que vuelve.
+     *
+     * Se llama desde las tres rutas que pueden cambiar la libreta -leerla,
+     * guardar y borrar- porque las tres devuelven la lista entera ya
+     * actualizada, asi que no hace falta una peticion mas.
+     */
+    private suspend fun guardarLibretaLocal(lista: List<Contacto>) {
+        runCatching {
+            dao.guardarContactos(
+                lista.map {
+                    ContactoEnt(
+                        // En minusculas porque el JOIN compara con
+                        // `conversacion.nombre`, que el servidor guarda asi.
+                        // Con una mayuscula de diferencia el nombre no saldria
+                        // y no habria error en ningun sitio.
+                        username = it.username.lowercase(),
+                        alias = it.alias.orEmpty().trim(),
+                        favorito = it.favorito,
+                    )
+                },
+            )
+            val vivos = lista.map { it.username.lowercase() }
+            if (vivos.isEmpty()) dao.borrarContactos() else dao.podarContactos(vivos)
+        }.onFailure { Log.w(TAG, "No se pudo copiar la libreta: ${it.message}") }
+    }
 
     suspend fun descubrir(telefonos: List<String>): Result<List<Descubierto>> =
         runCatching { api.descubrir(telefonos).encontrados }
@@ -2559,9 +2615,19 @@ class Repositorio(
         }
     }
 
-    /** Menciones que el remitente extrae del texto: @usuario */
-    private fun mencionesDe(texto: String): List<String> =
-        Regex("@([a-z0-9_]{3,24})").findAll(texto.lowercase()).map { it.groupValues[1] }.toList()
+    /**
+     * Menciones que el remitente extrae del texto: @usuario.
+     *
+     * La regla vive en el contrato (`mencionesEn`) y no aqui, porque la
+     * pantalla tiene que resaltar EXACTAMENTE lo que esto manda. Con dos
+     * copias de la expresion, un cambio en una dibujaba menciones que no
+     * avisaban a nadie.
+     *
+     * Ahora ademas quita repetidos: mencionar a alguien tres veces en la misma
+     * frase mandaba su username tres veces y el servidor insertaba tres filas
+     * en `mencion` para la misma persona.
+     */
+    private fun mencionesDe(texto: String): List<String> = mencionesEn(texto)
 
     // ============================================================
     //  Modulo C: acciones sobre un mensaje

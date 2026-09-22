@@ -58,6 +58,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -103,7 +105,43 @@ fun ChatPantalla(
     val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
     val chat = chats.firstOrNull { it.id == conversacionId }
 
-    var texto by rememberSaveable { mutableStateOf("") }
+    /**
+     * Lo escrito, con el cursor.
+     *
+     * `TextFieldValue` y no `String` porque el selector de menciones necesita
+     * saber DONDE esta el cursor: "lo que hay antes del cursor" es lo unico
+     * que distingue estar escribiendo `@ta` de haber escrito `@tatiana hola`
+     * y estar corrigiendo el principio de la frase. Con un String solo se
+     * puede mirar el final del texto, y entonces el selector no aparece al
+     * editar por el medio.
+     */
+    var texto by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
+
+    /**
+     * A quien se puede mencionar aqui: los participantes, con MI nombre para
+     * cada uno.
+     *
+     * Se arma una vez por conversacion y no en cada tecla. Lo que se inserta
+     * es siempre el username -es lo unico que el servidor resuelve- pero lo
+     * que se busca y se muestra es el nombre, porque quien escribe piensa en
+     * la persona que tiene delante y no en su identificador.
+     */
+    var candidatosMencion by remember { mutableStateOf<List<CandidatoMencion>>(emptyList()) }
+
+    /**
+     * Username -> como lo llamo yo. Lo usan el selector de menciones y la
+     * etiqueta de autor de cada burbuja de grupo, que son la misma pregunta.
+     */
+    var nombresDeGente by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
+    LaunchedEffect(chat?.participantes) {
+        val gente = chat?.participantes.orEmpty().split(",").filter { it.isNotBlank() }
+        val nombres = if (gente.isEmpty()) emptyMap() else app.repo.nombresDeLibreta(gente)
+        nombresDeGente = nombres
+        candidatosMencion = gente.map { CandidatoMencion(it, nombres[it] ?: it) }
+    }
     var menuAbierto by remember { mutableStateOf(false) }
     var accionesDe by remember { mutableStateOf<MensajeEnt?>(null) }
     var denunciando by remember { mutableStateOf<MensajeEnt?>(null) }
@@ -221,8 +259,8 @@ fun ChatPantalla(
 
     /** Envia un archivo usando el texto escrito como pie de foto. */
     fun mandarArchivo(uri: android.net.Uri, clase: String) {
-        val pie = texto.trim()
-        texto = ""
+        val pie = texto.text.trim()
+        texto = TextFieldValue("")
         ambito.launch {
             runCatching { app.repo.enviarAdjunto(conversacionId, uri, clase, pie) }
                 .onFailure { aviso = it.message }
@@ -418,7 +456,10 @@ fun ChatPantalla(
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text(
-                                chat?.let { if (it.tipo == "grupo") it.titulo else "@${it.titulo}" } ?: "",
+                                // Sin "@", igual que en la lista: el titulo
+                                // ya es mi nombre para esa persona, o su
+                                // username si no la tengo agendada.
+                                chat?.titulo ?: "",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = TextoPrimario,
                             )
@@ -595,7 +636,7 @@ fun ChatPantalla(
                         }
                         IconButton(onClick = {
                             respondiendoA = null
-                            if (editando != null) { editando = null; texto = "" }
+                            if (editando != null) { editando = null; texto = TextFieldValue("") }
                         }) {
                             Icon(Icons.Filled.Close, "Cancelar", tint = TextoSecundario)
                         }
@@ -618,11 +659,29 @@ fun ChatPantalla(
                     return@Column
                 }
 
+                Column(Modifier.navigationBarsPadding().imePadding()) {
+                // El selector de menciones, encima del campo. Solo en grupos y
+                // canales: en una directa hay una sola persona al otro lado y
+                // ofrecer una lista de uno es ruido.
+                //
+                // Se calcula en cada tecla y es barato: `mencionEnCurso`
+                // devuelve null en cuanto no hay un "@" abierto antes del
+                // cursor, que es casi siempre.
+                val enCurso = if (chat?.tipo == "directa") null
+                              else mencionEnCurso(texto.text, texto.selection.start)
+                if (enCurso != null) {
+                    TiraDeMenciones(
+                        candidatos = candidatosDeMencion(enCurso, candidatosMencion),
+                        onElegir = { c ->
+                            val (t, cur) = insertarMencion(
+                                texto.text, texto.selection.start, c.username,
+                            )
+                            texto = TextFieldValue(t, TextRange(cur))
+                        },
+                    )
+                }
                 Row(
-                    Modifier
-                        .navigationBarsPadding()
-                        .imePadding()
-                        .padding(horizontal = 6.dp, vertical = 10.dp),
+                    Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.Bottom,
                 ) {
                     IconButton(onClick = { hojaEmoji = true }) {
@@ -637,7 +696,7 @@ fun ChatPantalla(
                             texto = it
                             // El freno esta en el Repositorio: aqui se avisa en
                             // cada tecla y alli se decide si toca mandarlo.
-                            if (it.isNotEmpty()) app.repo.avisarQueEscribo(conversacionId)
+                            if (it.text.isNotEmpty()) app.repo.avisarQueEscribo(conversacionId)
                         },
                         placeholder = { Text("Mensaje", color = TextoTerciario) },
                         modifier = Modifier.weight(1f),
@@ -654,17 +713,17 @@ fun ChatPantalla(
                     // Sin texto el boton graba, con texto envia. Es el gesto
                     // que ya conoce cualquiera que use un mensajero: el mismo
                     // lugar sirve para las dos cosas y nunca esta apagado.
-                    val hayTexto = texto.isNotBlank()
+                    val hayTexto = texto.text.isNotBlank()
                     FilledIconButton(
                         onClick = {
                             if (!hayTexto) {
                                 grabarNotaVoz()
                                 return@FilledIconButton
                             }
-                            val t = texto
+                            val t = texto.text
                             val cita = respondiendoA
                             val edit = editando
-                            texto = ""
+                            texto = TextFieldValue("")
                             respondiendoA = null
                             editando = null
                             ambito.launch {
@@ -683,6 +742,7 @@ fun ChatPantalla(
                         if (hayTexto) Icon(Icons.AutoMirrored.Filled.Send, "Enviar")
                         else Icon(Icons.Filled.Mic, "Grabar nota de voz")
                     }
+                }
                 }
                 }
             }
@@ -763,6 +823,8 @@ fun ChatPantalla(
                     Burbuja(
                         m = m,
                         esGrupo = chat?.tipo == "grupo",
+                        miUsuario = app.sesion.username.orEmpty(),
+                        nombreDe = { u -> nombresDeGente[u] ?: u },
                         resaltado = buscando && hallazgos.getOrNull(cualHallazgo)?.id == m.id,
                         onReintentar = {
                             ambito.launch {
@@ -892,7 +954,16 @@ fun ChatPantalla(
 
     if (hojaEmoji) {
         SelectorEmoji(
-            onElegir = { texto += it },
+            // En el CURSOR, no al final. Antes se concatenaba, asi que
+            // poner una cara en mitad de una frase escrita la mandaba al
+            // final del mensaje. Con el cursor a mano ya no hace falta.
+            onElegir = { emoji ->
+                val i = texto.selection.start.coerceIn(0, texto.text.length)
+                texto = TextFieldValue(
+                    texto.text.substring(0, i) + emoji + texto.text.substring(i),
+                    TextRange(i + emoji.length),
+                )
+            },
             onCerrar = { hojaEmoji = false },
         )
     }
@@ -900,8 +971,8 @@ fun ChatPantalla(
     if (hojaSticker) {
         HojaStickers(
             onElegirGif = { gifId ->
-                val pie = texto.trim()
-                texto = ""
+                val pie = texto.text.trim()
+                texto = TextFieldValue("")
                 ambito.launch {
                     runCatching { app.repo.enviarGif(conversacionId, gifId, pie) }
                         .onFailure { aviso = it.message }
@@ -928,7 +999,14 @@ fun ChatPantalla(
                 }
             },
             onResponder = { accionesDe = null; respondiendoA = m },
-            onEditar = { accionesDe = null; editando = m; texto = m.texto },
+            onEditar = {
+                accionesDe = null
+                editando = m
+                // El cursor al FINAL: quien edita casi siempre quiere corregir
+                // o anadir al final, y arrancar en la posicion 0 obliga a
+                // recorrer el mensaje entero antes de escribir una letra.
+                texto = TextFieldValue(m.texto, TextRange(m.texto.length))
+            },
             onCopiar = {
                 accionesDe = null
                 portapapeles.setText(AnnotatedString(m.texto))
@@ -1034,7 +1112,7 @@ fun ChatPantalla(
             },
             title = {
                 Text(
-                    if (chat.tipo == "grupo") chat.titulo else "@${chat.titulo}",
+                    chat.titulo,
                     color = TextoPrimario,
                 )
             },
@@ -1044,7 +1122,13 @@ fun ChatPantalla(
                 // alto, dejando el boton de cerrar fuera de la pantalla.
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(
-                        if (chat.tipo == "grupo") "${miembros.size + 1} miembros" else "Conversacion directa",
+                        // El username va AQUI, y es obligatorio ahora que el
+                        // titulo puede ser un alias que escribi yo. Sin el, un
+                        // chat que dice "Tatiana" no permite comprobar CON QUE
+                        // CUENTA se esta hablando, y el nombre lo puse yo: si
+                        // lo puse en la cuenta equivocada, nada me lo diria.
+                        if (chat.tipo == "grupo") "${miembros.size + 1} miembros"
+                        else "@${chat.nombre}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextoSecundario,
                     )
@@ -1151,6 +1235,10 @@ private fun LineaSistema(texto: String) {
 private fun Burbuja(
     m: MensajeEnt,
     esGrupo: Boolean,
+    /** En minusculas, para saber cual mencion es a mi. Vacio si aun no se sabe. */
+    miUsuario: String,
+    /** Como llamo yo a un username. Devuelve el username si no lo tengo agendado. */
+    nombreDe: (String) -> String,
     /** El resultado de busqueda en el que estoy parado ahora. */
     resaltado: Boolean = false,
     onReintentar: () -> Unit,
@@ -1217,6 +1305,10 @@ private fun Burbuja(
     val sobreAcento =
         m.esMio && !pendiente && !fallido && !m.retirado && !esSticker && !esEspecial
     val colorTexto = if (sobreAcento) TextoSobreAcento else TextoPrimario
+    // Sobre el acento, el cian de siempre no contrasta: la burbuja propia ya
+    // es cian. Ahi la mencion se marca con el mismo color del texto pero en
+    // negrita, que es lo que hace `textoConMenciones` con el peso.
+    val colorMencion = if (sobreAcento) TextoSobreAcento else Cian
 
     val forma = RoundedCornerShape(
         topStart = 16.dp, topEnd = 16.dp,
@@ -1273,14 +1365,18 @@ private fun Burbuja(
                 .semantics(mergeDescendants = !seOpera) {
                     // Con controles dentro, la descripcion del contenedor
                     // sobra: la pondria delante de cada opcion al recorrerlas.
-                    if (!seOpera) contentDescription = descripcionDeBurbuja(m, esGrupo)
+                    if (!seOpera) contentDescription = descripcionDeBurbuja(m, esGrupo, nombreDe)
                     estadoDeBurbuja(m)
                 }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             if (!m.esMio && esGrupo && !m.retirado) {
                 Text(
-                    "@" + m.autor,
+                    // Sin "@" y con mi nombre para esa persona, igual que
+                    // en la lista. El COLOR se sigue calculando con el
+                    // username, que es lo estable: dos contactos pueden
+                    // compartir alias y tendrian el mismo color.
+                    nombreDe(m.autor),
                     color = colorDeNombre(m.autor),
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
@@ -1334,7 +1430,12 @@ private fun Burbuja(
                     if (m.texto.isNotBlank()) Spacer(Modifier.height(6.dp))
                 }
                 if (m.texto.isNotBlank()) {
-                    Text(m.texto, color = colorTexto, fontSize = 16.sp)
+                    // Las menciones, marcadas. La mia en negrita y con fondo;
+                    // las de otros solo en color. Ver `textoConMenciones`.
+                    Text(
+                        textoConMenciones(m.texto, miUsuario, colorTexto, colorMencion),
+                        fontSize = 16.sp,
+                    )
                 }
             }
 

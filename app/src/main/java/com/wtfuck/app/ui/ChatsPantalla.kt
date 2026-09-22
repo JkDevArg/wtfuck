@@ -867,10 +867,16 @@ private fun FilaChat(
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    // El "@" es de las personas. Un grupo y un canal tienen
-                    // nombre propio, y "@Prueba en vivo" se lee como un
-                    // usuario que no existe.
-                    if (c.tipo == "directa") "@${c.titulo}" else c.titulo,
+                    // Sin "@". Lo llevaba delante de toda conversacion
+                    // directa, y eso convertia la lista en un listado de
+                    // identificadores: "@tatiana" y no "Tatiana". Una agenda
+                    // de telefono no muestra numeros.
+                    //
+                    // El titulo ya resuelve que decir -mi alias si la tengo
+                    // agendada, el username si no- y en los dos casos el "@"
+                    // sobra: delante de un nombre propio es ruido, y delante
+                    // de un username no aporta nada que no diga el contexto.
+                    c.titulo,
                     style = MaterialTheme.typography.titleMedium,
                     color = TextoPrimario,
                     maxLines = 1,
@@ -904,7 +910,12 @@ private fun FilaChat(
                 // mensaje hasta abrir la conversacion.
                 if (c.tipo == "grupo" && c.ultimoTexto != null) {
                     Text(
-                        if (c.ultimoEsMio == true) "Tu: " else "${c.ultimoAutor.orEmpty()}: ",
+                        // El alias tambien aqui: si en un grupo escribe
+                        // alguien de mi libreta, la lista lo llama como yo lo
+                        // llamo. El color se calcula con el USERNAME, que es
+                        // lo estable: dos contactos pueden compartir alias.
+                        if (c.ultimoEsMio == true) "Tu: "
+                        else "${c.aliasAutor.ifBlank { c.ultimoAutor.orEmpty() }}: ",
                         style = MaterialTheme.typography.bodyMedium,
                         color = colorDeNombre(if (c.ultimoEsMio == true) miUsuario else c.ultimoAutor.orEmpty()),
                         maxLines = 1,

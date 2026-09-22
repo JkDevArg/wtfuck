@@ -95,6 +95,10 @@ data class ChatFila(
     val fijado: Boolean,
     val marcadaNoLeida: Boolean,
     val soyMiembro: Boolean,
+    /** Como llamo YO a la otra persona, si la tengo agendada. Ver [titulo]. */
+    val aliasContacto: String = "",
+    /** Lo mismo para quien escribio el ultimo mensaje de un grupo. */
+    val aliasAutor: String = "",
 ) {
     /** El globo se pinta si hay mensajes sin leer O si la marque a mano. */
     val sinLeer: Boolean get() = noLeidos > 0 || marcadaNoLeida
@@ -102,8 +106,36 @@ data class ChatFila(
     val silenciado: Boolean
         get() = silenciadoHasta == -1L || (silenciadoHasta > 0 && silenciadoHasta > System.currentTimeMillis())
 
-    /** Lo que se ve como titulo: el nombre elegido, o el usuario si no puso uno. */
-    val titulo: String get() = nombreMostrado.ifBlank { nombre }
+    /**
+     * Lo que se ve como titulo de la fila.
+     *
+     * ## El orden, y por que no es el obvio
+     *
+     * 1. **Mi alias de contacto**, si lo tengo agendado.
+     * 2. Si no, el **username**.
+     * 3. Para un grupo o un canal, su nombre propio.
+     *
+     * Lo que NO se usa en una conversacion directa es `nombreMostrado`, que es
+     * el nombre que la otra persona **se puso a si misma**. Y esa es la
+     * decision: un nombre que elige quien esta del otro lado es un dato
+     * controlado por quien podria querer hacerse pasar por alguien. Con el de
+     * titulo, cualquiera se llama "Tatiana" y en la lista se ve igual que la
+     * Tatiana de verdad.
+     *
+     * El alias si se puede mostrar solo, sin username al lado, porque **lo
+     * escribi yo**: si dice "Tatiana" es porque yo decidi que esa cuenta es
+     * Tatiana. Es la misma logica por la que una agenda de telefono muestra
+     * nombres y no numeros.
+     *
+     * Quien quiera ver el nombre que la persona se puso lo tiene en su perfil,
+     * que es donde ese dato significa algo: ahi se lee como "asi se llama esta
+     * cuenta", no como "esta es Fulano".
+     */
+    val titulo: String get() = when {
+        aliasContacto.isNotBlank() -> aliasContacto
+        tipo != "directa" -> nombreMostrado.ifBlank { nombre }
+        else -> nombre
+    }
 }
 
 @Entity(
@@ -315,6 +347,30 @@ data class HistoriaEnt(
     val adjuntoEstado: String = "",
 )
 
+/**
+ * Mi libreta, copiada aqui para poder dibujar la lista sin red.
+ *
+ * ## Por que una copia local y no una llamada
+ *
+ * La lista de chats sale de esta base y se dibuja al abrir la app, antes de
+ * que ninguna peticion haya vuelto. Si el nombre de contacto viniera de la
+ * red, cada arranque mostraria usernames durante un segundo y luego los
+ * cambiaria por nombres: un parpadeo en la primera pantalla, y en un avion,
+ * usernames para siempre.
+ *
+ * El alias es **mio**, no de la otra persona: lo escribi yo. Esa es justo la
+ * razon por la que se puede mostrar solo, sin el username al lado. Ver
+ * `ChatFila.titulo`.
+ */
+@Entity(tableName = "contacto")
+data class ContactoEnt(
+    /** El username, en minusculas. Es la clave porque es lo que no cambia. */
+    @PrimaryKey val username: String,
+    /** Como lo llamo yo. Vacio = lo tengo agendado pero sin nombre propio. */
+    val alias: String = "",
+    val favorito: Boolean = false,
+)
+
 // ============================================================
 //  DAO
 // ============================================================
@@ -330,16 +386,38 @@ interface ChatDao {
                   m.adjuntoClase AS ultimoAdjuntoClase,
                   m.adjuntoNombre AS ultimoAdjuntoNombre,
                   c.miRol, c.miJerarquia, c.silenciadoHasta, c.archivado, c.fijado,
-                  c.marcadaNoLeida, c.soyMiembro
+                  c.marcadaNoLeida, c.soyMiembro,
+                  COALESCE(k.alias, '') AS aliasContacto,
+                  COALESCE(ka.alias, '') AS aliasAutor
            FROM conversacion c
            LEFT JOIN mensaje m ON m.id = (
                SELECT id FROM mensaje WHERE conversacionId = c.id AND oculto = 0
                ORDER BY creadoEn DESC, id DESC LIMIT 1
            )
+           -- Mi libreta, dos veces: para el titulo de una directa y para el
+           -- "Fulano:" del ultimo mensaje de un grupo. Son dos personas
+           -- distintas y las dos merecen salir con el nombre que yo les puse.
+           LEFT JOIN contacto k ON c.tipo = 'directa' AND k.username = c.nombre
+           LEFT JOIN contacto ka ON ka.username = m.autor
            WHERE c.archivado = :archivados
            ORDER BY c.fijado DESC, COALESCE(m.creadoEn, 0) DESC"""
     )
     fun conversaciones(archivados: Boolean = false): Flow<List<ChatFila>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarContactos(filas: List<ContactoEnt>)
+
+    @Query("DELETE FROM contacto WHERE username NOT IN (:vivos)")
+    suspend fun podarContactos(vivos: List<String>)
+
+    @Query("DELETE FROM contacto")
+    suspend fun borrarContactos()
+
+    @Query("SELECT COALESCE(alias, '') FROM contacto WHERE username = :username")
+    suspend fun aliasDe(username: String): String?
+
+    @Query("SELECT * FROM contacto")
+    suspend fun libreta(): List<ContactoEnt>
 
     @Query("SELECT COUNT(*) FROM conversacion WHERE archivado = 1")
     fun cuantosArchivados(): Flow<Int>
@@ -672,8 +750,9 @@ interface ChatDao {
         DistribucionGrupoEnt::class,
         VotoEnt::class,
         HistoriaEnt::class,
+        ContactoEnt::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -690,7 +769,9 @@ abstract class BaseLocal : RoomDatabase() {
             val factory = SupportOpenHelperFactory(ClaveBase.obtener(ctx))
             return Room.databaseBuilder(ctx, BaseLocal::class.java, "wtfuck.db")
                 .openHelperFactory(factory)
-                .addMigrations(DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14)
+                .addMigrations(
+                    DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
+                )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
         }
@@ -799,6 +880,30 @@ abstract class BaseLocal : RoomDatabase() {
          * `@ColumnInfo(defaultValue)` y Room no lo exige porque solo compara
          * los defaults que la entidad si declara.
          */
+        /**
+         * Tabla nueva, asi que se crea y ya: no hay datos que conservar.
+         *
+         * Se escribe a mano igualmente en vez de dejar que Room borre la base:
+         * `fallbackToDestructiveMigration` aqui significaria perder **todo el
+         * historial**, que en esta app no esta en ningun servidor. Una tabla
+         * nueva no puede costar eso.
+         *
+         * Sin `DEFAULT` en el CREATE: los valores por defecto viven en el
+         * constructor de `ContactoEnt`, y declararlos tambien aqui es lo que
+         * rompio la 10→11. Ver la nota de `CREAR_HISTORIA`.
+         */
+        private val DE_14_A_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS contacto (
+                           username TEXT NOT NULL PRIMARY KEY,
+                           alias TEXT NOT NULL,
+                           favorito INTEGER NOT NULL
+                       )"""
+                )
+            }
+        }
+
         private val DE_13_A_14 = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE mensaje ADD COLUMN citaHistoriaId TEXT NOT NULL DEFAULT ''")

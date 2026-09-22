@@ -9,8 +9,8 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-22: 1516 pruebas en verde** (1323 de integración + 193 de
-JUnit) con todo levantado; **1425** en la configuración mínima, porque dos
+**Estado al 2026-09-22: 1547 pruebas en verde** (1323 de integración + 224 de
+JUnit) con todo levantado; **1456** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
 Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
 beta cerrada**.
@@ -42,7 +42,7 @@ cliente web de mensajería.
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero | A, N.7, N.8 |
-| 17 | Calidad y pruebas | ✅ 1516 con todo levantado · 1425 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1547 con todo levantado · 1456 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -57,7 +57,7 @@ cliente web de mensajería.
 | Texto, imágenes, videos, audios, documentos | ✅ |
 | Mensajes de voz | ✅ con adelantar y velocidad 1x/1.5x/2x (N.12) |
 | Llamadas de audio y video | ✅ módulo K, con ventana flotante |
-| Respuestas, reacciones, menciones, reenvíos | ✅ una reacción por persona (V25) · responder deslizando (N.13) |
+| Respuestas, reacciones, menciones, reenvíos | ✅ una reacción por persona (V25) · responder deslizando (N.13) · menciones con selector y resaltado (T.2) |
 | Mensajes fijados | ✅ |
 | Búsqueda global y dentro de conversaciones | ✅ las dos (M.3) |
 | Notificaciones push | 🔨 locales sí; FCM no: necesita credenciales de Firebase |
@@ -443,7 +443,7 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1516 pruebas con todo levantado**: 1323 de integración en 35 suites de Node,
+**1547 pruebas con todo levantado**: 1323 de integración en 35 suites de Node,
 32 de JUnit en el servidor (RBAC, seguridad y el intermediario de GIFs) y 106 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el
 contenido de un sobre que no escribió esta app: miniaturas y duraciones
@@ -453,7 +453,7 @@ incluidas).
 === 35 suites · 1323 pasan, 0 fallan ===
 ```
 
-**1425 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
+**1456 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
 diferencia no es un fallo: dos suites necesitan más que el servidor y lo dicen
 en vez de fingir.
 

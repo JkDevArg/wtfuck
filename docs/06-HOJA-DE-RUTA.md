@@ -3824,3 +3824,90 @@ Por eso hay un `marcarLeidaLocal` aparte. Reutilizar `abrirChat` habría sido un
 línea menos y **le diría a la otra persona que leíste su mensaje cuando no lo
 hiciste**. En una app cuyo argumento es la privacidad eso no es un detalle: la
 confirmación de lectura vale exactamente por ser cierta.
+
+---
+
+## Módulo T · Nombres de contacto y menciones ✅
+
+- [x] T.1 En la lista sale el nombre de contacto, y sin "@"
+- [x] T.2 Mencionar con `@` se puede hacer y se puede ver
+- [x] T.3 La cola de moderación deja de depender del corpus (otra vez)
+
+### T.1 · "@joaquin" era un identificador, no un nombre
+
+La lista mostraba `@tatiana`, `@joaquin`: un listado de identificadores. La
+regla nueva es la de cualquier agenda de teléfono:
+
+| Caso | Qué se ve |
+|---|---|
+| La tengo agendada | **mi alias** — "Tati" |
+| No la tengo agendada | el **username**, sin "@" |
+| Grupo o canal | su nombre propio |
+
+**Y hay una decisión de seguridad dentro.** Lo que *dejó* de usarse en una
+conversación directa es `nombreMostrado`, el nombre que la otra persona **se
+puso a sí misma**. No es un detalle de presentación: es un dato controlado por
+quien podría querer hacerse pasar por alguien. Con él de título, una cuenta
+`impostor99` que se llame "Tatiana" aparece en mi lista **idéntica** a la
+Tatiana real. El alias sí puede ir solo, sin username al lado, porque lo
+escribí yo.
+
+Quien quiera ver el nombre que la persona se puso lo tiene en su perfil, que es
+donde ese dato significa "así se llama esta cuenta" y no "esta es Fulano". Y el
+username, que es lo que no se puede falsificar, sigue a un toque: **"Ver
+contacto" lo muestra**, y eso pasó a ser obligatorio en cuanto el título dejó
+de serlo.
+
+La misma regla se aplicó en tres sitios más: el `"Tati:"` del último mensaje de
+un grupo, la etiqueta de autor dentro de las burbujas, y la cabecera del chat.
+
+**El alias se copia a la base local** (`contacto`, migración 14→15) porque la
+lista se dibuja antes de que vuelva ninguna petición: con el nombre viniendo de
+la red, cada arranque mostraría usernames durante un segundo y en un avión para
+siempre. Se refresca en la sincronización normal y en las tres rutas que pueden
+cambiar la libreta, y **poda**: sin podar, borrar un contacto lo quita del
+servidor y su nombre sigue saliendo en este aparato para siempre.
+
+### T.2 · La mención existía y era invisible
+
+Mencionar **ya funcionaba**: quien escribe `@tatiana` manda ese username, el
+servidor lo resuelve contra los participantes reales y queda registrado. Lo que
+no había era nada de eso a la vista. Hacía falta acordarse del username exacto
+—un `@taty` no menciona a nadie y nada lo dice— y al leer, `@tatiana` se
+dibujaba como texto normal, así que una mención a uno mismo se perdía entre el
+resto del mensaje. Una función entera por dentro e invisible por fuera, que
+para quien la usa es lo mismo que no estar.
+
+- **Al escribir**: teclear `@` en un grupo abre una tira de candidatos con *mi*
+  nombre para cada uno. Se busca por nombre y por username —quien escribe
+  piensa en la persona, no en el identificador— y se inserta siempre el
+  username, que es lo único que el servidor resuelve.
+- **Al leer**: la mención a **mí** va en negrita con fondo; las de otros, mismo
+  color con un fondo apenas insinuado. Si se pintaran igual, en un grupo donde
+  se menciona a diez personas la mía no se encontraría, que es justo lo que la
+  mención viene a resolver.
+
+**La regla de qué es una mención se mudó al contrato** (`PATRON_MENCION`,
+`mencionesEn`). Había dos sitios que tenían que estar de acuerdo —el que manda
+y el que pinta— y nada que los atara: con reglas distintas, la burbuja resalta
+un nombre que nunca se registró, o sea una promesa visual sin nada detrás. De
+paso, `mencionesEn` quita repetidos: mencionar a alguien tres veces en la misma
+frase insertaba tres filas en `mencion` para la misma persona.
+
+**El campo de texto pasó a `TextFieldValue`**, que es lo único que trae el
+cursor. Con un `String` sólo se puede mirar el final, y entonces el selector no
+aparece al editar por el medio. Salió gratis un arreglo de paso: el selector de
+emoji inserta **en el cursor** y ya no al final, así que poner una cara en
+mitad de una frase escrita deja de mandarla al final.
+
+### T.3 · Dependencia del corpus, en la función que advertía de ella
+
+`colaEntera` de `moderacion.mjs` paginaba con un tope fijo de 400 vueltas. Con
+páginas de tres, el techo eran **1200 filas**; la cola de desarrollo llegó a
+1217 y la pasada de tres en tres se cortó sola. El error decía *"1200 paginando
+vs 1217 de una"*, que se lee como un defecto del cursor y no lo era.
+
+Dos arreglos: el tope se calcula sobre el tamaño de página en vez de ser un
+número fijo, y **revienta** al activarse en vez de devolver media cola en
+silencio. Un cinturón que trunca callando convierte un problema en otro que no
+se le parece.

@@ -37,6 +37,42 @@ data class SobreTexto(
 )
 
 // ============================================================
+//  Menciones
+// ============================================================
+
+/**
+ * Que cuenta como una mencion dentro de un texto.
+ *
+ * ## Por que vive en el contrato y no en la app
+ *
+ * Porque **hay dos sitios que tienen que estar de acuerdo**, y hasta ahora no
+ * habia nada que los obligara: el remitente extrae las menciones de su propio
+ * texto y las manda en `menciones`, y la pantalla las pinta de otro color. Si
+ * cada uno usara su regla, la burbuja resaltaria un nombre que nunca se
+ * registro —una mencion que no avisa a nadie, dibujada como si avisara— o al
+ * reves.
+ *
+ * `[a-z0-9_]{3,24}` es el formato de un username. En minusculas porque el
+ * servidor los guarda asi y `mencionesEn` baja el texto antes de buscar: quien
+ * escribe "@Tatiana" menciona a `tatiana`.
+ *
+ * ## Lo que NO hace
+ *
+ * No comprueba que la persona exista ni que este en la conversacion. Eso lo
+ * hace el servidor contra los participantes reales, que es donde se puede: el
+ * cliente propone y el servidor decide. Mencionar a alguien que no esta
+ * simplemente no registra nada.
+ */
+val PATRON_MENCION = Regex("@([a-z0-9_]{3,24})")
+
+/** Los usernames mencionados en un texto, en minusculas y sin repetir. */
+fun mencionesEn(texto: String): List<String> =
+    PATRON_MENCION.findAll(texto.lowercase())
+        .map { it.groupValues[1] }
+        .distinct()
+        .toList()
+
+// ============================================================
 //  Acciones sobre un mensaje (HTTP, autorizadas por el servidor)
 // ============================================================
 

@@ -162,7 +162,19 @@ ck('otra persona denuncia al mismo usuario', r.s === 200, String(r.s));
 async function colaEntera(token, tam) {
   const todas = [];
   let cursor = '';
-  for (let vuelta = 0; vuelta < 400; vuelta++) {
+  // El tope de vueltas es un cinturon contra un cursor roto que no avanza, y
+  // por eso se calcula sobre lo que hay que recorrer en vez de ser un numero
+  // fijo. Con `400` fijo y paginas de tres, el techo eran 1200 filas: el dia
+  // que la cola de desarrollo paso de 1200 -hoy tiene 1217- la pasada de tres
+  // en tres se cortaba sola y la prueba fallaba con "1200 vs 1217", que se lee
+  // como un defecto del cursor y no lo era. **Otra vez dependencia del
+  // corpus**, y en la misma funcion que advierte de ella.
+  const tope = Math.ceil(50_000 / tam) + 10;
+  for (let vuelta = 0; ; vuelta++) {
+    // Y si el cinturon se activa, se ROMPE en vez de devolver media cola: una
+    // lista truncada en silencio hace que la comparacion de abajo mienta sobre
+    // que fue lo que fallo.
+    if (vuelta >= tope) throw new Error(`colaEntera: ${tope} vueltas de ${tam} sin terminar`);
     const pagina = (await get(`/v1/moderacion/cola?limite=${tam}${cursor}`, token)).b?.denuncias || [];
     todas.push(...pagina);
     if (pagina.length < tam) break;

@@ -122,8 +122,20 @@ fun descripcionDeFila(c: ChatFila, miUsuario: String): String = buildList {
  * la fila queda como hueco a proposito, y anunciar lo que decia seria
  * deshacer el borrado para quien usa lector de pantalla.
  */
-fun descripcionDeBurbuja(m: MensajeEnt, esGrupo: Boolean): String = buildList {
-    if (m.esMio) add("Tu") else if (esGrupo) add(m.autor)
+fun descripcionDeBurbuja(
+    m: MensajeEnt,
+    esGrupo: Boolean,
+    /**
+     * Como llamo yo a un username. Por defecto, el username tal cual.
+     *
+     * Existe para que el lector de pantalla diga **lo mismo que se ve**: la
+     * etiqueta de autor muestra mi nombre de contacto -"Tati"- y decir
+     * "tatiana" en voz alta obliga a mantener dos identidades de la misma
+     * persona en la cabeza, justo a quien no puede comprobarlo mirando.
+     */
+    nombreDe: (String) -> String = { it },
+): String = buildList {
+    if (m.esMio) add("Tu") else if (esGrupo) add(nombreDe(m.autor))
 
     when {
         m.retirado -> add("mensaje eliminado")
