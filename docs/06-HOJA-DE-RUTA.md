@@ -3744,3 +3744,83 @@ arranque.
   repetía a la única persona, que ya estaba de título. La lista ahora sale solo
   en grupos.
 - Un `import` duplicado de `Verified` en `PerfilPantalla.kt`.
+
+---
+
+## Módulo S · La lista de chats ✅
+
+*Paridad de uso con las apps de mensajería conocidas, con interfaz propia.*
+
+- [x] S.1 El botón flotante deja de ser un "+"
+- [x] S.2 Selección múltiple con acciones en lote
+- [x] S.3 "Marcar como leídas" no miente
+
+### S.1 · Un "+" no dice qué crea
+
+El botón más visible de la pantalla hacía **una** de las tres cosas que se
+pueden crear desde aquí. Un grupo estaba escondido en el menú de tres puntos;
+un canal ni siquiera se podía empezar desde esta pantalla —había que ir a otra
+pestaña y encontrar un icono—. Es decir: el elemento más visible resolvía la
+acción que menos falta hace descubrir.
+
+Ahora dice **Nuevo** y despliega Conversación, Grupo y Canal. Lleva texto a
+propósito: un botón flotante con sólo un símbolo obliga a tocarlo para saber
+qué hace, y tocar algo para averiguarlo sólo es gratis cuando no pasa nada;
+aquí abre una pantalla.
+
+**Crear un canal abre el diálogo, no lleva a la pestaña.** Llevar a alguien a
+un sitio no es lo mismo que hacer lo que pidió. Cuesta un parámetro en
+`DescubrirCanales` y se consume al atenderlo, para que volver a esa pestaña más
+tarde no reabra el diálogo sin que nadie lo pida.
+
+**"Historia" no está en el menú, y es deliberado.** Ya tiene su sitio: el
+círculo "Publicar" de la fila de historias, justo encima y en su contexto.
+Ponerla también aquí sería el mismo error que este cambio corrige en el menú de
+tres puntos —dos caminos al mismo sitio sólo obligan a decidir cuál es el
+bueno— y esta vez con el agravante de que el camino que ya existe es mejor. Por
+la misma razón, crear salió del menú de tres puntos: ahora vive en un solo
+lugar.
+
+### S.2 · Selección múltiple
+
+Mantener pulsado ya no abre la hoja de acciones de un chat: **selecciona**.
+Tocar añade y quita, Atrás sale, y la barra de arriba se sustituye entera —el
+buscador, los filtros y la fila de historias desaparecen, porque mientras se
+opera sobre un lote todo lo demás estorba y tocarlo pierde la selección—.
+
+Cinco acciones en lote: fijar, silenciar, marcar leídas, archivar y eliminar.
+
+**Los botones hacen lo que le falta al lote.** No hay "fijar" y "desfijar" a la
+vez: hay un botón que decide según lo que ya está. La regla para las mezclas es
+*lo que falta* —con once fijados y uno no, fija—, y la alternativa razonable
+("la mayoría manda") es peor: con siete de doce desfijaría y con seis fijaría,
+así que dos toques seguidos harían cosas distintas por una cuenta que nadie
+hizo.
+
+La regla vive en `loteDe()`, que es una función y no cuatro `all { }` sueltos
+dentro del Composable, porque es una regla y las reglas se prueban. Dos cosas
+que sólo se ven en un test: un **silencio vencido** deja la columna distinta de
+cero y en crudo contaría como silenciado, y `emptyList().all { }` devuelve
+`true`, así que un lote vacío diría que todos están fijados.
+
+**Nada se perdió.** La hoja de acciones de un chat tiene cosas sin versión en
+lote —bloquear a alguien, denunciar, silenciar ocho horas—. Con **un solo** chat
+marcado la barra ofrece "Más" y la abre. El gesto cambió de significado sin que
+desapareciera nada.
+
+**Sólo eliminar pregunta.** La diferencia no es el número de chats: es que
+archivar, fijar, silenciar y marcar leído se deshacen con el mismo botón que los
+hizo, y borrar no. Preguntar ante todo convierte la pregunta en un trámite que
+se contesta sin leer, y entonces no protege de nada.
+
+### S.3 · "Marcar como leídas" no manda acuse
+
+Abrir un chat manda el acuse de lectura, y lo hace porque abrirlo **es** leerlo:
+es el único momento en que se puede afirmar que alguien vio los mensajes.
+"Marcar como leídas" desde la lista es otra cosa: lo que se pide es bajar el
+globo rojo, y nadie leyó nada.
+
+Por eso hay un `marcarLeidaLocal` aparte. Reutilizar `abrirChat` habría sido una
+línea menos y **le diría a la otra persona que leíste su mensaje cuando no lo
+hiciste**. En una app cuyo argumento es la privacidad eso no es un detalle: la
+confirmación de lectura vale exactamente por ser cierta.

@@ -72,6 +72,9 @@ fun Inicio(
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     var pestana by rememberSaveable { mutableStateOf(Pestana.CHATS) }
+    // Crear un canal se pide desde Chats y se hace en Canales. El aviso viaja
+    // aqui porque es lo unico que ven las dos pestañas.
+    var pedirNuevoCanal by rememberSaveable { mutableStateOf(false) }
 
     // Cada pestaña se guarda su propio estado: el scroll de la lista, lo que
     // había escrito en el buscador, el filtro elegido. Sin esto, mirar tu
@@ -136,6 +139,7 @@ fun Inicio(
                     onAbrir = { id, tipo -> if (tipo == "canal") onAbrirCanal(id) else onAbrirChat(id) },
                     onPerfil = { pestana = Pestana.PERFIL },
                     onCanales = { pestana = Pestana.CANALES },
+                    onNuevoCanal = { pedirNuevoCanal = true; pestana = Pestana.CANALES },
                     modifier = hueco,
                 )
 
@@ -150,6 +154,8 @@ fun Inicio(
                     // Sin flecha de volver: es una pestaña, no una pantalla a
                     // la que se entró. La flecha prometería un atrás que no hay.
                     onAtras = null,
+                    abrirCreacion = pedirNuevoCanal,
+                    onCreacionAbierta = { pedirNuevoCanal = false },
                     modifier = hueco,
                 )
 

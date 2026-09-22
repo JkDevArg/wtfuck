@@ -9,8 +9,8 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-22: 1504 pruebas en verde** (1323 de integración + 181 de
-JUnit) con todo levantado; **1413** en la configuración mínima, porque dos
+**Estado al 2026-09-22: 1516 pruebas en verde** (1323 de integración + 193 de
+JUnit) con todo levantado; **1425** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
 Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
 beta cerrada**.
@@ -42,7 +42,7 @@ cliente web de mensajería.
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero | A, N.7, N.8 |
-| 17 | Calidad y pruebas | ✅ 1504 con todo levantado · 1413 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1516 con todo levantado · 1425 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -379,6 +379,16 @@ En Android está todo: centro de seguridad, contactos, canales con su
 directorio, llamadas con su ventana flotante, ajustes de notificaciones,
 verificación de huella por aparato, panel de moderación.
 
+**La lista de chats** (módulo S): el botón flotante dice **Nuevo** y despliega
+Conversación, Grupo y Canal, en vez de un "+" que hacía una sola de las tres.
+Mantener pulsado **selecciona**, y con varios chats marcados hay fijar,
+silenciar, marcar leídas, archivar y eliminar en lote. Los botones hacen *lo que
+le falta* al lote: con once fijados y uno no, fijan.
+
+La interfaz es propia y no una copia: el botón lleva texto donde las apps
+conocidas ponen sólo un icono, y la barra contextual resuelve las mezclas con
+un botón por acción en vez de dos.
+
 **Móvil, tablet y escritorio** (N.3): desde 720 dp de ancho y 480 de alto, la
 lista y la conversación se ven a la vez, con la lista en ancho fijo. El umbral
 mira el alto y no sólo el ancho porque un teléfono acostado tiene ancho de sobra
@@ -433,7 +443,7 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1504 pruebas con todo levantado**: 1323 de integración en 35 suites de Node,
+**1516 pruebas con todo levantado**: 1323 de integración en 35 suites de Node,
 32 de JUnit en el servidor (RBAC, seguridad y el intermediario de GIFs) y 106 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el
 contenido de un sobre que no escribió esta app: miniaturas y duraciones
@@ -443,7 +453,7 @@ incluidas).
 === 35 suites · 1323 pasan, 0 fallan ===
 ```
 
-**1413 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
+**1425 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
 diferencia no es un fallo: dos suites necesitan más que el servidor y lo dicen
 en vez de fingir.
 

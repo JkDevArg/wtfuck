@@ -1091,6 +1091,26 @@ class Repositorio(
     suspend fun marcarNoLeida(convId: String) = dao.marcarNoLeida(convId)
 
     /**
+     * Baja el contador de no leidos SIN mandar acuse de lectura.
+     *
+     * ## Por que no llama a [abrirChat]
+     *
+     * Porque no es lo mismo. `abrirChat` manda el acuse, y lo hace porque
+     * abrir el chat **es** leerlo: es el unico momento en que se puede afirmar
+     * que alguien vio los mensajes. Esto de aqui lo usa "marcar como leidas"
+     * desde la lista, sobre un lote, y ahi nadie leyo nada: lo que se pide es
+     * bajar el globo rojo.
+     *
+     * Mandar el acuse tambien seria **decirle a la otra persona que leiste su
+     * mensaje cuando no lo hiciste**, y en una app cuyo argumento es la
+     * privacidad eso no es un detalle: la confirmacion de lectura vale
+     * justamente por ser cierta.
+     *
+     * Es local y de este aparato, igual que [marcarNoLeida].
+     */
+    suspend fun marcarLeidaLocal(convId: String) = dao.marcarLeida(convId)
+
+    /**
      * La clase que se le declara al servidor, derivada de la carga.
      *
      * Solo se declara lo que hace falta para autorizar: ubicacion y contacto no

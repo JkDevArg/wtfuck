@@ -45,6 +45,17 @@ fun DescubrirCanales(
     onAbrirCanal: (String) -> Unit,
     /** Nulo cuando esta pantalla es una pestaña: no hay atras que ofrecer. */
     onAtras: (() -> Unit)?,
+    /**
+     * Abrir el dialogo de crear nada mas entrar.
+     *
+     * Lo pide el boton "Nuevo · Canal" de la lista de chats: crear un canal
+     * vive aqui, y sin esto ese boton solo podria dejar a la persona en esta
+     * pantalla esperando que encuentre el icono de arriba. Llevar a alguien a
+     * un sitio no es lo mismo que hacer lo que pidio.
+     */
+    abrirCreacion: Boolean = false,
+    /** Se avisa al abrirlo para que la peticion no se repita al volver. */
+    onCreacionAbierta: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
@@ -58,6 +69,12 @@ fun DescubrirCanales(
     var directorio by remember { mutableStateOf<List<CanalEnBusqueda>?>(null) }
     var buscando by remember { mutableStateOf(false) }
     var creando by remember { mutableStateOf(false) }
+
+    // Se consume la peticion al atenderla: si no, volver a esta pestaña mas
+    // tarde reabriria el dialogo sin que nadie lo pidiera.
+    LaunchedEffect(abrirCreacion) {
+        if (abrirCreacion) { creando = true; onCreacionAbierta() }
+    }
     var aviso by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { directorio = app.repo.directorioCanales() }
