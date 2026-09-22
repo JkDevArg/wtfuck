@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -75,6 +77,7 @@ import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.ClaseAdjunto
 import com.wtfuck.protocol.ClaseContenido
 import com.wtfuck.protocol.EstadoEnvio
+import com.wtfuck.protocol.FichaEmpresa
 import com.wtfuck.protocol.ReaccionAgrupada
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -111,6 +114,14 @@ fun ChatPantalla(
     var aviso by remember { mutableStateOf<String?>(null) }
     val portapapeles = LocalClipboardManager.current
     var mostrarInfo by remember { mutableStateOf(false) }
+    /**
+     * La ficha de empresa de la otra persona, si tiene.
+     *
+     * Se pide al abrir el contacto y no al abrir el chat: es un dato que casi
+     * nadie va a mirar, y pedirlo siempre seria una peticion de red por cada
+     * conversacion que se abre para dibujar algo que esta detras de un menu.
+     */
+    var fichaDelOtro by remember { mutableStateOf<FichaEmpresa?>(null) }
 
     // L.1 · Quien escribe. Se apaga solo: ver `Repositorio.escribiendo`.
     val escribiendoTodos by app.repo.escribiendo.collectAsStateWithLifecycle()
@@ -478,7 +489,23 @@ fun ChatPantalla(
                             menuAbierto = false
                             // Un grupo tiene administracion; una directa solo
                             // una tarjeta con los datos del contacto.
-                            if (chat?.tipo == "grupo") onInfoGrupo() else mostrarInfo = true
+                            if (chat?.tipo == "grupo") {
+                                onInfoGrupo()
+                            } else {
+                                mostrarInfo = true
+                                // El perfil publico se pide aqui. Si falla, la
+                                // tarjeta simplemente no aparece: el contacto
+                                // se abre igual, porque una ficha de empresa no
+                                // es lo que se vino a ver.
+                                val quien = chat?.titulo
+                                if (quien != null) {
+                                    ambito.launch {
+                                        fichaDelOtro =
+                                            runCatching { app.repo.perfilDe(quien)?.empresa }
+                                                .getOrNull()
+                                    }
+                                }
+                            }
                         }
 
                         OpcionMenu("Buscar en el chat", Icons.Filled.Search) {
@@ -1012,7 +1039,10 @@ fun ChatPantalla(
                 )
             },
             text = {
-                Column {
+                // Con scroll: la descripcion de una ficha admite 600
+                // caracteres y en un telefono corto el dialogo se pasaba de
+                // alto, dejando el boton de cerrar fuera de la pantalla.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(
                         if (chat.tipo == "grupo") "${miembros.size + 1} miembros" else "Conversacion directa",
                         style = MaterialTheme.typography.bodyMedium,
@@ -1029,6 +1059,13 @@ fun ChatPantalla(
                             Text("@$u", style = MaterialTheme.typography.bodyMedium, color = TextoPrimario)
                         }
                     }
+                    // La ficha de empresa de la otra persona. Va aqui y no en
+                    // una pantalla aparte porque "ver contacto" es donde se va
+                    // a buscar quien es alguien.
+                    //
+                    // `margenLateral = 0.dp`: el dialogo ya trae el suyo.
+                    fichaDelOtro?.let { TarjetaEmpresa(it, margenLateral = 0.dp) }
+
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Lock, null, tint = Cian, modifier = Modifier.size(15.dp))

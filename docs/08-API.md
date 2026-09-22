@@ -278,6 +278,23 @@ descubre leyendo el APK. 404 y no 403 porque un 403 confirma que existe.
 `GET /v1/cuenta/tipo` sí responde a todos, con `puedeElegirTipo: false`. Cerrarla
 obligaría al cliente a distinguir "no puedo" de "falló la red".
 
+### La ficha es parte del perfil público
+
+`GET /v1/usuarios/{username}` devuelve `empresa`, con los siete campos y
+`verificada`, a **cualquier cuenta autenticada**: sin conversación previa, sin
+estar en la beta y sin ser conocido. Ver una ficha no es tener una.
+
+`null` cuando la cuenta no es de tipo empresa. **No pasa por los ajustes de
+privacidad**: declararse empresa es una declaración hacia afuera, y un
+interruptor para esconderla sería pedir un modo público y apagarlo. Quien no la
+quiera pública vuelve a `normal`, y entonces la fila se borra.
+
+La misma ficha viaja en los `participantes` de `GET /v1/conversaciones`, que es
+otra consulta: las tres que arman `UsuarioPublico` comparten el join en
+`Repo.JOIN_EMPRESA` porque olvidarlo no falla al compilar, falla al leer la
+columna en tiempo de ejecución. Cubierto por
+[`pruebas/empresa-publica.mjs`](../pruebas/empresa-publica.mjs), 35 pruebas.
+
 El sitio web se valida: tiene que ser `https://`. Ese texto acaba siendo un
 enlace en el perfil de alguien.
 

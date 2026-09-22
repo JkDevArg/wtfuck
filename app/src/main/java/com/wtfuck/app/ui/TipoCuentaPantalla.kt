@@ -421,7 +421,7 @@ private fun FichaEmpresaForm(
         modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
     ) {
         OutlinedTextField(
-            value = if (tamano.isBlank()) "Sin indicar" else "$tamano personas",
+            value = TamanoEmpresa.legible(tamano),
             onValueChange = {},
             readOnly = true,
             label = { Text("Tamaño", color = TextoTerciario) },
@@ -435,12 +435,7 @@ private fun FichaEmpresaForm(
         ) {
             (listOf("") + TamanoEmpresa.TODOS).forEach { op ->
                 DropdownMenuItem(
-                    text = {
-                        Text(
-                            if (op.isBlank()) "Sin indicar" else "$op personas",
-                            color = TextoPrimario,
-                        )
-                    },
+                    text = { Text(TamanoEmpresa.legible(op), color = TextoPrimario) },
                     onClick = { tamano = op; abreTamano = false },
                 )
             }

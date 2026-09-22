@@ -224,6 +224,37 @@ class TamanosDeEmpresaTest {
         assertEquals(TamanoEmpresa.CORPORACION, TamanoEmpresa.TODOS.last())
         assertTrue(TamanoEmpresa.CORPORACION.endsWith("+"))
     }
+
+    @Test
+    fun `una empresa de una persona no se anuncia como uno personas`() {
+        // Los rangos se dibujaban con un "$tamano personas" en tres sitios, y
+        // el primero de la lista es "1": una empresa de una sola persona salia
+        // como "1 personas" en su propio perfil publico.
+        assertEquals("1 persona", TamanoEmpresa.legible(TamanoEmpresa.UNO))
+        assertEquals("2-10 personas", TamanoEmpresa.legible(TamanoEmpresa.PEQUENA))
+        assertEquals("1000+ personas", TamanoEmpresa.legible(TamanoEmpresa.CORPORACION))
+    }
+
+    @Test
+    fun `sin tamano se dice sin indicar y no se deja en blanco`() {
+        // El campo es opcional, y un hueco vacio en la tarjeta se lee como un
+        // fallo de carga. Decirlo cuesta una palabra.
+        assertEquals("Sin indicar", TamanoEmpresa.legible(""))
+        assertEquals("Sin indicar", TamanoEmpresa.legible("   "))
+    }
+
+    @Test
+    fun `todos los rangos tienen texto y ninguno queda en sin indicar`() {
+        // Un rango nuevo en la lista sin su caso en `legible` caeria en el
+        // `else`, que por suerte hace lo correcto; este test es para que si
+        // algun dia deja de hacerlo, se sepa aqui y no en una captura.
+        TamanoEmpresa.TODOS.forEach { t ->
+            val texto = TamanoEmpresa.legible(t)
+            assertTrue("sin texto: $t", texto.isNotBlank())
+            assertTrue("un rango real no puede ser 'Sin indicar': $t", texto != "Sin indicar")
+            assertTrue("no dice de que son: $t -> $texto", texto.contains("persona"))
+        }
+    }
 }
 
 /**

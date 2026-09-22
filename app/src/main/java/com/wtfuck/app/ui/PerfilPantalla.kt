@@ -54,6 +54,7 @@ import com.wtfuck.app.datos.Hardware
 import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.CapacidadesCuenta
 import com.wtfuck.protocol.CategoriaEmpresa
+import com.wtfuck.protocol.TamanoEmpresa
 import com.wtfuck.protocol.FichaEmpresa
 import com.wtfuck.protocol.TipoCuenta
 import kotlinx.coroutines.Dispatchers
@@ -790,14 +791,22 @@ private fun FormularioIdentidad(
  * Y cuando NO esta verificada se dice tambien. Un perfil de empresa sin marca
  * alguna es indistinguible de uno verificado para quien no sabe que la marca
  * existe, y ahi es donde la ficha se volveria util para suplantar a alguien.
+ *
+ * ## Por que no es privada
+ *
+ * La dibuja tambien el chat, al abrir el contacto de la otra persona, y ese es
+ * el lado que importa: una ficha que solo ve su dueno es un formulario. El
+ * margen lateral es un parametro porque en el perfil la tarjeta vive dentro de
+ * una columna a pantalla completa y en un dialogo ya viene con margen propio;
+ * duplicarlo la dejaba con la mitad del ancho.
  */
 @Composable
-private fun TarjetaEmpresa(e: FichaEmpresa) {
+internal fun TarjetaEmpresa(e: FichaEmpresa, margenLateral: androidx.compose.ui.unit.Dp = 16.dp) {
     Spacer(Modifier.height(14.dp))
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = margenLateral)
             .clip(RoundedCornerShape(14.dp))
             .background(BgSurface)
             .padding(14.dp),
@@ -828,7 +837,7 @@ private fun TarjetaEmpresa(e: FichaEmpresa) {
         Text(
             buildString {
                 append(CategoriaEmpresa.legible(e.categoria))
-                if (e.tamano.isNotBlank()) append(" \u00b7 ${e.tamano} personas")
+                if (e.tamano.isNotBlank()) append(" \u00b7 ${TamanoEmpresa.legible(e.tamano)}")
                 if (e.ubicacion.isNotBlank()) append(" \u00b7 ${e.ubicacion}")
                 if (e.fundadaEn > 0) append(" \u00b7 desde ${e.fundadaEn}")
             },

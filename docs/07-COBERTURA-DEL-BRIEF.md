@@ -9,8 +9,8 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-22: 1441 pruebas en verde** (1269 de integración + 172 de
-JUnit) con todo levantado; **1350** en la configuración mínima, porque dos
+**Estado al 2026-09-22: 1479 pruebas en verde** (1304 de integración + 175 de
+JUnit) con todo levantado; **1388** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
 Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
 beta cerrada**.
@@ -29,7 +29,7 @@ cliente web de mensajería.
 | 1 | Objetivo general | ✅ 13 de 13 · push construido, falta la credencial | varios |
 | 2 | Sistema de usuarios | ✅ | 0, I |
 | 3 | Sistema de privacidad | ✅ **15 ajustes** en el servidor + `personalizado` con listas + solicitudes | 0, L.1, O, Q |
-| 4 | Sistema de permisos | ✅ 34 permisos, RBAC completo | A |
+| 4 | Sistema de permisos | 🔨 34 permisos, RBAC completo · **falta gestionar bots** | A |
 | 5 | Grupos | ✅ | B |
 | 6 | Roles personalizados | ✅ | B.4 |
 | 7 | Canales | ✅ | F |
@@ -42,7 +42,7 @@ cliente web de mensajería.
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero | A, N.7, N.8 |
-| 17 | Calidad y pruebas | ✅ 1441 con todo levantado · 1350 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1479 con todo levantado · 1388 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -108,12 +108,18 @@ deja de mandarlas y de verlas. Sin reciprocidad, un ajuste de privacidad es un
 espejo de una sola dirección —ver sin ser visto—, que es justamente para lo que
 se usaría.
 
-**Lo que queda fuera, y por qué.** "Si estoy grabando" no existe como estado
-separado: grabar una nota de voz ya emite "escribiendo", y un indicador aparte
-sólo añadiría una pantalla. "Solicitudes de mensaje" e "invitaciones a
-comunidades" son funciones que este producto no tiene —no hay comunidades, y
-quién puede escribirte ya se resuelve con `escribe`—, así que un ajuste para
-ellas sería un interruptor sin nada detrás.
+**Dos que se habían descartado, y por qué se hicieron igual.** Este documento
+argumentaba que "si estoy grabando" no hacía falta —grabar una nota de voz ya
+emite "escribiendo"— y que "solicitudes de mensaje" sería un interruptor sin
+nada detrás. El módulo Q hizo las dos, y el argumento era flojo en los dos
+casos: "escribiendo" y "grabando" dicen cosas distintas sobre qué está
+haciendo alguien, y las solicitudes tienen detrás una bandeja aparte, no sólo
+un ajuste. Los dos están en los quince y los cubre
+[`pruebas/privacidad-fina.mjs`](../pruebas/privacidad-fina.mjs).
+
+**Lo que sigue fuera:** "invitaciones a comunidades", porque **no hay
+comunidades**. Es lo único del §3 que falta, y falta porque falta el contenedor
+entero, no el ajuste. Ver el resumen del final.
 
 **El nivel `personalizado` sí está.** `todos`, `conocidos` y `nadie` son valores
 y caben en una columna; "todos menos Fulano" y "sólo Mengano" son **listas**, así
@@ -150,7 +156,7 @@ aviso" es el espejo de una sola dirección que la reciprocidad evita.
 Y una lista blanca **vacía** no muestra el dato a nadie: si algo fallara al leer
 las excepciones, el resultado es ocultar, nunca mostrárselo a todos.
 
-## §4 · Sistema de permisos ✅
+## §4 · Sistema de permisos 🔨
 
 34 permisos con forma `recurso.accion`. Cinco roles de sistema con jerarquía
 (propietario 100 / administrador 80 / moderador 50 / miembro 10 / restringido 5),
@@ -163,6 +169,13 @@ suspensión → bloqueo → pertenencia → restricción → override (un *deny*
 rol. Para actuar *sobre* otra persona se exige jerarquía estrictamente mayor.
 
 17 pruebas en `AutorizacionTest`.
+
+**Lo que falta, y estaba marcado como hecho.** El brief lista "gestionar
+bots/integraciones" entre los permisos, y ese permiso **no existe**: no hay
+bots que gestionar. Esta sección decía ✅ y no mencionaba el hueco. Los 34
+permisos que hay están completos; el que falta no es un permiso suelto, es un
+subsistema entero (tokens de máquina, webhooks, y un modelo de autorización
+donde el actor no es una persona — `Autz.puede` hoy asume que lo es).
 
 ## §5 · Grupos ✅ · §6 · Roles personalizados ✅
 
@@ -420,17 +433,17 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1441 pruebas con todo levantado**: 1269 de integración en 33 suites de Node,
+**1479 pruebas con todo levantado**: 1304 de integración en 34 suites de Node,
 32 de JUnit en el servidor (RBAC, seguridad y el intermediario de GIFs) y 106 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el
 contenido de un sobre que no escribió esta app: miniaturas y duraciones
 incluidas).
 
 ```
-=== 33 suites · 1269 pasan, 0 fallan ===
+=== 34 suites · 1304 pasan, 0 fallan ===
 ```
 
-**1350 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
+**1388 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
 diferencia no es un fallo: dos suites necesitan más que el servidor y lo dicen
 en vez de fingir.
 

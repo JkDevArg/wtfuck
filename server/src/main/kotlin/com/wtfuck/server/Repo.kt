@@ -338,7 +338,51 @@ object Repo {
            u.priv_foto, u.priv_estado, u.priv_nombre, u.priv_ultima_vez,
            coalesce(extract(epoch FROM u.ultima_vez) * 1000, 0),
            u.priv_modo::text,
-           coalesce(u.biografia,''), u.priv_biografia"""
+           coalesce(u.biografia,''), u.priv_biografia,
+           e.nombre_comercial, e.categoria, e.descripcion, e.sitio_web,
+           e.tamano, e.ubicacion, e.fundada_en, e.verificada_en"""
+
+    /**
+     * El FROM que va con [COLS_PUBLICO], en una constante y no copiado.
+     *
+     * Las dos consultas de perfil publico lo compartian por copia, y ahora hay
+     * un LEFT JOIN mas que **tiene que** estar en las dos: una tercera consulta
+     * que se olvidara del join no fallaria al compilar, fallaria al leer la
+     * columna 17 y devolveria perfiles sin ficha sin decir por que.
+     *
+     * El join lleva `u.tipo_cuenta = 'empresa'` dentro y no en el WHERE: una
+     * ficha de quien ya no es empresa no se muestra aunque la fila siga ahi.
+     * Hoy `elegirTipo` la borra, pero esto no depende de que siga haciendolo.
+     */
+    /**
+     * El join de la ficha, solo. Las consultas de [COLS_PUBLICO] no comparten
+     * el FROM entero -la de participantes arranca de `participante`-, asi que
+     * lo que se comparte es esta linea.
+     *
+     * Y hace falta compartirla: olvidarla no rompe la compilacion, rompe la
+     * LECTURA de la columna 17 en tiempo de ejecucion. Paso de verdad al
+     * anadir la ficha: las dos consultas de perfil la llevaban y la de
+     * participantes no, asi que abrir cualquier conversacion devolvia 500 y
+     * dos suites se caian con un `.some is not a function` sobre el cuerpo del
+     * error. El compilador no puede ver esto; una constante si.
+     *
+     * La condicion `u.tipo_cuenta = 'empresa'` va DENTRO del join y no en el
+     * WHERE: una ficha de quien ya no es empresa no se muestra aunque la fila
+     * siga ahi, y un WHERE ademas borraria de la lista a todo el que no sea
+     * empresa.
+     */
+    private const val JOIN_EMPRESA =
+        """LEFT JOIN perfil_empresa e
+                 ON e.usuario_id = u.id AND u.tipo_cuenta = 'empresa'"""
+
+    private const val FROM_PUBLICO =
+        """FROM usuario u LEFT JOIN LATERAL (
+                   SELECT id, identidad_pub FROM dispositivo
+                   WHERE usuario_id = u.id AND revocado_en IS NULL
+                   ORDER BY principal DESC, registrado_en
+                   LIMIT 1
+                 ) d ON true
+               $JOIN_EMPRESA"""
 
     /**
      * Arma el perfil publico YA FILTRADO por la privacidad del dueno.
@@ -411,6 +455,38 @@ object Repo {
             // cosas: el estado es una frase que cambia cada semana, la
             // biografia dice quien sos y suele llevar donde trabajas.
             biografia = if (esMio || ve(rs.getString(16), "biografia")) rs.getString(15) else "",
+            // La ficha NO pasa por `ve`, y es deliberado: declararse empresa es
+            // una declaracion hacia afuera. Un ajuste para esconderla seria
+            // pedir un modo publico y apagarlo; quien no la quiera publica
+            // vuelve a cuenta personal, y entonces la ficha se borra.
+            empresa = fichaDe(rs),
+        )
+    }
+
+    /**
+     * La ficha de empresa de una fila de [COLS_PUBLICO], o null si no hay.
+     *
+     * El LEFT JOIN deja las ocho columnas en NULL cuando no hay ficha, y
+     * `nombre_comercial` es NOT NULL en la tabla: por eso ese es el que decide
+     * si hay ficha. Preguntarlo por el tipo de cuenta seria leer una columna
+     * que esta consulta no trae.
+     */
+    private fun fichaDe(rs: java.sql.ResultSet): FichaEmpresa? {
+        val nombre = rs.getString(17) ?: return null
+        return FichaEmpresa(
+            nombreComercial = nombre,
+            categoria = rs.getString(18) ?: CategoriaEmpresa.OTRA,
+            descripcion = rs.getString(19).orEmpty(),
+            sitioWeb = rs.getString(20).orEmpty(),
+            tamano = rs.getString(21).orEmpty(),
+            ubicacion = rs.getString(22).orEmpty(),
+            // `getInt` de un NULL devuelve 0, que es justo lo que significa
+            // "sin ano" en el contrato: no hace falta distinguirlo.
+            fundadaEn = rs.getInt(23),
+            // El distintivo es "hay fecha de verificacion", no una bandera
+            // aparte: asi no puede existir una ficha verificada sin saber
+            // cuando ni por quien.
+            verificada = rs.getObject(24) != null,
         )
     }
 
@@ -687,12 +763,7 @@ object Repo {
     ): UsuarioPublico? =
         c.prepareStatement(
             """SELECT $COLS_PUBLICO
-               FROM usuario u LEFT JOIN LATERAL (
-                   SELECT id, identidad_pub FROM dispositivo
-                   WHERE usuario_id = u.id AND revocado_en IS NULL
-                   ORDER BY principal DESC, registrado_en
-                   LIMIT 1
-                 ) d ON true
+               $FROM_PUBLICO
                WHERE u.username = ? AND u.desactivado_en IS NULL"""
         ).use { st ->
             st.setString(1, username.lowercase().trim())
@@ -714,12 +785,7 @@ object Repo {
     fun porId(usuarioId: UUID): UsuarioPublico? = Db.query { c ->
         c.prepareStatement(
             """SELECT $COLS_PUBLICO
-               FROM usuario u LEFT JOIN LATERAL (
-                   SELECT id, identidad_pub FROM dispositivo
-                   WHERE usuario_id = u.id AND revocado_en IS NULL
-                   ORDER BY principal DESC, registrado_en
-                   LIMIT 1
-                 ) d ON true
+               $FROM_PUBLICO
                WHERE u.id = ?"""
         ).use { st ->
             st.setObject(1, usuarioId)
@@ -1074,6 +1140,7 @@ object Repo {
                    ORDER BY principal DESC, registrado_en
                    LIMIT 1
                  ) d ON true
+                 $JOIN_EMPRESA
                WHERE p.conversacion_id = ? AND p.salido_en IS NULL AND p.usuario_id <> ?"""
         ).use { st ->
             st.setObject(1, conv); st.setObject(2, yo)

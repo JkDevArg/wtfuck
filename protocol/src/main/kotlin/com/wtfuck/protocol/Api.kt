@@ -98,6 +98,21 @@ data class UsuarioPublico(
      * dato deducible sobre sus ajustes.
      */
     val biografia: String = "",
+    /**
+     * La ficha, si esta cuenta es de tipo empresa. `null` si no lo es.
+     *
+     * `null` y no una ficha vacia, al contrario que [biografia] y
+     * [nombreMostrado]: aqui la diferencia entre "no tiene" y "tiene una
+     * vacia" no es un dato sobre sus ajustes de privacidad, es *que clase de
+     * cuenta es*, y eso es publico por definicion. Una tarjeta de empresa en
+     * blanco no se dibuja igual que ninguna tarjeta.
+     *
+     * Declararse empresa es una declaracion **hacia afuera**: si la ficha solo
+     * la viera su dueno, el modo empresa no tendria para que existir. Al dejar
+     * de ser empresa la fila se borra (ver `Cuentas.elegirTipo`), asi que no
+     * hay fichas huerfanas que se sigan mostrando.
+     */
+    val empresa: FichaEmpresa? = null,
 )
 
 /** Aceptar o rechazar una solicitud de mensaje. */

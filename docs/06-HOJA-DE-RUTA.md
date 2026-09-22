@@ -3599,3 +3599,63 @@ Validado por reversión: sin el savepoint, dos de las siete pruebas caen.
 interpolarlo. Respeta los tipos —un `24` sin comillas, para que
 `detalle->'horas' > 12` funcione en una consulta— y omite los nulos en vez de
 escribir `null`. Los sitios con texto libre ya no interpolan.
+
+---
+
+## Módulo P.2 · La ficha de empresa la ve la gente ✅
+
+*Salió de llenar los siete campos a mano en el emulador y buscar después la
+tarjeta desde la otra cuenta.*
+
+- [x] P.2.1 `UsuarioPublico` lleva la ficha
+- [x] P.2.2 El chat la dibuja al abrir el contacto
+- [x] P.2.3 Una empresa de una persona no se anuncia como "1 personas"
+
+### P.2.1 · Un modo empresa que solo ve su dueño es un formulario
+
+El módulo P guardaba los siete campos y los dibujaba en el perfil **propio**.
+`UsuarioPublico` no los llevaba y `leerPublico` no los leía, así que la ficha
+era, desde fuera, invisible: la única pantalla que la mostraba era la de quien
+la había escrito.
+
+Se arregló añadiendo la ficha al perfil público, con tres decisiones:
+
+| Decisión | Por qué |
+|---|---|
+| La ficha **no** pasa por los ajustes de privacidad | Declararse empresa es una declaración *hacia afuera*. Un interruptor para esconderla sería pedir un modo público y apagarlo. Quien no la quiera pública vuelve a cuenta personal, y entonces se borra. |
+| `null` y no una ficha vacía | La diferencia entre "no tiene" y "tiene una vacía" no es un dato sobre sus ajustes: es qué clase de cuenta es, y eso es público. Una tarjeta en blanco no se dibuja igual que ninguna tarjeta. |
+| `tipo_cuenta = 'empresa'` va **dentro del join** | Una ficha de quien ya no es empresa no se muestra aunque la fila siga ahí. Hoy `elegirTipo` la borra; esto no depende de que siga haciéndolo. |
+
+**Y una trampa que costó dos suites.** `UsuarioPublico` se arma en **tres**
+consultas: dos de perfil y una de los participantes de una conversación, que
+arranca de `participante` y tiene otro FROM. Al añadir la ficha se le puso el
+join a las dos primeras y no a la tercera. Nada de eso falla al compilar: falla
+al **leer la columna 17**, y lo que se vio fue un 500 al abrir cualquier
+conversación y `h3` y `l1` cayéndose con `.some is not a function` sobre el
+cuerpo del error.
+
+El join vive ahora en una constante, `JOIN_EMPRESA`, que las tres interpolan. Y
+la suite pide la lista de conversaciones además del perfil, que es el camino por
+el que el dato llega cuando alguien simplemente abre la app: sin esa sección, el
+defecto volvía a pasar desapercibido. Validado por reversión — quitando el join
+de la consulta de participantes, 3 de las 35 se ponen rojas con el 500 en la
+mano.
+
+### P.2.2 · Donde se busca quién es alguien
+
+La tarjeta se dibuja al abrir **Ver contacto** desde el chat, que es donde se va
+a buscar quién es la otra persona. El perfil público se pide ahí y no al abrir
+la conversación: es un dato que casi nadie va a mirar, y pedirlo siempre sería
+una petición de red por cada chat que se abre para dibujar algo que está detrás
+de un menú. Si falla, la tarjeta no aparece y el contacto se abre igual.
+
+El diálogo lleva `verticalScroll`: la descripción admite 600 caracteres y en un
+teléfono corto el botón de cerrar se iba de la pantalla.
+
+### P.2.3 · "1 personas"
+
+Los rangos se dibujaban con un `"$tamano personas"` en tres sitios, y el primero
+de la lista es `"1"`: una empresa de una sola persona se anunciaba en su propio
+perfil público como **"1 personas"**. Ahora hay `TamanoEmpresa.legible`, en el
+contrato y no en la app por lo mismo que `CategoriaEmpresa.legible`: si lo
+arregla quien dibuja, el siguiente que dibuje lo vuelve a escribir mal.

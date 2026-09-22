@@ -107,6 +107,22 @@ object TamanoEmpresa {
     const val CORPORACION = "1000+"
 
     val TODOS = listOf(UNO, PEQUENA, MEDIANA, GRANDE, MAYOR, CORPORACION)
+
+    /**
+     * Como se escribe en pantalla. El valor guardado sigue siendo el rango.
+     *
+     * Existe por una razon pequena y visible: los rangos se dibujaban con un
+     * `"$tamano personas"` en tres sitios, y el primero de la lista es `"1"`,
+     * asi que una empresa de una persona se anunciaba como **"1 personas"**.
+     * Vive aqui y no en la app por lo mismo que [CategoriaEmpresa.legible]: si
+     * lo arregla quien dibuja, el siguiente que dibuje lo vuelve a escribir
+     * mal.
+     */
+    fun legible(t: String): String = when {
+        t.isBlank() -> "Sin indicar"
+        t == UNO -> "1 persona"
+        else -> "$t personas"
+    }
 }
 
 /**
