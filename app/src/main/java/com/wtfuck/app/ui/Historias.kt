@@ -130,6 +130,57 @@ fun FilaHistorias(
 ) {
     val porAutor = remember(historias, miUsuario) { autoresConHistorias(historias, miUsuario) }
 
+    // **Sin historias, una linea. Con historias, la franja de circulos.**
+    //
+    // La franja mide 90 dp de alto y cuando no hay ninguna historia contiene
+    // un solo circulo con un "+", con el resto del ancho vacio. Eso es lo
+    // primero que se ve al abrir la app: una banda grande, casi toda hueca,
+    // por encima de las conversaciones. Se lee como un hueco de maquetado, no
+    // como una invitacion.
+    //
+    // No se esconde del todo, y esa fue la tentacion: esconderla dejaria las
+    // historias sin ninguna puerta visible -el boton "Nuevo" no las ofrece a
+    // proposito, para no duplicar caminos-. Una fila de una linea ocupa un
+    // tercio, sigue diciendo lo que hay detras, y desaparece sola en cuanto
+    // alguien publica algo.
+    if (porAutor.isEmpty()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onPublicar)
+                .padding(horizontal = 16.dp, vertical = 11.dp)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "Publicar una historia"
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, Cian.copy(alpha = 0.55f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Add, null, tint = Cian, modifier = Modifier.size(16.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Publicar una historia",
+                color = TextoSecundario,
+                fontSize = 14.sp,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                // Se dice cuanto dura, que es la unica cosa que alguien
+                // necesita saber antes de publicar una y no despues.
+                "24 h",
+                color = TextoTerciario,
+                fontSize = 12.sp,
+            )
+        }
+        return
+    }
+
     LazyRow(
         Modifier.fillMaxWidth().padding(vertical = 8.dp),
         contentPadding = PaddingValues(horizontal = 14.dp),

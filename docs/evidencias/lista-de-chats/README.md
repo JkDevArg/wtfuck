@@ -38,3 +38,29 @@ propósito y no aparecen tocando la app.
 
 Validado por reversión: quitando la guarda de lista vacía y volviendo a mirar
 `silenciadoHasta` en crudo, caen 2 de las 12.
+
+---
+
+## Módulo V · La depuración visual
+
+`03-lista-depurada.png` es la misma pantalla después de seis correcciones.
+
+| # | Antes | Ahora |
+|---|---|---|
+| 1 | banda permanente que decía "Conectado" | sólo aparece cuando hay algo que hacer |
+| 2 | franja de 90 dp con un "+" y el resto hueco | una línea; la franja vuelve cuando hay historias |
+| 3 | un canal con icono de grupo + etiqueta "grupo" sólo en grupos | tres iconos distintos, sin etiqueta de texto |
+| 4 | "21/09/26" para un mensaje de ayer | **Ayer**, el día de la semana, la fecha |
+| 5 | la hora flotando a media altura de la fila | alineada con el nombre |
+| 6 | buscador de 96 dp con borde | campo relleno, la mitad de alto, con X para borrar |
+
+**Sobre la referencia.** El pedido llegó con capturas de Telegram. No se copió
+su interfaz —es la regla del brief—: lo que se tomó son convenciones genéricas
+de una lista de conversaciones, aplicadas con la identidad propia. Sigue siendo
+oscura, cian y con nuestras formas.
+
+Un defecto encontrado al probarlo en el emulador: el nombre del día salía del
+idioma del teléfono, así que la lista decía **"Sunday"** entre textos en
+español. Ahora el día va en español fijo; la fecha y la hora siguen el locale
+del sistema, porque ahí no hay palabras.
+

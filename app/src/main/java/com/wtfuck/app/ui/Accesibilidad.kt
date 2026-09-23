@@ -76,7 +76,17 @@ fun EstadoEnvio.enPalabras(): String = when (this) {
  * nunca decide nada antes de llegar al que si.
  */
 fun descripcionDeFila(c: ChatFila, miUsuario: String): String = buildList {
-    add(if (c.tipo == "grupo") "Grupo ${c.titulo}" else c.titulo)
+    // El tipo va AQUI y ya no como etiqueta en pantalla: a la vista lo dice
+    // el icono del avatar -personas para un grupo, megafono para un canal- y
+    // repetirlo en texto al lado del nombre era ruido. Quien no ve el icono
+    // necesita la palabra, y la sigue teniendo.
+    add(
+        when (c.tipo) {
+            "grupo" -> "Grupo ${c.titulo}"
+            "canal" -> "Canal ${c.titulo}"
+            else -> c.titulo
+        }
+    )
 
     if (c.noLeidos > 0) {
         add(if (c.noLeidos == 1) "1 mensaje sin leer" else "${c.noLeidos} mensajes sin leer")

@@ -3985,3 +3985,72 @@ pueda hacer nada, porque se puede reintentar.
 está en la base local. Encontrado al probarlo: ese nombre se leía con
 `remember(conversacionId)` y la lista llega por un `Flow`, así que en la primera
 composición estaba vacía y la cabecera decía "Canal" teniendo el nombre a mano.
+
+---
+
+## Módulo V · Depurar la lista de chats ✅
+
+*"Lo veo raro el diseño." Seis cosas concretas, cada una con su motivo.*
+
+**Sobre la referencia.** El usuario mostró capturas de Telegram como ejemplo de
+lo que quería. **No se copió su interfaz**, que es la regla del brief: lo que se
+tomó son convenciones genéricas de una lista de conversaciones —densidad,
+alineación, marcas de tiempo relativas— y se aplicaron con la identidad propia:
+fondo oscuro, acento cian, tipografía y formas nuestras.
+
+### V.1 · "Conectado" ocupaba una banda permanente
+
+Una barra que está **siempre** deja de leerse, y entonces tampoco se lee el día
+que dice algo importante: lo único que consigue es enseñar a ignorarla. Ahora
+aparece sólo cuando hay algo que hacer —mensajes en cola, envíos fallidos, sin
+conexión— y se va sola al arreglarse.
+
+### V.2 · La franja de historias era casi toda hueco
+
+90 dp de alto que, sin ninguna historia publicada, contenían un círculo con un
+"+" y el resto vacío. Es lo primero que se ve al abrir la app, y se leía como un
+fallo de maquetado.
+
+No se escondió del todo, que era la tentación: las historias no tienen otra
+puerta visible —el botón "Nuevo" no las ofrece, a propósito, para no duplicar
+caminos—. Sin historias es **una línea**; con historias, la franja de círculos
+de siempre.
+
+### V.3 · Un canal se veía igual que un grupo
+
+Los dos llevaban el icono de personas, y la etiqueta de texto la tenía sólo el
+grupo: la ausencia de etiqueta no significaba "conversación directa", podía ser
+un canal. Ahora el avatar distingue los tres —persona, personas, megáfono— y la
+etiqueta de texto **se fue**: con el icono diciéndolo, la palabra al lado del
+nombre era decirlo dos veces y le robaba ancho al título. Para quien no ve el
+icono, la palabra sigue en `descripcionDeFila`.
+
+### V.4 · Un mensaje de ayer decía "21/09/26"
+
+Una fecha completa obliga a hacer una cuenta —¿qué día es hoy?— para responder
+algo que se pregunta de un vistazo. Cuatro tramos: hora si es de hoy, **Ayer**,
+el día de la semana si es de esta semana, y la fecha a partir de ahí.
+
+La ventana se mide en **días de calendario, no en 24 horas**: un mensaje del
+lunes a las 23:00 sigue siendo "lunes" el martes a las 08:00. Contar horas daría
+"ayer" a algo de hace dos días según la hora.
+
+**Y en español siempre.** El nombre del día salía del idioma del teléfono, así
+que en un aparato en inglés la lista decía **"Sunday"** entre textos escritos en
+español a mano. `dd/MM/yy` y `HH:mm` se quedan con el locale del sistema: ahí no
+hay palabras, y el orden de día y mes o el reloj de 12/24 horas sí son
+preferencias legítimas del aparato.
+
+### V.5 · La hora flotaba a media altura
+
+Estaba centrada verticalmente en la fila, así que no se alineaba ni con el
+nombre ni con la vista previa: se leía como un número suelto. Ahora va arriba, a
+la altura del nombre, que es a lo que pertenece.
+
+### V.6 · El buscador se comía la primera pantalla
+
+Un `OutlinedTextField` con su alto por defecto, borde y márgenes gastaba 96 dp
+para un campo que casi nunca se usa; entre el título, el buscador y las
+pestañas, el primer chat empezaba pasada la mitad del teléfono. Ahora es un
+campo relleno sin borde, la mitad de alto —40 dp de área tocable, el mínimo
+cómodo— y con una **X para borrar** que aparece sólo cuando hay algo escrito.

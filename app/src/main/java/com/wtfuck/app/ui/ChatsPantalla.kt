@@ -33,6 +33,8 @@ import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -754,22 +756,66 @@ private fun Vacio(titulo: String, detalle: String, modifier: Modifier = Modifier
 
 @Composable
 private fun BuscadorChats(valor: String, onCambio: (String) -> Unit) {
+    // Un `OutlinedTextField` con su alto por defecto, borde visible y 8 dp de
+    // margen arriba y abajo se comia **96 dp** de la primera pantalla para un
+    // campo que casi nunca se usa. Entre el titulo, el buscador y las
+    // pestañas, el primer chat empezaba pasada la mitad del telefono.
+    //
+    // Ahora es un campo relleno, sin borde y con alto propio: la mitad de
+    // alto, y se sigue viendo que es un buscador porque lo dice la lupa y la
+    // forma de pastilla. Un borde alrededor de algo que ya tiene fondo propio
+    // no aporta nada que el fondo no diga.
     Surface(color = BgSurface, modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            value = valor,
-            onValueChange = onCambio,
-            placeholder = { Text("Buscar", color = TextoTerciario) },
-            leadingIcon = { Icon(Icons.Filled.Search, null, tint = TextoTerciario) },
-            singleLine = true,
-            shape = RoundedCornerShape(22.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Cian,
-                unfocusedBorderColor = Slate.copy(alpha = 0.6f),
-                focusedContainerColor = BgElev,
-                unfocusedContainerColor = BgElev,
-            ),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(BgElev)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.Search, null,
+                tint = TextoTerciario, modifier = Modifier.size(19.dp),
+            )
+            Spacer(Modifier.width(9.dp))
+            BasicTextField(
+                value = valor,
+                onValueChange = onCambio,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = TextoPrimario),
+                cursorBrush = SolidColor(Cian),
+                modifier = Modifier
+                    .weight(1f)
+                    // 40 dp de alto: por debajo de eso el campo deja de ser
+                    // comodo de tocar, y es el minimo que recomienda la guia
+                    // de accesibilidad para algo que se toca con el dedo.
+                    .heightIn(min = 40.dp)
+                    .padding(vertical = 9.dp),
+                decorationBox = { interior ->
+                    if (valor.isEmpty()) {
+                        Text(
+                            "Buscar",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TextoTerciario,
+                        )
+                    }
+                    interior()
+                },
+            )
+            // Borrar lo escrito sin tener que mantener el borrado pulsado.
+            // Aparece solo cuando hay algo: un icono que no hace nada es peor
+            // que ninguno.
+            if (valor.isNotEmpty()) {
+                IconButton(onClick = { onCambio("") }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Filled.Close, "Borrar la busqueda",
+                        tint = TextoTerciario, modifier = Modifier.size(17.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -781,6 +827,17 @@ private fun BuscadorChats(valor: String, onCambio: (String) -> Unit) {
 private fun BarraEstado(conexion: EstadoConexion, enCola: Int, fallidos: Int) {
     // Un mensaje FALLIDO no esta "enviandose": no va a salir solo. Mezclarlo
     // con los pendientes dejaba la barra diciendo "Enviando 1..." para siempre.
+    // **"Conectado" no se dibuja.** Ocupaba una banda entera de la pantalla,
+    // permanentemente, para anunciar el estado NORMAL. Una barra que esta
+    // siempre deja de leerse, y entonces tampoco se lee el dia que dice algo
+    // importante: lo unico que consigue es ensenar a ignorarla.
+    //
+    // Ahora aparece solo cuando hay algo que la persona podria querer hacer
+    // -reintentar, esperar, buscar senal- y se va sola al arreglarse. Es el
+    // mismo criterio que la banda de "sin conexion" de cualquier app: se nota
+    // porque no esta siempre.
+    if (conexion == EstadoConexion.CONECTADO && enCola == 0 && fallidos == 0) return
+
     val (color, texto) = when {
         fallidos > 0 && enCola == 0 ->
             Coral to "$fallidos ${if (fallidos == 1) "mensaje no se envio" else "mensajes no se enviaron"}"
@@ -835,15 +892,24 @@ private fun FilaChat(
                     stateDescription = if (marcado) "seleccionada" else "sin seleccionar"
                 }
             }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        // `Top` y no `CenterVertically`. Centrada, la hora flotaba a media
+        // altura entre el nombre y la vista previa, sin alinearse con
+        // ninguno de los dos: se leia como un numero suelto. Arriba queda a
+        // la misma altura que el nombre, que es a lo que pertenece.
+        verticalAlignment = Alignment.Top,
     ) {
         Box(contentAlignment = Alignment.BottomEnd) {
             Avatar(
                 nombre = c.titulo,
                 url = ApiCliente.urlImagen(c.avatarUsername, "avatar", c.avatarVersion),
                 tamano = 50.dp,
-                esGrupo = c.tipo != "directa",
+                // Un canal llevaba el icono de grupo, asi que en la lista un
+                // canal y un grupo eran identicos salvo por una etiqueta que
+                // solo tenia uno de los dos. Son cosas distintas -en un canal
+                // publican unos pocos y el resto lee- y ahora se ven distintas.
+                esGrupo = c.tipo == "grupo",
+                esCanal = c.tipo == "canal",
             )
             if (marcado) {
                 Box(
@@ -883,18 +949,11 @@ private fun FilaChat(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                if (c.tipo == "grupo") {
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "grupo",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextoTerciario,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Slate.copy(alpha = 0.25f))
-                            .padding(horizontal = 5.dp, vertical = 1.dp),
-                    )
-                }
+                // Aqui habia una etiqueta gris que decia "grupo". Se fue:
+                // ahora el avatar distingue persona, grupo y canal con tres
+                // iconos, y la palabra al lado del nombre era decir dos veces
+                // lo mismo, robandole ancho al titulo. Para quien no ve el
+                // icono, la palabra sigue en `descripcionDeFila`.
             }
 
             Spacer(Modifier.height(2.dp))
@@ -933,7 +992,10 @@ private fun FilaChat(
 
         Spacer(Modifier.width(8.dp))
 
-        Column(horizontalAlignment = Alignment.End) {
+        // 3.dp de correccion optica: el texto de la hora es mas chico que el
+        // del nombre, asi que con la misma coordenada sus lineas de base no
+        // coinciden y se ve descolgada hacia arriba.
+        Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(top = 3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (c.fijado) {
                     Icon(Icons.Filled.PushPin, "Fijado", tint = TextoTerciario, modifier = Modifier.size(13.dp))

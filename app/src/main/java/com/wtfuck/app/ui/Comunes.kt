@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material3.Surface
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Refresh
@@ -59,6 +60,15 @@ fun Avatar(
     url: String?,
     tamano: Dp = 48.dp,
     esGrupo: Boolean = false,
+    /**
+     * Un canal, que no es un grupo.
+     *
+     * Van dos banderas y no un `tipo: String` porque `Avatar` lo usan doce
+     * sitios y la mayoria solo sabe si es una persona o no. El unico caso que
+     * hay que distinguir de verdad es este, y anadirlo como opcional no obliga
+     * a tocar los once restantes.
+     */
+    esCanal: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val fondo = colorDeNombre(nombre)
@@ -77,6 +87,8 @@ fun Avatar(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().clip(CircleShape),
             )
+        } else if (esCanal) {
+            Icon(Icons.Filled.Campaign, null, tint = fondo, modifier = Modifier.size(tamano * 0.52f))
         } else if (esGrupo) {
             Icon(Icons.Filled.Group, null, tint = fondo, modifier = Modifier.size(tamano * 0.5f))
         } else {
@@ -134,16 +146,84 @@ fun estadoDe(s: String?): EstadoEnvio =
 
 private val fmtHora = SimpleDateFormat("HH:mm", Locale.getDefault())
 private val fmtDia = SimpleDateFormat("dd/MM/yy", Locale.getDefault())
+/**
+ * Solo el dia de la semana: "lunes", "martes"...
+ *
+ * **Locale fijo en español, no `getDefault()`.** Toda la app esta escrita en
+ * español a mano —"Publicar una historia", "Sin mensajes todavia"— asi que
+ * sacar el dia del idioma del telefono produce filas mezcladas: en un aparato
+ * en ingles la lista decia **"Sunday"** entre textos en español. El idioma de
+ * la interfaz lo decide la interfaz, no el sistema, mientras no haya
+ * traducciones de verdad.
+ *
+ * `dd/MM/yy` y `HH:mm` se quedan con el locale del sistema a proposito: ahi no
+ * hay palabras, y el orden de dia y mes o el reloj de 12/24 horas SI son
+ * preferencias legitimas del aparato.
+ */
+private val fmtDiaSemana = SimpleDateFormat("EEEE", Locale("es"))
 private val fmtCompleta = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
 
 /** Hoy muestra la hora; antes de hoy, la fecha. Como en cualquier mensajeria. */
-fun horaCorta(ms: Long): String {
+/**
+ * La marca de tiempo de una fila de la lista de chats.
+ *
+ * ## Por que no es "hora si es hoy, fecha si no"
+ *
+ * Porque esa version, que es la que habia, escribia **"21/09/26"** para un
+ * mensaje de ayer. Una fecha completa obliga a hacer una cuenta —¿que dia es
+ * hoy?— para responder algo que se pregunta de un vistazo: *¿esto es reciente?*
+ * Y en una lista donde casi todo es de los ultimos dias, casi todas las filas
+ * salian con una fecha larga y ninguna decia nada.
+ *
+ * Cuatro tramos, de mas a menos preciso segun se aleja:
+ *
+ * | Cuando | Que dice |
+ * |---|---|
+ * | hoy | `17:12` |
+ * | ayer | `Ayer` |
+ * | esta semana | `lunes` |
+ * | antes | `21/09/26` |
+ *
+ * La regla de la semana es **por dias de calendario y no por 24 horas**: un
+ * mensaje del lunes a las 23:00 sigue siendo "lunes" el martes a las 08:00,
+ * aunque no hayan pasado ni doce horas. Contar horas daria "ayer" a algo de
+ * hace dos dias segun la hora, que es justo la confusion que esto evita.
+ *
+ * @param ahora inyectable para poder probarlo; por defecto, el reloj.
+ */
+fun horaCorta(ms: Long, ahora: Long = System.currentTimeMillis()): String {
     if (ms <= 0) return ""
-    val hoy = Calendar.getInstance()
-    val ese = Calendar.getInstance().apply { timeInMillis = ms }
-    val mismoDia = hoy.get(Calendar.YEAR) == ese.get(Calendar.YEAR) &&
-        hoy.get(Calendar.DAY_OF_YEAR) == ese.get(Calendar.DAY_OF_YEAR)
-    return if (mismoDia) fmtHora.format(Date(ms)) else fmtDia.format(Date(ms))
+    val dias = diasDeDiferencia(ms, ahora)
+    return when {
+        // Negativo = en el futuro. Pasa con un reloj mal puesto en el otro
+        // aparato, y "mañana" en una lista de mensajes recibidos es absurdo:
+        // se trata como hoy, que es lo menos raro que se puede decir.
+        dias <= 0 -> fmtHora.format(Date(ms))
+        dias == 1 -> "Ayer"
+        dias < 7 -> fmtDiaSemana.format(Date(ms)).replaceFirstChar { it.uppercase() }
+        else -> fmtDia.format(Date(ms))
+    }
+}
+
+/**
+ * Cuantos dias de CALENDARIO hay entre dos instantes.
+ *
+ * Se compara normalizando a medianoche y no restando milisegundos, porque lo
+ * que interesa es el cambio de dia, no el paso de 24 horas.
+ */
+private fun diasDeDiferencia(ms: Long, ahora: Long): Int {
+    fun aMedianoche(t: Long) = Calendar.getInstance().apply {
+        timeInMillis = t
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    val diff = aMedianoche(ahora) - aMedianoche(ms)
+    // Se divide sobre el dia normalizado: entre dos medianoches el resultado
+    // es exacto salvo por los cambios de horario de verano, y el redondeo
+    // los absorbe.
+    return Math.round(diff / 86_400_000.0).toInt()
 }
 
 fun hora(ms: Long): String = fmtHora.format(Date(ms))
