@@ -44,3 +44,48 @@ mitad de abajo y el botón volvía a quedar fuera.
 No era el diseño: **el segundo emulador tenía una compilación vieja**. Las
 últimas builds se habían instalado sólo en uno. Con la misma versión en los dos
 —mismo tamaño y densidad de pantalla— se ven idénticos.
+
+---
+
+## Las historias con foto: "no me deja" (segunda parte)
+
+Con texto funcionaba; **con foto o vídeo, no**. El mensaje era "No se pudo
+subir el archivo."
+
+| # | Captura | Qué muestra |
+|---|---|---|
+| 05 | `05-fallo-reintentable.png` | El fallo, ahora **dentro** de la hoja: la foto y el pie siguen ahí |
+| 06 | `06-historia-con-foto.png` | La historia con foto publicada |
+
+### La causa no estaba en el código
+
+`POST /v1/adjuntos` respondía **200 OK**: la reserva funcionaba. Lo que fallaba
+era la subida en sí, que no va al servidor sino **directo al almacén** con una
+URL firmada que apunta a `127.0.0.1:9000`. Dentro del emulador, ahí no había
+nada escuchando: faltaba `adb reverse tcp:9000 tcp:9000`.
+
+El túnel del servidor (8088) estaba puesto; el del almacén no existía. Por eso
+el texto funcionaba y sólo fallaban los archivos — un síntoma que se lee como
+un fallo de la función y era el entorno.
+
+Ahora lo pone [`pruebas/conectar-emuladores.ps1`](../../../pruebas/conectar-emuladores.ps1)
+para todos los emuladores de una vez.
+
+### Lo que sí se arregló en el código
+
+**La app ya hacía lo correcto** con el fallo: al no poder subir, *retira* la
+historia en lugar de dejar una que nadie puede abrir. Se comprobó en la base —
+las dos publicaciones fallidas quedaron con `retirada_en`.
+
+Lo que estaba mal era otra cosa: **la hoja se cerraba antes de saber el
+resultado**, así que un error de red se llevaba por delante la foto elegida y el
+pie escrito. Para reintentar había que volver a abrir, volver a buscar la foto
+en la galería y volver a escribir.
+
+Ahora la hoja se cierra sólo al terminar bien. El error aparece dentro, dice
+que no se perdió nada, y el botón sigue ahí.
+
+**Verificado de punta a punta:** se quita el túnel del almacén → falla y la
+hoja se queda con todo → se restaura el túnel → se toca "Publicar" otra vez →
+publica. En la base: el intento fallido `retirada_en`, y el bueno vivo.
+

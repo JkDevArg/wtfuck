@@ -56,14 +56,29 @@ dice cuál aplicó.
 ./gradlew :app:installDebug
 ```
 
-Y el puente para que el emulador vea el servidor:
+Y los puentes para que el emulador vea el servidor **y el almacén**:
 
 ```bash
-adb reverse tcp:8088 tcp:8300
+.\pruebas\conectar-emuladores.ps1
 ```
 
-El emulador pide `10.0.2.2:8088` o `127.0.0.1:8088`; `adb reverse` lo manda al
-8300 del anfitrión. Hay que repetirlo **cada vez que el emulador arranca**.
+Son dos, y olvidar el segundo no rompe lo mismo que olvidar el primero:
+
+| Túnel | Para qué | Si falta |
+|---|---|---|
+| `tcp:8088 → tcp:8300` | el servidor | todo lo que necesite red sale vacío |
+| `tcp:9000 → tcp:9000` | MinIO | el texto va bien y **sólo fallan fotos y vídeos**, con "No se pudo subir el archivo" |
+
+Hay que repetirlos **cada vez que el emulador arranca**.
+
+El segundo costó una sesión entera de diagnóstico: publicar una historia de
+texto funcionaba y con foto no, lo que se lee como un fallo de la función y era
+un túnel que faltaba.
+
+**El del almacén tiene que ser 9000 a los dos lados.** La URL de subida va
+firmada con SigV4 y la firma incluye el header `Host`: si el cliente llega por
+otro puerto, el almacén responde 403. Por eso no se puede mapear a un puerto
+libre cualquiera. Ver la nota de `Almacen.kt`.
 
 ### Si el puerto no abre y `netstat` sale vacío
 

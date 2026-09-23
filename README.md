@@ -105,12 +105,20 @@ El puerto por defecto es **8300**: en Windows, Hyper-V reserva rangos al azar en
 cuanto Docker Desktop arranca y 8081-8180 cae ahí a menudo.
 
 ```bash
-adb -s <serial> reverse tcp:8088 tcp:8300
+.\pruebas\conectar-emuladores.ps1
 ```
 
-El `adb reverse` **no es opcional** y hay que repetirlo en cada arranque del
-emulador: el AVD no alcanza `10.0.2.2` desde la app aunque el ping funcione. Ver
-la nota en `app/build.gradle.kts`.
+Abre los **dos** túneles que hacen falta, en todos los emuladores conectados:
+
+| Túnel | Para qué | Síntoma si falta |
+|---|---|---|
+| `tcp:8088 → tcp:8300` | el servidor | las pantallas que dependen de la red salen vacías |
+| `tcp:9000 → tcp:9000` | el almacén (MinIO) | el texto funciona y **sólo fallan fotos y vídeos** |
+
+No es opcional y hay que repetirlo **en cada arranque del emulador**: el AVD no
+alcanza `10.0.2.2` desde la app aunque el ping funcione. El del almacén tiene
+que ser 9000 a los dos lados, porque la URL de subida va firmada y la firma
+incluye el host. Ver las notas de `app/build.gradle.kts` y `Almacen.kt`.
 
 Detalle completo, variables de entorno y el paso a producción:
 [`docs/09-DESPLIEGUE.md`](docs/09-DESPLIEGUE.md).

@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
@@ -797,6 +799,17 @@ val FONDOS_HISTORIA = listOf("#0F1717", "#0B6E6D", "#8A5300", "#B3301A", "#3C4A4
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HojaPublicarHistoria(
+    /** Hay una publicacion en curso: el boton espera y no se puede tocar dos veces. */
+    publicando: Boolean = false,
+    /**
+     * Por que no salio, si no salio.
+     *
+     * Se muestra **dentro de la hoja** y no en un dialogo aparte a proposito:
+     * un dialogo obliga a cerrar la hoja para verlo, y con la hoja se iba la
+     * foto elegida y el pie escrito. El error aparece donde esta el trabajo,
+     * y el boton sigue ahi para reintentar sin rehacer nada.
+     */
+    error: String? = null,
     onPublicar: (String, String, Uri?) -> Unit,
     onCerrar: () -> Unit,
 ) {
@@ -989,18 +1002,64 @@ fun HojaPublicarHistoria(
                 minLines = 2,
             )
 
+            error?.let { msg ->
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Coral.copy(alpha = 0.12f))
+                        .padding(11.dp)
+                        // Aparece despues de una espera, cuando el foco ya no
+                        // esta aqui: como region viva se anuncia sola.
+                        .semantics(mergeDescendants = true) {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = "No se pudo publicar. $msg"
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.ErrorOutline, null,
+                        tint = Coral, modifier = Modifier.size(17.dp),
+                    )
+                    Spacer(Modifier.width(9.dp))
+                    Column {
+                        Text(msg, color = Coral, fontSize = 13.sp)
+                        Text(
+                            // Se dice que no hay que rehacer nada: es la
+                            // duda inmediata al ver un error despues de
+                            // elegir una foto y escribir un pie.
+                            "Tu foto y tu texto siguen aqui. Tocá Publicar otra vez.",
+                            color = TextoTerciario,
+                            fontSize = 11.5.sp,
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
             Button(
                 // Con archivo el texto es opcional: una foto ya es la historia.
                 // Sin archivo hace falta algo que decir, o no hay historia.
                 onClick = { onPublicar(texto.trim(), fondo, medio) },
-                enabled = texto.isNotBlank() || medio != null,
+                // Tambien apagado mientras publica: un segundo toque manda una
+                // historia mas, y subir un archivo tarda lo suficiente como
+                // para que alguien lo dude y vuelva a tocar.
+                enabled = (texto.isNotBlank() || medio != null) && !publicando,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Cian, contentColor = TextoSobreAcento,
                 ),
             ) {
-                Text("Publicar")
+                if (publicando) {
+                    CircularProgressIndicator(
+                        color = TextoSobreAcento,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text(if (publicando) "Publicando..." else "Publicar")
             }
         }
     }

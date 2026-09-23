@@ -139,6 +139,9 @@ fun ChatsPantalla(
     var confirmarBorrado by remember { mutableStateOf(false) }
     /** El menu de creacion desplegado. Ver [MenuDeCreacion]. */
     var creando by remember { mutableStateOf(false) }
+    /** Publicando una historia, y el motivo si no salio. Ver [HojaPublicarHistoria]. */
+    var publicandoHistoria by remember { mutableStateOf(false) }
+    var errorHistoria by remember { mutableStateOf<String?>(null) }
 
     // Salir de la seleccion con Atras, antes de que Atras signifique otra cosa.
     // Sin esto, el gesto natural para "me arrepenti" cierra la pestaña.
@@ -486,14 +489,26 @@ fun ChatsPantalla(
 
     if (componiendo) {
         HojaPublicarHistoria(
+            publicando = publicandoHistoria,
+            error = errorHistoria,
             onPublicar = { texto, fondo, medio ->
-                componiendo = false
+                // La hoja NO se cierra al empezar, solo al terminar bien.
+                //
+                // Se cerraba antes de saber el resultado, asi que un fallo de
+                // subida se llevaba por delante la foto elegida y el pie
+                // escrito: para reintentar habia que volver a abrir, volver a
+                // buscar la foto en la galeria y volver a escribir. Un error
+                // de red no deberia costar el trabajo de nadie.
+                publicandoHistoria = true
+                errorHistoria = null
                 ambito.launch {
                     app.repo.publicarHistoria(texto, fondo, medio)
-                        .onFailure { errorDialogo = it.message }
+                        .onSuccess { componiendo = false }
+                        .onFailure { errorHistoria = it.message ?: "No se pudo publicar." }
+                    publicandoHistoria = false
                 }
             },
-            onCerrar = { componiendo = false },
+            onCerrar = { componiendo = false; errorHistoria = null },
         )
     }
 

@@ -4102,3 +4102,35 @@ builds se habían instalado sólo en uno.
 Queda escrito porque la conclusión equivocada era tentadora y cara: "la app se
 ve distinta según el aparato" habría mandado a buscar un problema de densidades
 que no existe.
+
+### W.3 · Las historias con foto: un túnel que faltaba
+
+"Con tatiana quiero subir una historia y no me deja." Con **texto** funcionaba;
+con foto o vídeo, "No se pudo subir el archivo".
+
+**La causa no estaba en el código.** `POST /v1/adjuntos` respondía 200: la
+reserva funcionaba. Lo que fallaba era la subida, que no va al servidor sino
+**directo al almacén**, con una URL firmada que apunta a `127.0.0.1:9000`. En el
+emulador ahí no había nada: faltaba `adb reverse tcp:9000 tcp:9000`. El túnel
+del servidor estaba; el del almacén no existía, y por eso el texto funcionaba y
+sólo fallaban los archivos.
+
+Y el puerto **tiene que ser 9000 a los dos lados**: la URL va firmada con SigV4
+y la firma incluye el header `Host`, así que llegar por otro puerto da 403. Está
+escrito en `Almacen.kt` desde el módulo D; lo que faltaba era que alguien
+pusiera el túnel. Ahora lo hace
+[`pruebas/conectar-emuladores.ps1`](../pruebas/conectar-emuladores.ps1) para
+todos los emuladores de una vez, y los dos túneles están documentados en el
+README y en el despliegue con su síntoma al lado.
+
+**Lo que sí se arregló en el código.** La app ya hacía lo correcto con el fallo:
+al no poder subir, **retira** la historia en vez de dejar una que nadie puede
+abrir —comprobado en la base, las dos fallidas con `retirada_en`—. Lo que estaba
+mal era que **la hoja se cerraba antes de saber el resultado**, así que un error
+de red se llevaba por delante la foto elegida y el pie escrito: para reintentar
+había que volver a abrir, volver a buscar la foto y volver a escribir.
+
+Ahora se cierra sólo al terminar bien, el error aparece dentro diciendo que no
+se perdió nada, y el botón muestra "Publicando…" mientras tanto —también para
+que un segundo toque no publique dos historias, que con un archivo tarda lo
+suficiente como para dudar y volver a tocar—.
