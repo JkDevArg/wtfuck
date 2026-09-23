@@ -17,6 +17,16 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import com.wtfuck.app.datos.EsperaBloqueo
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -109,7 +119,22 @@ fun CuentaPantalla(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             if (e == null) {
-                Text("No se pudo leer el estado de la cuenta.", color = TextoSecundario)
+                // Antes esto era UNA linea de texto gris en una pantalla
+                // vacia, sin icono y sin salida. Se leia como que la app
+                // estaba rota, y encima no era cierto que no se pudiera hacer
+                // nada: el fallo casi siempre es de red y se reintenta.
+                EstadoDeError(
+                    titulo = "No se pudo cargar tu cuenta",
+                    detalle = "Revisa tu conexión y vuelve a intentarlo. Tus mensajes " +
+                        "siguen guardados en este aparato.",
+                    onReintentar = {
+                        ambito.launch {
+                            cargando = true
+                            estado = app.repo.estadoCuenta()
+                            cargando = false
+                        }
+                    },
+                )
                 return@Column
             }
 
@@ -275,6 +300,11 @@ fun CuentaPantalla(
             // quedo una linea que solo dice si el vinculo es fuerte.
             Seccion("Este aparato", Icons.Filled.Lock)
             TarjetaHardware(LocalContext.current)
+
+            Divisor()
+
+            // --- modulo U: bloqueo de la app ----------------------------
+            BloqueoDeLaApp()
 
             Divisor()
 
@@ -953,5 +983,140 @@ private fun FilaHardware(etiqueta: String, valor: String) {
             modifier = Modifier.width(88.dp),
         )
         Text(valor, style = MaterialTheme.typography.bodyMedium, color = TextoSecundario)
+    }
+}
+
+/**
+ * Módulo U · El ajuste del bloqueo de la app.
+ *
+ * ## Por qué vive aquí y no en Privacidad
+ *
+ * "Privacidad" responde *quién ve qué de mí*, y todo lo de ahí se aplica en el
+ * servidor. Esto es otra cosa: protege **este teléfono** de quien lo tenga en
+ * la mano, y no sale del aparato. Mezclarlos haría que un ajuste que no viaja
+ * pareciera uno que sí.
+ *
+ * ## Por qué puede no aparecer
+ *
+ * Si el teléfono no tiene ni huella, ni rostro, ni PIN configurados, no hay con
+ * qué desbloquear. En vez de ofrecer un interruptor que al encenderse deja la
+ * app inaccesible —o, peor, que se abre sola y hace creer que protege—, se dice
+ * qué falta y se manda a configurarlo.
+ */
+@Composable
+private fun BloqueoDeLaApp() {
+    val ctx = LocalContext.current
+    val app = ctx.applicationContext as WtfuckApp
+    val hayComoDesbloquear = remember { sePuedeBloquear(ctx) }
+    var espera by remember { mutableStateOf(app.bloqueo.espera) }
+    var abierto by remember { mutableStateOf(false) }
+
+    Seccion("Bloquear la app", Icons.Filled.Fingerprint)
+
+    if (!hayComoDesbloquear) {
+        Text(
+            "Este teléfono no tiene huella, rostro ni PIN configurados. Configura " +
+                "uno en los ajustes del sistema y vuelve aquí.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextoSecundario,
+        )
+        return
+    }
+
+    Text(
+        // Se dice el alcance exacto. Quien lea "bloquear la app" puede suponer
+        // que cifra algo, y con esa idea tomaría otras decisiones.
+        "Pide tu huella, tu rostro o el PIN del teléfono para abrir wtfuck. Tus " +
+            "mensajes ya están cifrados en este aparato: esto impide que alguien " +
+            "con el teléfono desbloqueado en la mano los lea.",
+        style = MaterialTheme.typography.bodySmall,
+        color = TextoSecundario,
+    )
+    Spacer(Modifier.height(10.dp))
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(BgElev)
+            .clickable { abierto = true }
+            .padding(14.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Bloquear la app: ${espera.etiqueta}"
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Cuándo bloquear", color = TextoPrimario, fontSize = 15.sp)
+            Text(
+                espera.etiqueta,
+                color = if (espera.activo) Cian else TextoTerciario,
+                fontSize = 13.sp,
+            )
+        }
+        Icon(Icons.Filled.ChevronRight, null, tint = TextoTerciario)
+    }
+
+    if (espera.activo) {
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Visibility, null, tint = TextoTerciario, modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(
+                // Es una consecuencia visible de activarlo y conviene decirla
+                // antes de que alguien se pregunte por qué su app aparece en
+                // gris en el conmutador.
+                "Con el bloqueo activo, la app sale en blanco en la lista de apps recientes.",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextoTerciario,
+            )
+        }
+    }
+
+    if (abierto) {
+        AlertDialog(
+            onDismissRequest = { abierto = false },
+            containerColor = BgElev,
+            title = { Text("Cuándo bloquear", color = TextoPrimario) },
+            text = {
+                Column {
+                    EsperaBloqueo.entries.forEach { op ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    espera = op
+                                    app.bloqueo.espera = op
+                                    // Se marca AHORA como último desbloqueo: si
+                                    // no, elegir "al salir de la app" bloquearía
+                                    // en el acto a quien está usándola, sin
+                                    // haber salido de ningún lado.
+                                    app.bloqueo.ultimoDesbloqueo =
+                                        android.os.SystemClock.elapsedRealtime()
+                                    if (op == EsperaBloqueo.NUNCA) app.bloqueo.apagar()
+                                    abierto = false
+                                }
+                                .padding(vertical = 10.dp, horizontal = 6.dp)
+                                .semantics(mergeDescendants = true) {
+                                    stateDescription = if (op == espera) "elegida" else "sin elegir"
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = op == espera,
+                                onClick = null,
+                                colors = RadioButtonDefaults.colors(selectedColor = Cian),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(op.etiqueta, color = TextoPrimario, fontSize = 15.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { abierto = false }) { Text("Cerrar", color = Cian) }
+            },
+        )
     }
 }

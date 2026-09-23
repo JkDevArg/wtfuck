@@ -12,6 +12,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -60,10 +62,35 @@ fun CanalPantalla(
     var stats by remember { mutableStateOf<EstadisticasCanal?>(null) }
     var menuAbierto by remember { mutableStateOf(false) }
     var mostrarInfo by remember { mutableStateOf(false) }
+    /** La ultima carga no llego. Distinto de "no hay nada". */
+    var fallo by remember { mutableStateOf(false) }
+    val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
+
+    /**
+     * El nombre que ya sabemos de este canal, sin preguntarle a nadie.
+     *
+     * Es la copia local de la conversacion, que esta ahi desde que alguien se
+     * suscribio. Sirve para que la barra de arriba **nunca quede vacia**: sin
+     * esto, un servidor que no contesta dejaba una cabecera con una flecha de
+     * volver, tres puntos y nada en el medio, que se ve como una pantalla rota.
+     */
+    // La clave del `remember` lleva `chats` ademas del id, y hace falta: la
+    // lista llega por un Flow, asi que en la PRIMERA composicion esta vacia.
+    // Recordando solo por el id, el nombre se calculaba una vez contra la
+    // lista vacia y se quedaba vacio para siempre -el sintoma fue una
+    // cabecera que decia "Canal" teniendo el nombre a mano en la base-.
+    val nombreLocal = remember(conversacionId, chats) {
+        chats.firstOrNull { it.id == conversacionId }?.titulo.orEmpty()
+    }
 
     suspend fun refrescar() {
         cfg = app.repo.canal(conversacionId)
-        feed = app.repo.publicaciones(conversacionId)
+        // `null` y no una lista vacia cuando falla. Antes, `publicaciones`
+        // devolvia `emptyList()` en el error, asi que la pantalla decia
+        // "este canal todavia no tiene publicaciones": **afirmaba algo falso
+        // sobre el canal cuando lo unico que pasaba era que no habia red**.
+        feed = app.repo.publicaciones(conversacionId) ?: emptyList()
+        fallo = cfg == null
         cargando = false
     }
 
@@ -97,10 +124,15 @@ fun CanalPantalla(
                 title = {
                     Column {
                         Text(
-                            cfg?.nombre.orEmpty(),
+                            // Del servidor si llego; si no, el que ya
+                            // teniamos. Una cabecera vacia no es un estado
+                            // valido de esta pantalla.
+                            cfg?.nombre?.ifBlank { null } ?: nombreLocal.ifBlank { "Canal" },
                             color = TextoPrimario,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         val sub = cfg?.let { c ->
                             buildString {
@@ -296,6 +328,16 @@ fun CanalPantalla(
             when {
                 cargando -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Cian, strokeWidth = 2.5.dp)
+                }
+
+                // El fallo va ANTES que el vacio: si no, no llegaria nunca,
+                // porque una carga fallida deja el feed vacio tambien.
+                fallo -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    EstadoDeError(
+                        titulo = "No se pudo cargar el canal",
+                        detalle = "Revisa tu conexión y vuelve a intentarlo.",
+                        onReintentar = { ambito.launch { cargando = true; refrescar() } },
+                    )
                 }
 
                 feed.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

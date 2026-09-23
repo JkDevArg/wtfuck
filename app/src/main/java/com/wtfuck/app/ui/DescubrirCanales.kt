@@ -77,7 +77,23 @@ fun DescubrirCanales(
     }
     var aviso by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) { directorio = app.repo.directorioCanales() }
+    /**
+     * La carga del directorio fallo. Es un tercer estado, ademas de
+     * "cargando" y "no hay ninguno".
+     *
+     * Hace falta porque `directorio == null` ya significaba "todavia
+     * cargando", asi que un fallo que devuelva null seria indistinguible de
+     * una carga eterna. Tres estados, tres cosas distintas en pantalla.
+     */
+    var falloDirectorio by remember { mutableStateOf(false) }
+
+    suspend fun cargarDirectorio() {
+        val d = app.repo.directorioCanales()
+        falloDirectorio = d == null
+        directorio = d ?: emptyList()
+    }
+
+    LaunchedEffect(Unit) { cargarDirectorio() }
 
     // L.4 · Mis canales.
     //
@@ -157,6 +173,22 @@ fun DescubrirCanales(
                 sinConsulta && directorio == null -> Box(
                     Modifier.fillMaxSize(), contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator(color = Cian, strokeWidth = 2.5.dp) }
+
+                // El fallo va antes del vacio: una carga fallida tambien
+                // deja la lista vacia, y anunciar "no hay canales publicos"
+                // sin haber podido preguntar es afirmar algo sobre la
+                // plataforma entera basandose en un timeout.
+                sinConsulta && falloDirectorio && mios.isEmpty() -> Box(
+                    Modifier.fillMaxSize(), contentAlignment = Alignment.Center,
+                ) {
+                    EstadoDeError(
+                        titulo = "No se pudo cargar el directorio",
+                        detalle = "Revisa tu conexión y vuelve a intentarlo.",
+                        onReintentar = {
+                            ambito.launch { directorio = null; cargarDirectorio() }
+                        },
+                    )
+                }
 
                 sinConsulta && directorio!!.isEmpty() && mios.isEmpty() -> Box(
                     Modifier.fillMaxSize(), contentAlignment = Alignment.Center,

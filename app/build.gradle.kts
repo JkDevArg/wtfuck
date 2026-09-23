@@ -131,6 +131,7 @@ dependencies {
     // que pudiera cambiarlas podria escuchar la llamada.
     implementation(libs.webrtc)
     implementation(libs.exifinterface)
+    implementation(libs.biometric)
 
     // Modulo N: avisos con la app CERRADA.
     //

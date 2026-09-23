@@ -2457,8 +2457,16 @@ class Repositorio(
     suspend fun buscarCanales(consulta: String): List<CanalEnBusqueda> =
         runCatching { api.buscarCanales(consulta).canales }.getOrElse { emptyList() }
 
-    suspend fun directorioCanales(): List<CanalEnBusqueda> =
-        runCatching { api.directorioCanales().canales }.getOrElse { emptyList() }
+    /**
+     * El directorio de canales, o **null si no se pudo pedir**.
+     *
+     * Misma correccion que en [publicaciones] y por el mismo motivo: con
+     * `emptyList()` en el fallo, la pantalla anunciaba "todavia no hay canales
+     * publicos" cada vez que no habia red. Es una afirmacion sobre la
+     * plataforma entera, hecha sin haber podido preguntar.
+     */
+    suspend fun directorioCanales(): List<CanalEnBusqueda>? =
+        runCatching { api.directorioCanales().canales }.getOrNull()
 
     suspend fun conversacionesPanel(q: String?, cerradas: Boolean): List<ConversacionPanel> =
         runCatching { api.conversacionesPanel(q, cerradas).conversaciones }.getOrElse { emptyList() }
@@ -2496,8 +2504,20 @@ class Repositorio(
     suspend fun revisarCanal(convId: String, aprobado: Boolean, motivo: String = ""): Result<Unit> =
         runCatching { api.revisarCanal(convId, RevisarCanalReq(aprobado, motivo)) }
 
-    suspend fun publicaciones(convId: String, antesDe: String? = null): List<Publicacion> =
-        runCatching { api.publicaciones(convId, antesDe) }.getOrElse { emptyList() }
+    /**
+     * Las publicaciones de un canal, o **null si no se pudieron pedir**.
+     *
+     * Devolvia `emptyList()` al fallar, y esa lista vacia llegaba a la
+     * pantalla como si fuera la respuesta del servidor: el canal se dibujaba
+     * diciendo "todavia no tiene publicaciones". O sea, **afirmaba algo sobre
+     * el canal cuando lo unico que habia pasado era que no habia red**.
+     *
+     * "No pude preguntar" y "pregunte y no hay" son dos cosas distintas y
+     * tienen que verse distinto. Un `getOrElse { emptyList() }` las junta y es
+     * comodo justo hasta que alguien lee la pantalla y le cree.
+     */
+    suspend fun publicaciones(convId: String, antesDe: String? = null): List<Publicacion>? =
+        runCatching { api.publicaciones(convId, antesDe) }.getOrNull()
 
     suspend fun estadisticasCanal(convId: String): EstadisticasCanal? =
         runCatching { api.estadisticasCanal(convId) }.getOrNull()

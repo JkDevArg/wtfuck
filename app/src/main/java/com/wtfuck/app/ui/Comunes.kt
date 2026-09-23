@@ -5,6 +5,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -341,6 +350,79 @@ fun FilaAjuste(
                 color = Slate.copy(alpha = 0.22f),
                 modifier = Modifier.padding(start = 61.dp),
             )
+        }
+    }
+}
+
+/**
+ * Lo que se dibuja cuando algo no se pudo cargar.
+ *
+ * ## Por qué existe, y por qué es compartido
+ *
+ * Porque varias pantallas resolvían el fallo con **una línea de texto gris en
+ * una pantalla vacía**, sin icono, sin explicación y sin forma de reintentar.
+ * Eso no se lee como "no hay conexión": se lee como que la app está rota. Y
+ * cuando el fallo es de red, además es mentira que no se pueda hacer nada: se
+ * puede volver a intentar.
+ *
+ * Tres cosas y ninguna sobra:
+ *
+ *  - **Un icono**, porque un bloque de texto suelto en medio de la nada no se
+ *    distingue de un error de maquetado.
+ *  - **Qué pasó y qué se puede hacer**, en ese orden. "No se pudo leer el
+ *    estado de la cuenta" dice lo primero y nada de lo segundo.
+ *  - **Reintentar**, que es la acción que la persona iba a buscar de todos
+ *    modos saliendo y volviendo a entrar.
+ *
+ * Se anuncia como región viva: aparece después de una espera, cuando el foco
+ * ya está en otro sitio, y sin esto un lector de pantalla no diría nada.
+ */
+@Composable
+fun EstadoDeError(
+    titulo: String,
+    detalle: String,
+    onReintentar: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp, vertical = 48.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$titulo. $detalle"
+                liveRegion = LiveRegionMode.Polite
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            Icons.Filled.CloudOff, null,
+            tint = Slate, modifier = Modifier.size(44.dp),
+        )
+        Spacer(Modifier.height(14.dp))
+        Text(
+            titulo,
+            color = TextoPrimario,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            detalle,
+            color = TextoSecundario,
+            fontSize = 13.5.sp,
+            textAlign = TextAlign.Center,
+        )
+        onReintentar?.let {
+            Spacer(Modifier.height(20.dp))
+            OutlinedButton(
+                onClick = it,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Cian),
+            ) {
+                Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Reintentar")
+            }
         }
     }
 }

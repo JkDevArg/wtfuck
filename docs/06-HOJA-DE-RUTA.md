@@ -3911,3 +3911,77 @@ Dos arreglos: el tope se calcula sobre el tamaño de página en vez de ser un
 número fijo, y **revienta** al activarse en vez de devolver media cola en
 silencio. Un cinturón que trunca callando convierte un problema en otro que no
 se le parece.
+
+---
+
+## Módulo U · Bloqueo de la app y estados de error ✅
+
+- [x] U.1 Bloquear la app con huella, rostro o el PIN del teléfono
+- [x] U.2 Las pantallas dejan de confundir "no pude preguntar" con "no hay"
+
+### U.1 · El hueco más visible que quedaba
+
+Era el que yo mismo venía señalando: un mensajero cuyo argumento es la
+privacidad y cualquiera que agarre el teléfono desbloqueado lee todo.
+
+**Lo que protege, dicho con precisión.** Protege contra alguien con el teléfono
+**desbloqueado en la mano**. No es cifrado: el historial ya está cifrado con
+SQLCipher y su clave vive envuelta por el Keystore, y eso es lo que protege de
+una extracción forense. Quien pueda leer la memoria del proceso no se detiene
+aquí. Decirlo al revés haría que alguien confiara en esto para lo que no sirve,
+así que **la pantalla de bloqueo lo dice en voz alta**, y el ajuste también.
+
+**El reloj es `elapsedRealtime`, no la hora.** La hora del sistema la cambia
+cualquiera desde ajustes: un bloqueo de quince minutos se creería caducado
+adelantándola. `elapsedRealtime` cuenta desde el arranque y no se puede mover.
+El precio es que al reiniciar el teléfono el contador vuelve a cero y lo
+guardado queda **en el futuro**; eso se trata como "bloquear", que es lo
+correcto — un reinicio es cuando menos motivos hay para suponer que sigue
+siendo la misma persona.
+
+**`BIOMETRIC_WEAK` y no `STRONG`.** En muchos teléfonos el reconocimiento
+facial está clasificado como "weak", así que exigir "strong" deja sin entrar
+—por su propia cara— a gente que la tiene configurada. "Strong" es obligatorio
+cuando con el resultado se descifra una clave; aquí se abre una pantalla.
+`DEVICE_CREDENTIAL` va siempre incluido: sin él, un dedo mojado deja a alguien
+fuera de sus mensajes sin salida.
+
+**`setRecentsScreenshotEnabled` y no `FLAG_SECURE`.** Sin nada, la miniatura de
+la app en el conmutador muestra el último chat, y esa lista se ve sin
+desbloquear. `FLAG_SECURE` también lo taparía, pero de paso prohíbe toda
+captura dentro de la app, y eso es otra decisión que nadie pidió.
+
+**Tres pruebas se cayeron al escribirlas** y destaparon una ambigüedad real: el
+`0` de "último desbloqueo" puede leerse como "el milisegundo en que arrancó el
+sistema" o como "no hay nada guardado". Se resolvió del lado seguro —el cero
+bloquea— y quedó escrito en el contrato.
+
+### U.2 · Tres pantallas que afirmaban cosas falsas
+
+Lo señaló el usuario con dos capturas: un canal con la **cabecera vacía** y
+"Cuenta y seguridad" con una línea gris. La causa inmediata era que los
+emuladores habían perdido el túnel `adb reverse` que la app usa para hablar con
+el servidor. La causa de fondo era otra, y estaba en el código:
+
+```kotlin
+runCatching { api.publicaciones(convId) }.getOrElse { emptyList() }
+```
+
+**"No pude preguntar" y "pregunté y no hay" acababan siendo el mismo valor.**
+Y la pantalla creía el segundo:
+
+| Pantalla | Decía sin red | Ahora |
+|---|---|---|
+| Canal | cabecera vacía + "este canal todavía no tiene publicaciones" | el nombre local + error con Reintentar |
+| Cuenta y seguridad | "No se pudo leer el estado de la cuenta." | error con Reintentar |
+| Directorio | "Todavía no hay canales públicos." | error con Reintentar |
+
+Los tres usan `EstadoDeError`, compartido: icono, qué pasó, qué se puede hacer,
+y un botón. Una línea de texto gris en una pantalla vacía no se lee como "no
+hay conexión", se lee como que la app está rota — y además es mentira que no se
+pueda hacer nada, porque se puede reintentar.
+
+**La cabecera del canal nunca vuelve a quedar vacía**: cae al nombre que ya
+está en la base local. Encontrado al probarlo: ese nombre se leía con
+`remember(conversacionId)` y la lista llega por un `Flow`, así que en la primera
+composición estaba vacía y la cabecera decía "Canal" teniendo el nombre a mano.

@@ -49,19 +49,51 @@ import com.wtfuck.app.ui.ModeracionPantalla
 import com.wtfuck.app.ui.PanelPantalla
 import com.wtfuck.app.ui.AuthPantalla
 import com.wtfuck.app.ui.PrivacidadPantalla
+import com.wtfuck.app.ui.PantallaBloqueada
 import com.wtfuck.app.ui.theme.WtfuckTheme
 
-class MainActivity : ComponentActivity() {
+/**
+ * `FragmentActivity` y no `ComponentActivity` **sólo** por el módulo U:
+ * `BiometricPrompt` lo exige, porque se apoya en un fragmento invisible para
+ * sobrevivir a los cambios de configuración mientras el diálogo del sistema
+ * está abierto. `FragmentActivity` extiende `ComponentActivity`, así que
+ * Compose y todo lo demás siguen igual.
+ */
+class MainActivity : androidx.fragment.app.FragmentActivity() {
+
+    /**
+     * Si la app está tapada por la pantalla de bloqueo ahora mismo.
+     *
+     * Vive en la Activity y no dentro de `Raiz()` porque lo decide el ciclo de
+     * vida —irse a segundo plano y volver—, que es algo que la Activity ve y
+     * un Composable no.
+     */
+    private val bloqueada = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         escucharAvisos()
         val app = application as WtfuckApp
+
+        // Arranque en frío: se decide ANTES de dibujar nada. Si se decidiera
+        // después, la app se vería un instante antes de taparse, y ese
+        // instante es justo lo que el bloqueo existe para evitar.
+        bloqueada.value = app.bloqueo.bloqueadoAhora(android.os.SystemClock.elapsedRealtime())
+        aplicarPrivacidadDeRecientes(app)
+
         setContent {
             WtfuckTheme(tema = app.ajustes.tema) {
                 PedirPermisoNotificaciones()
-                Surface(modifier = Modifier.fillMaxSize()) { Raiz() }
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Raiz()
+                    // ENCIMA de Raiz y dentro del mismo Surface: tapa lo que
+                    // haya, incluido un chat abierto o una llamada en curso, y
+                    // Atras no la puede quitar porque no es un destino.
+                    if (bloqueada.value) {
+                        PantallaBloqueada(onDesbloquear = { desbloquear(app) })
+                    }
+                }
             }
         }
     }
@@ -70,6 +102,53 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         val app = application as WtfuckApp
         if (app.sesion.hayS) app.repo.iniciar()
+        // Tambien aqui y no solo en `onCreate`: el ajuste se cambia sin
+        // recrear la Activity, y si solo se aplicara al crearla, activar el
+        // bloqueo dejaria la miniatura de recientes a la vista hasta el
+        // siguiente arranque en frio.
+        aplicarPrivacidadDeRecientes(app)
+        // Al volver de segundo plano. `onStart` y no `onResume`: `onResume` se
+        // dispara tambien al cerrarse un dialogo del sistema —el propio
+        // BiometricPrompt, un permiso, el selector de archivos— y volveria a
+        // bloquear a mitad de cualquiera de esas cosas.
+        if (app.bloqueo.bloqueadoAhora(android.os.SystemClock.elapsedRealtime())) {
+            bloqueada.value = true
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        val app = application as WtfuckApp
+        // Se anota CUANDO se dejo de usar la app, que es desde donde cuenta la
+        // espera. No se anota si ya estaba bloqueada: si no, salir y volver
+        // reiniciaria el contador y abriria la app sin autenticar nada.
+        if (!bloqueada.value && app.bloqueo.espera.activo) {
+            app.bloqueo.ultimoDesbloqueo = android.os.SystemClock.elapsedRealtime()
+        }
+    }
+
+    private fun desbloquear(app: WtfuckApp) {
+        app.bloqueo.ultimoDesbloqueo = android.os.SystemClock.elapsedRealtime()
+        bloqueada.value = false
+    }
+
+    /**
+     * Oculta el contenido en el conmutador de aplicaciones cuando el bloqueo
+     * esta activo.
+     *
+     * Sin esto, el bloqueo tiene un agujero evidente: la miniatura de la app en
+     * la lista de recientes muestra el ultimo chat abierto, y esa lista se ve
+     * **sin desbloquear nada**.
+     *
+     * Se usa `setRecentsScreenshotEnabled` y NO `FLAG_SECURE`. `FLAG_SECURE`
+     * tambien taparia la miniatura, pero de paso prohibe toda captura de
+     * pantalla dentro de la app, y eso es una decision distinta que nadie
+     * pidio: hay motivos legitimos para capturar una conversacion propia.
+     */
+    private fun aplicarPrivacidadDeRecientes(app: WtfuckApp) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            setRecentsScreenshotEnabled(!app.bloqueo.espera.activo)
+        }
     }
 
     /**

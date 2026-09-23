@@ -60,6 +60,19 @@ okhttp = "5.5.0"
 coil = "3.6.2"
 datastore = "1.2.1"
 exif = "1.4.2"               # leer la orientacion de las fotos de camara
+
+# Modulo U: bloqueo de la app con huella o el PIN del telefono.
+#
+# **1.1.0 y no 1.4.0-alpha07**, que es la ultima que existe. La regla del
+# proyecto es no subir por subir, y ademas aqui no hay nada que ganar: lo unico
+# que se usa de esta biblioteca es `BiometricPrompt` con
+# `setAllowedAuthenticators`, que esta en la estable desde 1.1.0. Cambiar a un
+# alpha la API de la pantalla que guarda la puerta de la app, para no usar nada
+# de lo que trae, seria pagar sin comprar. Misma decision que con angusMail.
+#
+# Verificado contra maven-metadata.xml el 2026-09-22: ultima estable 1.1.0,
+# ultima absoluta 1.4.0-alpha07.
+biometric = "1.1.0"
 desugar = "2.1.5"               # libsignal exige desugaring de la biblioteca base
 zxing = "3.5.4"                 # el nucleo: generar y LEER el QR, sin actividad ajena
 camerax = "1.6.2"               # estable; 1.7 esta en alpha. Solo para escanear QR
@@ -138,6 +151,7 @@ coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" 
 coil-okhttp  = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 coil-gif     = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }   # GIF animado
 exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exif" }
+biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 camera-core      = { module = "androidx.camera:camera-core", version.ref = "camerax" }

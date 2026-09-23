@@ -38,6 +38,9 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
     val archivos by lazy { ArchivosLocales(this) }
     val ajustes by lazy { Ajustes(this) }
 
+    /** Modulo U. Bloqueo de la app con huella o el PIN del telefono. */
+    val bloqueo by lazy { AjustesBloqueo(this) }
+
     /**
      * Modulo N. Vive en el contenedor y no dentro del Repositorio porque el
      * SERVICIO de mensajeria lo necesita sin que la interfaz exista: cuando un
