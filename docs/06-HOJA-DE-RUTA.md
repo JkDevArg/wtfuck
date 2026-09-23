@@ -4054,3 +4054,51 @@ para un campo que casi nunca se usa; entre el título, el buscador y las
 pestañas, el primer chat empezaba pasada la mitad del teléfono. Ahora es un
 campo relleno sin borde, la mitad de alto —40 dp de área tocable, el mínimo
 cómodo— y con una **X para borrar** que aparece sólo cuando hay algo escrito.
+
+---
+
+## Módulo W · Las hojas que se cortaban ✅
+
+*"No deja publicar historias." Era literal: el botón estaba fuera de la
+pantalla.*
+
+### W.1 · Un defecto por defecto
+
+`ModalBottomSheet` arranca **parcialmente expandido** —la mitad de la
+pantalla— y **no desplaza su contenido**: lo que no entra simplemente no está.
+En una hoja que es un formulario, lo que no entra es el botón del final, así
+que la función entera queda inalcanzable sin que nada lo indique.
+
+**Ninguna de las doce hojas de la app declaraba `skipPartiallyExpanded`.** El
+defecto estaba en las seis que son formularios y sólo se notaba en las más
+altas; la de historias era la más alta, así que fue la que se rompió del todo:
+título, subtítulo, 200 dp de vista previa, los colores, el campo de texto y el
+botón no caben en media pantalla.
+
+| Hoja | Qué quedaba fuera |
+|---|---|
+| Publicar una historia | "Publicar" |
+| Nueva encuesta | "Crear encuesta" |
+| Nuevo evento | el botón de crear |
+| Ubicación, Contacto, Descubrir | enviar / agregar |
+
+Las seis se abren ahora enteras. La de historias lleva además `verticalScroll`
+e `imePadding`, porque abrirse entera resuelve la pantalla en reposo pero al
+escribir el pie **el teclado se come la mitad de abajo** y el botón volvía a
+quedar fuera.
+
+**Por qué no se había visto.** La suite de integración recorre el servidor, y
+publicar una historia por la API funcionaba perfectamente: el defecto estaba
+entre el dedo y la API. Es la clase de cosa que sólo aparece tocando la app en
+una pantalla concreta, y por eso las capturas del usuario valen más que
+cualquier prueba que yo escriba para esto.
+
+### W.2 · Y lo que se veía distinto entre emuladores
+
+No era el diseño ni el tamaño de pantalla —son idénticos, 1080×2424 a 420 dpi—:
+**el segundo emulador tenía una compilación de 17 horas antes**. Las últimas
+builds se habían instalado sólo en uno.
+
+Queda escrito porque la conclusión equivocada era tentadora y cara: "la app se
+ve distinta según el aparato" habría mandado a buscar un problema de densidades
+que no existe.

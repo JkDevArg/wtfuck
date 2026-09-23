@@ -73,6 +73,7 @@ quien no debe.
 | T | Nombres de contacto en vez de @usuario, y menciones visibles | ✅ |
 | U | Bloqueo de la app con huella o PIN, y estados de error honestos | ✅ |
 | V | Depuración visual de la lista de chats | ✅ |
+| W | Las hojas de formulario se abren enteras (el botón quedaba fuera) | ✅ |
 
 **Lo que falta, y por qué:**
 

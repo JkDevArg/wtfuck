@@ -318,6 +318,19 @@ private fun HojaDescubrir(onCerrar: () -> Unit, onAgregado: () -> Unit) {
     }
 
     ModalBottomSheet(
+        // **Se abre ENTERA, no a media altura.**
+        //
+        // `ModalBottomSheet` arranca "parcialmente expandido" por defecto, o
+        // sea ocupando la mitad de la pantalla, y **no desplaza su contenido**:
+        // lo que no entra simplemente no esta. En una hoja que es un
+        // formulario, lo que no entra es el boton del final, asi que la
+        // funcion entera queda inalcanzable sin que nada lo indique. Fue
+        // exactamente lo que paso al publicar una historia.
+        //
+        // Ninguna hoja de la app lo declaraba: el defecto estaba en las seis
+        // que son formularios, y solo se notaba en las mas altas.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+
         onDismissRequest = onCerrar,
         containerColor = BgElev,
         dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },

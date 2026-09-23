@@ -6,6 +6,8 @@ import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -822,11 +824,36 @@ fun HojaPublicarHistoria(
     }
 
     ModalBottomSheet(
+        // **Se abre ENTERA, no a media altura.**
+        //
+        // `ModalBottomSheet` arranca "parcialmente expandido" por defecto, o
+        // sea ocupando la mitad de la pantalla, y **no desplaza su contenido**:
+        // lo que no entra simplemente no esta. En una hoja que es un
+        // formulario, lo que no entra es el boton del final, asi que la
+        // funcion entera queda inalcanzable sin que nada lo indique. Fue
+        // exactamente lo que paso al publicar una historia.
+        //
+        // Ninguna hoja de la app lo declaraba: el defecto estaba en las seis
+        // que son formularios, y solo se notaba en las mas altas.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+
         onDismissRequest = onCerrar,
         containerColor = BgSurface,
         dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },
     ) {
-        Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 26.dp)) {
+        // Con scroll y con `imePadding`, ademas de abrirse entera.
+        //
+        // Abrirse entera resuelve la pantalla en reposo; el scroll resuelve
+        // las pantallas cortas y, sobre todo, **el teclado**: al escribir el
+        // pie, el teclado se come la mitad de abajo y ahi vuelve a quedar el
+        // boton fuera. `imePadding` lo empuja y el scroll deja llegar.
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 26.dp)
+        ) {
             Text(
                 "Nueva historia",
                 color = TextoPrimario,
