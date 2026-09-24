@@ -978,6 +978,21 @@ fun ChatPantalla(
                         .onFailure { aviso = it.message }
                 }
             },
+            onElegirSticker = { archivo ->
+                // Se manda como adjunto de clase `sticker`, que es la que ya
+                // dibuja la burbuja sin fondo ni marco desde el modulo D. El
+                // pie NO se usa: un sticker con texto debajo deja de ser un
+                // sticker y pasa a ser una imagen con pie.
+                ambito.launch {
+                    runCatching {
+                        app.repo.enviarAdjunto(
+                            conversacionId,
+                            android.net.Uri.fromFile(archivo),
+                            ClaseAdjunto.STICKER,
+                        )
+                    }.onFailure { aviso = it.message }
+                }
+            },
             onCerrar = { hojaSticker = false },
         )
     }

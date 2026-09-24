@@ -243,7 +243,15 @@ object Media {
      * Sin esto las fotos de camara salen acostadas en la miniatura: la camara
      * guarda el sensor tal cual y anota la orientacion aparte.
      */
-    private fun girarSegunExif(ctx: Context, uri: Uri, b: Bitmap): Bitmap {
+    /**
+     * `internal` y no privada: la usa tambien `Stickers`.
+     *
+     * Es la misma correccion para el mismo problema -una foto de camara viene
+     * derecha solo si se mira su EXIF- y duplicarla habria dejado dos copias
+     * que se corrigen por separado. Un retrato sin girar hace que el recorte
+     * cuadrado de un sticker se lleve media cara.
+     */
+    internal fun girarSegunExif(ctx: Context, uri: Uri, b: Bitmap): Bitmap {
         val orientacion = runCatching {
             ctx.contentResolver.openInputStream(uri)?.use {
                 ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)

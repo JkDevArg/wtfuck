@@ -4193,3 +4193,68 @@ sabe que hay red de por medio. Los de **dispositivos**, **sesiones** y **mis
 eventos** son los que valdría la pena revisar después: decir "no tienes
 dispositivos" o "no tienes sesiones abiertas" en una app de mensajería cifrada
 es una afirmación de seguridad, no una lista vacía.
+
+---
+
+## Módulo Y · Stickers a partir de una foto ✅
+
+*Pedido directo. Y al mirarlo, resultó que la función no existía a medias: no
+existía.*
+
+### Y.1 · El botón mentía por las dos mitades
+
+La clase de adjunto `sticker` está desde el módulo D, con su tope de 2 MB y su
+burbuja sin fondo. Lo que no había era **ninguna forma de crear uno**. El botón
+se llama "Sticker o GIF" y sólo buscaba GIFs en un servicio externo que además
+necesita una clave que no está configurada: las dos mitades del nombre llevaban
+a la misma pantalla vacía.
+
+### Y.2 · Las tres decisiones que valen
+
+**512 × 512.** Es el tamaño con el que se dibujan los stickers en todas partes,
+y hacerlo cuadrado en el origen evita que la burbuja tenga que decidir cómo
+encajar una foto apaisada.
+
+**WebP sin pérdida, no PNG.** Medido en el emulador: el sticker de prueba pesa
+**48 KB**; el mismo recorte en PNG ronda los 400. Con el tope de 2 MB los dos
+entran — pero cada sticker viaja **cifrado a cada aparato de cada
+destinatario**, así que en un grupo de veinte la diferencia es 1 MB contra 8 MB
+por sticker enviado.
+
+Por debajo de API 30 no hay `WEBP_LOSSLESS` y se cae a **PNG**, no al `WEBP`
+antiguo: ése es con pérdida, y con pérdida los bordes de un recorte
+transparente salen con halo. Pesa más y se ve bien.
+
+**Hay editor, no recorte automático.** El cuadrado centrado acierta con una
+foto de producto y falla con cualquier foto de gente: la cara suele estar
+arriba, y un recorte centrado de una vertical se lleva el torso. Se arrastra y
+se pellizca sobre una ventana fija, que es el modelo que ya conoce cualquiera
+que haya recortado una foto de perfil.
+
+### Y.3 · Lo que NO hace, dicho por delante
+
+**No quita el fondo.** Hacerlo bien sobre una foto cualquiera necesita un
+modelo de segmentación —en Android, ML Kit sobre Play Services—: una
+dependencia de Google, una descarga de modelo en el primer uso y un servicio
+más del que depender. En una app cuyo argumento es que el servidor no puede
+leer nada, eso es **una decisión de producto** y no la tomo solo.
+
+La alternativa sin dependencias —quitar por color, tipo croma— funciona con un
+fondo liso y deja bordes sucios con cualquier foto real. Un recorte cuadrado
+bien hecho se usa; uno con halos se usa una vez.
+
+Lo que sí hace: **si la foto de origen ya tiene transparencia, se conserva**. Se
+decodifica en `ARGB_8888` explícito —si el decodificador elige `RGB_565` por
+ahorrar, el alfa se pierde antes de que nadie lo pueda conservar— y se dibuja
+sobre un lienzo transparente, no sobre blanco.
+
+### Y.4 · Lo que enseñaron las pruebas
+
+`cuadradoCentrado` devolvía un `android.graphics.Rect` y **cinco pruebas se
+cayeron con "Rect.width not mocked"**: en una prueba de JVM los métodos del
+framework no existen. Ninguna se cayó por el código.
+
+Es una señal, no un estorbo: la aritmética del recorte es lo único que de
+verdad se puede equivocar aquí —cuentas con enteros sobre tamaños que vienen de
+fuera— y no se podía probar porque dependía del framework. Pasó a una clase
+propia, `Recorte`, que se convierte a `Rect` sólo al dibujar.
