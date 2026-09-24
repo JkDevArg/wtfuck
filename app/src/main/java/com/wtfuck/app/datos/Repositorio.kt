@@ -2763,6 +2763,19 @@ class Repositorio(
     suspend fun publicaciones(convId: String, antesDe: String? = null): List<Publicacion>? =
         runCatching { api.publicaciones(convId, antesDe) }.getOrNull()
 
+    /**
+     * La URL firmada para ver la imagen de una publicacion, o `null`.
+     *
+     * Se pide cuando hace falta y no viene en el muro, porque **caduca**: una
+     * URL firmada metida en la lista se vence mientras alguien lee, y la foto
+     * dejaria de cargar a mitad del scroll.
+     *
+     * Va sin cifrar, asi que Coil la puede pedir directo: es el unico adjunto
+     * del que eso es cierto. Ver `V36`.
+     */
+    suspend fun urlImagenPublicacion(adjuntoId: String): String? =
+        runCatching { api.adjunto(adjuntoId).urlDescarga }.getOrNull()
+
     suspend fun estadisticasCanal(convId: String): EstadisticasCanal? =
         runCatching { api.estadisticasCanal(convId) }.getOrNull()
 
@@ -2778,9 +2791,13 @@ class Repositorio(
      * El precio, declarado en la interfaz: un canal publico no va cifrado de
      * extremo a extremo.
      */
-    suspend fun publicar(convId: String, texto: String): Result<Unit> {
+    suspend fun publicar(
+        convId: String,
+        texto: String,
+        imagen: Uri? = null,
+    ): Result<Unit> {
         val limpio = texto.trim()
-        if (limpio.isEmpty()) return Result.success(Unit)
+        if (limpio.isEmpty() && imagen == null) return Result.success(Unit)
         val mensajeId = UUID.randomUUID().toString()
         return runCatching {
             api.registrarMensaje(
@@ -2790,7 +2807,68 @@ class Repositorio(
                     menciones = mencionesDe(limpio),
                 )
             )
-            api.publicarEnCanal(convId, PublicarReq(mensajeId, limpio))
+            // La imagen ANTES del cuerpo, por lo mismo que en
+            // `publicarHistoria`: si algo falla en el medio, lo que queda es
+            // un adjunto que nadie ve -y que barre el limpiador- en vez de una
+            // publicacion visible con un hueco donde deberia estar la foto.
+            // El fallo barato es el invisible.
+            val adjuntoId = imagen?.let { subirImagenDeCanal(convId, it) }
+            api.publicarEnCanal(convId, PublicarReq(mensajeId, limpio, adjuntoId))
+        }
+    }
+
+    /**
+     * Sube la imagen de una publicacion de canal. **Sin cifrar.**
+     *
+     * Es el unico sitio de la app que sube un archivo en claro a proposito, y
+     * la razon esta en `V36`: un canal publico no reparte sobres, asi que no
+     * hay donde meter la clave. Quien se suscriba manana tendria el archivo y
+     * no la llave.
+     *
+     * A cambio, es el unico sitio donde el servidor **puede** comprobar que el
+     * archivo es una imagen de verdad, y lo hace al confirmar.
+     *
+     * Se reduce antes de subir con el mismo ajuste de calidad que una foto de
+     * chat: un anuncio no necesita 12 megapixeles y los paga quien lo lee.
+     */
+    private suspend fun subirImagenDeCanal(convId: String, uri: Uri): String {
+        val temp = archivos.temporal("pub-" + UUID.randomUUID())
+        try {
+            val fuente = if (archivos.prepararImagen(uri, ajustes.calidadImagen, temp)) {
+                Uri.fromFile(temp)
+            } else {
+                uri
+            }
+            val datos = archivos.datosDe(fuente, ClaseAdjunto.IMAGEN)
+            val reserva = api.reservarAdjunto(
+                ReservarAdjuntoReq(
+                    conversacionId = convId,
+                    clase = ClaseAdjunto.IMAGEN,
+                    bytes = datos.bytes,
+                    mime = datos.mime,
+                    nombre = datos.nombre,
+                    ancho = datos.ancho,
+                    alto = datos.alto,
+                )
+            )
+            val aSubir = if (fuente == uri) {
+                // No se pudo reducir: se sube el original, copiandolo a un
+                // temporal porque `subirAlAlmacen` necesita un File.
+                archivos.temporal("pub-orig-" + UUID.randomUUID()).also {
+                    if (!archivos.copiarDesde(uri, it)) error("No se pudo leer la imagen.")
+                }
+            } else {
+                temp
+            }
+            try {
+                api.subirAlAlmacen(reserva.urlSubida, aSubir)
+            } finally {
+                if (aSubir != temp) aSubir.delete()
+            }
+            api.confirmarAdjunto(reserva.adjuntoId)
+            return reserva.adjuntoId
+        } finally {
+            temp.delete()
         }
     }
 

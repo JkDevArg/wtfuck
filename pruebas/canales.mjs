@@ -461,6 +461,145 @@ ck('se apagan las reacciones', r.s === 200 && r.b.reacciones === false);
 r = await post('/v1/mensajes/reaccion', lector.t, { mensajeId: p1, emoji: '🎉', poner: true });
 ck('y entonces reaccionar se rechaza', r.s === 403, String(r.s) + ' ' + JSON.stringify(r.b));
 
+// ============================================================
+//  Modulo AC: una imagen en la publicacion
+// ============================================================
+//
+// Un canal solo podia publicar TEXTO. Una pagina de anuncios sin imagenes no
+// es una pagina de anuncios.
+//
+// ## Por que la imagen va SIN cifrar, y por que aqui eso es una ventaja
+//
+// El adjunto normal se cifra en el telefono y **la clave viaja en el sobre**.
+// Un canal publico no reparte sobres, asi que no hay donde meterla: quien se
+// suscriba manana tendria el archivo y no la llave.
+//
+// Va en claro, bajo la misma excepcion que el cuerpo. Y eso habilita lo que el
+// brief pedia y el cifrado hacia imposible: **el servidor comprueba la firma
+// real del archivo**. Es la tercera clase de archivo del sistema -perfil
+// validado, adjunto cifrado no, imagen de canal publico validada-.
+
+console.log('\n=== publicacion con imagen ===');
+
+// PNG minimo valido: firma de 8 bytes y un IHDR. Alcanza para la validacion,
+// que mira los primeros doce.
+const PNG = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+  Buffer.from([0x00, 0x00, 0x00, 0x0D]),
+  Buffer.from('IHDR'),
+  Buffer.alloc(40),
+]);
+
+async function subirAlAlmacen(url, cuerpo) {
+  const r = await fetch(url, { method: 'PUT', body: cuerpo });
+  return r.status;
+}
+
+r = await post('/v1/adjuntos', dueno.t, {
+  conversacionId: CANAL, clase: 'imagen', bytes: PNG.length,
+  mime: 'image/png', nombre: 'aviso.png', ancho: 4, alto: 4,
+});
+ck('el dueno reserva un adjunto de imagen en el canal', r.s === 200, JSON.stringify(r.b).slice(0, 120));
+const reserva = r.b;
+
+ck('la subida al almacen va bien', await subirAlAlmacen(reserva.urlSubida, PNG) < 300);
+
+r = await post(`/v1/adjuntos/${reserva.adjuntoId}/confirmar`, dueno.t, {});
+ck('y se confirma', r.s === 200, String(r.s) + ' ' + JSON.stringify(r.b).slice(0, 120));
+
+const pImg = uuid();
+await post('/v1/mensajes', dueno.t, { mensajeId: pImg, conversacionId: CANAL });
+r = await post(`/v1/canales/${CANAL}/publicaciones`, dueno.t, {
+  mensajeId: pImg, cuerpo: 'Con foto', adjuntoId: reserva.adjuntoId,
+});
+ck('la publicacion acepta la imagen', r.s === 204, String(r.s) + ' ' + JSON.stringify(r.b));
+
+r = await get(`/v1/canales/${CANAL}/publicaciones`, lector.t);
+const conFoto = (r.b ?? []).find(x => x.cuerpo === 'Con foto');
+ck('el muro devuelve el id del adjunto', conFoto?.adjuntoId === reserva.adjuntoId,
+   JSON.stringify(conFoto).slice(0, 160));
+ck('y sus medidas, para que la tarjeta no salte de alto',
+   conFoto?.adjuntoAncho === 4 && conFoto?.adjuntoAlto === 4,
+   `${conFoto?.adjuntoAncho}x${conFoto?.adjuntoAlto}`);
+
+console.log('\n=== la imagen de un canal publico la ve cualquiera ===');
+//
+// MISMA regla que el muro. Si la imagen exigiera pertenencia, quien todavia no
+// sigue el canal veria las publicaciones con un hueco donde va la foto — o sea
+// justo quien esta decidiendo si seguirlo.
+
+r = await get(`/v1/adjuntos/${reserva.adjuntoId}`, otro.t);
+ck('quien NO esta suscrito obtiene la URL de la imagen', r.s === 200,
+   String(r.s) + ' ' + JSON.stringify(r.b).slice(0, 100));
+ck('y es una URL de descarga', typeof r.b?.urlDescarga === 'string' && r.b.urlDescarga.length > 10,
+   String(r.b?.urlDescarga).slice(0, 60));
+
+console.log('\n=== lo que el servidor SI puede validar aqui ===');
+
+r = await post('/v1/adjuntos', dueno.t, {
+  conversacionId: CANAL, clase: 'imagen', bytes: 40,
+  mime: 'image/png', nombre: 'mentira.png', ancho: 1, alto: 1,
+});
+const falsa = r.b;
+ck('se reserva otro adjunto', r.s === 200);
+// Un ejecutable disfrazado de PNG: el Content-Type dice imagen y los bytes no.
+await subirAlAlmacen(falsa.urlSubida, Buffer.concat([Buffer.from('MZ'), Buffer.alloc(40, 0x41)]));
+r = await post(`/v1/adjuntos/${falsa.adjuntoId}/confirmar`, dueno.t, {});
+ck('confirmar RECHAZA un archivo que no es una imagen', r.s === 400,
+   String(r.s) + ' ' + JSON.stringify(r.b));
+
+r = await get(`/v1/adjuntos/${falsa.adjuntoId}`, dueno.t);
+ck('y el adjunto rechazado deja de existir', r.s === 404, String(r.s));
+
+console.log('\n=== lo que NO se puede colgar de una publicacion ===');
+
+// El adjunto de OTRA conversacion. Sin esta comprobacion, publicar seria una
+// forma de leer el archivo de un chat ajeno.
+r = await post('/v1/adjuntos', lector.t, {
+  conversacionId: CANAL, clase: 'imagen', bytes: PNG.length,
+  mime: 'image/png', nombre: 'x.png', ancho: 1, alto: 1,
+});
+const ajena = r.b;
+if (ajena?.urlSubida) {
+  await subirAlAlmacen(ajena.urlSubida, PNG);
+  await post(`/v1/adjuntos/${ajena.adjuntoId}/confirmar`, lector.t, {});
+  const pAjeno = uuid();
+  await post('/v1/mensajes', dueno.t, { mensajeId: pAjeno, conversacionId: CANAL });
+  r = await post(`/v1/canales/${CANAL}/publicaciones`, dueno.t, {
+    mensajeId: pAjeno, cuerpo: 'robo la imagen', adjuntoId: ajena.adjuntoId,
+  });
+  ck('no se puede publicar la imagen que subio OTRA persona', r.s === 404,
+     String(r.s) + ' ' + JSON.stringify(r.b));
+}
+
+const pNada = uuid();
+await post('/v1/mensajes', dueno.t, { mensajeId: pNada, conversacionId: CANAL });
+r = await post(`/v1/canales/${CANAL}/publicaciones`, dueno.t, { mensajeId: pNada, cuerpo: '' });
+ck('una publicacion sin texto y sin imagen se rechaza', r.s === 400,
+   String(r.s) + ' ' + JSON.stringify(r.b));
+
+// Con imagen y sin texto SI: una foto sola es una publicacion.
+r = await post('/v1/adjuntos', dueno.t, {
+  conversacionId: CANAL, clase: 'imagen', bytes: PNG.length,
+  mime: 'image/png', nombre: 'sola.png', ancho: 2, alto: 2,
+});
+const sola = r.b;
+await subirAlAlmacen(sola.urlSubida, PNG);
+await post(`/v1/adjuntos/${sola.adjuntoId}/confirmar`, dueno.t, {});
+const pSola = uuid();
+await post('/v1/mensajes', dueno.t, { mensajeId: pSola, conversacionId: CANAL });
+r = await post(`/v1/canales/${CANAL}/publicaciones`, dueno.t, {
+  mensajeId: pSola, cuerpo: '', adjuntoId: sola.adjuntoId,
+});
+ck('pero con imagen y sin texto si se publica', r.s === 204, String(r.s) + ' ' + JSON.stringify(r.b));
+
+console.log('\n=== un canal PRIVADO sigue siendo solo texto ===');
+r = await post(`/v1/canales/${PRIVADO}/publicaciones`, dueno.t, {
+  mensajeId: uuid(), cuerpo: 'x', adjuntoId: sola.adjuntoId,
+});
+ck('un canal privado rechaza guardar contenido, con imagen o sin ella', r.s === 409,
+   String(r.s) + ' ' + JSON.stringify(r.b));
+
 console.log('\n=== el muro se ordena por FECHA, no por id ===');
 //
 // El defecto que esto fija: el muro ordenaba por `mensaje_id DESC`, y el id de

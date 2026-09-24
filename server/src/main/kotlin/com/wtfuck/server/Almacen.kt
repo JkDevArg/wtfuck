@@ -1,5 +1,6 @@
 package com.wtfuck.server
 
+import io.minio.GetObjectArgs
 import io.minio.GetPresignedObjectUrlArgs
 import io.minio.MakeBucketArgs
 import io.minio.MinioClient
@@ -106,6 +107,28 @@ object Almacen {
     /** Bytes reales del objeto, para comprobar lo que el cliente declaro. */
     fun tamanoReal(objeto: String): Long? = runCatching {
         cliente.statObject(StatObjectArgs.builder().bucket(BUCKET).`object`(objeto).build()).size()
+    }.getOrNull()
+
+    /**
+     * Los primeros bytes de un objeto, para comprobar su firma real.
+     *
+     * ## Esto no rompe la regla de arriba
+     *
+     * La regla dice que **los bytes de los clientes** no pasan por este
+     * servidor, y la razon es no ser la tuberia de archivos de 64 MB. Aqui se
+     * leen doce bytes entre el servidor y el almacen, que estan al lado, y
+     * para responder una pregunta que solo el servidor puede responder: si el
+     * archivo es lo que el cliente dijo que era.
+     *
+     * Solo tiene sentido en lo que NO va cifrado -las imagenes de un canal
+     * publico-. De un adjunto cifrado los primeros bytes son ruido.
+     */
+    fun primerosBytes(objeto: String, cuantos: Int): ByteArray? = runCatching {
+        if (!listo) return null
+        cliente.getObject(
+            GetObjectArgs.builder().bucket(BUCKET).`object`(objeto)
+                .offset(0L).length(cuantos.toLong()).build()
+        ).use { it.readNBytes(cuantos) }
     }.getOrNull()
 
     fun borrar(objeto: String) {

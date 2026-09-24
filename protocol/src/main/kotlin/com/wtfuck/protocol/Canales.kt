@@ -121,6 +121,19 @@ data class ConfigCanalReq(
 data class PublicarReq(
     val mensajeId: String,
     val cuerpo: String,
+    /**
+     * Modulo AC: una imagen, opcional.
+     *
+     * Es el id de un adjunto ya subido **sin cifrar**. En un canal publico no
+     * hay sobres, asi que no hay donde meter la clave de un archivo cifrado:
+     * quien se suscribe manana tendria el archivo y no la llave. Va en claro,
+     * bajo la misma excepcion declarada que el cuerpo.
+     *
+     * Y eso habilita algo que el brief pedia y el cifrado hacia imposible:
+     * **el servidor puede comprobar que el archivo es de verdad una imagen**,
+     * porque es el unico sitio donde puede leerla. Ver `Adjuntos.confirmar`.
+     */
+    val adjuntoId: String? = null,
 )
 
 @Serializable
@@ -129,6 +142,10 @@ data class Publicacion(
     val autor: String,
     val cuerpo: String,
     val creadoEn: Long,
+    /** El adjunto de la publicacion, si tiene. Se pide aparte para bajarlo. */
+    val adjuntoId: String? = null,
+    val adjuntoAncho: Int = 0,
+    val adjuntoAlto: Int = 0,
     val editado: Boolean = false,
     val fijado: Boolean = false,
     val reacciones: List<ReaccionAgrupada> = emptyList(),

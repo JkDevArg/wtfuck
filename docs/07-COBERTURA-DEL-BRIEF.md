@@ -9,8 +9,8 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-24: 1650 pruebas en verde** (1354 de integración + 296 de
-JUnit) con todo levantado; **1559** en la configuración mínima, porque dos
+**Estado al 2026-09-24: 1664 pruebas en verde** (1368 de integración + 296 de
+JUnit) con todo levantado; **1573** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
 Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
 beta cerrada**.
@@ -42,7 +42,7 @@ cliente web de mensajería.
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada · ninguna pantalla afirma lo que no comprobó (X, Z.5) | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero | A, N.7, N.8 |
-| 17 | Calidad y pruebas | ✅ 1650 con todo levantado · 1559 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1664 con todo levantado · 1573 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -187,8 +187,8 @@ solicitudes de ingreso, modo solo administradores, roles creados a medida.
 ## §7 · Canales ✅
 
 Canal público y privado, alias/URL, administradores, suscriptores,
-publicaciones, reacciones **que se ven y se tocan**, comentarios con su hoja
-(AA), mensajes fijados,
+publicaciones **con imagen** (AC), reacciones **que se ven y se tocan**,
+comentarios con su hoja (AA), mensajes fijados,
 estadísticas, moderación heredada del RBAC y permisos propios
 (`canal.publicar`, `canal.comentar`, `canal.estadisticas`).
 
@@ -250,6 +250,13 @@ dentro de la conversación** y **marcar como no leído**.
 > clase: las fotos de perfil van sin cifrar y el servidor las valida; los
 > adjuntos de mensajes van cifrados y la firma la comprueba el cliente al
 > descifrar.
+>
+> **Y hay una tercera clase desde el módulo AC**: la imagen de una publicación
+> de canal público. Va sin cifrar porque un canal público no reparte sobres y
+> no hay dónde meter la clave —quien se suscriba mañana tendría el archivo y no
+> la llave—, y **por eso mismo el servidor sí la valida**: lee los doce
+> primeros bytes del almacén y comprueba la firma real. Es el único sitio donde
+> lo que el brief pedía se puede cumplir tal cual.
 
 > El brief dice: *"No crear algoritmos criptográficos propios."* Se respeta:
 > libsignal para los mensajes, AES-256-GCM del propio Android para los
@@ -444,7 +451,7 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1650 pruebas con todo levantado**: 1354 de integración en 35 suites de Node,
+**1664 pruebas con todo levantado**: 1368 de integración en 35 suites de Node,
 75 de JUnit en el servidor (RBAC, seguridad, cuentas, auditoría y el
 intermediario de GIFs) y 221 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el
@@ -455,7 +462,7 @@ incluidas).
 === 35 suites · 1323 pasan, 0 fallan ===
 ```
 
-**1559 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
+**1573 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
 diferencia no es un fallo: dos suites necesitan más que el servidor y lo dicen
 en vez de fingir.
 

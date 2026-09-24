@@ -73,6 +73,7 @@ object Db {
         33 to "/db/V33__privacidad_fina.sql",
         34 to "/db/V34__comentarios_de_canal.sql",
         35 to "/db/V35__aviso_de_comentario.sql",
+        36 to "/db/V36__imagen_de_publicacion.sql",
     )
 
     /**

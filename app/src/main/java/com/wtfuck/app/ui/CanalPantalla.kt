@@ -19,6 +19,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -80,6 +86,22 @@ fun CanalPantalla(
     var fallo by remember { mutableStateOf(false) }
     /** La publicacion cuyos comentarios se estan viendo. */
     var comentando by remember { mutableStateOf<Publicacion?>(null) }
+
+    /**
+     * Modulo AC: la imagen elegida para la proxima publicacion.
+     *
+     * Un canal solo podia publicar texto, y para una pagina de anuncios ese es
+     * el hueco grande: un aviso con imagen es lo normal, no la excepcion.
+     */
+    var imagen by remember { mutableStateOf<android.net.Uri?>(null) }
+    /** URLs firmadas ya pedidas, por id de adjunto. */
+    var urlesImagen by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    /** La imagen abierta a pantalla completa, si hay alguna. */
+    var viendoImagen by remember { mutableStateOf<String?>(null) }
+    var publicando by remember { mutableStateOf(false) }
+    val elegirImagen = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) imagen = uri }
     val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
 
     /**
@@ -199,13 +221,56 @@ fun CanalPantalla(
                 when {
                     // Quien puede publicar escribe; quien no, no ve un campo
                     // que el servidor le va a rechazar.
-                    c.puedoPublicar -> Row(
-                        Modifier
-                            .navigationBarsPadding()
-                            .imePadding()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    c.puedoPublicar -> Column(
+                        Modifier.navigationBarsPadding().imePadding(),
+                    ) {
+                    // La imagen elegida, ANTES de publicar y con forma de
+                    // quitarla. Sin vista previa, adjuntar es un acto de fe: no
+                    // se sabe que se eligio hasta que ya se publico.
+                    imagen?.let { u ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            coil3.compose.AsyncImage(
+                                model = u,
+                                contentDescription = "Imagen elegida",
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "Se publica con esta imagen.",
+                                color = TextoSecundario,
+                                fontSize = 12.5.sp,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = { imagen = null }) {
+                                Icon(Icons.Filled.Close, "Quitar la imagen", tint = TextoSecundario)
+                            }
+                        }
+                        HorizontalDivider(color = Slate.copy(alpha = 0.25f))
+                    }
+                    Row(
+                        Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.Bottom,
                     ) {
+                        IconButton(
+                            onClick = {
+                                elegirImagen.launch(
+                                    PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                            enabled = !publicando,
+                        ) {
+                            Icon(Icons.Filled.Image, "Adjuntar una imagen", tint = TextoSecundario)
+                        }
                         OutlinedTextField(
                             value = texto,
                             onValueChange = { texto = it },
@@ -224,21 +289,42 @@ fun CanalPantalla(
                         FilledIconButton(
                             onClick = {
                                 val t = texto
+                                val img = imagen
                                 texto = ""
+                                imagen = null
+                                publicando = true
                                 ambito.launch {
-                                    app.repo.publicar(conversacionId, t)
+                                    app.repo.publicar(conversacionId, t, img)
                                         .onSuccess { refrescar() }
-                                        .onFailure { aviso = it.message; texto = t }
+                                        // Se devuelven las DOS cosas al
+                                        // compositor: perder el texto y la foto
+                                        // elegida por un fallo de red obliga a
+                                        // rehacer el trabajo entero.
+                                        .onFailure { aviso = it.message; texto = t; imagen = img }
+                                    publicando = false
                                 }
                             },
-                            enabled = texto.isNotBlank(),
+                            // Con imagen alcanza: una foto sola es una
+                            // publicacion.
+                            enabled = (texto.isNotBlank() || imagen != null) && !publicando,
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = Cian,
                                 contentColor = TextoSobreAcento,
                                 disabledContainerColor = Slate.copy(alpha = 0.4f),
                             ),
                             modifier = Modifier.size(48.dp),
-                        ) { Icon(Icons.AutoMirrored.Filled.Send, "Publicar") }
+                        ) {
+                            if (publicando) {
+                                CircularProgressIndicator(
+                                    color = TextoSobreAcento,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            } else {
+                                Icon(Icons.AutoMirrored.Filled.Send, "Publicar")
+                            }
+                        }
+                    }
                     }
 
                     !c.suscrito -> Box(
@@ -399,11 +485,27 @@ fun CanalPantalla(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                 ) {
                     items(feed.orEmpty(), key = { it.mensajeId }) { p ->
+                        // La URL se pide una vez por publicacion y se
+                        // recuerda mientras la pantalla vive. Pedirla dentro de
+                        // la tarjeta la volveria a pedir en cada recomposicion
+                        // del scroll.
+                        LaunchedEffect(p.adjuntoId) {
+                            val id = p.adjuntoId ?: return@LaunchedEffect
+                            if (urlesImagen[id] == null) {
+                                app.repo.urlImagenPublicacion(id)?.let {
+                                    urlesImagen = urlesImagen + (id to it)
+                                }
+                            }
+                        }
                         TarjetaPublicacion(
                             p = p,
                             comentariosActivos = cfg?.comentarios == true,
                             reaccionesActivas = cfg?.reacciones == true,
+                            urlImagen = p.adjuntoId?.let { urlesImagen[it] },
                             onComentarios = { comentando = p },
+                            onAbrirImagen = {
+                                p.adjuntoId?.let { urlesImagen[it] }?.let { viendoImagen = it }
+                            },
                             onReaccionar = { emoji, poner ->
                                 ambito.launch {
                                     runCatching { app.repo.reaccionar(p.mensajeId, emoji, poner) }
@@ -470,6 +572,30 @@ fun CanalPantalla(
         )
     }
 
+    viendoImagen?.let { url ->
+        Dialog(
+            onDismissRequest = { viendoImagen = null },
+            // Sin esto el dialogo se queda con el ancho de un cuadro normal y
+            // un visor a medio abrir no es un visor. Ver `VisorImagen`.
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color.Black)
+                    .clickable { viendoImagen = null },
+                contentAlignment = Alignment.Center,
+            ) {
+                coil3.compose.AsyncImage(
+                    model = url,
+                    contentDescription = "Imagen de la publicacion",
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+    }
+
     comentando?.let { pub ->
         HojaComentarios(
             conversacionId = conversacionId,
@@ -507,7 +633,10 @@ private fun TarjetaPublicacion(
     p: Publicacion,
     comentariosActivos: Boolean,
     reaccionesActivas: Boolean,
+    /** Firmada y caduca, asi que se pide por publicacion y no viene en el muro. */
+    urlImagen: String?,
     onComentarios: () -> Unit,
+    onAbrirImagen: () -> Unit,
     onReaccionar: (String, Boolean) -> Unit,
 ) {
     Column(
@@ -532,8 +661,56 @@ private fun TarjetaPublicacion(
             Spacer(Modifier.weight(1f))
             Text(hora(p.creadoEn), color = TextoTerciario, fontSize = 11.sp)
         }
-        Spacer(Modifier.height(8.dp))
-        Text(p.cuerpo, color = TextoPrimario, fontSize = 16.sp)
+        // Modulo AC: la imagen, si tiene, ANTES del texto.
+        //
+        // Arriba y no abajo porque en un anuncio la imagen es el titular: es lo
+        // que hace parar el scroll, y el texto explica lo que ya se vio.
+        if (p.adjuntoId != null) {
+            Spacer(Modifier.height(10.dp))
+            // La proporcion real, para que la tarjeta no salte de alto cuando
+            // la imagen termina de cargar.
+            // El suelo es 0.8 y no 0.6 como en el chat, y se decidio mirandolo:
+            // la tarjeta del canal ocupa el ANCHO COMPLETO, asi que una foto
+            // vertical a 0.6 mide 1.66 veces el ancho de la pantalla y se come
+            // el texto, las reacciones y el boton de comentar. En el chat la
+            // burbuja es mas angosta y el mismo numero da una altura razonable.
+            //
+            // Recorta una vertical, si. Pero una publicacion donde no se ve el
+            // texto que la acompana no es una publicacion, es una foto.
+            val prop = if (p.adjuntoAncho > 0 && p.adjuntoAlto > 0) {
+                (p.adjuntoAncho.toFloat() / p.adjuntoAlto).coerceIn(0.8f, 1.9f)
+            } else 1.4f
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(prop)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(BgBase)
+                    .clickable(enabled = urlImagen != null) { onAbrirImagen() },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (urlImagen != null) {
+                    coil3.compose.AsyncImage(
+                        model = urlImagen,
+                        contentDescription = "Imagen de la publicacion",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    // Sin URL todavia: se marca el hueco en vez de dejar la
+                    // tarjeta con un rectangulo vacio sin explicacion.
+                    CircularProgressIndicator(
+                        color = Cian, strokeWidth = 2.dp,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+        }
+
+        if (p.cuerpo.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(p.cuerpo, color = TextoPrimario, fontSize = 16.sp)
+        }
 
         if (p.editado) {
             Spacer(Modifier.height(6.dp))

@@ -119,60 +119,141 @@ object Adjuntos {
     }
 
     /**
+     * Motivo por el que un adjunto subido no vale, para limpiarlo AFUERA.
+     *
+     * Existe por un defecto que estaba y que no se veia: el rechazo borraba la
+     * fila y **lanzaba dentro de la misma transaccion**, asi que `Db.tx` hacia
+     * rollback y el DELETE se deshacia. Quedaba una fila apuntando a un objeto
+     * que si se habia borrado del almacen -esa parte no es transaccional-, o
+     * sea un adjunto que existe para la base, no existe en el disco, y del que
+     * `leer` devolvia felizmente una URL de descarga.
+     *
+     * Pasaba con el tope de tamano desde el modulo D. Lo encontro la prueba de
+     * la validacion de imagen, que comprueba que el rechazado **deja de
+     * existir**: afirmar el 400 no alcanzaba, porque el 400 llegaba igual.
+     *
+     * La forma correcta es no mezclar: la transaccion decide, y la limpieza
+     * -borrar el objeto y la fila- pasa despues, cada cosa en su sitio.
+     */
+    private data class Rechazo(val objeto: String, val codigo: Int, val motivo: String)
+
+    /**
      * Confirma que la subida termino.
      *
      * Aqui se compara lo declarado con lo real. Si no coincide, se corrige el
      * registro con el tamano verdadero: la cuota tiene que medir lo que ocupa
      * de verdad, no lo que el cliente dijo.
-     */
-    /**
-     * Cierra la subida: comprueba el tamano real y da el adjunto por valido.
      *
      * NO recibe el id del mensaje. El orden real es archivo primero y mensaje
      * despues -el sobre necesita el id del adjunto y su clave-, asi que aqui
      * ese mensaje todavia no existe. El enlace lo hace `Mensajes.registrar`.
      */
-    fun confirmar(yo: Auth, adjuntoId: UUID): AdjuntoInfo = Db.tx { c ->
-        val fila = c.prepareStatement(
-            """SELECT objeto, subido_por, conversacion_id, clase, bytes
-               FROM adjunto WHERE id = ?"""
-        ).use { st ->
-            st.setObject(1, adjuntoId)
-            st.executeQuery().use { rs ->
-                rs.primero {
-                    Reserva(
-                        it.getString(1), it.getObject(2, UUID::class.java),
-                        it.getObject(3, UUID::class.java), it.getString(4), it.getLong(5),
-                    )
+    fun confirmar(yo: Auth, adjuntoId: UUID): AdjuntoInfo {
+        val rechazo = Db.tx { c ->
+            val fila = c.prepareStatement(
+                """SELECT objeto, subido_por, conversacion_id, clase, bytes
+                   FROM adjunto WHERE id = ?"""
+            ).use { st ->
+                st.setObject(1, adjuntoId)
+                st.executeQuery().use { rs ->
+                    rs.primero {
+                        Reserva(
+                            it.getString(1), it.getObject(2, UUID::class.java),
+                            it.getObject(3, UUID::class.java), it.getString(4), it.getLong(5),
+                        )
+                    }
+                }
+            } ?: throw ErrorNegocio(404, "Ese adjunto no existe.")
+
+            if (fila.subidoPor != yo.usuarioId) {
+                throw ErrorNegocio(403, "Ese adjunto no es tuyo.")
+            }
+
+            val real = Almacen.tamanoReal(fila.objeto)
+                ?: throw ErrorNegocio(400, "El archivo no llego al almacen.")
+
+            if (real > ClaseAdjunto.limite(fila.clase)) {
+                // Se subio mas de lo permitido saltandose la reserva.
+                return@tx Rechazo(fila.objeto, 413, "El archivo subido supera el limite permitido.")
+            }
+
+            /*
+             * Modulo AC: en un canal PUBLICO el archivo va sin cifrar, y
+             * entonces -y solo entonces- el servidor puede comprobar que es lo
+             * que dice ser.
+             *
+             * El documento de cobertura declara que el brief pedia dos cosas
+             * incompatibles: validar el tipo de archivo en el servidor Y
+             * cifrado de extremo a extremo. Se resolvio partiendo por clase:
+             * fotos de perfil validadas, adjuntos cifrados no. **Esta es la
+             * tercera clase** y cae del lado validable, porque su contenido ya
+             * es publico por definicion.
+             *
+             * De un adjunto cifrado los primeros bytes son ruido, asi que esto
+             * no se puede -ni se debe- intentar ahi.
+             */
+            if (esDeCanalPublico(c, fila.conversacionId)) {
+                val cabecera = Almacen.primerosBytes(fila.objeto, 12)
+                if (cabecera == null || !pareceImagen(cabecera)) {
+                    return@tx Rechazo(fila.objeto, 400, "El archivo no es una imagen valida.")
                 }
             }
-        } ?: throw ErrorNegocio(404, "Ese adjunto no existe.")
 
-        if (fila.subidoPor != yo.usuarioId) {
-            throw ErrorNegocio(403, "Ese adjunto no es tuyo.")
-        }
-
-        val real = Almacen.tamanoReal(fila.objeto)
-            ?: throw ErrorNegocio(400, "El archivo no llego al almacen.")
-
-        if (real > ClaseAdjunto.limite(fila.clase)) {
-            // Se subio mas de lo permitido saltandose la reserva: se borra.
-            Almacen.borrar(fila.objeto)
-            c.prepareStatement("DELETE FROM adjunto WHERE id = ?").use {
-                it.setObject(1, adjuntoId); it.executeUpdate()
+            c.prepareStatement(
+                "UPDATE adjunto SET confirmado_en = now(), bytes = ? WHERE id = ?"
+            ).use { st ->
+                st.setLong(1, real)
+                st.setObject(2, adjuntoId)
+                st.executeUpdate()
             }
-            throw ErrorNegocio(413, "El archivo subido supera el limite permitido.")
+            null
         }
 
-        c.prepareStatement(
-            "UPDATE adjunto SET confirmado_en = now(), bytes = ? WHERE id = ?"
+        if (rechazo != null) {
+            // Afuera de la transaccion que decidio, para que el borrado quede
+            // hecho de verdad. Un objeto que no paso la validacion y se queda
+            // en el almacen es exactamente el "usar esto de almacen de
+            // binarios" que la validacion evita.
+            Almacen.borrar(rechazo.objeto)
+            Db.tx { c ->
+                c.prepareStatement("DELETE FROM adjunto WHERE id = ?").use {
+                    it.setObject(1, adjuntoId); it.executeUpdate()
+                }
+            }
+            throw ErrorNegocio(rechazo.codigo, rechazo.motivo)
+        }
+
+        return leer(yo, adjuntoId)
+    }
+
+    /** Si la conversacion es un canal publico, donde el contenido va en claro. */
+    private fun esDeCanalPublico(c: java.sql.Connection, convId: UUID?): Boolean {
+        if (convId == null) return false
+        return c.prepareStatement(
+            """SELECT 1 FROM canal k JOIN conversacion v ON v.id = k.conversacion_id
+               WHERE k.conversacion_id = ? AND k.publico AND v.tipo = 'canal'"""
         ).use { st ->
-            st.setLong(1, real)
-            st.setObject(2, adjuntoId)
-            st.executeUpdate()
+            st.setObject(1, convId)
+            st.executeQuery().use { it.next() }
         }
+    }
 
-        leer(yo, adjuntoId)
+    /**
+     * La firma real del archivo, no el Content-Type que declaro el cliente.
+     *
+     * Misma comprobacion que `Repo.pareceImagen` para las fotos de perfil, y
+     * por el mismo motivo: sin esto, el hueco de imagenes de un canal es un
+     * sitio donde subir binarios cualesquiera con la cuota de alguien.
+     */
+    private fun pareceImagen(b: ByteArray): Boolean {
+        if (b.size < 12) return false
+        val jpg = b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte()
+        val png = b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() &&
+            b[2] == 'N'.code.toByte() && b[3] == 'G'.code.toByte()
+        val webp = String(b, 0, 4) == "RIFF" && String(b, 8, 4) == "WEBP"
+        val gif = b[0] == 'G'.code.toByte() && b[1] == 'I'.code.toByte() &&
+            b[2] == 'F'.code.toByte()
+        return jpg || png || webp || gif
     }
 
     /** Devuelve una URL de descarga nueva. Las firmadas caducan a proposito. */
@@ -236,10 +317,17 @@ object Adjuntos {
             // historia que no te tocaba ver.
             if (!puedo) throw ErrorNegocio(404, "Ese adjunto no existe.")
         } else {
-            // Quien no esta en la conversacion no obtiene la URL. Sin este
-            // chequeo bastaria con adivinar un id para descargar archivos
-            // ajenos.
-            Autz.exigir(c, yo.usuarioId, detalle.conversacionId!!, Permisos.MIEMBRO_VER)
+            // Un canal PUBLICO se lee sin estar suscrito, y su imagen
+            // tambien: es la MISMA regla que ya usa el muro. Si la imagen
+            // exigiera pertenencia, el muro mostraria publicaciones con un
+            // hueco donde deberia estar la foto, a quien todavia no siguio el
+            // canal — o sea justo a quien esta decidiendo si seguirlo.
+            if (!esDeCanalPublico(c, detalle.conversacionId)) {
+                // Quien no esta en la conversacion no obtiene la URL. Sin este
+                // chequeo bastaria con adivinar un id para descargar archivos
+                // ajenos.
+                Autz.exigir(c, yo.usuarioId, detalle.conversacionId!!, Permisos.MIEMBRO_VER)
+            }
         }
 
         val fila = detalle

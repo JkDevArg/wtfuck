@@ -4861,3 +4861,132 @@ que un composable use `BitmapFactory` en vez de Coil no lo ve una prueba de
 lógica, y comprobar que algo se anima necesita el aparato. Lo que sí está
 cubierto es la detección de animación por cabecera (`StickersTest`), que es la
 parte que se puede probar sin pantalla.
+
+---
+
+## Módulo AC · Un canal sólo podía publicar texto ✅
+
+Continuación del hilo de las páginas. Empezó por un barrido y acabó en una
+capacidad que faltaba y dos defectos que ya estaban.
+
+### AC.0 · Primero, el barrido que pedía la lección de AB
+
+AB terminó con *"arreglar una instancia de un defecto no es arreglar el
+defecto"*. Así que antes de agregar nada, se buscaron las otras instancias de
+los tres patrones ya encontrados:
+
+| Patrón | Resultado |
+|---|---|
+| `BitmapFactory` donde importa la animación | **limpio**: los usos que quedan son miniaturas —que deben ser un fotograma—, medición de dimensiones y el editor de stickers, que necesita un `Bitmap` para recortar |
+| `ORDER BY` sobre un id generado por el cliente | **limpio**, y con una razón: `mensaje_meta` es la **única** tabla sin `uuidv7()` por defecto |
+| lecturas de red que devuelven vacío al fallar | ya barrido en Z.5 |
+
+Lo segundo vale escribirlo como invariante:
+
+```
+ auditoria        | uuidv7()
+ denuncia         | uuidv7()
+ evento_pendiente | uuidv7()
+ sesion           | uuidv7()
+ sobre_pendiente  | uuidv7()
+ mensaje_meta     |            ← el id lo pone el telefono
+```
+
+**`ORDER BY id` es cronológico en todas menos en una**, y esa una era justo la
+que estaba mal. La cola del buzón ordena por `sobre_pendiente.id`, que es v7,
+así que la entrega de mensajes siempre estuvo en orden.
+
+### AC.1 · La capacidad que faltaba
+
+El compositor de un canal era un campo de texto y un botón de enviar. No había
+forma de adjuntar nada. Para una página de anuncios eso es el hueco grande.
+
+Ahora: botón de imagen, vista previa con su X antes de publicar, la imagen en
+la tarjeta y un visor a pantalla completa. **Con imagen y sin texto se
+publica** —una foto sola es una publicación—; sin las dos cosas, no.
+
+### AC.2 · Por qué va sin cifrar, y por qué aquí eso es una ventaja
+
+El adjunto normal se cifra en el teléfono y **la clave viaja dentro del
+sobre**. Un canal público no reparte sobres, así que no hay dónde meterla:
+quien se suscriba mañana tendría el archivo y no la llave.
+
+Va en claro, bajo la misma excepción declarada que el cuerpo, con los mismos
+tres motivos de `V10__canales.sql` y **sin estirar ninguno**.
+
+Y eso habilita algo que el brief pedía y el cifrado hacía imposible: **validar
+el tipo de archivo en el servidor**. El §9 de la cobertura dice que las dos
+cosas eran incompatibles y que se resolvió partiendo por clase —fotos de perfil
+validadas, adjuntos cifrados no—. **Esta es la tercera clase**, y cae del lado
+validable precisamente porque su contenido ya es público.
+
+`Adjuntos.confirmar` lee los doce primeros bytes del almacén y comprueba la
+firma real. La suite sube un ejecutable llamado `.png`, con
+`Content-Type: image/png`, y se rechaza.
+
+> Leer doce bytes **no rompe** la regla de `Almacen` que dice que los bytes no
+> pasan por este servidor. Esa regla existe para no ser la tubería de archivos
+> de 64 MB de los clientes; aquí son doce bytes entre el servidor y el almacén,
+> que están al lado, para responder algo que sólo el servidor puede responder.
+
+### AC.3 · El defecto que el rechazo destapó, y que ya estaba
+
+La prueba no se quedó en "responde 400": preguntó si el adjunto rechazado
+**había dejado de existir**. Respondió 200.
+
+El rechazo borraba la fila y **lanzaba dentro de la misma transacción**, así que
+`Db.tx` hacía rollback y el `DELETE` se deshacía. Quedaba una fila apuntando a
+un objeto que **sí** se había borrado del almacén —esa parte no es
+transaccional—, o sea un adjunto que existe para la base, no existe en el disco,
+y del que `leer` devolvía tranquilamente una URL de descarga.
+
+**Pasaba con el tope de tamaño desde el módulo D**, con el mismo código.
+Afirmar el 413 nunca lo habría visto, porque el 413 llegaba igual.
+
+Es la misma familia que la lección del `SAVEPOINT` ya anotada aquí: **una
+sentencia y una excepción en la misma transacción no son dos cosas
+independientes.** Ahora la transacción decide y devuelve el motivo; la limpieza
+—borrar el objeto y la fila— pasa después, cada cosa en su sitio.
+
+### AC.4 · Y otro contador que contaba metadatos
+
+`cuenta publicaciones` falló con `estadistica=6 muro=5`. La estadística contaba
+`mensaje_meta WHERE responde_a IS NULL`, así que un mensaje registrado cuyo
+cuerpo nunca se guardó subía el número sin que hubiera nada en el muro.
+
+Es **el mismo arreglo que se le hizo al contador de comentarios en AA**, en la
+consulta de al lado, y no se hizo entonces. La lección de AB otra vez, dentro
+del mismo archivo.
+
+### AC.5 · El orden de los pasos, y el primer intento que tapaba el texto
+
+**La imagen se sube antes de guardar el cuerpo**, por lo mismo que en
+`publicarHistoria`: si algo falla en el medio, lo que queda es un adjunto que
+nadie ve —y que barre el limpiador— en vez de una publicación visible con un
+hueco donde debería estar la foto. El fallo barato es el invisible.
+
+Y al fallar se devuelven **las dos cosas** al compositor, el texto y la imagen
+elegida: perder el trabajo entero por un fallo de red obliga a rehacerlo.
+
+**El primer intento tapaba el texto.** Copié el tope de proporción del chat
+(`0.6`) y la tarjeta del canal ocupa el **ancho completo**, así que una foto
+vertical medía 1.66 veces el ancho de la pantalla y el texto quedaba fuera. En
+el chat la burbuja es más angosta y el mismo número da una altura razonable;
+copiarlo tal cual fue el error. Ahora el suelo es `0.8`: recorta una vertical,
+pero una publicación donde no se ve el texto que la acompaña no es una
+publicación, es una foto.
+
+> La URL firmada **no viaja en el muro**: se pide por publicación y se recuerda
+> mientras la pantalla vive. Una URL firmada metida en la lista se vence
+> mientras alguien lee, y la foto dejaría de cargar a mitad del scroll.
+
+### Evidencias
+
+Cinco capturas en
+[`docs/evidencias/imagen-en-publicaciones/`](evidencias/imagen-en-publicaciones/),
+incluida la del primer intento con el texto tapado.
+
+**1664 pruebas en verde**: 1368 de integración en 35 suites, 75 de JUnit en el
+servidor y 221 en la app. Las 14 nuevas no necesitaron reversión para
+validarse: dos de ellas **fallaron contra el código que ya existía** y de ahí
+salieron AC.3 y AC.4.

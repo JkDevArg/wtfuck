@@ -200,8 +200,13 @@ object Canales {
 
         val msgId = uuid(req.mensajeId)
         val cuerpo = req.cuerpo.trim()
-        if (cuerpo.isEmpty() || cuerpo.length > 8192) {
-            throw ErrorNegocio(400, "La publicacion debe tener entre 1 y 8192 caracteres.")
+        // Con imagen, el texto puede ir vacio: una foto sola es una
+        // publicacion. Sin imagen no, porque entonces no habria nada.
+        if (cuerpo.isEmpty() && req.adjuntoId == null) {
+            throw ErrorNegocio(400, "La publicacion necesita texto o una imagen.")
+        }
+        if (cuerpo.length > 8192) {
+            throw ErrorNegocio(400, "La publicacion no puede pasar de 8192 caracteres.")
         }
         // El mensaje tiene que existir y ser de esta conversacion y de quien
         // publica. Sin esto, cualquiera podria colgar texto de un mensaje ajeno.
@@ -213,11 +218,34 @@ object Canales {
         }
         if (!valido) throw ErrorNegocio(404, "Esa publicacion no existe en este canal.")
 
+        // Modulo AC: la imagen, si viene.
+        //
+        // Se comprueba que sea MIA, que este confirmada y que sea de ESTE
+        // canal. Sin lo tercero, alguien colgaria en su canal el adjunto de
+        // una conversacion ajena, que es una lectura de archivo ajeno con
+        // forma de publicacion.
+        val adjId = req.adjuntoId?.let { bruto ->
+            val id = uuid(bruto)
+            val valido = c.prepareStatement(
+                """SELECT 1 FROM adjunto
+                   WHERE id = ? AND conversacion_id = ? AND subido_por = ?
+                     AND confirmado_en IS NOT NULL"""
+            ).use { st ->
+                st.setObject(1, id); st.setObject(2, convId); st.setObject(3, yo.usuarioId)
+                st.executeQuery().use { it.next() }
+            }
+            if (!valido) throw ErrorNegocio(404, "Esa imagen no esta disponible para este canal.")
+            id
+        }
+
         c.prepareStatement(
-            """INSERT INTO publicacion_contenido (mensaje_id, conversacion_id, cuerpo)
-               VALUES (?, ?, ?) ON CONFLICT (mensaje_id) DO UPDATE SET cuerpo = EXCLUDED.cuerpo"""
+            """INSERT INTO publicacion_contenido (mensaje_id, conversacion_id, cuerpo, adjunto_id)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT (mensaje_id) DO UPDATE
+                 SET cuerpo = EXCLUDED.cuerpo, adjunto_id = EXCLUDED.adjunto_id"""
         ).use { st ->
             st.setObject(1, msgId); st.setObject(2, convId); st.setString(3, cuerpo)
+            st.setObject(4, adjId)
             st.executeUpdate()
         }
 
@@ -278,6 +306,7 @@ object Canales {
                           -- Esta consulta sale de `publicacion_contenido`, que
                           -- solo existe en canales publicos, asi que aqui no
                           -- hace falta distinguir.
+                          p.adjunto_id, coalesce(a.ancho, 0), coalesce(a.alto, 0),
                           (SELECT count(*) FROM comentario_contenido cc
                             JOIN mensaje_meta cm ON cm.id = cc.mensaje_id
                             WHERE cc.publicacion_id = p.mensaje_id
@@ -285,6 +314,7 @@ object Canales {
                    FROM publicacion_contenido p
                      JOIN mensaje_meta m ON m.id = p.mensaje_id
                      JOIN usuario u      ON u.id = m.autor_id
+                     LEFT JOIN adjunto a ON a.id = p.adjunto_id
                    WHERE p.conversacion_id = ? AND m.retirado_en IS NULL"""
             )
             // ORDENA POR FECHA, no por id.
@@ -333,7 +363,10 @@ object Canales {
                             creadoEn = it.getDouble(4).toLong(),
                             editado = it.getBoolean(5),
                             fijado = it.getBoolean(6),
-                            comentarios = it.getInt(7),
+                            adjuntoId = it.getObject(7, UUID::class.java)?.toString(),
+                            adjuntoAncho = it.getInt(8),
+                            adjuntoAlto = it.getInt(9),
+                            comentarios = it.getInt(10),
                         )
                     }
                 }
@@ -430,8 +463,18 @@ object Canales {
             """SELECT
                  (SELECT count(*) FROM participante p
                    WHERE p.conversacion_id = ? AND p.salido_en IS NULL),
-                 (SELECT count(*) FROM mensaje_meta m
-                   WHERE m.conversacion_id = ? AND m.responde_a IS NULL AND m.retirado_en IS NULL),
+                 -- Las publicaciones que existen de verdad, no las filas de
+                 -- metadatos. Contaba `mensaje_meta WHERE responde_a IS NULL`, y
+                 -- un mensaje registrado cuyo cuerpo nunca se guardo -porque la
+                 -- subida fallo, o porque el cliente se corto en el medio- subia
+                 -- el numero sin que hubiera nada en el muro.
+                 --
+                 -- Es el mismo arreglo que se le hizo al contador de comentarios
+                 -- en AA, en la consulta de al lado. Otra vez: arreglar una
+                 -- instancia de un defecto no es arreglar el defecto.
+                 (SELECT count(*) FROM publicacion_contenido p
+                   JOIN mensaje_meta m ON m.id = p.mensaje_id
+                   WHERE p.conversacion_id = ? AND m.retirado_en IS NULL),
                  (SELECT count(*) FROM reaccion r JOIN mensaje_meta m ON m.id = r.mensaje_id
                    WHERE m.conversacion_id = ?),
                  -- Los mismos que cuenta la tarjeta de cada publicacion: los
