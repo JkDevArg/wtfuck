@@ -304,8 +304,150 @@ const c2 = uuid();
 r = await post('/v1/mensajes', lector.t, { mensajeId: c2, conversacionId: CANAL, respondeA: p1 });
 ck('ahora el suscriptor SI puede comentar', r.s === 200, String(r.s) + ' ' + JSON.stringify(r.b));
 
+// El contador cuenta los comentarios QUE SE PUEDEN LEER, no las filas de
+// metadatos, y aqui solo se registro el metadato: el cuerpo se guarda en la
+// seccion siguiente. Asi que todavia va en 0, y eso es lo correcto.
+//
+// Antes contaba metadatos y esta misma linea afirmaba `=== 1`. Sonaba mejor y
+// era el origen del defecto que reporto el usuario: la tarjeta decia
+// "1 comentario" y la hoja de comentarios estaba vacia. Las dos tenian razon.
 r = await get(`/v1/canales/${CANAL}/publicaciones`, lector.t);
-ck('la publicacion cuenta su comentario', r.b[0]?.comentarios === 1, String(r.b[0]?.comentarios));
+ck('el metadato solo NO cuenta como comentario: no hay nada que leer',
+   r.b[0]?.comentarios === 0, String(r.b[0]?.comentarios));
+
+// ============================================================
+//  Modulo AA: el CUERPO del comentario
+// ============================================================
+//
+// Esta seccion existe por un defecto que la suite no veia, y conviene entender
+// por que no lo veia antes de leerla.
+//
+// Arriba se comprueba que el suscriptor puede comentar y que **la publicacion
+// cuenta su comentario**. Las dos cosas pasaban, y las dos seguian pasando con
+// el defecto puesto: el contador cuenta filas de `mensaje_meta`, o sea
+// metadatos, y el metadato se registraba bien.
+//
+// Lo que no se comprobaba era lo unico que le importa a quien lee: **que el
+// texto del comentario se pueda recuperar**. No se podia. Un canal publico no
+// reparte sobres -es lo que le permite escalar-, asi que el comentario, que se
+// mandaba como mensaje cifrado, no tenia a quien entregarse: quedaba el
+// metadato, subia el contador y el cuerpo se iba al vacio.
+//
+// Medido en la base antes de arreglarlo: cada comentario de canal tenia cero
+// sobres y cero cuerpo guardado. En la app se veia como "dice 1 comentario y
+// no hay ningun comentario".
+//
+// La leccion es la de siempre: **una prueba que afirma el contador no afirma
+// el contenido.** Ahora se comprueba el viaje completo.
+
+console.log('\n=== comentarios: el cuerpo, ida y vuelta ===');
+
+r = await post(`/v1/canales/${CANAL}/comentarios`, lector.t,
+               { mensajeId: c2, publicacionId: p1, cuerpo: 'Primer comentario' });
+ck('se guarda el cuerpo del comentario', r.s === 204, String(r.s) + ' ' + JSON.stringify(r.b));
+
+// En una variable propia: mas abajo se consulta el muro, y reusar `r` para
+// las dos cosas se lleva puesta la respuesta que todavia hace falta leer.
+const leidos = await get(`/v1/canales/${CANAL}/publicaciones/${p1}/comentarios`, lector.t);
+ck('y se puede volver a leer', leidos.s === 200 && leidos.b.comentarios?.length === 1,
+   String(leidos.s) + ' ' + JSON.stringify(leidos.b).slice(0, 160));
+ck('con su texto', leidos.b.comentarios?.[0]?.cuerpo === 'Primer comentario',
+   leidos.b.comentarios?.[0]?.cuerpo);
+ck('y quien lo escribio', leidos.b.comentarios?.[0]?.autor === lector.user,
+   leidos.b.comentarios?.[0]?.autor);
+ck('marcado como mio para quien lo escribio', leidos.b.comentarios?.[0]?.mio === true,
+   String(leidos.b.comentarios?.[0]?.mio));
+
+r = await get(`/v1/canales/${CANAL}/publicaciones`, lector.t);
+ck('y AHORA la publicacion lo cuenta', r.b[0]?.comentarios === 1,
+   String(r.b[0]?.comentarios));
+
+r = await get(`/v1/canales/${CANAL}/publicaciones/${p1}/comentarios`, dueno.t);
+ck('y NO como mio para otra persona', r.b.comentarios?.[0]?.mio === false,
+   String(r.b.comentarios?.[0]?.mio));
+
+// Un canal publico se lee sin estar suscrito, y sus comentarios tambien: si
+// se pudieran ver las publicaciones pero no las respuestas, la mitad de la
+// conversacion quedaria detras de una suscripcion.
+r = await get(`/v1/canales/${CANAL}/publicaciones/${p1}/comentarios`, otro.t);
+ck('quien NO esta suscrito tambien lee los comentarios de un canal publico',
+   r.s === 200 && r.b.comentarios?.length === 1, String(r.s));
+
+console.log('\n=== comentarios: lo que NO se puede colgar ===');
+
+// El cuerpo se cuelga del metadato PROPIO. Sin esto, cualquiera reescribe el
+// comentario de otro.
+r = await post(`/v1/canales/${CANAL}/comentarios`, dueno.t,
+               { mensajeId: c2, publicacionId: p1, cuerpo: 'te edito el comentario' });
+ck('no se puede colgar texto del comentario de otra persona', r.s === 404,
+   String(r.s) + ' ' + JSON.stringify(r.b));
+
+r = await get(`/v1/canales/${CANAL}/publicaciones/${p1}/comentarios`, lector.t);
+ck('y el original queda intacto', r.b.comentarios?.[0]?.cuerpo === 'Primer comentario',
+   r.b.comentarios?.[0]?.cuerpo);
+
+const cHuerfano = uuid();
+await post('/v1/mensajes', lector.t, { mensajeId: cHuerfano, conversacionId: CANAL, respondeA: p1 });
+r = await post(`/v1/canales/${CANAL}/comentarios`, lector.t,
+               { mensajeId: cHuerfano, publicacionId: uuid(), cuerpo: 'cuelgo de la nada' });
+ck('ni de una publicacion que no existe', r.s === 404, String(r.s));
+
+r = await post(`/v1/canales/${CANAL}/comentarios`, lector.t,
+               { mensajeId: cHuerfano, publicacionId: p1, cuerpo: '' });
+ck('un comentario vacio se rechaza', r.s === 400, String(r.s));
+
+r = await post(`/v1/canales/${CANAL}/comentarios`, lector.t,
+               { mensajeId: cHuerfano, publicacionId: p1, cuerpo: 'x'.repeat(2049) });
+ck('y uno de mas de 2048 caracteres tambien', r.s === 400, String(r.s));
+
+r = await post(`/v1/canales/${CANAL}/comentarios`, lector.t,
+               { mensajeId: cHuerfano, publicacionId: p1, cuerpo: 'x'.repeat(2048) });
+ck('2048 justos entran', r.s === 204, String(r.s));
+
+// Un canal privado no guarda contenido, ni publicaciones ni comentarios. Ahi
+// el comentario es un mensaje cifrado y solo lo ve quien reciba el sobre.
+const cPriv = uuid();
+await post('/v1/mensajes', dueno.t, { mensajeId: cPriv, conversacionId: PRIVADO, respondeA: pPriv });
+r = await post(`/v1/canales/${PRIVADO}/comentarios`, dueno.t,
+               { mensajeId: cPriv, publicacionId: pPriv, cuerpo: 'secreto' });
+ck('un canal privado rechaza guardar el cuerpo de un comentario', r.s === 409,
+   String(r.s) + ' ' + JSON.stringify(r.b));
+
+console.log('\n=== las reacciones VIAJAN en el muro ===');
+//
+// `Publicacion.reacciones` existia en el contrato desde el modulo F y la
+// consulta del muro **nunca las leia**: el campo tenia `= emptyList()` por
+// defecto, asi que viajaba siempre vacio y la tarjeta del canal no dibujaba
+// ninguna. No fallaba nada, y por eso ninguna prueba lo noto: el valor por
+// defecto hacia que "no las lei" fuera indistinguible de "no tiene".
+//
+// Es el mismo error del modulo X con otra cara, esta vez en el servidor.
+
+r = await post('/v1/mensajes/reaccion', dueno.t, { mensajeId: p1, emoji: '🎉', poner: true });
+ck('el dueno reacciona a su propia publicacion', r.s === 200, String(r.s));
+
+r = await get(`/v1/canales/${CANAL}/publicaciones`, dueno.t);
+const reacs = r.b[0]?.reacciones ?? [];
+ck('el muro trae las reacciones de la publicacion', reacs.length >= 1,
+   JSON.stringify(reacs));
+ck('con su emoji y su recuento', reacs.some(x => x.emoji === '🎉' && x.total === 1),
+   JSON.stringify(reacs));
+ck('y marcadas como mias para quien reacciono', reacs.find(x => x.emoji === '🎉')?.mia === true,
+   JSON.stringify(reacs.find(x => x.emoji === '🎉')));
+
+r = await get(`/v1/canales/${CANAL}/publicaciones`, otro.t);
+const reacsOtro = r.b[0]?.reacciones ?? [];
+ck('y NO como mias para otra persona',
+   reacsOtro.find(x => x.emoji === '🎉')?.mia === false, JSON.stringify(reacsOtro));
+
+// Quitarla la saca del muro, no la deja en cero: una reaccion con total 0
+// seria una fila de interfaz sin nadie detras.
+r = await post('/v1/mensajes/reaccion', dueno.t, { mensajeId: p1, emoji: '🎉', poner: false });
+ck('se quita la reaccion', r.s === 200, String(r.s));
+r = await get(`/v1/canales/${CANAL}/publicaciones`, dueno.t);
+ck('y desaparece del muro en vez de quedar en cero',
+   !(r.b[0]?.reacciones ?? []).some(x => x.emoji === '🎉'),
+   JSON.stringify(r.b[0]?.reacciones));
 
 console.log('\n=== reacciones: tambien manda el interruptor ===');
 r = await post('/v1/mensajes/reaccion', lector.t, { mensajeId: p1, emoji: '👍', poner: true });
@@ -319,6 +461,52 @@ ck('se apagan las reacciones', r.s === 200 && r.b.reacciones === false);
 r = await post('/v1/mensajes/reaccion', lector.t, { mensajeId: p1, emoji: '🎉', poner: true });
 ck('y entonces reaccionar se rechaza', r.s === 403, String(r.s) + ' ' + JSON.stringify(r.b));
 
+console.log('\n=== el muro se ordena por FECHA, no por id ===');
+//
+// El defecto que esto fija: el muro ordenaba por `mensaje_id DESC`, y el id de
+// un mensaje lo genera el cliente con `randomUUID()`, o sea un v4: **un numero
+// al azar**. El muro salia desordenado y no se veia porque hace falta mas de
+// una publicacion para notarlo. Medido en la base antes de arreglarlo,
+// ordenando por id salian las fechas 19, 19, 20, 19, 18 y 23 de septiembre.
+//
+// La prueba **elige los ids a proposito** para que el orden por id sea el
+// CONTRARIO al orden por fecha. Sin eso, con dos ids al azar la prueba pasaria
+// la mitad de las veces contra el codigo roto, que es peor que no tenerla.
+
+const dos = [uuid(), uuid()].sort();
+const idViejoPeroMayor = dos[1];   // se publica PRIMERO y tiene el id mas ALTO
+const idNuevoPeroMenor = dos[0];   // se publica DESPUES y tiene el id mas BAJO
+
+await post('/v1/mensajes', dueno.t, { mensajeId: idViejoPeroMayor, conversacionId: CANAL });
+r = await post(`/v1/canales/${CANAL}/publicaciones`, dueno.t,
+               { mensajeId: idViejoPeroMayor, cuerpo: 'la primera' });
+ck('se publica la primera', r.s === 204, String(r.s));
+
+// Un instante despues, para que `creado_en` sea estrictamente mayor.
+await new Promise(res => setTimeout(res, 25));
+
+await post('/v1/mensajes', dueno.t, { mensajeId: idNuevoPeroMenor, conversacionId: CANAL });
+r = await post(`/v1/canales/${CANAL}/publicaciones`, dueno.t,
+               { mensajeId: idNuevoPeroMenor, cuerpo: 'la segunda' });
+ck('y despues la segunda, con un id MENOR', r.s === 204, String(r.s));
+
+r = await get(`/v1/canales/${CANAL}/publicaciones`, dueno.t);
+const cuerpos = (r.b ?? []).map(x => x.cuerpo);
+ck('el muro pone la mas nueva primero, aunque su id sea menor',
+   cuerpos[0] === 'la segunda' && cuerpos[1] === 'la primera',
+   JSON.stringify(cuerpos.slice(0, 3)));
+
+// Y la paginacion tiene que seguir el MISMO orden. Un cursor que ordena por
+// una clave y corta por otra saltea filas o las repite.
+r = await get(`/v1/canales/${CANAL}/publicaciones?limite=1`, dueno.t);
+ck('con limite 1 trae solo la mas nueva', r.b?.length === 1 && r.b[0].cuerpo === 'la segunda',
+   JSON.stringify(r.b?.map(x => x.cuerpo)));
+
+r = await get(`/v1/canales/${CANAL}/publicaciones?limite=1&antes=${idNuevoPeroMenor}`, dueno.t);
+ck('y pidiendo lo anterior a ella trae la primera, no un salteo',
+   r.b?.length === 1 && r.b[0].cuerpo === 'la primera',
+   JSON.stringify(r.b?.map(x => x.cuerpo)));
+
 console.log('\n=== configuracion: solo quien puede ===');
 r = await put(`/v1/canales/${CANAL}`, lector.t, {
   nombre: 'Secuestrado', alias: ALIAS, publico: true, descripcion: '', comentarios: true, reacciones: true,
@@ -329,8 +517,26 @@ console.log('\n=== estadisticas ===');
 r = await get(`/v1/canales/${CANAL}/estadisticas`, dueno.t);
 ck('el dueno ve las estadisticas', r.s === 200, JSON.stringify(r.b));
 ck('cuenta suscriptores', r.b?.suscriptores === 2, String(r.b?.suscriptores));
-ck('cuenta publicaciones', r.b?.publicaciones === 1, String(r.b?.publicaciones));
-ck('cuenta comentarios aparte de las publicaciones', r.b?.comentarios === 1, String(r.b?.comentarios));
+// Calculado, por lo mismo que el de comentarios: estaba en `=== 1` y se
+// rompio al agregar la seccion del orden, que publica dos mas.
+const statsPre = r.b;
+r = await get(`/v1/canales/${CANAL}/publicaciones?limite=100`, dueno.t);
+ck('cuenta publicaciones', statsPre?.publicaciones === r.b.length,
+   `estadistica=${statsPre?.publicaciones} muro=${r.b.length}`);
+r = { b: statsPre };
+// Calculado y NO fijo. Estaba en `=== 1` y se rompio al agregar la seccion
+// del cuerpo, que crea un comentario mas: una prueba con un numero a mano se
+// rompe cuando alguien agrega datos arriba, y entonces lo que se corrige es el
+// numero -sin mirar- en vez del codigo. Ya paso en `moderacion.mjs`.
+//
+// `p1` es la unica publicacion con comentarios, asi que la estadistica del
+// canal tiene que coincidir con los que devuelve su lista.
+const stats = r.b;
+r = await get(`/v1/canales/${CANAL}/publicaciones/${p1}/comentarios`, dueno.t);
+ck('cuenta comentarios aparte de las publicaciones',
+   stats?.comentarios === r.b.comentarios?.length,
+   `estadistica=${stats?.comentarios} lista=${r.b.comentarios?.length}`);
+r = { b: stats };
 ck('y cuenta reacciones', r.b?.reacciones === 1, String(r.b?.reacciones));
 
 r = await get(`/v1/canales/${CANAL}/estadisticas`, lector.t);

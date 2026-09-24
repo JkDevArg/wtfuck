@@ -4585,3 +4585,161 @@ validaron **rompiendo el código a propósito** —quitando el `quitarTono` del
 principio de `aplicarTono` y cambiando el prefijo por subcadena— para
 comprobar que fallan contra la versión mala. Una prueba que no falla contra el
 código roto no prueba nada.
+
+---
+
+## Módulo AA · Los comentarios de un canal perdían el texto ✅
+
+*"Para las páginas cuando hay comentarios no veo los comentarios ¿por qué?
+Podrías ver el tema de las páginas, que tengan reacciones y demás."*
+
+La pregunta parecía ser por una pantalla que faltaba. Era por tres defectos, y
+el primero no estaba en la interfaz.
+
+### AA.1 · El texto de los comentarios no existía en ninguna parte
+
+Dos decisiones correctas que juntas dejaban un agujero:
+
+1. **Un canal público no reparte sobres.** Es lo que le permite escalar: con
+   diez mil suscriptores, un sobre por dispositivo serían diez mil filas por
+   publicación. En vez de eso se emite un aviso y cada cliente se trae el
+   historial.
+2. **Un comentario se mandaba como mensaje normal cifrado**, por el buzón.
+
+En un grupo eso funciona. En un canal público no hay a quién entregarle el
+sobre, así que quedaba la fila de `mensaje_meta` —de ahí el contador, que
+cuenta metadatos y era honesto— y el cuerpo se iba al vacío.
+
+Medido en la base antes de tocar nada, en las 196 filas del canal de pruebas:
+**cada comentario tenía cero sobres y cero cuerpo guardado.** Sin excepción.
+
+Y `Repositorio.comentar` **no tenía un solo llamador**: era código muerto. La
+app nunca había podido escribir un comentario; los que existían los había
+creado la suite de integración llamando a la API.
+
+**El arreglo: el comentario sigue al cuerpo de la publicación.** En un canal
+público va al servidor en claro (`comentario_contenido`, `V34`), bajo la
+excepción que ya estaba argumentada en `V10__canales.sql`, y sin estirar
+ninguno de sus tres motivos: un comentario en una publicación pública es tan
+público como la publicación. En uno privado sigue siendo un mensaje cifrado, y
+la hoja lo dice —ahí sólo se ven los que llegaron a ese teléfono—.
+
+> La tabla guarda `publicacion_id` **además** de `mensaje_meta.responde_a`, y
+> no es duplicado por descuido: `responde_a` puede apuntar a cualquier mensaje
+> de la conversación, y esta columna lleva una FK a la publicación. O sea que la
+> base garantiza que un comentario cuelga de una publicación y no de otro
+> comentario, y al borrarse la publicación se van sus comentarios.
+
+### AA.2 · El contador contaba cosas que nadie podía ver
+
+Al abrir la hoja por primera vez quedó a la vista lo peor del defecto: la
+tarjeta decía **"1 comentario"** y la hoja decía **"todavía nadie comentó"**.
+Las dos eran ciertas.
+
+El contador salía de `mensaje_meta`. Ahora cuenta los comentarios **que se
+pueden leer**, y la estadística del canal también: dos números distintos para
+"comentarios" en el mismo producto es lo que hace que alguien pierda una tarde
+buscando cuál está mal.
+
+Efecto lateral aceptado: los comentarios de antes de `V34`, cuyo texto se
+perdió, dejan de contarse. Es lo correcto —no hay nada que abrir— y es más
+honesto que un número que no lleva a ninguna parte.
+
+### AA.3 · Las reacciones nunca viajaron
+
+`Publicacion.reacciones` existía en el contrato **desde el módulo F** y la
+consulta del muro no las leía. El campo tenía `= emptyList()` por defecto, así
+que viajaba siempre vacío: no fallaba nada, simplemente no había nunca ninguna
+reacción que dibujar.
+
+Es el mismo error del módulo X con otra cara —un valor por defecto tapando la
+ausencia de un dato—, esta vez en el servidor. Y el valor por defecto es lo que
+lo hizo invisible: dejaba "no las leí" indistinguible de "no tiene".
+
+Se leen en **una sola consulta** para toda la página, no una por publicación:
+llamar al helper de un mensaje dentro de un bucle serían cien consultas para
+una página de cien. El N+1 no se nota con tres filas de prueba y se nota con un
+canal de verdad, que es cuando ya está desplegado.
+
+**En la interfaz los emojis rápidos están siempre a la vista**, no detrás de un
+mantener-pulsado como en el chat. En un canal, reaccionar es lo único que puede
+hacer un suscriptor con una publicación cuando los comentarios están apagados;
+esconderlo detrás de un gesto que hay que descubrir lo deja sin usar.
+
+### AA.4 · Y el muro venía ordenado al azar
+
+Salió de paso, y es el más viejo de los tres. Ordenaba por `mensaje_id DESC`, y
+el id de un mensaje lo genera el **cliente** con `randomUUID()`: un v4, o sea
+un número aleatorio. Medido en la base, ordenando por id salían las fechas 19,
+19, 20, 19, 18 y 23 de septiembre.
+
+Nadie lo había visto porque hace falta más de una publicación para notarlo, y
+el canal de pruebas tenía una.
+
+Un v7 llevaría el tiempo dentro y ordenar por id sería correcto, pero eso lo
+decide quien crea el id —el teléfono— y el servidor no puede confiar en que lo
+haga. Se ordena por el dato que el servidor sí controla, `creado_en`, con el id
+como desempate para que el orden sea **total**: dos publicaciones del mismo
+milisegundo, sin desempate, pueden salir en distinto orden en dos consultas y
+romper la paginación. El cursor usa el mismo par, porque un cursor que ordena
+por una clave y corta por otra saltea filas o las repite.
+
+### AA.5 · Lo que la suite no veía, y por qué
+
+La suite de canales ya probaba los comentarios:
+
+```js
+ck('ahora el suscriptor SI puede comentar', r.s === 200);
+ck('la publicacion cuenta su comentario', r.b[0]?.comentarios === 1);
+```
+
+Las dos pasaban, y **las dos seguían pasando con el defecto puesto**: el
+contador contaba metadatos y el metadato se registraba bien. Lo que no se
+comprobaba era lo único que le importa a quien lee, que el texto se pueda
+recuperar.
+
+**Una prueba que afirma el contador no afirma el contenido.**
+
+Esa segunda línea dice ahora lo contrario y es lo correcto: registrar sólo el
+metadato **no** cuenta como comentario, porque no hay nada que leer.
+
+Y dos afirmaciones más de esa suite estaban con números a mano —`publicaciones
+=== 1`, `comentarios === 1`— y se rompieron al agregar datos arriba. Ahora se
+calculan contra la lista, por lo mismo que en `moderacion.mjs`: **una prueba
+con un número fijo se rompe cuando alguien agrega datos, y entonces lo que se
+corrige es el número, sin mirar, en vez del código.**
+
+### AA.6 · Un error mío, y la regla que me salté
+
+`V34` agregó la tabla y se olvidó del **tipo de aviso**. `evento_pendiente`
+tiene un CHECK con la lista cerrada de avisos que el servidor puede fabricar, y
+el INSERT reventó con `violates check constraint tipo_evento_valido`: la ruta
+respondió 500 en la primera ejecución de la suite.
+
+Lo cazó la base, que es donde tenía que cazarse. Esa lista cerrada es
+deliberada —un tipo de evento es contrato entre el servidor y todos los
+clientes— y es la razón por la que el defecto salió en el acto en vez de seis
+meses después, en forma de clientes recibiendo un tipo que no saben interpretar.
+
+Se corrigió en **`V35`** y no reescribiendo `V34`, porque `V34` ya estaba
+aplicada. Es la regla que dejó escrita `V11__evento_canal.sql` —*una migración
+aplicada no se reescribe, se corrige con la siguiente; reescribirla funcionaría
+en una base nueva y dejaría roto cualquier entorno donde ya corrió*— y esta vez
+me la salté yo.
+
+> **A quién se le avisa de un comentario:** sólo a quien escribió la
+> publicación. Un canal con mil suscriptores y cien comentarios por publicación
+> daría cien mil avisos de algo que nadie pidió seguir.
+
+### Evidencias
+
+Siete capturas en
+[`docs/evidencias/comentarios-de-canal/`](evidencias/comentarios-de-canal/),
+con las dos consultas a la base que prueban el diagnóstico.
+
+**1646 pruebas en verde**: 1350 de integración en 35 suites, 75 de JUnit en el
+servidor y 221 en la app. Las 27 nuevas se validaron **rompiendo el código a
+propósito** —volviendo al orden por id y dejando de leer las reacciones—, y seis
+fallaron. La de ordenamiento **elige los ids a propósito** para que el orden por
+id sea el contrario al de fecha: con dos ids al azar pasaría la mitad de las
+veces contra el código roto, que es peor que no tenerla.

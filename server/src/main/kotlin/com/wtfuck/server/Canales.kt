@@ -264,19 +264,64 @@ object Canales {
                 """SELECT p.mensaje_id, u.username, p.cuerpo,
                           extract(epoch FROM m.creado_en) * 1000,
                           m.editado_en IS NOT NULL, m.fijado_en IS NOT NULL,
-                          (SELECT count(*) FROM mensaje_meta cm WHERE cm.responde_a = p.mensaje_id)
+                          -- Cuenta los comentarios QUE SE PUEDEN LEER, no las
+                          -- filas de metadatos.
+                          --
+                          -- Contaba `mensaje_meta WHERE responde_a = ...`, y con
+                          -- los comentarios viejos -los de antes de V34, cuyo
+                          -- texto se perdio- eso daba una tarjeta que decia
+                          -- "1 comentario" sobre una hoja que decia "todavia
+                          -- nadie comento". Las dos eran ciertas y juntas eran
+                          -- un defecto: un contador que cuenta cosas que nadie
+                          -- puede ver no le sirve a nadie.
+                          --
+                          -- Esta consulta sale de `publicacion_contenido`, que
+                          -- solo existe en canales publicos, asi que aqui no
+                          -- hace falta distinguir.
+                          (SELECT count(*) FROM comentario_contenido cc
+                            JOIN mensaje_meta cm ON cm.id = cc.mensaje_id
+                            WHERE cc.publicacion_id = p.mensaje_id
+                              AND cm.retirado_en IS NULL)
                    FROM publicacion_contenido p
                      JOIN mensaje_meta m ON m.id = p.mensaje_id
                      JOIN usuario u      ON u.id = m.autor_id
                    WHERE p.conversacion_id = ? AND m.retirado_en IS NULL"""
             )
-            if (corte != null) sql.append(" AND p.mensaje_id < ?")
-            sql.append(" ORDER BY p.mensaje_id DESC LIMIT ?")
+            // ORDENA POR FECHA, no por id.
+            //
+            // Ordenaba por `p.mensaje_id DESC` y el id de un mensaje lo genera
+            // el CLIENTE con `UUID.randomUUID()`, o sea un v4: **un numero al
+            // azar**. El muro venia saliendo desordenado y no se notaba porque
+            // hay que tener mas de una publicacion para verlo. Medido en la
+            // base: ordenando por id salian las fechas 19, 19, 20, 19, 18, 23.
+            //
+            // Un v7 llevaria el tiempo adentro y ordenar por id seria correcto,
+            // pero eso lo decide quien crea el id -el telefono- y el servidor
+            // no puede confiar en que lo haga: aqui se ordena por el dato que
+            // el servidor si controla, que es `creado_en`.
+            //
+            // El id queda como desempate para que el orden sea TOTAL: dos
+            // publicaciones del mismo milisegundo, sin desempate, pueden salir
+            // en distinto orden en dos consultas y romper la paginacion.
+            if (corte != null) {
+                // Keyset sobre el mismo par que ordena. Comparar solo la fecha
+                // se saltearia las del mismo milisegundo o las repetiria.
+                sql.append(
+                    """ AND (m.creado_en, p.mensaje_id) <
+                        ((SELECT creado_en FROM mensaje_meta WHERE id = ?), ?)"""
+                )
+            }
+            sql.append(" ORDER BY m.creado_en DESC, p.mensaje_id DESC LIMIT ?")
 
-            c.prepareStatement(sql.toString()).use { st ->
+            val filas = c.prepareStatement(sql.toString()).use { st ->
                 var i = 1
                 st.setObject(i++, convId)
-                if (corte != null) st.setObject(i++, corte)
+                if (corte != null) {
+                    // Dos veces: una para buscar su fecha y otra para el
+                    // desempate por id.
+                    st.setObject(i++, corte)
+                    st.setObject(i++, corte)
+                }
                 st.setInt(i, tope)
                 st.executeQuery().use { rs ->
                     rs.mapear {
@@ -293,6 +338,18 @@ object Canales {
                     }
                 }
             }
+
+            // `Publicacion.reacciones` existia en el contrato desde el modulo
+            // F y **esta consulta nunca las leia**: el campo tenia
+            // `= emptyList()` por defecto, asi que viajaba siempre vacio y la
+            // tarjeta del canal no dibujaba ninguna reaccion. No fallaba nada;
+            // simplemente no habia nada que ver, y el valor por defecto lo
+            // hacia indistinguible de "esta publicacion no tiene reacciones".
+            //
+            // Es el mismo error del modulo X con otra cara: un valor por
+            // defecto tapando la ausencia de un dato.
+            val reacs = reaccionesDe(c, filas.map { uuid(it.mensajeId) }, yo.usuarioId)
+            filas.map { it.copy(reacciones = reacs[uuid(it.mensajeId)].orEmpty()) }
         }
 
     // ------------------------------------------------------------------
@@ -377,8 +434,13 @@ object Canales {
                    WHERE m.conversacion_id = ? AND m.responde_a IS NULL AND m.retirado_en IS NULL),
                  (SELECT count(*) FROM reaccion r JOIN mensaje_meta m ON m.id = r.mensaje_id
                    WHERE m.conversacion_id = ?),
-                 (SELECT count(*) FROM mensaje_meta m
-                   WHERE m.conversacion_id = ? AND m.responde_a IS NOT NULL AND m.retirado_en IS NULL),
+                 -- Los mismos que cuenta la tarjeta de cada publicacion: los
+                 -- legibles. Dos numeros distintos para "comentarios" en el
+                 -- mismo producto es lo que hace que alguien pierda una tarde
+                 -- buscando cual esta mal.
+                 (SELECT count(*) FROM comentario_contenido cc
+                   JOIN mensaje_meta m ON m.id = cc.mensaje_id
+                   WHERE cc.conversacion_id = ? AND m.retirado_en IS NULL),
                  (SELECT count(*) FROM participante p
                    WHERE p.conversacion_id = ? AND p.salido_en IS NULL
                      AND p.unido_en > now() - interval '7 days')"""
@@ -689,6 +751,199 @@ object Canales {
             throw ErrorNegocio(400, "El alias debe tener entre 4 y 32 caracteres: letras, numeros y _.")
         }
         return a
+    }
+
+    // ------------------------------------------------------------------
+    //  Comentarios (modulo AA)
+    // ------------------------------------------------------------------
+
+    /**
+     * Guarda el cuerpo de un comentario de un canal PUBLICO.
+     *
+     * Es el gemelo de `guardarContenido` y existe por el mismo motivo, pero el
+     * defecto que arregla era peor que la falta de una funcion: **el texto de
+     * los comentarios se perdia**. Un canal publico no reparte sobres -es lo
+     * que le permite escalar-, asi que un comentario mandado como mensaje
+     * cifrado no tenia a quien entregarse: quedaba la fila de `mensaje_meta`,
+     * el contador subia, y el cuerpo no quedaba en ninguna parte. Ver la nota
+     * larga de `V34__comentarios_de_canal.sql`.
+     *
+     * Dos comprobaciones que no son la misma:
+     *
+     *  - `CANAL_COMENTAR` es del **rol**: lo tiene el suscriptor.
+     *  - `basico().comentarios` es el **interruptor del canal**, y es lo que
+     *    hace que apagar los comentarios sirva de algo sin tocarle los
+     *    permisos a nadie.
+     *
+     * Se exigen las dos, y en ese orden: primero si podes actuar en este
+     * canal, despues si el canal admite esto.
+     */
+    fun guardarComentario(yo: Auth, convId: UUID, req: ComentarReq): List<Pair<UUID, Bajada.Evento>> = Db.tx { c ->
+        val b = basico(c, convId)
+        if (!b.publico) {
+            throw ErrorNegocio(409, "Un canal privado no guarda el contenido en el servidor.")
+        }
+        Autz.exigir(c, yo.usuarioId, convId, Permisos.CANAL_COMENTAR)
+        if (!b.comentarios) {
+            throw ErrorNegocio(403, "Este canal no admite comentarios.")
+        }
+
+        val msgId = uuid(req.mensajeId)
+        val pubId = uuid(req.publicacionId)
+        val cuerpo = req.cuerpo.trim()
+        if (cuerpo.isEmpty() || cuerpo.length > 2048) {
+            throw ErrorNegocio(400, "El comentario debe tener entre 1 y 2048 caracteres.")
+        }
+
+        // El metadato tiene que existir, ser de esta conversacion y ser MIO.
+        // Sin esto, cualquiera podria colgarle texto al mensaje de otro.
+        val valido = c.prepareStatement(
+            "SELECT 1 FROM mensaje_meta WHERE id = ? AND conversacion_id = ? AND autor_id = ?"
+        ).use { st ->
+            st.setObject(1, msgId); st.setObject(2, convId); st.setObject(3, yo.usuarioId)
+            st.executeQuery().use { it.next() }
+        }
+        if (!valido) throw ErrorNegocio(404, "Ese comentario no existe en este canal.")
+
+        // Y la publicacion tiene que ser de ESTE canal. La FK de la tabla ya
+        // garantiza que apunta a una publicacion; esto garantiza que no es la
+        // de otro canal, que la FK sola no distingue.
+        val publicacionDeAqui = c.prepareStatement(
+            "SELECT 1 FROM publicacion_contenido WHERE mensaje_id = ? AND conversacion_id = ?"
+        ).use { st ->
+            st.setObject(1, pubId); st.setObject(2, convId)
+            st.executeQuery().use { it.next() }
+        }
+        if (!publicacionDeAqui) throw ErrorNegocio(404, "Esa publicacion no existe en este canal.")
+
+        c.prepareStatement(
+            """INSERT INTO comentario_contenido (mensaje_id, conversacion_id, publicacion_id, cuerpo)
+               VALUES (?, ?, ?, ?) ON CONFLICT (mensaje_id) DO UPDATE SET cuerpo = EXCLUDED.cuerpo"""
+        ).use { st ->
+            st.setObject(1, msgId); st.setObject(2, convId)
+            st.setObject(3, pubId); st.setString(4, cuerpo)
+            st.executeUpdate()
+        }
+
+        // Se avisa a **quien publico**, no a los suscriptores.
+        //
+        // Un canal con mil suscriptores y cien comentarios por publicacion
+        // daria cien mil avisos para algo que nadie pidio seguir. Quien
+        // escribio la publicacion si quiere saber que le comentaron; el resto
+        // lo ve al abrir los comentarios.
+        val autorPublicacion = c.prepareStatement(
+            "SELECT autor_id FROM mensaje_meta WHERE id = ?"
+        ).use { st ->
+            st.setObject(1, pubId)
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+        }
+        val destinos = listOfNotNull(autorPublicacion).filter { it != yo.usuarioId }
+        if (destinos.isEmpty()) return@tx emptyList()
+        Eventos.emitir(
+            c, destinos, "canal_comentario", convId, yo.username,
+            detalle = cuerpo.take(140),
+        )
+    }
+
+    /**
+     * Los comentarios de una publicacion.
+     *
+     * **ASC y no DESC**, al contrario que el muro: una conversacion se lee en
+     * el orden en que paso. El muro pone lo ultimo primero porque lo que
+     * importa es lo nuevo; en una discusion, empezar por el final es empezar
+     * por las respuestas.
+     *
+     * Y por `creado_en`, no por id: el id lo genera el cliente y es un v4, o
+     * sea un numero al azar. Ver la nota de `publicaciones`, donde el mismo
+     * error llevaba meses desordenando el muro.
+     */
+    fun comentarios(yo: Auth, convId: UUID, publicacionId: String, limite: Int): List<Comentario> =
+        Db.tx { c ->
+            // MISMO criterio que el muro: en un canal publico cualquiera lee
+            // sin ser suscriptor -si no, el directorio serviria para ver el
+            // nombre y nada mas-. En uno privado hace falta el permiso.
+            if (!basico(c, convId).publico) {
+                Autz.exigir(c, yo.usuarioId, convId, Permisos.GRUPO_VER_INFO)
+            }
+            val pubId = uuid(publicacionId)
+            val tope = limite.coerceIn(1, 200)
+
+            val filas = c.prepareStatement(
+                """SELECT k.mensaje_id, u.username, k.cuerpo,
+                          extract(epoch FROM m.creado_en) * 1000,
+                          m.editado_en IS NOT NULL,
+                          m.autor_id = ?
+                   FROM comentario_contenido k
+                     JOIN mensaje_meta m ON m.id = k.mensaje_id
+                     JOIN usuario u      ON u.id = m.autor_id
+                   WHERE k.publicacion_id = ? AND k.conversacion_id = ?
+                     AND m.retirado_en IS NULL
+                   ORDER BY m.creado_en, k.mensaje_id
+                   LIMIT ?"""
+            ).use { st ->
+                st.setObject(1, yo.usuarioId)
+                st.setObject(2, pubId)
+                st.setObject(3, convId)
+                st.setInt(4, tope)
+                st.executeQuery().use { rs ->
+                    rs.mapear {
+                        Comentario(
+                            mensajeId = it.getObject(1, UUID::class.java).toString(),
+                            publicacionId = publicacionId,
+                            autor = it.getString(2),
+                            cuerpo = it.getString(3),
+                            creadoEn = it.getDouble(4).toLong(),
+                            editado = it.getBoolean(5),
+                            mio = it.getBoolean(6),
+                        )
+                    }
+                }
+            }
+
+            val reacs = reaccionesDe(c, filas.map { uuid(it.mensajeId) }, yo.usuarioId)
+            filas.map { it.copy(reacciones = reacs[uuid(it.mensajeId)].orEmpty()) }
+        }
+
+    /**
+     * Las reacciones de VARIOS mensajes, en una sola consulta.
+     *
+     * `Mensajes.reaccionesDe` resuelve uno, y llamarlo en un bucle sobre el
+     * muro serian cien consultas para una pagina de cien publicaciones. El
+     * N+1 no se nota con tres filas de prueba y se nota con un canal de
+     * verdad, que es cuando ya esta en produccion.
+     *
+     * Devuelve un mapa y no una lista: quien llama tiene que poder pedir las
+     * de un mensaje sin recorrer el resultado.
+     */
+    private fun reaccionesDe(
+        c: Connection,
+        mensajes: List<UUID>,
+        yo: UUID,
+    ): Map<UUID, List<ReaccionAgrupada>> {
+        if (mensajes.isEmpty()) return emptyMap()
+        val pares = c.prepareStatement(
+            """SELECT r.mensaje_id, r.emoji, count(*)::int,
+                      bool_or(r.usuario_id = ?),
+                      (array_agg(u.username ORDER BY r.creada_en))[1:3]
+               FROM reaccion r JOIN usuario u ON u.id = r.usuario_id
+               WHERE r.mensaje_id = ANY (?)
+               GROUP BY r.mensaje_id, r.emoji
+               ORDER BY count(*) DESC, r.emoji"""
+        ).use { st ->
+            st.setObject(1, yo)
+            st.setArray(2, c.createArrayOf("uuid", mensajes.toTypedArray()))
+            st.executeQuery().use { rs ->
+                rs.mapear {
+                    // JDBC devuelve Object[], nunca String[]: castearlo directo
+                    // compila y revienta en runtime. Ya paso en `Mensajes`.
+                    val quienes = (it.getArray(5).array as Array<*>)
+                        .filterNotNull().map(Any::toString)
+                    it.getObject(1, UUID::class.java) to
+                        ReaccionAgrupada(it.getString(2), it.getInt(3), it.getBoolean(4), quienes)
+                }
+            }
+        }
+        return pares.groupBy({ it.first }, { it.second })
     }
 
     /**

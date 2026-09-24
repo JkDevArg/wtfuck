@@ -1,6 +1,6 @@
 # La API, endpoint por endpoint
 
-**140 rutas HTTP y un WebSocket.** Este documento se escribió leyendo
+**142 rutas HTTP y un WebSocket.** Este documento se escribió leyendo
 `Main.kt`, no de memoria: si una ruta está aquí, existe.
 
 ---
@@ -19,9 +19,12 @@ y están declarados aquí.
 
 **Dos excepciones, las dos deliberadas:**
 
-1. Las publicaciones de un **canal público** se guardan en claro. Un canal
-   público no tiene secreto —cualquiera se suscribe y lee— y sin historial
-   guardado quien se suscribe hoy no vería nada de ayer.
+1. Las publicaciones de un **canal público** —y **sus comentarios**— se
+   guardan en claro. Un canal público no tiene secreto —cualquiera se suscribe
+   y lee— y sin historial guardado quien se suscribe hoy no vería nada de ayer.
+   Los comentarios se agregaron en el módulo AA y no por comodidad: un canal
+   público **no reparte sobres**, así que un comentario cifrado ahí no tiene a
+   quién entregarse y su texto se perdía.
 2. La **evidencia de una denuncia** llega en claro, porque la manda quien
    denuncia. Nadie más puede producirla: el servidor no puede descifrar y el
    denunciado no va a entregar la prueba contra sí mismo.
@@ -388,7 +391,12 @@ Las rutas completas, agrupadas. El detalle de cada decisión está en
 **Canales** — `POST /v1/canales`, `GET /v1/canales/directorio` *(la lista
 curada; es la puerta normal)*, `GET /v1/canales/buscar` *(el filtro)*,
 `/v1/canales/alias/{alias}`, `GET`/`PUT /v1/canales/{id}`, `.../suscribir`,
-`.../desuscribir`, `.../publicaciones`, `.../estadisticas`.
+`.../desuscribir`, `.../publicaciones`, `POST .../comentarios`,
+`GET .../publicaciones/{pid}/comentarios`, `.../estadisticas`.
+
+> `POST .../comentarios` es la **segunda** ruta del sistema que lleva contenido
+> sin cifrar, y está aparte por lo mismo que la de publicaciones: la excepción
+> se ve en el mapa de rutas o no se ve.
 
 > Un canal nace **pendiente** y lo aprueba el propietario de la plataforma.
 > Mientras lo esté no se lista, no se busca, **no responde ni por su alias

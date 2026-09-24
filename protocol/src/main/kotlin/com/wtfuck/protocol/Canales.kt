@@ -135,6 +135,46 @@ data class Publicacion(
     val comentarios: Int = 0,
 )
 
+/**
+ * Comentar una publicacion de un canal PUBLICO.
+ *
+ * Lleva el cuerpo en claro, igual que `PublicarReq`, y por los mismos tres
+ * motivos que estan escritos en `V10__canales.sql`. Un comentario en una
+ * publicacion publica es tan publico como la publicacion.
+ *
+ * Y hay una razon mas, propia de los comentarios: un canal publico **no
+ * reparte sobres** -es lo que le permite escalar a diez mil suscriptores-. Un
+ * comentario cifrado en un canal publico no tiene a quien entregarse: se
+ * registra el metadato, el contador sube, y el texto **no queda en ninguna
+ * parte**. Era exactamente lo que pasaba antes de esta ruta.
+ *
+ * En un canal PRIVADO no se usa: ahi el comentario es un mensaje cifrado como
+ * cualquier otro, y solo lo ve quien recibio el sobre.
+ */
+@Serializable
+data class ComentarReq(
+    val mensajeId: String,
+    /** A que publicacion responde. El servidor comprueba que sea de este canal. */
+    val publicacionId: String,
+    val cuerpo: String,
+)
+
+@Serializable
+data class Comentario(
+    val mensajeId: String,
+    val publicacionId: String,
+    val autor: String,
+    val cuerpo: String,
+    val creadoEn: Long,
+    val editado: Boolean = false,
+    val reacciones: List<ReaccionAgrupada> = emptyList(),
+    /** true si lo escribi yo: es lo que habilita borrarlo. */
+    val mio: Boolean = false,
+)
+
+@Serializable
+data class ComentariosResp(val comentarios: List<Comentario> = emptyList())
+
 @Serializable
 data class EstadisticasCanal(
     val suscriptores: Int,

@@ -71,6 +71,8 @@ object Db {
         31 to "/db/V31__tipos_de_cuenta.sql",
         32 to "/db/V32__indices.sql",
         33 to "/db/V33__privacidad_fina.sql",
+        34 to "/db/V34__comentarios_de_canal.sql",
+        35 to "/db/V35__aviso_de_comentario.sql",
     )
 
     /**

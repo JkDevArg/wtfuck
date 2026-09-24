@@ -534,6 +534,16 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun publicarEnCanal(convId: String, req: PublicarReq): Unit =
         pedir("$RUTA_CANALES/$convId/publicaciones", "POST", jsonApp.encodeToString(req), true)
 
+    /** Guarda el cuerpo de un comentario. Solo en canales publicos. */
+    suspend fun comentarEnCanal(convId: String, req: ComentarReq): Unit =
+        pedir("$RUTA_CANALES/$convId/comentarios", "POST", jsonApp.encodeToString(req), true)
+
+    suspend fun comentariosDeCanal(convId: String, publicacionId: String): ComentariosResp =
+        pedir(
+            "$RUTA_CANALES/$convId/publicaciones/$publicacionId/comentarios?limite=100",
+            "GET", null, true,
+        )
+
     suspend fun estadisticasCanal(convId: String): EstadisticasCanal =
         pedir("$RUTA_CANALES/$convId/estadisticas", "GET", null, true)
 

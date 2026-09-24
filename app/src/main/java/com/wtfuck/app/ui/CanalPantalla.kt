@@ -20,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -76,6 +78,8 @@ fun CanalPantalla(
     var mostrarInfo by remember { mutableStateOf(false) }
     /** La ultima carga no llego. Distinto de "no hay nada". */
     var fallo by remember { mutableStateOf(false) }
+    /** La publicacion cuyos comentarios se estan viendo. */
+    var comentando by remember { mutableStateOf<Publicacion?>(null) }
     val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
 
     /**
@@ -395,7 +399,22 @@ fun CanalPantalla(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                 ) {
                     items(feed.orEmpty(), key = { it.mensajeId }) { p ->
-                        TarjetaPublicacion(p, cfg?.comentarios == true)
+                        TarjetaPublicacion(
+                            p = p,
+                            comentariosActivos = cfg?.comentarios == true,
+                            reaccionesActivas = cfg?.reacciones == true,
+                            onComentarios = { comentando = p },
+                            onReaccionar = { emoji, poner ->
+                                ambito.launch {
+                                    runCatching { app.repo.reaccionar(p.mensajeId, emoji, poner) }
+                                        // El motivo del servidor llega a la
+                                        // pantalla: un canal puede tener las
+                                        // reacciones apagadas y el 403 lo dice.
+                                        .onSuccess { refrescar() }
+                                        .onFailure { aviso = it.message }
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -451,6 +470,21 @@ fun CanalPantalla(
         )
     }
 
+    comentando?.let { pub ->
+        HojaComentarios(
+            conversacionId = conversacionId,
+            publicacion = pub,
+            publico = cfg?.publico == true,
+            puedeComentar = cfg?.comentarios == true,
+            onCerrar = {
+                comentando = null
+                // Al cerrar se refresca: el contador de la tarjeta lo calcula
+                // el servidor, asi que comentar no lo cambia solo.
+                ambito.launch { refrescar() }
+            },
+        )
+    }
+
     aviso?.let { msg ->
         AlertDialog(
             onDismissRequest = { aviso = null },
@@ -469,7 +503,13 @@ fun CanalPantalla(
  * mentir sobre la forma de la conversación.
  */
 @Composable
-private fun TarjetaPublicacion(p: Publicacion, comentariosActivos: Boolean) {
+private fun TarjetaPublicacion(
+    p: Publicacion,
+    comentariosActivos: Boolean,
+    reaccionesActivas: Boolean,
+    onComentarios: () -> Unit,
+    onReaccionar: (String, Boolean) -> Unit,
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -495,39 +535,53 @@ private fun TarjetaPublicacion(p: Publicacion, comentariosActivos: Boolean) {
         Spacer(Modifier.height(8.dp))
         Text(p.cuerpo, color = TextoPrimario, fontSize = 16.sp)
 
-        if (p.editado || p.comentarios > 0 || p.reacciones.isNotEmpty()) {
+        if (p.editado) {
+            Spacer(Modifier.height(6.dp))
+            Text("editada", color = TextoTerciario, fontSize = 11.sp)
+        }
+
+        // Modulo AA: las reacciones se pueden TOCAR, y los comentarios se
+        // pueden ABRIR. Antes las dos cosas eran texto: el recuento de
+        // reacciones -que ademas viajaba siempre vacio, ver `FilaReacciones`- y
+        // "N comentarios" sin nada detras.
+        if (reaccionesActivas) {
             Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (p.editado) {
-                    Text("editada", color = TextoTerciario, fontSize = 11.sp)
-                    Spacer(Modifier.width(10.dp))
-                }
-                p.reacciones.forEach { r ->
-                    Row(
-                        Modifier
-                            .clip(CircleShape)
-                            .background(BgElev)
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(r.emoji, fontSize = 12.sp)
-                        Spacer(Modifier.width(4.dp))
-                        Text("${r.total}", color = TextoSecundario, fontSize = 11.sp)
-                    }
-                    Spacer(Modifier.width(6.dp))
-                }
-                if (comentariosActivos && p.comentarios > 0) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Comment, null,
-                        tint = TextoTerciario, modifier = Modifier.size(13.dp),
-                    )
-                    Spacer(Modifier.width(5.dp))
-                    Text(
-                        "${p.comentarios} ${if (p.comentarios == 1) "comentario" else "comentarios"}",
-                        color = TextoTerciario,
-                        fontSize = 11.sp,
-                    )
-                }
+            FilaReacciones(p, habilitadas = true, onReaccionar = onReaccionar)
+        }
+
+        if (comentariosActivos) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onComentarios)
+                    .padding(vertical = 5.dp, horizontal = 2.dp)
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = when (p.comentarios) {
+                            0 -> "Comentar esta publicacion"
+                            1 -> "Ver 1 comentario"
+                            else -> "Ver ${p.comentarios} comentarios"
+                        }
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Comment, null,
+                    tint = Cian, modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    // Con cero tambien se ofrece, y por eso el texto cambia:
+                    // "0 comentarios" no invita a nada y esconder la fila deja
+                    // sin puerta a quien quiere ser el primero.
+                    when (p.comentarios) {
+                        0 -> "Comentar"
+                        1 -> "1 comentario"
+                        else -> "${p.comentarios} comentarios"
+                    },
+                    color = Cian,
+                    fontSize = 12.sp,
+                )
             }
         }
     }

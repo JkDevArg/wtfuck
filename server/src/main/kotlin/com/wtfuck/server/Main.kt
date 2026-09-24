@@ -613,6 +613,39 @@ fun Application.modulo() {
             call.respond(Canales.publicaciones(yo, call.idRuta(), limite, antesDe))
         }
 
+        /**
+         * Modulo AA: el cuerpo de un comentario, en claro.
+         *
+         * La segunda ruta del sistema que lleva contenido sin cifrar, y esta
+         * aparte por lo mismo que la de publicaciones: la excepcion se ve en
+         * el mapa de rutas o no se ve.
+         *
+         * No es una comodidad. Un canal publico no reparte sobres, asi que
+         * antes de esta ruta un comentario dejaba su metadato -y su contador-
+         * y **perdia el texto**.
+         */
+        post("$RUTA_CANALES/{id}/comentarios") {
+            val yo = call.autenticar()
+            val avisos = Canales.guardarComentario(yo, call.idRuta(), call.receive())
+            avisos.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        /**
+         * Los comentarios de una publicacion.
+         *
+         * La publicacion va en la ruta y no en la query: un comentario es de
+         * una publicacion, no del canal, y la ruta tiene que decir de que
+         * cuelga.
+         */
+        get("$RUTA_CANALES/{id}/publicaciones/{pid}/comentarios") {
+            val yo = call.autenticar()
+            val pid = call.parameters["pid"]
+                ?: throw ErrorNegocio(400, "Falta la publicacion.")
+            val limite = call.request.queryParameters["limite"]?.toIntOrNull() ?: 100
+            call.respond(ComentariosResp(Canales.comentarios(yo, call.idRuta(), pid, limite)))
+        }
+
         get("$RUTA_CANALES/{id}/estadisticas") {
             call.respond(Canales.estadisticas(call.autenticar(), call.idRuta()))
         }

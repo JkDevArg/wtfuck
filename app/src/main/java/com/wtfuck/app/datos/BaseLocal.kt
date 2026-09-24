@@ -577,6 +577,23 @@ interface ChatDao {
     @Query("UPDATE sticker_pack SET nombre = :nombre WHERE id = :pack")
     suspend fun renombrarPack(pack: String, nombre: String)
 
+    /**
+     * Los comentarios LOCALES de una publicacion, para un canal privado.
+     *
+     * En un canal publico los comentarios los sirve el servidor. En uno
+     * privado van cifrados y solo existen aqui, asi que esta consulta es la
+     * unica fuente -y con el limite declarado de que solo hay lo que llego a
+     * ESTE telefono-.
+     *
+     * ASC: una discusion se lee en el orden en que paso.
+     */
+    @Query(
+        """SELECT * FROM mensaje
+           WHERE conversacionId = :convId AND respondeA = :publicacionId AND oculto = 0
+           ORDER BY creadoEn"""
+    )
+    fun comentariosLocales(convId: String, publicacionId: String): Flow<List<MensajeEnt>>
+
     // ------------------------------------------------------ emojis usados
 
     /**

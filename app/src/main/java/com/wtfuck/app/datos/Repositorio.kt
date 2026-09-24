@@ -2794,10 +2794,53 @@ class Repositorio(
         }
     }
 
-    /** Comenta una publicacion. El comentario SI es un mensaje normal. */
-    suspend fun comentar(convId: String, publicacionId: String, texto: String) {
+    /**
+     * Comenta una publicacion.
+     *
+     * ## El defecto que esto arregla
+     *
+     * Antes hacia **solo** la rama de abajo: guardaba un `MensajeEnt` y lo
+     * despachaba como sobre cifrado. En un grupo eso esta bien. En un canal
+     * publico no hay a quien entregarle el sobre -un canal publico no reparte
+     * sobres, es lo que le permite escalar-, asi que quedaba el metadato en el
+     * servidor, **el contador subia** y el texto no quedaba en ninguna parte.
+     *
+     * Medido en la base antes de arreglarlo: cada comentario de canal tenia
+     * cero sobres y cero cuerpo guardado. Se veia como "hay 1 comentario y no
+     * lo puedo ver", que es como lo reporto el usuario, y la causa no estaba en
+     * la pantalla.
+     *
+     * Ahora el comentario **sigue al cuerpo de la publicacion**: en un canal
+     * publico va al servidor en claro, bajo la misma excepcion declarada; en
+     * uno privado sigue siendo un mensaje cifrado.
+     */
+    suspend fun comentar(
+        convId: String,
+        publicacionId: String,
+        texto: String,
+        canalPublico: Boolean,
+    ): Result<Unit> {
         val limpio = texto.trim()
-        if (limpio.isEmpty()) return
+        if (limpio.isEmpty()) return Result.success(Unit)
+
+        if (canalPublico) {
+            val mensajeId = UUID.randomUUID().toString()
+            return runCatching {
+                api.registrarMensaje(
+                    RegistrarMensajeReq(
+                        mensajeId = mensajeId,
+                        conversacionId = convId,
+                        respondeA = publicacionId,
+                        menciones = mencionesDe(limpio),
+                    )
+                )
+                api.comentarEnCanal(convId, ComentarReq(mensajeId, publicacionId, limpio))
+            }
+        }
+
+        // Canal privado: es un mensaje como cualquier otro y solo lo ve quien
+        // reciba el sobre. Mismo precio declarado que el resto del canal
+        // privado: quien se suscribe despues no ve lo de antes.
         val m = MensajeEnt(
             id = UUID.randomUUID().toString(),
             conversacionId = convId,
@@ -2810,7 +2853,27 @@ class Repositorio(
         )
         dao.guardarMensaje(m)
         despachar()
+        return Result.success(Unit)
     }
+
+    /**
+     * Los comentarios de una publicacion, o `null` si no se pudo preguntar.
+     *
+     * Nullable por lo mismo que `publicaciones`: "no hay comentarios" y "no
+     * pude leerlos" no son lo mismo, y en una hoja que se abre para leerlos la
+     * diferencia es toda la pantalla. Ver el modulo Z.5.
+     */
+    suspend fun comentarios(convId: String, publicacionId: String): List<Comentario>? =
+        runCatching { api.comentariosDeCanal(convId, publicacionId).comentarios }.getOrNull()
+
+    /**
+     * Los comentarios de un canal PRIVADO, que viven solo en este telefono.
+     *
+     * Un Flow y no una llamada: son mensajes locales y pueden llegar mas
+     * mientras la hoja esta abierta.
+     */
+    fun comentariosLocales(convId: String, publicacionId: String): Flow<List<MensajeEnt>> =
+        dao.comentariosLocales(convId, publicacionId)
 
     // ============================================================
     //  Modulo E: verificacion de identidad
