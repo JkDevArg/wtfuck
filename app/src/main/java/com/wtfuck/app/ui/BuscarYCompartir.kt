@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat
 import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.ui.theme.*
+import kotlinx.coroutines.launch
 import com.wtfuck.protocol.Contacto
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
@@ -385,8 +386,17 @@ fun HojaContacto(
     var lista by remember { mutableStateOf<List<Contacto>?>(null) }
     var filtro by remember { mutableStateOf("") }
 
+    // Modulo Z.5: un fallo no se convierte en "no tenes contactos".
+    // `lista` nula ya significaba "todavia cargando", asi que el fallo
+    // necesita su propia bandera; usar la nula para las dos cosas deja la
+    // hoja girando para siempre, que es otra forma de no decir lo que paso.
+    var fallo by remember { mutableStateOf(false) }
+    val ambito = rememberCoroutineScope()
+
     LaunchedEffect(Unit) {
-        lista = runCatching { app.repo.contactos() }.getOrDefault(emptyList())
+        runCatching { app.repo.contactos() }
+            .onSuccess { lista = it; fallo = false }
+            .onFailure { fallo = true }
     }
 
     val visibles = remember(lista, filtro) {
@@ -434,6 +444,21 @@ fun HojaContacto(
             }
 
             when {
+                // El fallo va ANTES del vacio y antes de la carga: al fallar,
+                // `lista` sigue nula y sin esta rama la hoja gira sin fin.
+                fallo -> EstadoDeError(
+                    titulo = "No se pudo cargar tu libreta",
+                    detalle = "Esto NO quiere decir que no tengas contactos.",
+                    onReintentar = {
+                        ambito.launch {
+                            fallo = false
+                            runCatching { app.repo.contactos() }
+                                .onSuccess { lista = it }
+                                .onFailure { fallo = true }
+                        }
+                    },
+                )
+
                 lista == null -> Box(
                     Modifier.fillMaxWidth().height(120.dp), Alignment.Center,
                 ) { CircularProgressIndicator(color = Cian) }

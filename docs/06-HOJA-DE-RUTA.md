@@ -30,7 +30,7 @@ Convención: `[x]` hecho y verificado · `[ ]` pendiente · `[~]` parcial
 | P · Tipos de cuenta | 6/6 | ✅ personal, desarrollador y empresa con ficha · **en beta cerrada** |
 
 **1313 pruebas en verde**: 1175 de integración en 31 suites, 32 de JUnit en el
-servidor y 106 en la app. Todos los módulos verificados de punta a punta en dos
+servidor y 221 en la app. Todos los módulos verificados de punta a punta en dos
 emuladores; lo único abierto del plan es `K.5` (SFU), declarado fuera de alcance.
 
 > **Estado del cifrado:** desde el módulo E el cuerpo de los mensajes es
@@ -4387,3 +4387,201 @@ Al quitar `SelectorEmoji`, que quedó sin uso, se fue con él la lista
 referencia sin resolver— pero vale anotarlo: **una lista de datos sin nadie
 que la lea es lo primero que alguien borra creyendo que sobra.** Ahora vive
 junto al único sitio que la usa.
+
+---
+
+## Módulo Z · Lo que le faltaba al panel, y seis lecturas que afirmaban lo que no comprobaron ✅
+
+*"Agregá mejoras. ¿Qué mejoras faltan?"*
+
+Dos bloques que no se parecen: **Z.1 a Z.4** cierran los huecos del panel de
+emojis y stickers; **Z.5** termina un trabajo empezado en el módulo X, que es
+que la app no diga como un hecho algo que no pudo comprobar.
+
+### Z.1 · Emojis recientes
+
+Era el hueco más grande y el más invisible: **la primera pestaña de cualquier
+selector de emojis que exista**, y no por costumbre. Casi todo el mundo usa los
+mismos diez. Sin ella, mandar 😂 por vigésima vez cuesta lo mismo que la
+primera.
+
+**Se ordena por veces y se desempata por cuándo**, y las dos hacen falta:
+
+| Sólo recencia | Sólo frecuencia |
+|---|---|
+| El emoji que alguien manda cincuenta veces al día se cae de la lista en cuanto prueba veinticuatro distintos una tarde | Un emoji nuevo tarda semanas en subir |
+
+**Va en la base cifrada, no en `SharedPreferences`.** El proyecto tiene una
+regla declarada —los ajustes van en prefs sin cifrar porque el tema y el idioma
+no dicen nada de nadie, ver la nota de `Bloqueo`— y la lista de los emojis que
+alguien usa **sí dice**: hay banderas, hay símbolos de salud, hay cosas que una
+persona puede no querer que se lean si le agarran el teléfono. Es del mismo
+tipo de dato que el uso de stickers, que ya vivía ahí. Que sea más chico no lo
+hace menos suyo.
+
+Migración 16→17, y se crea **vacía**: no hay de dónde sacar el historial de uso
+de quien ya venía usando la app, y poner un puñado de emojis "populares" de
+fábrica sería inventarle gustos a alguien. La pestaña no existe hasta que hay
+algo que mostrar.
+
+### Z.2 · Buscar emojis
+
+Con 250 emojis, encontrar 🥑 era recorrer cuatro grupos con el pulgar.
+
+**El glifo y sus palabras viven en la misma línea**, y eso es la decisión de
+diseño del módulo. Buscar exige una segunda estructura —glifo a palabras— y en
+cuanto son dos estructuras se desincronizan: alguien agrega un emoji al grupo,
+nadie le pone palabras, y el emoji existe pero no se puede encontrar. Que es
+peor que no existir, porque nadie lo reporta. Ahora cada emoji es una línea y
+`grupo()` **falla en voz alta** si le faltan las palabras.
+
+Dos detalles que se decidieron y no se dejaron pasar:
+
+- **Sin tildes**, de los dos lados. Quien escribe rápido en un teclado de
+  teléfono no las pone, y una búsqueda que exige la tilde es una búsqueda que
+  no encuentra nada.
+- **Por prefijo y no por subcadena.** Con subcadena, "ojo" trae "enojado" y
+  "cerrojo". Un buscador donde escribir más letras trae **cosas distintas** en
+  vez de menos cosas no se usa dos veces.
+
+El catálogo se mudó de un archivo de interfaz a `datos/Emojis.kt`, porque
+buscar es lógica y la lógica se prueba. `buscarEmojis` y `aplicarTono` no tocan
+el framework y por eso corren en la JVM: la misma razón por la que `Recorte`
+existe en vez de usar `android.graphics.Rect`.
+
+### Z.3 · Tono de piel, y el defecto que me enseñó algo
+
+👍 salía amarillo y no había forma de cambiarlo. Es la única parte de esa
+pantalla donde el valor por defecto **le queda mal a mucha gente a propósito**.
+
+Se elige una vez manteniendo pulsado cualquiera que lo admita y vale para
+todos: nadie tiene una mano de cada color, y preguntarlo emoji por emoji sería
+pedir la misma respuesta treinta y seis veces. El amarillo es una opción más
+—la que elige quien no quiere elegir—, no "ninguna".
+
+**Y me equivoqué.** Puse 🫡, 🫢 y 🫣 en la lista de los que admiten tono porque
+tienen una mano dibujada y están en la fila de gestos. Son **caras**, y Unicode
+no les da modificador. El resultado en pantalla: la carita amarilla y un
+rectángulo de color suelto debajo.
+
+Tres cosas que vale anotar de ese error:
+
+1. **Ninguna prueba de lógica podía verlo.** La lista era coherente consigo
+   misma, el código hacía exactamente lo que le pedí, y lo que estaba mal era
+   lo que le pedí. Salió de tomar una captura después de elegir un tono. Es la
+   misma lección de siempre en este proyecto: la suite cubre el servidor, y los
+   defectos de pantalla aparecen cuando alguien abre la pantalla.
+2. **El comentario sobre esa lista advertía del error exacto** —"no es los que
+   tienen una mano"— mientras la lista lo cometía tres líneas más abajo. Un
+   comentario no valida nada.
+3. **El arreglo de fondo no es borrar las tres.** Es que eran dos preguntas
+   distintas y yo las había confundido: Unicode define qué secuencias existen;
+   **la fuente del aparato decide cuáles sabe dibujar**. Una lista escrita a
+   mano contesta la primera y aparenta contestar las dos. Ahora la lista es la
+   mitad teórica y `PaintCompat.hasGlyph` pone la otra: si la fuente no tiene
+   la secuencia, no se ofrece el tono, y nunca se dibuja algo roto. Se exigen
+   los cinco: ofrecer seis opciones de las que dos no se dibujan es peor que no
+   ofrecer ninguna.
+
+Y hay una prueba clavada para las tres caras. No se deriva de nada —es un hecho
+de Unicode— así que vive donde alguien la va a ver si vuelve a agregarlas.
+
+### Z.4 · Escribir un emoji sugiere los stickers con esa etiqueta
+
+Es el atajo de las dos apps de referencia que aquí faltaba: escribir 😂 y que
+aparezcan los stickers etiquetados 😂, sin abrir el panel, sin elegir pestaña.
+Tres toques pasan a ser uno.
+
+**Y es lo que le da sentido a la etiqueta.** Hasta ahora el emoji del sticker
+sólo filtraba *dentro* de la bandeja, o sea servía a quien ya había decidido
+mandar un sticker. Esto lo usa en el momento anterior: cuando la persona
+todavía está eligiendo **qué** mandar.
+
+La regla es estricta: **un emoji y nada más**. Con "jaja 😂" alguien está
+escribiendo una frase, no buscando un sticker, y una tira que aparece a mitad
+de una frase tapa el teclado por nada. Se exige además que el emoji **esté en
+el catálogo** en vez de adivinar por rango Unicode: así ":)" o "..." no
+disparan nada, y lo que dispara es exactamente lo que puede haberse usado como
+etiqueta.
+
+Al elegir el sticker **el emoji se borra del compositor**: se lo eligió *en vez*
+del emoji, no además de él. Dejarlo escrito mandaría las dos cosas.
+
+Se filtra en memoria y no con una consulta nueva: la colección entera son
+decenas de filas y ya está en un Flow vivo. Una consulta por cada tecla sería
+pegarle a la base cifrada mientras alguien escribe.
+
+### Z.5 · Seis sitios donde la app afirmaba algo que no había comprobado
+
+El módulo X arregló esto en Privacidad y dejó dicho el principio: **un valor por
+defecto no es un dato, es la ausencia de uno**. Quedaban sitios, y tres de ellos
+son afirmaciones de seguridad.
+
+| Dónde | Qué decía con el servidor caído |
+|---|---|
+| `dispositivos` | que esta cuenta **no tiene ningún otro aparato vinculado** |
+| `sesiones` | que **nadie más tiene tu cuenta abierta** |
+| `misEventosSeguridad` | que **no pasó nada raro** con tu cuenta |
+| `miEstadoModeracion` | que **no tenés advertencias** |
+| `publicaciones` de un canal | que **el canal no tiene publicaciones** |
+| `contactos` al compartir | que **no tenés contactos** |
+
+Los tres primeros son exactamente lo que alguien viene a mirar **cuando
+sospecha que le entraron a la cuenta**. Contestarle eso por un fallo de red es
+la peor respuesta posible, porque es tranquilizadora y es falsa.
+
+El cuarto es el peor de todos, por lo que este proyecto ya dice de las
+advertencias: no se pueden silenciar porque una advertencia que no llega no
+cumple su única función, que es dar la oportunidad de corregir antes de la
+sanción. **Una advertencia que la pantalla niega es lo mismo con un paso más.**
+
+Ese lo encontré en una captura, mirando la pantalla que acababa de arreglar. El
+`if` decía `e == null || e.advertencias.isEmpty()`: las dos cosas en una sola
+rama, seis líneas arriba del bloque que estaba corrigiendo. Después barrí el
+resto de la interfaz buscando el mismo patrón y salieron los dos últimos.
+
+**El de `publicaciones` es el más incómodo de los seis**, porque estaba
+documentado como arreglado. `publicaciones` devuelve `null` al fallar desde el
+módulo X —el comentario en `refrescar` lo explica— y la pantalla lo tiraba con
+un `?: emptyList()` en la línea de abajo. El caso que quedaba vivo: `canal`
+responde y `publicaciones` no, que pasa porque son dos peticiones distintas.
+
+Los seis se arreglan igual: la lectura devuelve `null` al fallar, y el
+compilador obliga a decidir qué hacer con él en cada pantalla. Los tipos
+hicieron el trabajo de encontrar los sitios; en `dispositivos` fueron tres
+errores de compilación inmediatos.
+
+Y una nota de cómo se verifica, que costó una vuelta: `adb reverse --remove`
+deja de aceptar conexiones nuevas y **no corta las establecidas**. La primera
+vez la pantalla se cargó igual, por la conexión que OkHttp tenía viva. Hay que
+reiniciar el proceso además de cerrar el túnel. Parece que la prueba falló y lo
+que falló fue la manera de provocar el fallo.
+
+### Y un archivo que perdí y tuve que reescribir
+
+`io.open(p,'w').write(datos)` **trunca antes de poder fallar**. Un script de
+edición se encontró con un par de surrogates suelto al codificar, reventó a
+mitad, y dejó `EmojisTest.kt` en cero bytes. Las 24 pruebas existían hacía diez
+minutos y no estaban en ningún commit.
+
+De ahí en adelante los scripts de este módulo codifican primero, escriben a un
+temporal y **reemplazan al final**. Y quedó anotado que el heredoc del Bash
+colapsa `\\` en `\`, que es lo que produjo el par de surrogates y, antes, un
+selector de variación escrito como el carácter invisible U+FE0F en vez de como
+su escape. Ese, en el código, terminó escrito como `0xFE0F.toChar()`: un
+carácter que no se ve en el editor es un carácter que alguien borra sin darse
+cuenta, y después nadie encuentra por qué un emoji dejó de dibujarse.
+
+### Evidencias
+
+Ocho capturas en
+[`docs/evidencias/emojis-y-honestidad/`](evidencias/emojis-y-honestidad/), con
+su propio README: lo nuevo, el defecto de las tres caras antes y después, y lo
+que dice la pantalla con el servidor caído a propósito.
+
+**1619 pruebas en verde**: 1323 de integración en 35 suites, 75 de JUnit en el
+servidor y 221 en la app. Las 25 nuevas son de `EmojisTest`, y tres de ellas se
+validaron **rompiendo el código a propósito** —quitando el `quitarTono` del
+principio de `aplicarTono` y cambiando el prefijo por subcadena— para
+comprobar que fallan contra la versión mala. Una prueba que no falla contra el
+código roto no prueba nada.

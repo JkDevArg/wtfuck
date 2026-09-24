@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -117,6 +118,9 @@ class Repositorio(
 ) {
 
     private val TAG = "Repo"
+
+    /** Clave del tono de piel en `ajuste_local`. */
+    private val CLAVE_TONO = "tono_piel"
 
     /**
      * Cuanto silencio cuenta como "ya llego todo".
@@ -2055,8 +2059,21 @@ class Repositorio(
     //  Modulo J: varios dispositivos por cuenta
     // ============================================================
 
-    suspend fun dispositivos(): List<DispositivoInfo> =
-        runCatching { api.dispositivos().dispositivos }.getOrElse { emptyList() }
+    /**
+     * Modulo Z.5 - Mis dispositivos, o `null` si no se pudo preguntar.
+     *
+     * **Nullable, y esto no es un detalle de estilo.** Devolvia lista vacia al
+     * fallar, y una lista vacia aqui significa "esta cuenta no tiene ningun
+     * otro aparato vinculado". Eso es una **afirmacion de seguridad**: es
+     * justo lo que alguien viene a mirar cuando sospecha que le entraron a la
+     * cuenta. Decirselo porque se cayo la red es la peor respuesta posible,
+     * porque es tranquilizadora y falsa.
+     *
+     * Con `null` la pantalla puede decir "no se pudo comprobar" y ofrecer
+     * reintentar, que es lo unico honesto cuando no se pudo preguntar.
+     */
+    suspend fun dispositivos(): List<DispositivoInfo>? =
+        runCatching { api.dispositivos().dispositivos }.getOrNull()
 
     suspend fun emitirCodigoVinculacion(password: String): Result<CodigoVinculacion> =
         runCatching { api.emitirCodigoVinculacion(password) }
@@ -2260,8 +2277,15 @@ class Repositorio(
     suspend fun pedirEliminacion(password: String, totp: String?): Result<EliminacionPedida> =
         runCatching { api.pedirEliminacion(EliminarCuentaReq(password, totp?.ifBlank { null })) }
 
-    suspend fun sesiones(): List<SesionActiva> =
-        runCatching { api.sesiones().sesiones }.getOrElse { emptyList() }
+    /**
+     * Mis sesiones abiertas, o `null` si no se pudo preguntar.
+     *
+     * Mismo caso que `dispositivos`, y si cabe peor: una lista vacia de
+     * sesiones se lee como "nadie mas tiene tu cuenta abierta". Ver la nota de
+     * alli.
+     */
+    suspend fun sesiones(): List<SesionActiva>? =
+        runCatching { api.sesiones().sesiones }.getOrNull()
 
     suspend fun cerrarSesionRemota(id: String): Result<Unit> =
         runCatching { api.cerrarSesionRemota(id) }
@@ -2282,6 +2306,69 @@ class Repositorio(
             .associate { it.username to it.alias }
         return usernames.associateWith { libreta[it.lowercase()] ?: it }
     }
+
+    // ============================================================
+    //  Modulo Z.1 - Emojis usados
+    // ============================================================
+
+    /**
+     * Los emojis que esta persona mas usa, para la pestana Recientes.
+     *
+     * Devuelve solo los glifos: la pestana no necesita el contador, y sacarlo
+     * de la firma evita que alguien lo pinte en la pantalla. Cuantas veces uso
+     * alguien un emoji es un dato para ordenar, no para mostrarle.
+     */
+    val emojisRecientes: Flow<List<String>> =
+        dao.emojisUsados().map { filas -> filas.map { it.emoji } }
+
+    /**
+     * Anota que se uso uno.
+     *
+     * Se guarda el glifo **con su tono**: quien eligio un tono de piel espera
+     * verlo en Recientes con ese tono, no el amarillo de fabrica.
+     *
+     * No propaga el fallo. Perder una cuenta de uso no puede impedir que el
+     * emoji se mande: el efecto que la persona pidio es escribirlo.
+     */
+    suspend fun usarEmoji(glifo: String) {
+        if (glifo.isBlank()) return
+        runCatching { dao.sumarEmoji(glifo, System.currentTimeMillis()) }
+            .onFailure { Log.w(TAG, "No se pudo anotar el emoji usado: ${it.message}") }
+    }
+
+    /** Vacia la lista de Recientes. Lo pide Privacidad, y es solo local. */
+    suspend fun olvidarEmojisUsados() = dao.olvidarEmojis()
+
+    /**
+     * El tono de piel elegido para los emojis que lo admiten.
+     *
+     * Vacio = el amarillo de fabrica, que **no** es "el primero de la lista"
+     * sino una opcion mas y la que elige quien no quiere elegir.
+     */
+    val tonoDePiel: Flow<String> =
+        dao.ajusteLocal(CLAVE_TONO).map { it ?: TONO_POR_DEFECTO }
+
+    suspend fun ponerTonoDePiel(tono: String) =
+        dao.guardarAjusteLocal(AjusteLocalEnt(CLAVE_TONO, tono))
+
+    /**
+     * Modulo Z.4 - Los stickers etiquetados con este emoji.
+     *
+     * Se filtra en memoria y no con una consulta: la coleccion entera de una
+     * persona son decenas de filas, ya esta en un Flow vivo, y una consulta
+     * nueva por cada tecla del compositor seria pegarle a la base cifrada
+     * mientras alguien escribe.
+     *
+     * Devuelve **vacio** si el emoji viene vacio, y eso es correcto: aqui "no
+     * hay nada que sugerir" y "no se pudo preguntar" son lo mismo, porque la
+     * fuente es local y no falla por red. Donde no lo son -las lecturas contra
+     * el servidor- este repositorio devuelve `null`. Ver `publicaciones`.
+     */
+    fun stickersConEmoji(emoji: String): Flow<List<StickerEnt>> =
+        stickers.map { todos ->
+            if (emoji.isBlank()) emptyList()
+            else todos.filter { it.emoji == emoji }.sortedByDescending { it.usadoEn }
+        }
 
     // ============================================================
     //  Modulo Y · Stickers propios
@@ -2511,8 +2598,15 @@ class Repositorio(
     suspend fun reconocerAdvertencia(id: String): Result<Unit> =
         runCatching { api.reconocerAdvertencia(id) }
 
-    suspend fun misEventosSeguridad(): List<EventoSeguridad> =
-        runCatching { api.misEventos().eventos }.getOrElse { emptyList() }
+    /**
+     * Mis eventos de seguridad, o `null` si no se pudo preguntar.
+     *
+     * Es el registro de ingresos, cambios de clave e intentos fallidos. Vacio
+     * significa "no paso nada raro con tu cuenta"; no poder preguntarlo
+     * significa otra cosa y tiene que verse distinto.
+     */
+    suspend fun misEventosSeguridad(): List<EventoSeguridad>? =
+        runCatching { api.misEventos().eventos }.getOrNull()
 
     /**
      * Mi nivel de plataforma, o 0 si no soy staff.

@@ -49,7 +49,14 @@ fun ModeracionPantalla(onAtras: () -> Unit) {
     val ambito = rememberCoroutineScope()
 
     var estado by remember { mutableStateOf<MiEstadoModeracion?>(null) }
-    var eventos by remember { mutableStateOf<List<EventoSeguridad>>(emptyList()) }
+    /**
+     * Modulo Z.5: `null` = no se pudo preguntar. Vacia = no paso nada.
+     *
+     * "Todavia no hay nada registrado" es una afirmacion sobre la seguridad de
+     * la cuenta -ningun ingreso raro, ningun intento fallido-. No se puede
+     * decir sin haberlo preguntado.
+     */
+    var eventos by remember { mutableStateOf<List<EventoSeguridad>?>(null) }
     var cargando by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -114,7 +121,40 @@ fun ModeracionPantalla(onAtras: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
             }
 
-            if (e == null || e.advertencias.isEmpty()) {
+            if (e == null) {
+                /*
+                 * Modulo Z.5. Este `if` decia `e == null || e.advertencias.isEmpty()`
+                 * y las juntaba en una sola rama: con el servidor caido, la
+                 * pantalla afirmaba "No tienes advertencias. Nada que corregir."
+                 *
+                 * Es la peor version del mismo error que en `dispositivos` y
+                 * `sesiones`, por lo que el proyecto ya dice de las
+                 * advertencias: no se pueden silenciar porque una advertencia
+                 * que no llega no cumple su unica funcion, que es dar la
+                 * oportunidad de corregir antes de la sancion. Una advertencia
+                 * que la pantalla NIEGA es lo mismo con un paso mas.
+                 *
+                 * Lo encontre en una captura, mirando la pantalla que acababa
+                 * de arreglar dos bloques mas abajo. El defecto estaba seis
+                 * lineas arriba del que estaba corrigiendo.
+                 */
+                item {
+                    EstadoDeError(
+                        titulo = "No se pudo comprobar",
+                        detalle = "No pudimos leer el estado de tu cuenta. Esto NO " +
+                            "quiere decir que no tengas advertencias.",
+                        onReintentar = {
+                            cargando = true
+                            ambito.launch {
+                                estado = app.repo.miEstadoModeracion()
+                                eventos = app.repo.misEventosSeguridad()
+                                cargando = false
+                            }
+                        },
+                    )
+                    Spacer(Modifier.height(20.dp))
+                }
+            } else if (e.advertencias.isEmpty()) {
                 item {
                     Text(
                         "No tienes advertencias. Nada que corregir.",
@@ -160,7 +200,24 @@ fun ModeracionPantalla(onAtras: () -> Unit) {
                 Spacer(Modifier.height(10.dp))
             }
 
-            if (eventos.isEmpty()) {
+            val registro = eventos
+            if (registro == null) {
+                item {
+                    EstadoDeError(
+                        titulo = "No se pudo comprobar",
+                        detalle = "No pudimos leer el registro de seguridad de tu " +
+                            "cuenta. Esto NO quiere decir que no haya nada.",
+                        onReintentar = {
+                            cargando = true
+                            ambito.launch {
+                                estado = app.repo.miEstadoModeracion()
+                                eventos = app.repo.misEventosSeguridad()
+                                cargando = false
+                            }
+                        },
+                    )
+                }
+            } else if (registro.isEmpty()) {
                 item {
                     Text(
                         "Todavia no hay nada registrado.",
@@ -169,7 +226,7 @@ fun ModeracionPantalla(onAtras: () -> Unit) {
                     )
                 }
             } else {
-                items(eventos) { ev -> FilaEvento(ev) }
+                items(registro) { ev -> FilaEvento(ev) }
             }
         }
     }

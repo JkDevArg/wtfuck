@@ -57,7 +57,15 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
 
-    var lista by remember { mutableStateOf<List<DispositivoInfo>>(emptyList()) }
+    /**
+     * Modulo Z.5: `null` = **no se pudo preguntar**, lista vacia = no hay.
+     *
+     * Antes era una lista a secas y un fallo de red dejaba la pantalla
+     * diciendo que esta cuenta no tiene ningun otro aparato vinculado. Quien
+     * entra aqui suele entrar porque sospecha algo; contestarle eso, sin
+     * haberlo comprobado, es la peor respuesta que puede dar esta pantalla.
+     */
+    var lista by remember { mutableStateOf<List<DispositivoInfo>?>(null) }
     var cargando by remember { mutableStateOf(true) }
     var codigo by remember { mutableStateOf<CodigoVinculacion?>(null) }
     var pidiendoClave by remember { mutableStateOf<String?>(null) }
@@ -69,7 +77,7 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
     }
     LaunchedEffect(Unit) { recargar() }
 
-    val esteEsPrincipal = lista.any { it.esEste && it.principal }
+    val esteEsPrincipal = lista?.any { it.esEste && it.principal } == true
 
     Scaffold(
         containerColor = BgBase,
@@ -92,6 +100,20 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
             return@Scaffold
         }
 
+        val actual = lista
+        if (actual == null) {
+            Box(Modifier.fillMaxSize().padding(pad), Alignment.Center) {
+                EstadoDeError(
+                    titulo = "No se pudo comprobar",
+                    detalle = "No pudimos preguntarle al servidor que dispositivos " +
+                        "tiene vinculados tu cuenta. Esto NO quiere decir que no haya " +
+                        "ninguno.",
+                    onReintentar = { cargando = true; ambito.launch { recargar() } },
+                )
+            }
+            return@Scaffold
+        }
+
         Column(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -104,7 +126,7 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
             )
             Spacer(Modifier.height(16.dp))
 
-            lista.forEach { d ->
+            actual.forEach { d ->
                 FilaDispositivo(
                     d = d,
                     puedeGestionar = esteEsPrincipal,

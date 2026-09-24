@@ -68,6 +68,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.wtfuck.app.WtfuckApp
+import com.wtfuck.app.datos.emojiSolo
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.datos.EstadoConexion
 import com.wtfuck.app.datos.jsonApp
@@ -687,6 +688,36 @@ fun ChatPantalla(
                                 texto.text, texto.selection.start, c.username,
                             )
                             texto = TextFieldValue(t, TextRange(cur))
+                        },
+                    )
+                }
+                // Modulo Z.4: escribir un emoji y nada mas ofrece los
+                // stickers etiquetados con el. Se calcula en cada tecla y no
+                // cuesta nada: `emojiSolo` devuelve "" en cuanto hay una letra,
+                // que es el caso normal, y el filtro es sobre una lista que ya
+                // esta en memoria.
+                val emojiEscrito = emojiSolo(texto.text)
+                val sugeridos by remember(emojiEscrito) {
+                    app.repo.stickersConEmoji(emojiEscrito)
+                }.collectAsStateWithLifecycle(emptyList())
+                if (emojiEscrito.isNotBlank()) {
+                    TiraDeStickersSugeridos(
+                        stickers = sugeridos,
+                        onElegir = { s ->
+                            // Se limpia el emoji: la persona eligio el sticker
+                            // EN VEZ del emoji, no ademas de el. Dejarlo
+                            // escrito manda las dos cosas.
+                            texto = TextFieldValue("")
+                            ambito.launch {
+                                app.repo.usarSticker(s.id)
+                                runCatching {
+                                    app.repo.enviarAdjunto(
+                                        conversacionId,
+                                        android.net.Uri.fromFile(java.io.File(s.archivo)),
+                                        ClaseAdjunto.STICKER,
+                                    )
+                                }.onFailure { aviso = it.message }
+                            }
                         },
                     )
                 }

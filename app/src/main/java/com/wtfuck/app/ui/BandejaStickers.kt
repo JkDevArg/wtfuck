@@ -743,3 +743,67 @@ private fun BotonDePack(
         contentAlignment = Alignment.Center,
     ) { contenido() }
 }
+
+/**
+ * Módulo Z.4 · Los stickers que coinciden con el emoji que se está escribiendo.
+ *
+ * ## Por qué existe
+ *
+ * Es el atajo que tienen las dos apps de referencia y que aquí faltaba:
+ * escribir 😂 y que aparezcan los stickers etiquetados con 😂, sin abrir el
+ * panel, sin elegir pestaña, sin buscar. Convierte tres toques en uno.
+ *
+ * Y es lo que le da sentido a la etiqueta. Hasta ahora el emoji del sticker
+ * sólo servía para filtrar **dentro** de la bandeja, o sea para quien ya
+ * decidió mandar un sticker. Esto lo usa en el momento anterior: cuando la
+ * persona todavía está eligiendo **qué** mandar.
+ *
+ * ## Por qué no se cierra sola ni tapa nada
+ *
+ * Va entre el selector de menciones y el campo de texto, en la misma franja
+ * que ya se usa para sugerir. Si no hay coincidencias no se dibuja: una tira
+ * vacía sería un hueco que empuja el teclado por nada.
+ */
+@Composable
+internal fun TiraDeStickersSugeridos(
+    stickers: List<StickerEnt>,
+    onElegir: (StickerEnt) -> Unit,
+) {
+    if (stickers.isEmpty()) return
+    Column {
+        LazyRow(
+            Modifier
+                .fillMaxWidth()
+                .background(BgElev)
+                .padding(vertical = 6.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items(stickers, key = { it.id }) { s ->
+                Box(
+                    Modifier
+                        .size(62.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onElegir(s) }
+                        .semantics {
+                            contentDescription = buildString {
+                                append("Sticker sugerido")
+                                if (s.emoji.isNotBlank()) append(" ${s.emoji}")
+                                if (s.animado) append(", con movimiento")
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(File(s.archivo))
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                    )
+                }
+            }
+        }
+        HorizontalDivider(color = Slate.copy(alpha = 0.25f))
+    }
+}

@@ -9,8 +9,8 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-24: 1594 pruebas en verde** (1323 de integración + 271 de
-JUnit) con todo levantado; **1503** en la configuración mínima, porque dos
+**Estado al 2026-09-24: 1619 pruebas en verde** (1323 de integración + 296 de
+JUnit) con todo levantado; **1528** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
 Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
 beta cerrada**.
@@ -40,9 +40,9 @@ cliente web de mensajería.
 | 12 | Almacenamiento | ✅ | D.7 |
 | 13 | Moderación | ✅ la sanción alcanza también al perfil público | B, G, R.1 |
 | 14 | Arquitectura | ✅ | — |
-| 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada | L, L.8, N.2, N.3, N.5 |
+| 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada · ninguna pantalla afirma lo que no comprobó (X, Z.5) | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero | A, N.7, N.8 |
-| 17 | Calidad y pruebas | ✅ 1594 con todo levantado · 1503 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1619 con todo levantado · 1528 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -57,7 +57,7 @@ cliente web de mensajería.
 | Texto, imágenes, videos, audios, documentos | ✅ |
 | Mensajes de voz | ✅ con adelantar y velocidad 1x/1.5x/2x (N.12) |
 | Llamadas de audio y video | ✅ módulo K, con ventana flotante |
-| Respuestas, reacciones, menciones, reenvíos | ✅ una reacción por persona (V25) · responder deslizando (N.13) · menciones con selector y resaltado (T.2) · emojis, GIFs y stickers en un panel de tres pestañas (Y.3) |
+| Respuestas, reacciones, menciones, reenvíos | ✅ una reacción por persona (V25) · responder deslizando (N.13) · menciones con selector y resaltado (T.2) · emojis, GIFs y stickers en un panel de tres pestañas (Y.3), con recientes, buscador, tonos de piel y stickers sugeridos al escribir un emoji (Z) |
 | Mensajes fijados | ✅ |
 | Búsqueda global y dentro de conversaciones | ✅ las dos (M.3) |
 | Notificaciones push | 🔨 locales sí; FCM no: necesita credenciales de Firebase |
@@ -443,8 +443,9 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1594 pruebas con todo levantado**: 1323 de integración en 35 suites de Node,
-32 de JUnit en el servidor (RBAC, seguridad y el intermediario de GIFs) y 106 en
+**1619 pruebas con todo levantado**: 1323 de integración en 35 suites de Node,
+75 de JUnit en el servidor (RBAC, seguridad, cuentas, auditoría y el
+intermediario de GIFs) y 221 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el
 contenido de un sobre que no escribió esta app: miniaturas y duraciones
 incluidas).
@@ -453,7 +454,7 @@ incluidas).
 === 35 suites · 1323 pasan, 0 fallan ===
 ```
 
-**1503 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
+**1528 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
 diferencia no es un fallo: dos suites necesitan más que el servidor y lo dicen
 en vez de fingir.
 

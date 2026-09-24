@@ -55,7 +55,19 @@ fun CanalPantalla(
     val ambito = rememberCoroutineScope()
 
     var cfg by remember { mutableStateOf<ConfigCanal?>(null) }
-    var feed by remember { mutableStateOf<List<Publicacion>>(emptyList()) }
+    /**
+     * Modulo Z.5: `null` = no se pudo leer el muro. Vacia = no hay nada.
+     *
+     * Antes era una lista a secas: `publicaciones` ya devolvia `null` al
+     * fallar -eso se arreglo en el modulo X- y **esta pantalla lo tiraba** con
+     * un `?: emptyList()`. El comentario de `refrescar` decia que estaba
+     * resuelto y el codigo de al lado lo deshacia.
+     *
+     * El caso que quedaba vivo: `canal` responde y `publicaciones` no. Son
+     * dos peticiones distintas, asi que pasa, y la pantalla decia "Este canal
+     * todavia no tiene publicaciones".
+     */
+    var feed by remember { mutableStateOf<List<Publicacion>?>(null) }
     var texto by remember { mutableStateOf("") }
     var cargando by remember { mutableStateOf(true) }
     var aviso by remember { mutableStateOf<String?>(null) }
@@ -89,7 +101,7 @@ fun CanalPantalla(
         // devolvia `emptyList()` en el error, asi que la pantalla decia
         // "este canal todavia no tiene publicaciones": **afirmaba algo falso
         // sobre el canal cuando lo unico que pasaba era que no habia red**.
-        feed = app.repo.publicaciones(conversacionId) ?: emptyList()
+        feed = app.repo.publicaciones(conversacionId)
         fallo = cfg == null
         cargando = false
     }
@@ -340,7 +352,18 @@ fun CanalPantalla(
                     )
                 }
 
-                feed.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                // El muro no se pudo leer, aunque la configuracion del canal
+                // si. Dos peticiones, dos resultados posibles.
+                feed == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    EstadoDeError(
+                        titulo = "No se pudieron cargar las publicaciones",
+                        detalle = "El canal esta, pero no pudimos leer su muro. " +
+                            "Esto NO quiere decir que no tenga publicaciones.",
+                        onReintentar = { ambito.launch { cargando = true; refrescar() } },
+                    )
+                }
+
+                feed!!.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(
                         Modifier.padding(36.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -371,7 +394,7 @@ fun CanalPantalla(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                 ) {
-                    items(feed, key = { it.mensajeId }) { p ->
+                    items(feed.orEmpty(), key = { it.mensajeId }) { p ->
                         TarjetaPublicacion(p, cfg?.comentarios == true)
                     }
                 }

@@ -75,7 +75,14 @@ fun CuentaPantalla(
     val ambito = rememberCoroutineScope()
 
     var estado by remember { mutableStateOf<EstadoCuenta?>(null) }
-    var sesiones by remember { mutableStateOf<List<SesionActiva>>(emptyList()) }
+    /**
+     * Modulo Z.5: `null` = no se pudo preguntar. Vacia = no hay ninguna.
+     *
+     * Una lista vacia de sesiones se lee como "nadie mas tiene tu cuenta
+     * abierta". Es exactamente lo que alguien viene a comprobar aqui, y
+     * decirselo por un fallo de red es tranquilizarlo con algo que no se sabe.
+     */
+    var sesiones by remember { mutableStateOf<List<SesionActiva>?>(null) }
     var cargando by remember { mutableStateOf(true) }
     var aviso by remember { mutableStateOf<String?>(null) }
 
@@ -339,7 +346,18 @@ fun CuentaPantalla(
             )
             Spacer(Modifier.height(10.dp))
 
-            sesiones.forEach { s ->
+            val abiertas = sesiones
+            if (abiertas == null) {
+                // Sin lista no se dibuja ni una fila ni un "no hay ninguna":
+                // se dice que no se pudo mirar, que es lo unico cierto.
+                EstadoDeError(
+                    titulo = "No se pudo comprobar",
+                    detalle = "No pudimos preguntarle al servidor que sesiones tenes " +
+                        "abiertas. Esto NO quiere decir que no haya ninguna.",
+                    onReintentar = { cargando = true; ambito.launch { recargar() } },
+                )
+            }
+            abiertas?.forEach { s ->
                 FilaSesion(s) {
                     ambito.launch {
                         app.repo.cerrarSesionRemota(s.id)
@@ -349,7 +367,7 @@ fun CuentaPantalla(
                 }
             }
 
-            if (sesiones.size > 1) {
+            if ((abiertas?.size ?: 0) > 1) {
                 Spacer(Modifier.height(6.dp))
                 TextButton(onClick = {
                     ambito.launch {

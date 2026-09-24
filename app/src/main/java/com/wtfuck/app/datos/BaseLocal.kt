@@ -429,6 +429,54 @@ data class StickerEnt(
     val animado: Boolean,
 )
 
+/**
+ * Modulo Z.1 - Cuantas veces se uso cada emoji, y cuando.
+ *
+ * ## Por que esto esta en la base cifrada y no en SharedPreferences
+ *
+ * Porque **es informacion sobre la persona**. Los ajustes que van en prefs sin
+ * cifrar -el tema, el idioma- no dicen nada de nadie. La lista de los emojis
+ * que alguien usa si dice: hay banderas, hay simbolos de salud, hay cosas que
+ * una persona puede no querer que se lean si le agarran el telefono.
+ *
+ * Es del mismo tipo de dato que el uso de stickers, que ya vive aqui. Que sea
+ * mas chico no lo hace menos suyo.
+ *
+ * ## Por que dos columnas y no una lista ordenada
+ *
+ * Porque "recientes" a secas es una mala pestana. Con solo recencia, el emoji
+ * que alguien manda cincuenta veces al dia se cae de la lista en cuanto prueba
+ * veinticuatro distintos una tarde. Con solo frecuencia, un emoji nuevo tarda
+ * semanas en subir. Se guardan las dos y se ordena por **veces y despues por
+ * cuando**: lo mucho usado se queda quieto y lo nuevo igual escala.
+ */
+/**
+ * Modulo Z.3 - Ajustes chicos que **si** dicen algo de la persona.
+ *
+ * ## Por que no van en SharedPreferences como los demas
+ *
+ * `Ajustes` guarda el tema, el idioma, la calidad de imagen: cosas que no
+ * identifican a nadie, y por eso estan en prefs sin cifrar a proposito -ver la
+ * nota de `Bloqueo`-. El tono de piel elegido para los emojis no es de esa
+ * clase: es un dato sobre quien usa el telefono.
+ *
+ * Esta tabla existe para no tener que elegir entre "lo meto en prefs y aflojo
+ * la regla" y "le hago una tabla propia a cada valor suelto".
+ */
+@Entity(tableName = "ajuste_local")
+data class AjusteLocalEnt(
+    @PrimaryKey val clave: String,
+    val valor: String,
+)
+
+@Entity(tableName = "emoji_uso")
+data class EmojiUsoEnt(
+    /** El glifo tal cual se manda, **con** su tono de piel si lo tiene. */
+    @PrimaryKey val emoji: String,
+    val veces: Long,
+    val usadoEn: Long,
+)
+
 // ============================================================
 //  DAO
 // ============================================================
@@ -528,6 +576,36 @@ interface ChatDao {
 
     @Query("UPDATE sticker_pack SET nombre = :nombre WHERE id = :pack")
     suspend fun renombrarPack(pack: String, nombre: String)
+
+    // ------------------------------------------------------ emojis usados
+
+    /**
+     * Suma uno. En una sola sentencia y no leer-modificar-escribir: mandar dos
+     * emojis rapido son dos corrutinas, y con lectura previa una pisa a la otra.
+     */
+    @Query(
+        """INSERT INTO emoji_uso (emoji, veces, usadoEn) VALUES (:e, 1, :cuando)
+           ON CONFLICT(emoji) DO UPDATE SET veces = veces + 1, usadoEn = :cuando"""
+    )
+    suspend fun sumarEmoji(e: String, cuando: Long)
+
+    /**
+     * Los mas usados primero, desempatando por los mas recientes.
+     *
+     * 32 y no 24: la rejilla tiene ocho columnas de ancho tipico, y un resto de
+     * media fila se lee como si la lista estuviera cortada a la mitad.
+     */
+    @Query("SELECT * FROM emoji_uso ORDER BY veces DESC, usadoEn DESC LIMIT 32")
+    fun emojisUsados(): Flow<List<EmojiUsoEnt>>
+
+    @Query("DELETE FROM emoji_uso")
+    suspend fun olvidarEmojis()
+
+    @Query("SELECT valor FROM ajuste_local WHERE clave = :clave")
+    fun ajusteLocal(clave: String): Flow<String?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarAjusteLocal(a: AjusteLocalEnt)
 
     @Query("SELECT COUNT(*) FROM sticker")
     suspend fun cuantosStickers(): Int
@@ -866,8 +944,10 @@ interface ChatDao {
         ContactoEnt::class,
         StickerEnt::class,
         PackEnt::class,
+        EmojiUsoEnt::class,
+        AjusteLocalEnt::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -886,7 +966,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .openHelperFactory(factory)
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
-                    DE_15_A_16,
+                    DE_15_A_16, DE_16_A_17,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1019,6 +1099,35 @@ abstract class BaseLocal : RoomDatabase() {
          * Sin `DEFAULT` en el CREATE: los valores por defecto viven en el
          * constructor de las entidades. Ver la nota de `CREAR_HISTORIA`.
          */
+        /**
+         * La tabla de uso de emojis.
+         *
+         * Se crea **vacia** y no se rellena con nada: no hay de donde sacar el
+         * historial de uso de quien ya venia usando la app, y poner un punado
+         * de emojis "populares" de fabrica seria inventarle gustos a alguien.
+         * La pestana Recientes no existe hasta que hay algo que mostrar.
+         *
+         * Sin `DEFAULT` en el CREATE: los valores por defecto viven en el
+         * constructor de la entidad. Ver la nota de `CREAR_HISTORIA`.
+         */
+        private val DE_16_A_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS emoji_uso (
+                           emoji TEXT NOT NULL PRIMARY KEY,
+                           veces INTEGER NOT NULL,
+                           usadoEn INTEGER NOT NULL
+                       )"""
+                )
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS ajuste_local (
+                           clave TEXT NOT NULL PRIMARY KEY,
+                           valor TEXT NOT NULL
+                       )"""
+                )
+            }
+        }
+
         private val DE_15_A_16 = object : Migration(15, 16) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
