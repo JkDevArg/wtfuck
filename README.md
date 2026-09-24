@@ -17,9 +17,9 @@ docs/       decisiones de arquitectura, hoja de ruta, API, despliegue
 ## Estado
 
 Servidor y app funcionando, verificados en dos emuladores.
-**1569 pruebas en verde** con todo levantado (1323 de integración en 35 suites,
-75 de JUnit en el servidor, 171 en la app). En la configuración mínima —una
-instancia, sin Redis ni push— son **1478**: dos suites se omiten cuando les
+**1575 pruebas en verde** con todo levantado (1323 de integración en 35 suites,
+75 de JUnit en el servidor, 177 en la app). En la configuración mínima —una
+instancia, sin Redis ni push— son **1484**: dos suites se omiten cuando les
 falta el entorno, y el runner las marca `OMIT` en vez de `OK`.
 
 Tres de ellas **hacen ataques de verdad**:
@@ -74,6 +74,7 @@ quien no debe.
 | U | Bloqueo de la app con huella o PIN, y estados de error honestos | ✅ |
 | V | Depuración visual de la lista de chats | ✅ |
 | W | Las hojas de formulario se abren enteras (el botón quedaba fuera) | ✅ |
+| X | Privacidad no muestra ni guarda ajustes que no pudo leer | ✅ |
 
 **Lo que falta, y por qué:**
 

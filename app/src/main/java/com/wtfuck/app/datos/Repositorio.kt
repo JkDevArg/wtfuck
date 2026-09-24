@@ -152,8 +152,41 @@ class Repositorio(
     private val _miPerfil = MutableStateFlow<UsuarioPublico?>(null)
     val miPerfil = _miPerfil.asStateFlow()
 
-    private val _privacidad = MutableStateFlow(Privacidad())
+    /**
+     * Mis ajustes de privacidad, o **null si todavia no se pudieron leer**.
+     *
+     * ## Por que es nullable y antes no lo era
+     *
+     * Arrancaba en `Privacidad()`, o sea en los valores por DEFECTO, que son
+     * los mas permisivos: foto, estado, nombre y biografia en "todos". Cuando
+     * la lectura fallaba —sin red, servidor caido— nadie se enteraba y la
+     * pantalla dibujaba esos defectos **como si fueran la configuracion de la
+     * persona**.
+     *
+     * Medido: con la base diciendo `nadie` en cinco ajustes, la pantalla
+     * mostraba **"Todos" en los cinco**. No "no se pudo cargar": lo contrario
+     * de la verdad, en la pantalla cuyo unico trabajo es decir quien te ve.
+     *
+     * Y hay una segunda cara peor. Guardar manda **los quince campos** y el
+     * servidor sobrescribe las quince columnas, asi que tocar un solo ajuste
+     * partiendo de los defectos escribiria los otros catorce con los valores
+     * permisivos. Con `null` eso deja de ser posible por construccion: no se
+     * puede guardar lo que no se pudo leer.
+     */
+    private val _privacidad = MutableStateFlow<Privacidad?>(null)
     val privacidad = _privacidad.asStateFlow()
+
+    /**
+     * Lo que se asume mientras no se sepa. **Solo para decidir que MANDA este
+     * aparato**, nunca para dibujar.
+     *
+     * Con `escribiendo = false`: si no se sabe si la persona permite el aviso
+     * de "escribiendo", no se manda. Es una senal sobre ella, y ante la duda
+     * no se emite. Lo contrario —asumir que si— filtra un dato propio por un
+     * fallo de red.
+     */
+    private val PRIVACIDAD_PRUDENTE = Privacidad(escribiendo = false, lectura = false)
+
 
     /** Avisos recien llegados, para que la UI dispare la notificacion. */
     private val _avisos = MutableSharedFlow<Bajada.Evento>(extraBufferCapacity = 16)
@@ -212,7 +245,7 @@ class Repositorio(
     private val ultimoAvisoEscritura = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     fun avisarQueEscribo(convId: String) {
-        if (_privacidad.value.escribiendo.not()) return
+        if (!emiteEscribiendo(_privacidad.value)) return
         val ahora = System.currentTimeMillis()
         val previo = ultimoAvisoEscritura[convId] ?: 0L
         if (ahora - previo < 4_000) return
@@ -464,9 +497,25 @@ class Repositorio(
     suspend fun guardarExcepciones(e: ExcepcionesPrivacidad): Result<List<ExcepcionesPrivacidad>> =
         runCatching { api.guardarExcepciones(e).ajustes }
 
+    /**
+     * Guarda los ajustes. **Falla si no se habian leido antes.**
+     *
+     * La comprobacion parece de mas —la pantalla ya no ofrece los controles
+     * sin datos— y es justo la que impide que el defecto vuelva por otra
+     * puerta: cualquier pantalla futura que llame a esto con un objeto armado
+     * a mano estaria escribiendo los quince campos sobre la configuracion real
+     * de alguien.
+     */
     suspend fun guardarPrivacidad(p: Privacidad) {
+        check(_privacidad.value != null) {
+            "No se pueden guardar ajustes de privacidad que nunca se leyeron."
+        }
         _privacidad.value = api.guardarPrivacidad(p)
     }
+
+    /** Reintenta leer los ajustes. Devuelve si se pudo. */
+    suspend fun cargarPrivacidad(): Boolean =
+        runCatching { api.privacidad() }.onSuccess { _privacidad.value = it }.isSuccess
 
     suspend fun guardarPerfil(nombre: String, estado: String) {
         _miPerfil.value = api.guardarPerfil(nombre, estado)
@@ -742,7 +791,7 @@ class Repositorio(
             // envio -es una preferencia propia y no hace falta molestar al
             // servidor en cada rafaga de tecleo-.
             is Bajada.Escribiendo -> {
-                if (_privacidad.value.escribiendo) {
+                if (emiteEscribiendo(_privacidad.value)) {
                     _escribiendo.value = _escribiendo.value +
                         (msg.conversacionId to (msg.username to System.currentTimeMillis()))
                 }

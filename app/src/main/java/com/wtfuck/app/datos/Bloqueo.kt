@@ -105,3 +105,31 @@ class AjustesBloqueo(ctx: android.content.Context) {
         ultimoDesbloqueo = 0L
     }
 }
+
+// ===========================================================================
+//  Privacidad sin cargar
+// ===========================================================================
+
+/**
+ * Si este aparato emite —y muestra— el aviso de "escribiendo".
+ *
+ * ## Por qué es una función y por qué `null` significa NO
+ *
+ * Los ajustes pueden no haberse leído todavía: sin red, o antes de que vuelva
+ * la primera petición. La pregunta es qué hacer mientras tanto, y sólo hay dos
+ * respuestas posibles.
+ *
+ * Asumir que **sí** es lo que hacía el código antes, por accidente: el estado
+ * arrancaba en `Privacidad()` y el valor por defecto de `escribiendo` es
+ * `true`. O sea que un fallo de red hacía que el aparato emitiera una señal
+ * sobre su dueño que quizá tiene apagada. **Un ajuste de privacidad no se
+ * puede dar por concedido porque falló una consulta.**
+ *
+ * Asumir que **no** cuesta que, durante unos segundos tras abrir la app sin
+ * conexión, el otro lado no vea "escribiendo...". Nadie lo nota, y si lo nota
+ * no se enteró de nada sobre nadie.
+ *
+ * Vale para las dos direcciones porque el ajuste es recíproco: quien no lo
+ * emite tampoco lo ve.
+ */
+fun emiteEscribiendo(priv: com.wtfuck.protocol.Privacidad?): Boolean = priv?.escribiendo == true

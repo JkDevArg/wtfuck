@@ -4134,3 +4134,62 @@ Ahora se cierra sólo al terminar bien, el error aparece dentro diciendo que no
 se perdió nada, y el botón muestra "Publicando…" mientras tanto —también para
 que un segundo toque no publique dos historias, que con un archivo tarda lo
 suficiente como para dudar y volver a tocar—.
+
+---
+
+## Módulo X · La pantalla de Privacidad mentía sin conexión ✅
+
+*Salió de barrer el patrón `getOrElse { emptyList() }` que ya había mordido
+tres veces, y resultó ser peor de lo que buscaba.*
+
+### X.1 · Mostraba lo contrario de la verdad
+
+El estado arrancaba en `Privacidad()` —los valores **por defecto**, que son los
+más permisivos— y la carga fallaba en silencio. Medido: con `nadie` guardado en
+cinco ajustes, la pantalla mostraba **"Todos" en los cinco**. No "no se pudo
+cargar": lo contrario de la verdad, en la única pantalla cuyo trabajo es decir
+quién te ve.
+
+Es el mismo error que el módulo U, un escalón más arriba. Allí una lista vacía
+decía "no hay nada" cuando quería decir "no pude preguntar"; aquí un objeto por
+defecto decía "esto es tuyo" cuando quería decir lo mismo. **Un valor inicial
+no es un dato: es la ausencia de uno.**
+
+### X.2 · Y la segunda cara, cerrada por construcción
+
+Guardar manda los quince campos y el servidor sobrescribe las quince columnas.
+Partiendo de los defectos, tocar un solo ajuste escribiría los otros catorce con
+valores permisivos: **un relajamiento de privacidad causado por un fallo de
+red**, que es justo lo que este proyecto ya se había prohibido una vez.
+
+**No conseguí reproducirlo** —en las dos pruebas la lectura se recuperó antes de
+que guardara— y lo digo porque no quiero apuntarme un defecto que no demostré.
+Pero la ventana existe y no depende de nadie que la cierre a mano.
+
+El arreglo la cierra sin discutir la probabilidad: `_privacidad` pasa a ser
+**nullable**, la pantalla no dibuja ningún control sin datos, y
+`guardarPrivacidad` **falla** si nunca se leyó. No se puede escribir lo que no
+se pudo leer.
+
+### X.3 · "Escribiendo" se emitía sin saber si se podía
+
+El mismo estado por defecto alimentaba la decisión de emitir el aviso de
+"escribiendo", y ese campo viene en `true`. O sea: un fallo de red hacía que el
+aparato emitiera una señal sobre su dueño que quizá tiene apagada.
+
+Ahora `null` es "no sé", y no saber no autoriza nada. Cuesta que durante unos
+segundos tras abrir sin conexión el otro lado no vea "escribiendo…"; nadie lo
+nota, y si lo nota no se enteró de nada sobre nadie. La decisión vive en
+`emiteEscribiendo`, una función, porque el ajuste es **recíproco** —quien no lo
+emite tampoco lo ve— y con dos copias arreglar una dejaría la otra: un espejo
+de una sola dirección.
+
+### Lo que queda de la barrida
+
+Quedan **doce** `getOrElse { emptyList() }` más en el repositorio. Los de las
+pantallas de administración (bitácora, cola de moderación, límites, consolas)
+son del mismo tipo pero de menor daño: un panel vacío se nota, y quien lo mira
+sabe que hay red de por medio. Los de **dispositivos**, **sesiones** y **mis
+eventos** son los que valdría la pena revisar después: decir "no tienes
+dispositivos" o "no tienes sesiones abiertas" en una app de mensajería cifrada
+es una afirmación de seguridad, no una lista vacía.

@@ -44,12 +44,18 @@ import androidx.compose.material.icons.filled.PlaylistAddCheck
 fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
+    // `null` = todavia no se pudieron leer. Ver la nota de `Repositorio`.
     val priv by app.repo.privacidad.collectAsStateWithLifecycle()
 
     var abierto by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var cargando by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) { app.repo.cargarMiPerfil() }
+    LaunchedEffect(Unit) {
+        app.repo.cargarMiPerfil()
+        app.repo.cargarPrivacidad()
+        cargando = false
+    }
 
     fun guardar(nueva: Privacidad) {
         ambito.launch {
@@ -73,6 +79,41 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
             )
         },
     ) { pad ->
+        // **Sin datos no se dibuja ningun ajuste.**
+        //
+        // Antes se dibujaban los valores por DEFECTO, que son los mas
+        // permisivos, y quedaban en pantalla como si fueran la configuracion
+        // de la persona: con `nadie` guardado en cinco ajustes, la pantalla
+        // decia "Todos" en los cinco. En la unica pantalla cuyo trabajo es
+        // decir quien te ve, mostrar lo contrario de la verdad es peor que no
+        // mostrar nada.
+        //
+        // Y ademas cierra la otra mitad: guardar manda los quince campos, asi
+        // que tocar un ajuste partiendo de los defectos escribiria los otros
+        // catorce. Sin controles no hay nada que tocar.
+        val actual = priv
+        if (actual == null) {
+            Box(Modifier.fillMaxSize().padding(pad), Alignment.Center) {
+                if (cargando) {
+                    CircularProgressIndicator(color = Cian)
+                } else {
+                    EstadoDeError(
+                        titulo = "No se pudieron cargar tus ajustes",
+                        detalle = "Revisa tu conexión y vuelve a intentarlo. Tus ajustes " +
+                            "no cambiaron: siguen guardados en el servidor.",
+                        onReintentar = {
+                            ambito.launch {
+                                cargando = true
+                                app.repo.cargarPrivacidad()
+                                cargando = false
+                            }
+                        },
+                    )
+                }
+            }
+            return@Scaffold
+        }
+
         Column(
             Modifier
                 .fillMaxSize()
@@ -82,13 +123,13 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
             Ajuste(
                 icono = Icons.Filled.Photo,
                 titulo = "Quien ve mi foto",
-                valor = priv.foto,
+                valor = actual.foto,
             ) { abierto = "foto" }
 
             Ajuste(
                 icono = Icons.Filled.Info,
                 titulo = "Quien ve mi estado",
-                valor = priv.estado,
+                valor = actual.estado,
             ) { abierto = "estado" }
 
             // Va pegada al estado y no al final: son los dos textos del
@@ -96,25 +137,25 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
             Ajuste(
                 icono = Icons.Filled.Notes,
                 titulo = "Quien ve mi biografia",
-                valor = priv.biografia,
+                valor = actual.biografia,
             ) { abierto = "biografia" }
 
             Ajuste(
                 icono = Icons.Filled.Chat,
                 titulo = "Quien me puede escribir",
-                valor = priv.escribe,
+                valor = actual.escribe,
             ) { abierto = "escribe" }
 
             Ajuste(
                 icono = Icons.Filled.Group,
                 titulo = "Quien me puede agregar a grupos",
-                valor = priv.grupos,
+                valor = actual.grupos,
             ) { abierto = "grupos" }
 
             Ajuste(
                 icono = Icons.Filled.Phone,
                 titulo = "Quien me puede llamar",
-                valor = priv.llamadas,
+                valor = actual.llamadas,
             ) { abierto = "llamadas" }
 
             // Debajo de las llamadas, porque se aplica ADEMAS de ese ajuste:
@@ -123,25 +164,25 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
             Ajuste(
                 icono = Icons.Filled.Videocam,
                 titulo = "Quien me puede hacer videollamadas",
-                valor = priv.videollamadas,
+                valor = actual.videollamadas,
             ) { abierto = "videollamadas" }
 
             Ajuste(
                 icono = Icons.Filled.Badge,
                 titulo = "Quien ve mi nombre",
-                valor = priv.nombre,
+                valor = actual.nombre,
             ) { abierto = "nombre" }
 
             Ajuste(
                 icono = Icons.Filled.Schedule,
                 titulo = "Quien ve mi ultima conexion",
-                valor = priv.ultimaVez,
+                valor = actual.ultimaVez,
             ) { abierto = "ultimaVez" }
 
             Ajuste(
                 icono = Icons.Filled.Search,
                 titulo = "Quien me encuentra por mi usuario",
-                valor = priv.busqueda,
+                valor = actual.busqueda,
             ) { abierto = "busqueda" }
 
             // Este es booleano y no de tres niveles, asi que va con
@@ -151,9 +192,9 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .toggleable(
-                        value = priv.lectura,
+                        value = actual.lectura,
                         role = Role.Switch,
-                        onValueChange = { guardar(priv.copy(lectura = it)) },
+                        onValueChange = { guardar(actual.copy(lectura = it)) },
                     )
                     .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -161,7 +202,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 Icon(
                     Icons.Filled.DoneAll,
                     null,
-                    tint = if (priv.lectura) Cian else Slate,
+                    tint = if (actual.lectura) Cian else Slate,
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(16.dp))
@@ -178,7 +219,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                     )
                 }
                 Switch(
-                    checked = priv.lectura,
+                    checked = actual.lectura,
                     onCheckedChange = null,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = TextoSobreAcento,
@@ -194,9 +235,9 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .toggleable(
-                        value = priv.escribiendo,
+                        value = actual.escribiendo,
                         role = Role.Switch,
-                        onValueChange = { guardar(priv.copy(escribiendo = it)) },
+                        onValueChange = { guardar(actual.copy(escribiendo = it)) },
                     )
                     .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -204,7 +245,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 Icon(
                     Icons.Filled.Edit,
                     null,
-                    tint = if (priv.escribiendo) Cian else Slate,
+                    tint = if (actual.escribiendo) Cian else Slate,
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(16.dp))
@@ -221,7 +262,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                     )
                 }
                 Switch(
-                    checked = priv.escribiendo,
+                    checked = actual.escribiendo,
                     onCheckedChange = null,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = TextoSobreAcento,
@@ -240,9 +281,9 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .toggleable(
-                        value = priv.grabando,
+                        value = actual.grabando,
                         role = Role.Switch,
-                        onValueChange = { guardar(priv.copy(grabando = it)) },
+                        onValueChange = { guardar(actual.copy(grabando = it)) },
                     )
                     .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -250,7 +291,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 Icon(
                     Icons.Filled.Mic,
                     null,
-                    tint = if (priv.grabando) Cian else Slate,
+                    tint = if (actual.grabando) Cian else Slate,
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(16.dp))
@@ -263,7 +304,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                     )
                 }
                 Switch(
-                    checked = priv.grabando,
+                    checked = actual.grabando,
                     onCheckedChange = null,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = TextoSobreAcento,
@@ -282,9 +323,9 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .toggleable(
-                        value = priv.solicitudes,
+                        value = actual.solicitudes,
                         role = Role.Switch,
-                        onValueChange = { guardar(priv.copy(solicitudes = it)) },
+                        onValueChange = { guardar(actual.copy(solicitudes = it)) },
                     )
                     .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -292,7 +333,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 Icon(
                     Icons.Filled.MarkEmailUnread,
                     null,
-                    tint = if (priv.solicitudes) Cian else Slate,
+                    tint = if (actual.solicitudes) Cian else Slate,
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(16.dp))
@@ -305,7 +346,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                     )
                 }
                 Switch(
-                    checked = priv.solicitudes,
+                    checked = actual.solicitudes,
                     onCheckedChange = null,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = TextoSobreAcento,
@@ -387,19 +428,24 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
         }
     }
 
-    abierto?.let { campo ->
+    // El dialogo tambien depende de que haya datos: sin ellos no se abre.
+    // Es inalcanzable —no hay filas que tocar— pero el compilador lo exige y
+    // esta bien que lo exija: es el mismo agujero por otra puerta.
+    val cargados = priv
+    if (abierto != null && cargados != null) {
+        val campo = abierto!!
         val opciones = if (campo == "escribe") Privacidad.NIVELES_ESCRIBE else Privacidad.NIVELES
-        val actual = when (campo) {
-            "foto" -> priv.foto
-            "estado" -> priv.estado
-            "escribe" -> priv.escribe
-            "llamadas" -> priv.llamadas
-            "biografia" -> priv.biografia
-            "videollamadas" -> priv.videollamadas
-            "nombre" -> priv.nombre
-            "ultimaVez" -> priv.ultimaVez
-            "busqueda" -> priv.busqueda
-            else -> priv.grupos
+        val elegido = when (campo) {
+            "foto" -> cargados.foto
+            "estado" -> cargados.estado
+            "escribe" -> cargados.escribe
+            "llamadas" -> cargados.llamadas
+            "biografia" -> cargados.biografia
+            "videollamadas" -> cargados.videollamadas
+            "nombre" -> cargados.nombre
+            "ultimaVez" -> cargados.ultimaVez
+            "busqueda" -> cargados.busqueda
+            else -> cargados.grupos
         }
         AlertDialog(
             onDismissRequest = { abierto = null },
@@ -430,16 +476,16 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                                 .clickable {
                                     guardar(
                                         when (campo) {
-                                            "foto" -> priv.copy(foto = nivel)
-                                            "estado" -> priv.copy(estado = nivel)
-                                            "escribe" -> priv.copy(escribe = nivel)
-                                            "llamadas" -> priv.copy(llamadas = nivel)
-                                            "biografia" -> priv.copy(biografia = nivel)
-                                            "videollamadas" -> priv.copy(videollamadas = nivel)
-                                            "nombre" -> priv.copy(nombre = nivel)
-                                            "ultimaVez" -> priv.copy(ultimaVez = nivel)
-                                            "busqueda" -> priv.copy(busqueda = nivel)
-                                            else -> priv.copy(grupos = nivel)
+                                            "foto" -> cargados.copy(foto = nivel)
+                                            "estado" -> cargados.copy(estado = nivel)
+                                            "escribe" -> cargados.copy(escribe = nivel)
+                                            "llamadas" -> cargados.copy(llamadas = nivel)
+                                            "biografia" -> cargados.copy(biografia = nivel)
+                                            "videollamadas" -> cargados.copy(videollamadas = nivel)
+                                            "nombre" -> cargados.copy(nombre = nivel)
+                                            "ultimaVez" -> cargados.copy(ultimaVez = nivel)
+                                            "busqueda" -> cargados.copy(busqueda = nivel)
+                                            else -> cargados.copy(grupos = nivel)
                                         }
                                     )
                                 }
@@ -449,10 +495,10 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                             Text(
                                 Privacidad.etiqueta(nivel),
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = if (nivel == actual) Cian else TextoPrimario,
+                                color = if (nivel == elegido) Cian else TextoPrimario,
                                 modifier = Modifier.weight(1f),
                             )
-                            if (nivel == actual) {
+                            if (nivel == elegido) {
                                 Icon(Icons.Filled.Check, null, tint = Cian, modifier = Modifier.size(20.dp))
                             }
                         }
