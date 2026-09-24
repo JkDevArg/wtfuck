@@ -4327,3 +4327,63 @@ ninguno" teniendo uno.
 aparecía dentro del diálogo de `aviso`, titulado **"No se pudo completar"**.
 Las confirmaciones tienen ahora su propio aviso, que se va solo y no pide que
 lo cierren: lo que confirma ya pasó, así que no hay nada que perderse.
+
+---
+
+## Módulo Y.3 · Un panel con tres pestañas ✅
+
+*"Separá los GIFs de los stickers" y "el diseño casi igual al de Telegram y
+WhatsApp".*
+
+### Sobre la instrucción de copiar el diseño
+
+El brief decía **no copiar la interfaz** de esas apps. El usuario retiró esa
+instrucción explícitamente y pidió lo contrario: que el diseño sea casi igual.
+Es su producto y su decisión, ya la había planteado yo antes, y se siguió.
+
+Se copió la **estructura, la disposición y el comportamiento**. No se copiaron
+iconos, arte, colores ni código: los iconos son de Material, la paleta es la
+del proyecto y el código es propio. Esa línea no la cruzo aunque se pida,
+porque son obras de otros y no una convención de interfaz.
+
+### Y.3.1 · Tres cosas del mismo gesto, en tres pestañas
+
+Los GIFs y los stickers compartían hoja —el botón se llamaba "Sticker o GIF"—
+y los emojis vivían en otra, abierta desde otro botón. Son tres formas de
+*poner algo que no es texto*, y cambiar de una a otra obligaba a cerrar una
+hoja y abrir otra.
+
+Juntar GIFs con stickers era además lo peor de las dos: un GIF viene de un
+buscador de fuera y un sticker es de la colección propia. Se buscan distinto y
+no se mezclan en ninguna cabeza.
+
+| Fila | Qué lleva |
+|---|---|
+| Packs | Todos · Recientes · Favoritos · un círculo por pack · nuevo pack · crear sticker |
+| Pestañas | Emojis · GIFs · Stickers |
+
+Las pestañas van **abajo**, que es donde las ponen las referencias y donde cae
+el pulgar. El contenido tiene **alto fijo**: un panel que cambia de altura al
+cambiar de pestaña mueve el chat entero por debajo.
+
+### Y.3.2 · Los detalles que se decidieron mirando
+
+- **Cada pack se representa con su primer sticker**, no con su nombre: en una
+  fila de ocho no caben ocho nombres, y la imagen se reconoce antes que el
+  texto.
+- **La rejilla no lleva tarjeta debajo de cada sticker.** Un sticker tiene
+  fondo transparente; ponerle un rectángulo gris detrás le inventa un borde
+  que no tiene, y treinta rectángulos pesan más que los stickers.
+- **Icono y texto en las pestañas**, no sólo icono: "GIF" y "sticker" no
+  tienen un símbolo que todo el mundo reconozca, y dos caritas distintas al
+  lado no distinguen nada.
+- **Mantener pulsado un pack lo renombra.** Un lápiz permanente en cada
+  círculo llenaría la fila de cosas que se tocan una vez al año.
+
+### Y.3.3 · Y casi borro los emojis
+
+Al quitar `SelectorEmoji`, que quedó sin uso, se fue con él la lista
+`GRUPOS_EMOJI` que vivía justo encima. El compilador lo dijo en el acto —una
+referencia sin resolver— pero vale anotarlo: **una lista de datos sin nadie
+que la lea es lo primero que alguien borra creyendo que sobra.** Ahora vive
+junto al único sitio que la usa.

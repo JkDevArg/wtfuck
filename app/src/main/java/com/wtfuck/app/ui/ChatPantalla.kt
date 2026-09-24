@@ -962,25 +962,21 @@ fun ChatPantalla(
         )
     }
 
-    if (hojaEmoji) {
-        SelectorEmoji(
-            // En el CURSOR, no al final. Antes se concatenaba, asi que
-            // poner una cara en mitad de una frase escrita la mandaba al
-            // final del mensaje. Con el cursor a mano ya no hace falta.
-            onElegir = { emoji ->
-                val i = texto.selection.start.coerceIn(0, texto.text.length)
+    // **Un solo panel para emoji, GIF y sticker.** Eran dos hojas distintas
+    // abiertas desde dos botones, y los GIFs compartian la suya con los
+    // stickers. Son tres cosas del mismo gesto -poner algo que no es texto- y
+    // ahora viven en pestañas. Ver `PanelExpresion`.
+    if (hojaEmoji || hojaSticker) {
+        PanelExpresion(
+            inicial = if (hojaSticker) PANEL_STICKERS else PANEL_EMOJIS,
+            onEmoji = { emoji ->
+                val k = texto.selection.start.coerceIn(0, texto.text.length)
                 texto = TextFieldValue(
-                    texto.text.substring(0, i) + emoji + texto.text.substring(i),
-                    TextRange(i + emoji.length),
+                    texto.text.substring(0, k) + emoji + texto.text.substring(k),
+                    TextRange(k + emoji.length),
                 )
             },
-            onCerrar = { hojaEmoji = false },
-        )
-    }
-
-    if (hojaSticker) {
-        HojaStickers(
-            onElegirGif = { gifId ->
+            onGif = { gifId ->
                 val pie = texto.text.trim()
                 texto = TextFieldValue("")
                 ambito.launch {
@@ -988,8 +984,7 @@ fun ChatPantalla(
                         .onFailure { aviso = it.message }
                 }
             },
-            onElegirSticker = { st ->
-                val archivo = java.io.File(st.archivo)
+            onSticker = { st ->
                 // Se manda como adjunto de clase `sticker`, que es la que ya
                 // dibuja la burbuja sin fondo ni marco desde el modulo D. El
                 // pie NO se usa: un sticker con texto debajo deja de ser un
@@ -998,13 +993,13 @@ fun ChatPantalla(
                     runCatching {
                         app.repo.enviarAdjunto(
                             conversacionId,
-                            android.net.Uri.fromFile(archivo),
+                            android.net.Uri.fromFile(java.io.File(st.archivo)),
                             ClaseAdjunto.STICKER,
                         )
                     }.onFailure { aviso = it.message }
                 }
             },
-            onCerrar = { hojaSticker = false },
+            onCerrar = { hojaEmoji = false; hojaSticker = false },
         )
     }
 

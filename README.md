@@ -76,6 +76,7 @@ quien no debe.
 | W | Las hojas de formulario se abren enteras (el botón quedaba fuera) | ✅ |
 | X | Privacidad no muestra ni guarda ajustes que no pudo leer | ✅ |
 | Y | Stickers propios: packs, favoritos, recientes, emoji y animados | ✅ |
+| Y.3 | Un panel con tres pestañas: emojis, GIFs y stickers separados | ✅ |
 
 **Lo que falta, y por qué:**
 

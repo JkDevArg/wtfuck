@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -108,6 +109,7 @@ fun BandejaStickers(
     var creando by remember { mutableStateOf<Uri?>(null) }
     var acciones by remember { mutableStateOf<StickerEnt?>(null) }
     var nuevoPack by remember { mutableStateOf(false) }
+    var renombrando by remember { mutableStateOf<PackEnt?>(null) }
     var busqueda by remember { mutableStateOf("") }
 
     val elegirFoto = rememberLauncherForActivityResult(
@@ -127,45 +129,6 @@ fun BandejaStickers(
     }
 
     Column(modifier) {
-        // --- pestañas ------------------------------------------------
-        LazyRow(
-            Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            item {
-                // **Todos existe por necesidad, no por completismo.** Un
-                // sticker sin pack y sin usar no aparecía en ninguna pestaña:
-                // ni en recientes -nunca se mandó-, ni en favoritos -no se
-                // marcó-, ni en ningún pack -no está en ninguno-. Lo descubrí
-                // creando un pack y viendo desaparecer el único que había.
-                PestanaIcono(
-                    Icons.Filled.GridView, "Todos",
-                    pestana == TAB_TODOS,
-                ) { pestana = TAB_TODOS }
-            }
-            item {
-                PestanaIcono(
-                    Icons.Filled.History, "Recientes",
-                    pestana == TAB_RECIENTES,
-                ) { pestana = TAB_RECIENTES }
-            }
-            item {
-                PestanaIcono(
-                    Icons.Filled.Star, "Favoritos",
-                    pestana == TAB_FAVORITOS,
-                ) { pestana = TAB_FAVORITOS }
-            }
-            items(packs, key = { it.id }) { p ->
-                PestanaTexto(p.nombre, pestana == p.id) { pestana = p.id }
-            }
-            item {
-                PestanaIcono(
-                    Icons.Filled.Folder, "Nuevo pack", false,
-                ) { nuevoPack = true }
-            }
-        }
-
         // --- buscar por emoji ----------------------------------------
         if (todos.any { it.emoji.isNotBlank() }) {
             Row(
@@ -201,7 +164,7 @@ fun BandejaStickers(
         }
 
         // --- la rejilla ----------------------------------------------
-        Box(Modifier.fillMaxWidth().height(250.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             when {
                 todos.isEmpty() -> VacioDeStickers(
                     "Todavía no tenés ninguno.",
@@ -234,11 +197,15 @@ fun BandejaStickers(
                     "Mantené pulsado un sticker para moverlo acá.",
                 )
 
+                // Cuatro columnas fijas y sin tarjeta debajo de cada uno.
+                // Un sticker tiene fondo transparente: ponerle un rectangulo
+                // gris detras le inventa un borde que no tiene, y una rejilla
+                // de treinta rectangulos pesa mas que los stickers.
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(82.dp),
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     items(visibles, key = { it.id }) { s ->
                         CeldaSticker(
@@ -254,25 +221,94 @@ fun BandejaStickers(
             }
         }
 
-        // --- crear ---------------------------------------------------
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // --- la fila de packs, ABAJO ---------------------------------
+        //
+        // Abajo y no arriba, que es donde la ponen las dos apps de referencia
+        // y donde llega el pulgar sin soltar el telefono. Cada pack se
+        // representa con **su primer sticker** y no con un nombre: en una fila
+        // de ocho no caben ocho nombres, y la imagen se reconoce de un vistazo
+        // mejor que "Pruebas".
+        HorizontalDivider(color = Slate.copy(alpha = 0.2f))
+        LazyRow(
+            Modifier.fillMaxWidth().background(BgElev).padding(vertical = 5.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            TextButton(
-                onClick = {
+            item {
+                BotonDePack(activa = pestana == TAB_TODOS, onClick = { pestana = TAB_TODOS }) {
+                    Icon(
+                        Icons.Filled.GridView, "Todos",
+                        tint = if (pestana == TAB_TODOS) Cian else TextoTerciario,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            item {
+                BotonDePack(activa = pestana == TAB_RECIENTES, onClick = { pestana = TAB_RECIENTES }) {
+                    Icon(
+                        Icons.Filled.History, "Recientes",
+                        tint = if (pestana == TAB_RECIENTES) Cian else TextoTerciario,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            item {
+                BotonDePack(activa = pestana == TAB_FAVORITOS, onClick = { pestana = TAB_FAVORITOS }) {
+                    Icon(
+                        Icons.Filled.Star, "Favoritos",
+                        tint = if (pestana == TAB_FAVORITOS) Cian else TextoTerciario,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            items(packs, key = { it.id }) { p ->
+                val portada = todos.firstOrNull { it.packId == p.id }
+                BotonDePack(
+                    activa = pestana == p.id,
+                    etiqueta = p.nombre,
+                    onClick = { pestana = p.id },
+                    onMantener = { renombrando = p },
+                ) {
+                    if (portada != null) {
+                        AsyncImage(
+                            model = File(portada.archivo),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize().padding(5.dp),
+                        )
+                    } else {
+                        // Un pack vacio no tiene portada: se pone su inicial,
+                        // que al menos lo distingue de los demas vacios.
+                        Text(
+                            p.nombre.take(1).uppercase(),
+                            color = if (pestana == p.id) Cian else TextoTerciario,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+            item {
+                BotonDePack(activa = false, onClick = { nuevoPack = true }) {
+                    Icon(
+                        Icons.Filled.Folder, "Nuevo pack",
+                        tint = TextoTerciario, modifier = Modifier.size(17.dp),
+                    )
+                }
+            }
+            item {
+                // Crear un sticker vive en la misma fila: es la accion que
+                // alimenta la coleccion, y tenerla en un boton de texto aparte
+                // la dejaba lejos de donde se mira.
+                BotonDePack(activa = false, onClick = {
                     elegirFoto.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                     )
-                },
-            ) {
-                Icon(Icons.Filled.Add, null, tint = Cian, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(5.dp))
-                Text("Crear de una foto o un GIF", color = Cian, fontSize = 13.sp)
-            }
-            Spacer(Modifier.weight(1f))
-            if (todos.isNotEmpty()) {
-                Text("${todos.size}", color = TextoTerciario, fontSize = 12.sp)
+                }) {
+                    Icon(
+                        Icons.Filled.Add, "Crear un sticker de una foto o un GIF",
+                        tint = Cian, modifier = Modifier.size(19.dp),
+                    )
+                }
             }
         }
     }
@@ -300,6 +336,19 @@ fun BandejaStickers(
             onEmoji = { e -> ambito.launch { app.repo.emojiSticker(s.id, e) } },
             onMover = { p -> ambito.launch { app.repo.moverSticker(s.id, p) } },
             onBorrar = { ambito.launch { app.repo.borrarSticker(s) } },
+        )
+    }
+
+    renombrando?.let { p ->
+        DialogoNombre(
+            titulo = "Renombrar el pack",
+            detalle = "Los stickers se quedan donde estan.",
+            inicial = p.nombre,
+            onCerrar = { renombrando = null },
+            onListo = { n ->
+                renombrando = null
+                ambito.launch { app.repo.renombrarPack(p.id, n) }
+            },
         )
     }
 
@@ -334,7 +383,6 @@ private fun CeldaSticker(s: StickerEnt, onEnviar: () -> Unit, onMantener: () -> 
         Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp))
-            .background(BgSurface)
             .combinedClickable(onClick = onEnviar, onLongClick = onMantener)
             .semantics {
                 contentDescription = buildString {
@@ -352,7 +400,7 @@ private fun CeldaSticker(s: StickerEnt, onEnviar: () -> Unit, onMantener: () -> 
                 .data(File(s.archivo))
                 .build(),
             contentDescription = null,
-            modifier = Modifier.fillMaxSize().padding(7.dp),
+            modifier = Modifier.fillMaxSize().padding(5.dp),
         )
         // La estrella y el símbolo de movimiento van encima y chiquitos: son
         // marcas sobre el sticker, no información al lado de él.
@@ -648,4 +696,50 @@ internal fun DialogoNombre(
             TextButton(onClick = onCerrar) { Text("Cancelar", color = TextoSecundario) }
         },
     )
+}
+
+
+/**
+ * Un boton de la fila de packs: un circulo de 40 dp.
+ *
+ * Redondo y del tamano de un dedo, no una pestana de texto. En una fila que
+ * puede tener doce entradas -tres virtuales, los packs, crear pack y crear
+ * sticker- el texto no cabe y truncado no se lee.
+ *
+ * Mantener pulsado un pack lo renombra. No hay boton de renombrar a la vista
+ * porque renombrar se hace una vez, y un lapiz permanente en cada circulo
+ * llenaria la fila de cosas que no se tocan.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BotonDePack(
+    activa: Boolean,
+    etiqueta: String? = null,
+    onClick: () -> Unit,
+    onMantener: (() -> Unit)? = null,
+    contenido: @Composable () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(
+                if (activa) Cian.copy(alpha = 0.18f)
+                else androidx.compose.ui.graphics.Color.Transparent
+            )
+            .then(
+                if (onMantener != null) {
+                    Modifier.combinedClickable(onClick = onClick, onLongClick = onMantener)
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            )
+            .semantics {
+                if (etiqueta != null) {
+                    contentDescription = "Pack $etiqueta. Manten pulsado para renombrarlo."
+                }
+                selected = activa
+            },
+        contentAlignment = Alignment.Center,
+    ) { contenido() }
 }

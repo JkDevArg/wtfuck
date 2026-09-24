@@ -27,6 +27,8 @@ import androidx.compose.ui.semantics.semantics
 import com.wtfuck.app.datos.Stickers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,12 +57,7 @@ import kotlinx.coroutines.delay
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HojaStickers(
-    onElegirGif: (String) -> Unit,
-    /** Manda un sticker propio. Lo elige la bandeja, que sabe de packs y favoritos. */
-    onElegirSticker: (com.wtfuck.app.datos.StickerEnt) -> Unit,
-    onCerrar: () -> Unit,
-) {
+fun PanelGifs(onElegirGif: (String) -> Unit, modifier: Modifier = Modifier) {
     val app = LocalContext.current.applicationContext as WtfuckApp
 
     var consulta by remember { mutableStateOf("") }
@@ -79,40 +76,51 @@ fun HojaStickers(
         cargando = false
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onCerrar,
-        containerColor = BgElev,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },
-    ) {
-        // La bandeja entera -recientes, favoritos, packs, buscar por emoji y
-        // crear- vive en `BandejaStickers`. Aqui solo queda el buscador de
-        // GIFs, que es otra cosa: viene de un servicio de fuera y no forma
-        // parte de la coleccion propia.
-        BandejaStickers(onEnviar = { s -> onCerrar(); onElegirSticker(s) })
-
-        HorizontalDivider(color = Slate.copy(alpha = 0.25f))
-        Spacer(Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = consulta,
-            onValueChange = { consulta = it },
-            placeholder = { Text("Buscar GIF", color = TextoTerciario) },
-            leadingIcon = { Icon(Icons.Filled.Search, null, tint = TextoSecundario) },
-            singleLine = true,
-            shape = RoundedCornerShape(22.dp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Cian,
-                unfocusedBorderColor = Slate,
-                focusedContainerColor = BgSurface,
-                unfocusedContainerColor = BgSurface,
-            ),
-        )
-
-        Box(
-            Modifier.fillMaxWidth().height(320.dp),
-            contentAlignment = Alignment.Center,
+    Column(modifier) {
+        // El buscador arriba, que es donde esta en las dos apps de referencia:
+        // un GIF **siempre** se busca -no hay coleccion propia que recorrer- y
+        // por eso el campo va antes que la rejilla y no escondido detras de
+        // una lupa.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(BgSurface)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            Icon(Icons.Filled.Search, null, tint = TextoTerciario, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(9.dp))
+            BasicTextField(
+                value = consulta,
+                onValueChange = { consulta = it },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextoPrimario),
+                cursorBrush = SolidColor(Cian),
+                modifier = Modifier.weight(1f).heightIn(min = 40.dp).padding(vertical = 9.dp),
+                decorationBox = { interior ->
+                    if (consulta.isEmpty()) {
+                        Text(
+                            "Buscar GIF",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextoTerciario,
+                        )
+                    }
+                    interior()
+                },
+            )
+            if (consulta.isNotEmpty()) {
+                IconButton(onClick = { consulta = "" }, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        Icons.Filled.Close, "Borrar la busqueda",
+                        tint = TextoTerciario, modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
+
+        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             when {
                 cargando && resultados.isEmpty() ->
                     CircularProgressIndicator(color = Cian, strokeWidth = 2.5.dp)
@@ -123,11 +131,15 @@ fun HojaStickers(
                     EstadoVacio(Icons.Filled.SearchOff, "No hay resultados para \"$consulta\".")
 
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 10.dp),
+                    // Dos columnas y no tres: un GIF es apaisado y ancho, y en
+                    // tres columnas no se distingue que pasa dentro.
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     items(resultados, key = { it.id }) { g ->
-                        PreviaGif(g) { onCerrar(); onElegirGif(g.id) }
+                        PreviaGif(g) { onElegirGif(g.id) }
                     }
                 }
             }
@@ -136,20 +148,18 @@ fun HojaStickers(
         // La nota va a la vista y no solo al codigo: quien manda un GIF tiene
         // derecho a saber que ese pedido salio de la red institucional.
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.Shield, null, tint = Slate, modifier = Modifier.size(13.dp))
-            Spacer(Modifier.width(7.dp))
+            Icon(Icons.Filled.Shield, null, tint = Slate, modifier = Modifier.size(12.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
                 "Las busquedas pasan por el servidor de wtfuck, no por el proveedor.",
-                fontSize = 11.sp,
+                fontSize = 10.5.sp,
                 color = TextoTerciario,
             )
         }
-        Spacer(Modifier.height(14.dp))
     }
-
 }
 
 @Composable

@@ -107,3 +107,53 @@ es **un** fotograma, así que un sticker animado se veía congelado en el
 primero. El `ImageLoader` de la app ya traía el decodificador; sólo había que
 dejar de esquivarlo.
 
+---
+
+## Módulo Y.3 · Un panel, tres pestañas
+
+| # | Captura | Qué muestra |
+|---|---|---|
+| 10 | `10-panel-emojis.png` | Pestaña **Emojis**, con sus grupos |
+| 11 | `11-panel-stickers.png` | Pestaña **Stickers**: fila de packs abajo, rejilla sin tarjetas |
+| 12 | `12-panel-gifs.png` | Pestaña **GIFs**, con su buscador propio |
+
+## Qué cambió
+
+**Los GIFs y los stickers estaban juntos** —el botón se llamaba "Sticker o
+GIF"— y los emojis vivían en otra hoja, abierta desde otro botón. Son tres
+cosas del mismo gesto: *quiero poner algo que no es texto*. Cambiar de emojis a
+stickers obligaba a cerrar una hoja y abrir otra.
+
+Y juntar GIFs con stickers era lo peor de las dos: un GIF viene de un buscador
+de fuera y un sticker es de la colección propia. Se buscan distinto y no se
+mezclan en ninguna cabeza.
+
+Ahora es **un panel con tres pestañas abajo**, y dentro de Stickers una
+segunda fila con los packs:
+
+| Fila | Qué lleva |
+|---|---|
+| Packs (arriba de las pestañas) | Todos · Recientes · Favoritos · un círculo por pack · nuevo pack · crear sticker |
+| Pestañas (abajo) | Emojis · GIFs · Stickers |
+
+Detalles que se decidieron mirando las referencias:
+
+- **Cada pack se representa con su primer sticker**, no con su nombre: en una
+  fila de ocho no caben ocho nombres, y la imagen se reconoce antes.
+- **La rejilla no lleva tarjeta debajo de cada sticker.** Un sticker tiene
+  fondo transparente; ponerle un rectángulo gris detrás le inventa un borde
+  que no tiene.
+- **El panel no se cierra al elegir un emoji.** Mandar tres seguidos es lo
+  normal.
+- Mantener pulsado un pack lo **renombra**: no hay lápiz permanente en cada
+  círculo para algo que se hace una vez.
+
+## Sobre copiar el diseño
+
+El usuario pidió explícitamente que el diseño fuera casi igual al de las apps
+de referencia, retirando la instrucción del brief que decía lo contrario. Se
+siguió su decisión en **estructura, disposición y comportamiento**.
+
+No se copiaron sus iconos, su arte, sus colores ni su código: los iconos son
+de Material, la paleta es la del proyecto y todo el código es propio.
+

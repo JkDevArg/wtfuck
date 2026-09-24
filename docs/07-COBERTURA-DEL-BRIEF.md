@@ -57,7 +57,7 @@ cliente web de mensajería.
 | Texto, imágenes, videos, audios, documentos | ✅ |
 | Mensajes de voz | ✅ con adelantar y velocidad 1x/1.5x/2x (N.12) |
 | Llamadas de audio y video | ✅ módulo K, con ventana flotante |
-| Respuestas, reacciones, menciones, reenvíos | ✅ una reacción por persona (V25) · responder deslizando (N.13) · menciones con selector y resaltado (T.2) |
+| Respuestas, reacciones, menciones, reenvíos | ✅ una reacción por persona (V25) · responder deslizando (N.13) · menciones con selector y resaltado (T.2) · emojis, GIFs y stickers en un panel de tres pestañas (Y.3) |
 | Mensajes fijados | ✅ |
 | Búsqueda global y dentro de conversaciones | ✅ las dos (M.3) |
 | Notificaciones push | 🔨 locales sí; FCM no: necesita credenciales de Firebase |

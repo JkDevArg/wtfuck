@@ -60,7 +60,9 @@ fun HojaAdjuntar(
         OpcionAdjunto("Galeria", Icons.Filled.Image, Cian, onGaleria),
         OpcionAdjunto("Documento", Icons.Filled.InsertDriveFile, Ambar, onDocumento),
         OpcionAdjunto("Nota de voz", Icons.Filled.Mic, Coral, onNotaVoz),
-        OpcionAdjunto("Sticker o GIF", Icons.Filled.EmojiEmotions, Cian, onSticker),
+        // Ya no dice "Sticker o GIF": son dos cosas separadas y este boton
+        // abre el panel por la pestaña de stickers. Los GIFs tienen la suya.
+        OpcionAdjunto("Stickers", Icons.Filled.EmojiEmotions, Cian, onSticker),
         OpcionAdjunto("Ubicacion", Icons.Filled.Place, Cian, onUbicacion),
         OpcionAdjunto("Contacto", Icons.Filled.Person, Ambar, onContacto),
         // Se esconden si no tengo el permiso, pero eso es solo cortesia: quien
@@ -116,96 +118,3 @@ fun HojaAdjuntar(
 //  Emojis
 // ------------------------------------------------------------------
 
-/**
- * Selector de emojis, sin dependencias.
- *
- * El teclado del sistema ya tiene emojis; esto existe para lo que el teclado no
- * da: tocar tres seguidos sin cambiar de modo, y tener a mano los que de verdad
- * se usan. La lista es fija a proposito -una libreria de emojis pesa varios MB
- * y aporta los que nadie manda.
- */
-private val GRUPOS_EMOJI: List<Pair<String, List<String>>> = listOf(
-    "Caras" to (
-        "😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😗 😚 😙 " +
-            "😋 😛 😜 🤪 😝 🤑 🤗 🤭 🤫 🤔 🤐 🤨 😐 😑 😶 😏 😒 🙄 😬 🤥 " +
-            "😌 😔 😪 🤤 😴 😷 🤒 🤕 🤢 🤮 🥵 🥶 🥴 😵 🤯 🤠 🥳 😎 🤓 🧐 " +
-            "😕 😟 🙁 😮 😯 😲 😳 🥺 😦 😧 😨 😰 😥 😢 😭 😱 😖 😣 😞 😓 " +
-            "😩 😫 🥱 😤 😡 😠 🤬 😈 👿 💀 💩 🤡 👹 👻 👽 🤖"
-        ).split(" ")
-    ,
-    "Gestos" to (
-        "👍 👎 👌 🤌 🤏 ✌️ 🤞 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ ✋ 🤚 🖐️ 🖖 👋 " +
-            "🤝 🙏 ✍️ 💪 🦾 🙌 👏 🫡 🫢 🫣 🤦 🤷 💁 🙋 🙆 🙅 💅 🤳"
-        ).split(" ")
-    ,
-    "Corazones" to (
-        "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 ✨ 💫 " +
-            "⭐ 🌟 🔥 💥 💯 ✅ ❌ ⚠️ ❓ ❗"
-        ).split(" ")
-    ,
-    "Cosas" to (
-        "🎉 🎊 🎁 🎂 🍰 ☕ 🍵 🍺 🍻 🥂 🍕 🍔 🍟 🌮 🍿 🍎 🍌 🍇 🍉 🥑 " +
-            "⚽ 🏀 🎮 🎧 🎸 🎤 📱 💻 ⌨️ 🖥️ 📷 🔒 🔑 💰 📈 📉 ⏰ 📌 📎 ✂️ " +
-            "🚗 ✈️ 🚀 🏠 🌍 ☀️ 🌙 ☁️ 🌧️ ⛈️ 🌈 ❄️ 🐶 🐱 🐭 🦊 🐻 🐼 🦁 🐷"
-        ).split(" ")
-    ,
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SelectorEmoji(onElegir: (String) -> Unit, onCerrar: () -> Unit) {
-    var grupo by remember { mutableIntStateOf(0) }
-
-    ModalBottomSheet(
-        onDismissRequest = onCerrar,
-        containerColor = BgElev,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },
-    ) {
-        ScrollableTabRow(
-            selectedTabIndex = grupo,
-            containerColor = BgElev,
-            contentColor = Cian,
-            edgePadding = 12.dp,
-        ) {
-            GRUPOS_EMOJI.forEachIndexed { i, (nombre, _) ->
-                Tab(
-                    selected = grupo == i,
-                    onClick = { grupo = i },
-                    text = {
-                        Text(
-                            nombre,
-                            fontSize = 13.sp,
-                            fontWeight = if (grupo == i) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (grupo == i) Cian else TextoSecundario,
-                        )
-                    },
-                )
-            }
-        }
-
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(46.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(280.dp)
-                .padding(horizontal = 8.dp),
-        ) {
-            items(GRUPOS_EMOJI[grupo].second) { e ->
-                Box(
-                    Modifier
-                        .padding(2.dp)
-                        .clip(CircleShape)
-                        // La hoja NO se cierra al elegir: mandar tres emojis
-                        // seguidos es lo normal, y cerrarla obligaria a abrirla
-                        // otra vez cada vez.
-                        .clickable { onElegir(e) }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(e, fontSize = 25.sp)
-                }
-            }
-        }
-        Spacer(Modifier.height(14.dp))
-    }
-}
