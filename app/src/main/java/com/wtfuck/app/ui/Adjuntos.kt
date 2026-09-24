@@ -102,13 +102,10 @@ fun ContenidoAdjunto(
 private fun VistaImagen(m: MensajeEnt, local: File?, alTocar: () -> Unit) {
     var visor by remember { mutableStateOf(false) }
 
-    // La imagen completa se decodifica una vez y se recuerda: hacerlo en cada
-    // recomposicion de la lista tira la fluidez del scroll al piso.
-    val completa = remember(local?.path, m.adjuntoClase) {
-        if (local != null && m.adjuntoClase == ClaseAdjunto.IMAGEN) {
-            runCatching { BitmapFactory.decodeFile(local.path)?.asImageBitmap() }.getOrNull()
-        } else null
-    }
+    // Hay archivo y es una imagen: entonces se dibuja el archivo, y lo dibuja
+    // Coil. Ver la nota de abajo.
+    val hayCompleta = local != null && m.adjuntoClase == ClaseAdjunto.IMAGEN
+
     val mini = remember(m.adjuntoMiniatura) {
         // `miniaturaAjena` y no `decodeByteArray` a secas: esos bytes vienen de
         // un sobre ajeno. Ver `MiniaturaSegura.kt`.
@@ -142,10 +139,37 @@ private fun VistaImagen(m: MensajeEnt, local: File?, alTocar: () -> Unit) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        val img = completa ?: mini
-        if (img != null) {
+        if (hayCompleta) {
+            /*
+             * **Con Coil y no con `BitmapFactory`.**
+             *
+             * `BitmapFactory.decodeFile` devuelve un `Bitmap`, y un Bitmap es
+             * UN fotograma. Un GIF recibido en el chat se veia congelado en el
+             * primero, que es exactamente lo que un GIF no es.
+             *
+             * Es el mismo defecto que se arreglo para los stickers en Y.2.3 y
+             * que aqui quedo sin arreglar: se cambio el sitio donde se habia
+             * visto y no el otro sitio que tenia el mismo codigo. El envio si
+             * estaba bien -`enviarAdjunto` no recomprime un GIF, justamente
+             * para no aplanarlo-, asi que los fotogramas llegaban enteros y se
+             * tiraban al dibujar.
+             *
+             * De paso arregla algo que el comentario anterior admitia a
+             * medias: decodificar a resolucion completa DENTRO de la
+             * composicion, aunque fuera una sola vez, bloquea el hilo de
+             * interfaz. Coil decodifica fuera y cachea.
+             */
+            coil3.compose.AsyncImage(
+                model = local,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else if (mini != null) {
+            // La miniatura viene de un sobre AJENO y por eso pasa por
+            // `miniaturaAjena` en vez de por Coil. Ver `MiniaturaSegura.kt`.
             Image(
-                img, null,
+                mini, null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
@@ -153,8 +177,8 @@ private fun VistaImagen(m: MensajeEnt, local: File?, alTocar: () -> Unit) {
 
         // Un velo sobre la miniatura: marca que lo que se ve no es el archivo
         // todavia, y ademas da contraste al boton.
-        if (completa == null) {
-            Box(Modifier.fillMaxSize().background(BgBase.copy(alpha = if (img == null) 0.2f else 0.45f)))
+        if (!hayCompleta) {
+            Box(Modifier.fillMaxSize().background(BgBase.copy(alpha = if (mini == null) 0.2f else 0.45f)))
         }
 
         when (m.adjuntoEstado) {
@@ -222,9 +246,6 @@ private fun BotonReproducir(duracionMs: Int) {
  */
 @Composable
 private fun VisorImagen(archivo: File, pie: String, onCerrar: () -> Unit) {
-    val img = remember(archivo.path) {
-        runCatching { BitmapFactory.decodeFile(archivo.path)?.asImageBitmap() }.getOrNull()
-    }
     Dialog(
         onDismissRequest = onCerrar,
         // `usePlatformDefaultWidth = false` es imprescindible: sin esto el
@@ -242,11 +263,20 @@ private fun VisorImagen(archivo: File, pie: String, onCerrar: () -> Unit) {
                 .clickable(onClick = onCerrar),
             contentAlignment = Alignment.Center,
         ) {
-            if (img != null) {
-                Image(img, null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
-            } else {
-                Text("No se pudo abrir la imagen", color = TextoSecundario)
-            }
+            // Coil, por lo mismo que la burbuja: abrir un GIF a pantalla
+            // completa y que se quede quieto es peor todavia, porque aqui la
+            // persona vino a mirarlo.
+            coil3.compose.SubcomposeAsyncImage(
+                model = archivo,
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth(),
+                contentScale = ContentScale.Fit,
+                // `SubcomposeAsyncImage` y no `AsyncImage` solo por esto: el
+                // hueco de error acepta contenido componible, y un visor que
+                // no puede abrir el archivo tiene que decirlo en vez de
+                // quedarse negro.
+                error = { Text("No se pudo abrir la imagen", color = TextoSecundario) },
+            )
             if (pie.isNotBlank()) {
                 Text(
                     pie,

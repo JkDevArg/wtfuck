@@ -4762,3 +4762,102 @@ propósito** —volviendo al orden por id y dejando de leer las reacciones—, y
 fallaron. La de ordenamiento **elige los ids a propósito** para que el orden por
 id sea el contrario al de fecha: con dos ids al azar pasaría la mitad de las
 veces contra el código roto, que es peor que no tenerla.
+
+---
+
+## Módulo AB · Un GIF en el chat era una foto ✅
+
+*"¿Por qué no se mueven los stickers o GIFs?"*
+
+Dos respuestas distintas, y conviene separarlas porque sólo una era un defecto.
+
+### AB.1 · El GIF: `BitmapFactory` devuelve un fotograma
+
+`VistaImagen` dibujaba el archivo con `BitmapFactory.decodeFile` → `Image`. **Un
+`Bitmap` es un fotograma.** Cualquier GIF recibido en el chat se veía congelado
+en el primero, que es exactamente lo que un GIF no es. `VisorImagen` —abrirlo a
+pantalla completa— tenía el mismo código y el mismo defecto, y ahí es peor,
+porque la persona entró justamente a mirarlo.
+
+El **envío no estaba mal**. `enviarAdjunto` ya tenía una guarda explícita para
+no pasar un GIF por el compresor, con su comentario:
+
+```kotlin
+// Un GIF NO se recomprime: pasarlo por el compresor JPEG lo dejaria
+// como una sola imagen quieta, que es justo lo contrario de un GIF.
+if (clase == ClaseAdjunto.IMAGEN && original.mime != "image/gif") { ... }
+```
+
+O sea que los fotogramas llegaban enteros al teléfono y se tiraban al dibujar.
+
+**Y es el mismo defecto que ya se había arreglado en Y.2.3.** Ahí `VistaSticker`
+pasó de `BitmapFactory` a Coil, con una nota explicando que un Bitmap es un
+fotograma. Se arregló el sitio donde se había visto y se dejó igual el otro
+sitio que tenía el mismo código, a doscientas líneas de distancia, en el mismo
+archivo.
+
+> **Arreglar una instancia de un defecto no es arreglar el defecto.** Cuando el
+> arreglo es "este código estaba mal", lo que sigue es buscar quién más tiene
+> ese código, no cerrar el archivo.
+
+De paso se corrige algo que el comentario anterior admitía a medias:
+decodificar a resolución completa **dentro de la composición**, aunque fuera
+una sola vez y recordada, bloquea el hilo de interfaz. Coil decodifica fuera y
+cachea.
+
+La miniatura sigue **sin** pasar por Coil, y es a propósito: esos bytes vienen
+de un sobre ajeno y pasan por `Media.miniaturaAjena`. Que la miniatura sea un
+fotograma está bien —es un anticipo, no el archivo—.
+
+### AB.2 · El sticker: no estaba roto, no había ninguno animado
+
+`VistaSticker` ya usaba Coil. Los dos stickers del emulador eran **recortes de
+fotos**, estáticos por construcción: no había nada animado que mirar.
+
+Verificado por primera vez con un archivo animado de verdad, el camino entero
+funciona: se detecta por la cabecera, se ofrece sin editor —"tiene movimiento,
+así que se agrega tal cual"—, y se copia **byte por byte**: 279171 de entrada,
+279171 de salida. Esa igualdad es lo que garantiza que no se aplanó.
+
+### AB.3 · Cómo se comprueba que algo se mueve
+
+Una captura es un fotograma, así que no prueba nada sobre movimiento. **Tres
+capturas de la misma región separadas por unos cientos de milisegundos**, y un
+`ImageChops.difference().getbbox()` entre ellas: si difieren, hay animación.
+
+Es el único modo de verificarlo desde una interfaz que sólo devuelve imágenes
+fijas, y por eso queda escrito.
+
+### AB.4 · Dos trampas del entorno, y una se disfrazó de defecto nuestro
+
+Las dos son de la capa de Windows y las dos producen datos corruptos en
+silencio.
+
+**`adb shell cat` corrompe binarios.** Sacar el GIF con
+`adb shell "run-as ... cat x.gif" > local.gif` inyecta retornos de carro:
+279171 bytes se convirtieron en 280387. El archivo resultante rompe hasta al
+MediaProvider de Android (`skia: decodeFrame: #lzw: bad code`), y en la app se
+veía como **una vista previa en blanco** — idéntico a un defecto nuestro.
+Estuve mirando el código de la hoja de crear sticker buscando un fallo que no
+existía. Con `adb exec-out` sale intacto.
+
+**Git Bash reescribe las rutas del dispositivo.** `adb push origen
+/sdcard/Pictures/x.gif` respondía *"1 file pushed"* y no dejaba nada: MSYS
+convertía el destino a `C:/Program Files/Git/sdcard/...`. Sólo se ve cuando el
+directorio inventado no existe. Se resuelve con `MSYS_NO_PATHCONV=1` y la ruta
+de origen en formato Windows.
+
+Es la tercera vez en esta sesión que una capa de traducción de Windows
+corrompe datos en silencio —antes fue el heredoc colapsando `\\` en `\`—, así
+que va anotado.
+
+### Evidencias
+
+Cuatro tiras de fotogramas en
+[`docs/evidencias/gifs-que-se-mueven/`](evidencias/gifs-que-se-mueven/).
+
+**Ninguna prueba automática cubre esto**, y conviene decirlo en vez de fingir:
+que un composable use `BitmapFactory` en vez de Coil no lo ve una prueba de
+lógica, y comprobar que algo se anima necesita el aparato. Lo que sí está
+cubierto es la detección de animación por cabecera (`StickersTest`), que es la
+parte que se puede probar sin pantalla.

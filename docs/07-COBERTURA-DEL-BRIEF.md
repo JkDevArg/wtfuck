@@ -203,7 +203,7 @@ añadir administradores (jerarquía).
 
 ## §8 · Chats privados ✅
 
-Hecho: texto, emojis (selector propio), stickers y GIFs, imágenes, videos,
+Hecho: texto, emojis (selector propio), stickers y GIFs **con movimiento** (AB), imágenes, videos,
 audios, mensajes de voz con forma de onda, documentos, respuestas, reacciones,
 edición, eliminación para mí y para todos, reenvío, copiar, fijar, mensajes
 temporales.
