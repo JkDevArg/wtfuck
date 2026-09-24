@@ -4258,3 +4258,72 @@ Es una señal, no un estorbo: la aritmética del recorte es lo único que de
 verdad se puede equivocar aquí —cuentas con enteros sobre tamaños que vienen de
 fuera— y no se podía probar porque dependía del framework. Pasó a una clase
 propia, `Recorte`, que se convierte a `Rect` sólo al dibujar.
+
+---
+
+## Módulo Y.2 · La colección de stickers, completa ✅
+
+*"Faltan packs, favoritos y así." Y con movimiento.*
+
+### Y.2.1 · De una carpeta a una colección
+
+La primera versión listaba los archivos de `files/stickers/`. Alcanza para
+diez y deja de servir con treinta: un archivo no tiene pack, ni favorito, ni
+emoji, ni cuándo se usó. Todo eso son **metadatos**, y los metadatos van en la
+base. Tablas `sticker` y `sticker_pack`, migración 15→16.
+
+Los archivos que ya existían **no se pierden**: `adoptarStickersSueltos` les
+crea su fila la primera vez que se abre la bandeja. Borrarlos habría sido tirar
+el trabajo de quien ya recortó unos cuantos.
+
+Cuatro ejes, y ninguno es decorativo:
+
+| | Qué resuelve |
+|---|---|
+| **Recientes** | de ahí sale casi todo lo que se manda: nadie usa un sticker una sola vez |
+| **Favoritos** | los que uno quiere a mano aunque hace una semana que no los usa — por eso no puede ser lo mismo que recientes |
+| **Packs** | un sticker no tiene nombre; lo único que lo ubica es de dónde salió |
+| **Emoji** | la única etiqueta que se le puede poner a algo sin nombre, y por tanto lo único con lo que se puede buscar |
+
+**Borrar un pack suelta sus stickers, no los borra.** Deshacer una agrupación y
+tirar el trabajo de recortar treinta imágenes son dos intenciones distintas, y
+juntarlas convierte un "ordenar" en una pérdida.
+
+### Y.2.2 · Guardar los que me mandan
+
+Es lo que hace que la función sirva para dos personas. Sin esto cada quien sólo
+puede usar los que recortó, y un sticker que llega es un callejón sin salida.
+Se **copia** el archivo, no se referencia: el original vive con el mensaje y
+vaciar el chat se lo llevaría.
+
+### Y.2.3 · Con movimiento
+
+**Se detecta por la cabecera, no por la extensión** — un `.webp` puede ser una
+imagen quieta o una animación, así que el nombre no distingue nada. Para WebP
+se busca el trozo `ANIM` dentro de un contenedor RIFF válido; para GIF, más de
+un bloque de control de gráfico.
+
+**Un animado se agrega tal cual, sin recortar.** Android no trae codificador de
+WebP animado ni de GIF: se puede decodificar y no se puede volver a escribir.
+Recortarlo obligaría a aplanarlo a un fotograma, o sea a quitarle justo lo que
+se venía a conservar. Se comprueba el tope de 2 MB **al agregarlo** y no al
+enviarlo, para no dejar en la colección algo que va a fallar después.
+
+**Y la burbuja pasó a Coil.** Dibujaba con `BitmapFactory`, y un `Bitmap` es
+*un* fotograma: un sticker animado se veía congelado en el primero. El
+`ImageLoader` de la app ya traía `AnimatedImageDecoder`; sólo había que dejar
+de esquivarlo.
+
+### Y.2.4 · Dos defectos que salieron de probarlo a mano
+
+**Un sticker sin pack y sin usar no aparecía en ninguna pestaña.** Ni en
+Recientes —nunca se mandó—, ni en Favoritos —no se marcó—, ni en ningún pack.
+Lo vi creando un pack y viendo desaparecer el único que había. De ahí sale la
+pestaña **Todos**, que además es la que abre por defecto: con Recientes por
+delante, quien acaba de crear su primer sticker lee "todavía no mandaste
+ninguno" teniendo uno.
+
+**La confirmación salía bajo un cartel de error.** "Guardado en tus stickers"
+aparecía dentro del diálogo de `aviso`, titulado **"No se pudo completar"**.
+Las confirmaciones tienen ahora su propio aviso, que se va solo y no pide que
+lo cierren: lo que confirma ya pasó, así que no hay nada que perderse.

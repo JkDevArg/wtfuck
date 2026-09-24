@@ -73,6 +73,8 @@ import com.wtfuck.app.datos.EstadoConexion
 import com.wtfuck.app.datos.jsonApp
 import com.wtfuck.app.datos.Media
 import com.wtfuck.app.datos.MensajeEnt
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.wtfuck.app.ui.theme.*
@@ -228,6 +230,14 @@ fun ChatPantalla(
     var hojaEvento by remember { mutableStateOf(false) }
     var hojaEmoji by remember { mutableStateOf(false) }
     var hojaSticker by remember { mutableStateOf(false) }
+    /**
+     * Un aviso de que algo salio BIEN.
+     *
+     * Aparte de `aviso`, que es el de los errores y se titula "No se pudo
+     * completar". Son dos cosas distintas y meterlas en el mismo sitio hace
+     * que una confirmacion se lea como un fallo.
+     */
+    var confirmacion by remember { mutableStateOf<String?>(null) }
 
     // Un solo reproductor para toda la pantalla: dos notas de voz sonando a la
     // vez no es un caso a soportar, es un defecto.
@@ -978,7 +988,8 @@ fun ChatPantalla(
                         .onFailure { aviso = it.message }
                 }
             },
-            onElegirSticker = { archivo ->
+            onElegirSticker = { st ->
+                val archivo = java.io.File(st.archivo)
                 // Se manda como adjunto de clase `sticker`, que es la que ya
                 // dibuja la burbuja sin fondo ni marco desde el modulo D. El
                 // pie NO se usa: un sticker con texto debajo deja de ser un
@@ -1032,6 +1043,20 @@ fun ChatPantalla(
                     runCatching {
                         app.repo.enviarTexto(conversacionId, m.texto, reenviadoDe = m.autor)
                     }.onFailure { aviso = it.message }
+                }
+            },
+            onGuardarSticker = {
+                accionesDe = null
+                ambito.launch {
+                    val f = m.rutaLocal?.let { java.io.File(it) }
+                    val ok = f != null && f.exists() && app.repo.guardarStickerRecibido(f)
+                    // El exito NO va por `aviso`: ese dialogo se titula "No se
+                    // pudo completar", asi que anunciar algo que si salio bien
+                    // debajo de ese titulo dice lo contrario de lo que paso.
+                    // Lo vi al probarlo: "Guardado en tus stickers" bajo un
+                    // cartel de error.
+                    if (ok) confirmacion = "Guardado en tus stickers"
+                    else aviso = "No se pudo guardar el sticker."
                 }
             },
             onFijar = {
@@ -1100,6 +1125,33 @@ fun ChatPantalla(
                 TextButton(onClick = { denunciaHecha = false }) { Text("Entendido", color = Cian) }
             },
         )
+    }
+
+    // Una confirmacion se va sola: no interrumpe, no pide que la cierren, y
+    // si nadie la ve tampoco se perdio nada -lo que confirma ya paso-.
+    confirmacion?.let { msg ->
+        LaunchedEffect(msg) {
+            kotlinx.coroutines.delay(2200)
+            confirmacion = null
+        }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            Row(
+                Modifier
+                    .padding(bottom = 96.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(BgElev)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .semantics(mergeDescendants = true) {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = msg
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Check, null, tint = Cian, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(msg, color = TextoPrimario, fontSize = 13.sp)
+            }
+        }
     }
 
     aviso?.let { msg ->

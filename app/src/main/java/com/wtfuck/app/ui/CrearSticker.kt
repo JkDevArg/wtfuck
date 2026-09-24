@@ -53,22 +53,36 @@ import kotlin.math.roundToInt
 @Composable
 fun HojaCrearSticker(
     uri: Uri,
-    onListo: (File) -> Unit,
+    /** El pack al que va. Vacio = suelto. Es la pestaña abierta al crearlo. */
+    packDestino: String = "",
+    onListo: () -> Unit,
     onCerrar: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    val app = ctx.applicationContext as com.wtfuck.app.WtfuckApp
     val ambito = rememberCoroutineScope()
 
     var origen by remember { mutableStateOf<Bitmap?>(null) }
     var fallo by remember { mutableStateOf(false) }
     var guardando by remember { mutableStateOf(false) }
 
+    /**
+     * Si el archivo elegido tiene movimiento.
+     *
+     * Se mira **antes** de decodificar nada: un animado no se recorta -Android
+     * no trae codificador de WebP animado ni de GIF, asi que recortarlo
+     * significaria aplanarlo a un fotograma- y por tanto tampoco hace falta
+     * cargarlo para editar. Ver `Stickers.copiarAnimado`.
+     */
+    val animado = remember(uri) { Stickers.esAnimado(ctx, uri) }
+
     // Cuánto se ha acercado y movido la imagen dentro de la ventana.
     var zoom by remember { mutableFloatStateOf(1f) }
     var desX by remember { mutableFloatStateOf(0f) }
     var desY by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(uri) {
+    LaunchedEffect(uri, animado) {
+        if (animado) return@LaunchedEffect
         origen = withContext(Dispatchers.IO) { Stickers.cargarParaEditar(ctx, uri) }
         fallo = origen == null
     }
@@ -93,8 +107,13 @@ fun HojaCrearSticker(
                 modifier = Modifier.align(Alignment.Start),
             )
             Text(
-                "Arrastrá y pellizcá para elegir el cuadrado. Si la foto tiene " +
-                    "fondo transparente, se conserva.",
+                if (animado) {
+                    "Tiene movimiento, así que se agrega tal cual: recortarlo " +
+                        "obligaría a dejarlo en un solo fotograma."
+                } else {
+                    "Arrastrá y pellizcá para elegir el cuadrado. Si la foto tiene " +
+                        "fondo transparente, se conserva."
+                },
                 color = TextoTerciario,
                 fontSize = 12.sp,
                 modifier = Modifier.align(Alignment.Start),
@@ -103,6 +122,79 @@ fun HojaCrearSticker(
 
             val bmp = origen
             when {
+                // Un animado no pasa por el editor: se previsualiza tal cual
+                // -con Coil, que es lo que sabe dibujar los fotogramas- y se
+                // copia. Ver `Stickers.copiarAnimado`.
+                animado && !fallo -> {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(BgElev),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        coil3.compose.AsyncImage(
+                            model = uri,
+                            contentDescription = "Vista previa del sticker con movimiento",
+                            modifier = Modifier.fillMaxSize().padding(10.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            guardando = true
+                            ambito.launch {
+                                val ok = withContext(Dispatchers.IO) {
+                                    val destino = Stickers.nuevoAnimado(
+                                        ctx, Stickers.extensionDe(ctx, uri),
+                                    )
+                                    // El tope de la clase `sticker` es 2 MB, y
+                                    // se comprueba AQUI y no al enviar: un
+                                    // animado de 5 MB copiado y registrado
+                                    // fallaria recien al mandarlo, con el
+                                    // sticker ya en la coleccion.
+                                    val cabe = Stickers.copiarAnimado(
+                                        ctx, uri, destino, 2L * 1024 * 1024,
+                                    )
+                                    if (cabe) {
+                                        app.repo.registrarSticker(destino, true, packDestino)
+                                        true
+                                    } else false
+                                }
+                                guardando = false
+                                if (ok) onListo() else fallo = true
+                            }
+                        },
+                        enabled = !guardando,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Cian, contentColor = TextoSobreAcento,
+                        ),
+                    ) {
+                        if (guardando) {
+                            CircularProgressIndicator(
+                                color = TextoSobreAcento,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                        } else {
+                            Icon(Icons.Filled.Check, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(if (guardando) "Agregando…" else "Agregar a mis stickers")
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Máximo 2 MB. Si pesa más no entra como sticker.",
+                        color = TextoTerciario,
+                        fontSize = 11.5.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
                 fallo -> EstadoDeError(
                     titulo = "No se pudo abrir la imagen",
                     detalle = "Probá con otra foto de la galería.",
@@ -173,13 +265,16 @@ fun HojaCrearSticker(
                         onClick = {
                             guardando = true
                             ambito.launch {
-                                val f = withContext(Dispatchers.IO) {
+                                val ok = withContext(Dispatchers.IO) {
                                     val destino = Stickers.nuevo(ctx)
                                     val r = recorteVisible(bmp, zoom, desX, desY)
-                                    if (Stickers.escribir(bmp, r, destino)) destino else null
+                                    if (Stickers.escribir(bmp, r, destino)) {
+                                        app.repo.registrarSticker(destino, false, packDestino)
+                                        true
+                                    } else false
                                 }
                                 guardando = false
-                                if (f != null) onListo(f) else fallo = true
+                                if (ok) onListo() else fallo = true
                             }
                         },
                         enabled = !guardando,
@@ -199,7 +294,7 @@ fun HojaCrearSticker(
                             Icon(Icons.Filled.Check, null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                         }
-                        Text(if (guardando) "Creando…" else "Crear y enviar")
+                        Text(if (guardando) "Creando…" else "Crear sticker")
                     }
 
                     Spacer(Modifier.height(10.dp))

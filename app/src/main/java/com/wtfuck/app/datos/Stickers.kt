@@ -224,4 +224,128 @@ object Stickers {
             ?: emptyList()
 
     fun borrar(f: File): Boolean = runCatching { f.delete() }.getOrDefault(false)
+
+    // =======================================================================
+    //  Stickers con movimiento
+    // =======================================================================
+
+    /**
+     * Si estos bytes son una imagen **animada**.
+     *
+     * Se mira la cabecera del archivo y no la extension, por lo de siempre: la
+     * extension la pone quien nombra el archivo y miente cuando quiere. Aqui
+     * ademas importa mas que de costumbre, porque un `.webp` puede ser una
+     * imagen fija o una animacion y el mismo nombre sirve para las dos.
+     *
+     * **GIF**: los animados tienen mas de un bloque de imagen. Basta con
+     * encontrar la extension de control de grafico (`21 F9`) mas de una vez,
+     * que es lo que lleva el retardo de cada fotograma.
+     *
+     * **WebP**: el formato es RIFF. Un WebP animado declara el trozo `VP8X`
+     * con el bit de animacion, y lleva un trozo `ANIM`. Buscar `ANIM` en los
+     * primeros bytes es suficiente y no obliga a parsear el contenedor.
+     */
+    fun esAnimado(cabecera: ByteArray): Boolean {
+        fun contiene(marca: String, desde: Int = 0): Int {
+            val m = marca.toByteArray(Charsets.US_ASCII)
+            outer@ for (i in desde..cabecera.size - m.size) {
+                for (j in m.indices) if (cabecera[i + j] != m[j]) continue@outer
+                return i
+            }
+            return -1
+        }
+        // WebP animado: RIFF .... WEBP ... ANIM
+        if (contiene("WEBP") in 8..12 && contiene("ANIM") > 0) return true
+        // GIF animado: al menos dos bloques de control de grafico.
+        if (cabecera.size > 6 && cabecera[0] == 'G'.code.toByte() &&
+            cabecera[1] == 'I'.code.toByte() && cabecera[2] == 'F'.code.toByte()
+        ) {
+            var n = 0
+            var i = 0
+            while (i < cabecera.size - 1) {
+                if (cabecera[i] == 0x21.toByte() && cabecera[i + 1] == 0xF9.toByte()) {
+                    n++
+                    if (n > 1) return true
+                }
+                i++
+            }
+        }
+        return false
+    }
+
+    /** Lee lo justo para decidir si el archivo tiene movimiento. */
+    fun esAnimado(ctx: Context, uri: Uri): Boolean = runCatching {
+        ctx.contentResolver.openInputStream(uri)?.use { flujo ->
+            // 256 KB: el trozo ANIM de un WebP va al principio, y en un GIF el
+            // segundo bloque de control aparece tras el primer fotograma. Leer
+            // el archivo entero para responder una pregunta de cabecera seria
+            // cargar en memoria lo que se intenta evitar.
+            val tope = ByteArray(256 * 1024)
+            val leidos = flujo.read(tope)
+            if (leidos <= 0) false else esAnimado(tope.copyOf(leidos))
+        } ?: false
+    }.getOrDefault(false)
+
+    /**
+     * Copia un animado tal cual, sin recortar ni re-codificar.
+     *
+     * ## Por que NO se recorta
+     *
+     * Android no trae ningun codificador de WebP animado ni de GIF: se puede
+     * decodificar y no se puede volver a escribir. Un recorte obligaria a
+     * aplanarlo a un fotograma, o sea **a quitarle el movimiento para poder
+     * ajustarlo**, que es perder justo lo que se venia a conservar.
+     *
+     * Asi que se acepta como viene, con dos condiciones que si se pueden
+     * comprobar: que pese menos que el tope de la clase y que no sea enorme de
+     * lado. Un animado de 2000 px dibujado a 132 dp es gastar memoria en cada
+     * fotograma para no verlo.
+     */
+    fun copiarAnimado(ctx: Context, uri: Uri, destino: File, topeBytes: Long): Boolean {
+        val ok = runCatching {
+            ctx.contentResolver.openInputStream(uri)?.use { entrada ->
+                destino.outputStream().buffered().use { salida ->
+                    // Se copia acotado: un archivo mas grande que el tope se
+                    // corta y se descarta, en vez de llenar el disco antes de
+                    // comprobar el tamano.
+                    var total = 0L
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = entrada.read(buf)
+                        if (n <= 0) break
+                        total += n
+                        if (total > topeBytes) return@use false
+                        salida.write(buf, 0, n)
+                    }
+                    true
+                }
+            } ?: false
+        }.onFailure { Log.w(TAG, "No se pudo copiar el animado: ${it.message}") }
+            .getOrDefault(false)
+
+        if (!ok || destino.length() <= 0L) {
+            destino.delete()
+            return false
+        }
+        return true
+    }
+
+    /** Un archivo nuevo conservando la extension del origen animado. */
+    fun nuevoAnimado(ctx: Context, extension: String): File =
+        File(carpeta(ctx), "${System.currentTimeMillis()}.${extension.ifBlank { "webp" }}")
+
+    /**
+     * La extension de una URI, para no cambiarle el formato a un animado.
+     *
+     * De la extension sale el MIME cuando el archivo se lee por `file://`, y
+     * un GIF guardado como `.webp` se dibuja mal en el otro aparato.
+     */
+    fun extensionDe(ctx: Context, uri: Uri): String {
+        val mime = runCatching { ctx.contentResolver.getType(uri) }.getOrNull().orEmpty()
+        return when {
+            mime.contains("gif") -> "gif"
+            mime.contains("webp") -> "webp"
+            else -> "webp"
+        }
+    }
 }

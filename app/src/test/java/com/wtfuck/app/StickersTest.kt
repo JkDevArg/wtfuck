@@ -157,4 +157,62 @@ class StickersTest {
     fun `el lado es 512, que es lo que espera todo el mundo`() {
         assertEquals(512, Stickers.LADO)
     }
+
+    // ============================================================
+    //  Detectar movimiento: se mira la CABECERA, no la extensión
+    // ============================================================
+
+    /** RIFF + tamaño + WEBP + el trozo que marca la animación. */
+    private fun webpAnimado(): ByteArray =
+        "RIFF".toByteArray() + byteArrayOf(0, 0, 0, 0) + "WEBPVP8X".toByteArray() +
+            ByteArray(10) + "ANIM".toByteArray() + ByteArray(32)
+
+    private fun webpFijo(): ByteArray =
+        "RIFF".toByteArray() + byteArrayOf(0, 0, 0, 0) + "WEBPVP8 ".toByteArray() + ByteArray(64)
+
+    private fun gif(fotogramas: Int): ByteArray {
+        var b = "GIF89a".toByteArray() + ByteArray(7)
+        repeat(fotogramas) { b += byteArrayOf(0x21, 0xF9.toByte(), 4, 0, 0, 0, 0, 0) + ByteArray(20) }
+        return b
+    }
+
+    @Test
+    fun `un WebP animado se reconoce`() {
+        assertTrue(Stickers.esAnimado(webpAnimado()))
+    }
+
+    @Test
+    fun `un WebP fijo NO se reconoce como animado`() {
+        // El caso que importa: **la extensión es la misma**. Un `.webp` puede
+        // ser una imagen quieta o una animación, así que mirar el nombre no
+        // distingue nada y hay que mirar dentro.
+        assertFalse(Stickers.esAnimado(webpFijo()))
+    }
+
+    @Test
+    fun `un GIF de varios fotogramas es animado`() {
+        assertTrue(Stickers.esAnimado(gif(3)))
+    }
+
+    @Test
+    fun `un GIF de un solo fotograma no lo es`() {
+        // Existen y son comunes: un GIF quieto es una imagen. Tratarlo como
+        // animado lo dejaría sin recortar por nada.
+        assertFalse(Stickers.esAnimado(gif(1)))
+    }
+
+    @Test
+    fun `un archivo que no es ninguna de las dos cosas no revienta`() {
+        assertFalse(Stickers.esAnimado(ByteArray(0)))
+        assertFalse(Stickers.esAnimado("no soy una imagen".toByteArray()))
+        assertFalse(Stickers.esAnimado(byteArrayOf(0x89.toByte(), 'P'.code.toByte())))
+    }
+
+    @Test
+    fun `la palabra ANIM suelta en un archivo cualquiera no lo hace animado`() {
+        // Sin la comprobación de que sea un WebP, cualquier archivo con esas
+        // cuatro letras dentro —un texto, un PNG con metadatos— se copiaría
+        // sin recortar creyendo que tiene movimiento.
+        assertFalse(Stickers.esAnimado("hola ANIM que tal".toByteArray()))
+    }
 }

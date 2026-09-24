@@ -17,9 +17,9 @@ docs/       decisiones de arquitectura, hoja de ruta, API, despliegue
 ## Estado
 
 Servidor y app funcionando, verificados en dos emuladores.
-**1588 pruebas en verde** con todo levantado (1323 de integración en 35 suites,
-75 de JUnit en el servidor, 190 en la app). En la configuración mínima —una
-instancia, sin Redis ni push— son **1497**: dos suites se omiten cuando les
+**1594 pruebas en verde** con todo levantado (1323 de integración en 35 suites,
+75 de JUnit en el servidor, 196 en la app). En la configuración mínima —una
+instancia, sin Redis ni push— son **1503**: dos suites se omiten cuando les
 falta el entorno, y el runner las marca `OMIT` en vez de `OK`.
 
 Tres de ellas **hacen ataques de verdad**:
@@ -75,7 +75,7 @@ quien no debe.
 | V | Depuración visual de la lista de chats | ✅ |
 | W | Las hojas de formulario se abren enteras (el botón quedaba fuera) | ✅ |
 | X | Privacidad no muestra ni guarda ajustes que no pudo leer | ✅ |
-| Y | Stickers propios, recortados de una foto | ✅ |
+| Y | Stickers propios: packs, favoritos, recientes, emoji y animados | ✅ |
 
 **Lo que falta, y por qué:**
 

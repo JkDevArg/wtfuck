@@ -274,13 +274,43 @@ private fun VisorImagen(archivo: File, pie: String, onCerrar: () -> Unit) {
 /** Un sticker no lleva burbuja: se dibuja suelto, como en Telegram. */
 @Composable
 private fun VistaSticker(m: MensajeEnt, local: File?) {
-    val img = remember(local?.path, m.adjuntoMiniatura) {
-        val bytes = if (local != null) local.readBytes() else Media.deBase64(m.adjuntoMiniatura)
-        bytes?.let { runCatching { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }.getOrNull() }
-    }
     Box(Modifier.size(132.dp), contentAlignment = Alignment.Center) {
-        if (img != null) Image(img, null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-        else Icon(Icons.Filled.EmojiEmotions, null, tint = Slate, modifier = Modifier.size(52.dp))
+        when {
+            // **Con Coil y no con `BitmapFactory`.** Decodificar a mano
+            // devuelve un `Bitmap`, y un Bitmap es UN fotograma: un sticker
+            // animado se veia congelado en el primero. El `ImageLoader` de la
+            // app ya trae `AnimatedImageDecoder` -para los GIF- y ese mismo
+            // decodificador cubre el WebP animado, asi que basta con no
+            // esquivarlo.
+            local != null -> coil3.compose.AsyncImage(
+                model = local,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+
+            // Mientras no ha bajado, la miniatura. Es un fotograma y esta
+            // bien que lo sea: es un anticipo, no el sticker.
+            m.adjuntoMiniatura.isNotBlank() -> {
+                val img = remember(m.adjuntoMiniatura) {
+                    Media.deBase64(m.adjuntoMiniatura)?.let {
+                        runCatching {
+                            BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap()
+                        }.getOrNull()
+                    }
+                }
+                if (img != null) {
+                    Image(img, null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                } else {
+                    Icon(Icons.Filled.EmojiEmotions, null, tint = Slate, modifier = Modifier.size(52.dp))
+                }
+            }
+
+            else -> Icon(
+                Icons.Filled.EmojiEmotions, null,
+                tint = Slate, modifier = Modifier.size(52.dp),
+            )
+        }
     }
 }
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
@@ -67,6 +68,14 @@ fun HojaAccionesMensaje(
     onEditar: () -> Unit,
     onCopiar: () -> Unit,
     onReenviar: () -> Unit,
+    /**
+     * Guardar en mi coleccion un sticker que me mandaron.
+     *
+     * Es lo que hace que la funcion sirva para dos personas. Sin esto cada
+     * quien solo puede usar los que recorto, y un sticker que llega es un
+     * callejon sin salida: se ve una vez y no se puede devolver.
+     */
+    onGuardarSticker: () -> Unit,
     onFijar: () -> Unit,
     onBorrarParaMi: () -> Unit,
     onReintentar: () -> Unit,
@@ -123,6 +132,18 @@ fun HojaAccionesMensaje(
                 Opcion("Responder", Icons.AutoMirrored.Filled.Reply, onClick = onResponder)
                 Opcion("Copiar", Icons.Filled.ContentCopy, onClick = onCopiar)
                 Opcion("Reenviar", Icons.AutoMirrored.Filled.Send, onClick = onReenviar)
+
+                // Solo si es un sticker Y ya esta descargado: guardar uno que
+                // todavia no bajo copiaria un archivo que no existe.
+                if (mensaje.adjuntoClase == com.wtfuck.protocol.ClaseAdjunto.STICKER &&
+                    !mensaje.rutaLocal.isNullOrBlank()
+                ) {
+                    Opcion(
+                        "Guardar en mis stickers",
+                        Icons.Filled.AddCircleOutline,
+                        onClick = onGuardarSticker,
+                    )
+                }
 
                 if (mensaje.esMio) {
                     Opcion("Editar", Icons.Filled.Edit, onClick = onEditar)

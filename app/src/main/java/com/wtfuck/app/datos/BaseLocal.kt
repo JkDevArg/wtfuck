@@ -371,6 +371,64 @@ data class ContactoEnt(
     val favorito: Boolean = false,
 )
 
+/**
+ * Modulo Y.2 · Un pack de stickers.
+ *
+ * ## Por que hay packs y no una sola bolsa
+ *
+ * Porque una bolsa de sesenta stickers no se navega. Los packs son como se
+ * organiza esto en cualquier app que los tenga, y no por copiarlas: es que un
+ * sticker no se busca por nombre -no tiene-, se busca por **de donde salio**.
+ * "Los de la oficina", "los del viaje". El pack es esa memoria.
+ */
+@Entity(tableName = "sticker_pack")
+data class PackEnt(
+    @PrimaryKey val id: String,
+    val nombre: String,
+    val creadoEn: Long,
+)
+
+/**
+ * Un sticker propio.
+ *
+ * ## Por que esto es una tabla y antes eran archivos sueltos
+ *
+ * La primera version listaba `files/stickers/` y ya. Funcionaba para "crear y
+ * mandar" y no daba para nada mas: un archivo no tiene pack, ni favorito, ni
+ * emoji, ni cuando se uso por ultima vez. Todo eso son **metadatos**, y los
+ * metadatos van en la base, no en el nombre del archivo.
+ *
+ * El archivo sigue siendo un archivo: aqui se guarda su ruta. Meter los bytes
+ * en la base haria que la consulta de la bandeja arrastrase megabytes para
+ * dibujar una tira de miniaturas.
+ */
+@Entity(
+    tableName = "sticker",
+    indices = [
+        Index(value = ["packId"], name = "sticker_por_pack"),
+        Index(value = ["usadoEn"], name = "sticker_por_uso"),
+    ],
+)
+data class StickerEnt(
+    @PrimaryKey val id: String,
+    /** Vacio = suelto, sin pack. */
+    val packId: String,
+    val archivo: String,
+    /**
+     * El emoji con el que se busca.
+     *
+     * Un sticker no tiene nombre, asi que lo unico con lo que se puede buscar
+     * es con lo que significa. Es lo que hacen todas: el emoji ES la etiqueta.
+     */
+    val emoji: String,
+    val favorito: Boolean,
+    /** `elapsedRealtime` no: aqui hace falta orden entre sesiones, asi que hora real. */
+    val usadoEn: Long,
+    val creadoEn: Long,
+    /** Si tiene movimiento. Cambia como se dibuja y como se creo. */
+    val animado: Boolean,
+)
+
 // ============================================================
 //  DAO
 // ============================================================
@@ -418,6 +476,61 @@ interface ChatDao {
 
     @Query("SELECT * FROM contacto")
     suspend fun libreta(): List<ContactoEnt>
+
+    // ---------------------------------------------------------- stickers
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarSticker(s: StickerEnt)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarPack(p: PackEnt)
+
+    @Query("SELECT * FROM sticker_pack ORDER BY creadoEn")
+    fun packs(): Flow<List<PackEnt>>
+
+    @Query("SELECT * FROM sticker ORDER BY creadoEn DESC")
+    fun stickers(): Flow<List<StickerEnt>>
+
+    /**
+     * Los recientes. Tope de 24 porque es una tira, no un archivo: mas alla de
+     * dos pantallas de ancho nadie sigue mirando.
+     */
+    @Query("SELECT * FROM sticker WHERE usadoEn > 0 ORDER BY usadoEn DESC LIMIT 24")
+    fun recientes(): Flow<List<StickerEnt>>
+
+    @Query("UPDATE sticker SET usadoEn = :cuando WHERE id = :id")
+    suspend fun marcarUsado(id: String, cuando: Long)
+
+    @Query("UPDATE sticker SET favorito = :v WHERE id = :id")
+    suspend fun marcarFavorito(id: String, v: Boolean)
+
+    @Query("UPDATE sticker SET emoji = :e WHERE id = :id")
+    suspend fun ponerEmoji(id: String, e: String)
+
+    @Query("UPDATE sticker SET packId = :pack WHERE id = :id")
+    suspend fun moverA(id: String, pack: String)
+
+    @Query("DELETE FROM sticker WHERE id = :id")
+    suspend fun borrarSticker(id: String)
+
+    /**
+     * Al borrar un pack, sus stickers quedan SUELTOS, no se borran.
+     *
+     * Borrar el pack es deshacer una agrupacion; borrar los stickers es tirar
+     * el trabajo de recortarlos uno a uno. Son dos intenciones distintas y
+     * juntarlas convierte un "ordenar" en una perdida.
+     */
+    @Query("UPDATE sticker SET packId = '' WHERE packId = :pack")
+    suspend fun soltarDelPack(pack: String)
+
+    @Query("DELETE FROM sticker_pack WHERE id = :pack")
+    suspend fun borrarPack(pack: String)
+
+    @Query("UPDATE sticker_pack SET nombre = :nombre WHERE id = :pack")
+    suspend fun renombrarPack(pack: String, nombre: String)
+
+    @Query("SELECT COUNT(*) FROM sticker")
+    suspend fun cuantosStickers(): Int
 
     @Query("SELECT COUNT(*) FROM conversacion WHERE archivado = 1")
     fun cuantosArchivados(): Flow<Int>
@@ -751,8 +864,10 @@ interface ChatDao {
         VotoEnt::class,
         HistoriaEnt::class,
         ContactoEnt::class,
+        StickerEnt::class,
+        PackEnt::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -771,6 +886,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .openHelperFactory(factory)
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
+                    DE_15_A_16,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -892,6 +1008,43 @@ abstract class BaseLocal : RoomDatabase() {
          * constructor de `ContactoEnt`, y declararlos tambien aqui es lo que
          * rompio la 10→11. Ver la nota de `CREAR_HISTORIA`.
          */
+        /**
+         * Dos tablas nuevas para los stickers propios.
+         *
+         * Los archivos que ya existan en `files/stickers/` **no se pierden**:
+         * el repositorio los adopta la primera vez que se abre la bandeja, con
+         * `Stickers.adoptarSueltos`. Borrarlos aqui seria tirar el trabajo de
+         * quien ya recorto unos cuantos con la version anterior.
+         *
+         * Sin `DEFAULT` en el CREATE: los valores por defecto viven en el
+         * constructor de las entidades. Ver la nota de `CREAR_HISTORIA`.
+         */
+        private val DE_15_A_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS sticker_pack (
+                           id TEXT NOT NULL PRIMARY KEY,
+                           nombre TEXT NOT NULL,
+                           creadoEn INTEGER NOT NULL
+                       )"""
+                )
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS sticker (
+                           id TEXT NOT NULL PRIMARY KEY,
+                           packId TEXT NOT NULL,
+                           archivo TEXT NOT NULL,
+                           emoji TEXT NOT NULL,
+                           favorito INTEGER NOT NULL,
+                           usadoEn INTEGER NOT NULL,
+                           creadoEn INTEGER NOT NULL,
+                           animado INTEGER NOT NULL
+                       )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS sticker_por_pack ON sticker (packId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS sticker_por_uso ON sticker (usadoEn)")
+            }
+        }
+
         private val DE_14_A_15 = object : Migration(14, 15) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

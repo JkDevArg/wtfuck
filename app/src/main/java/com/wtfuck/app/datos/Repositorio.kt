@@ -2283,6 +2283,107 @@ class Repositorio(
         return usernames.associateWith { libreta[it.lowercase()] ?: it }
     }
 
+    // ============================================================
+    //  Modulo Y · Stickers propios
+    // ============================================================
+
+    val stickers: Flow<List<StickerEnt>> = dao.stickers()
+    val packsDeStickers: Flow<List<PackEnt>> = dao.packs()
+    val stickersRecientes: Flow<List<StickerEnt>> = dao.recientes()
+
+    /**
+     * Adopta los archivos sueltos de la version anterior.
+     *
+     * La primera version guardaba stickers como archivos en `files/stickers/`
+     * y nada mas. Al pasar a tabla, esos archivos existen y la base no los
+     * conoce: sin esto, quien ya habia recortado unos cuantos abriria la
+     * bandeja y la veria vacia, con los archivos ocupando disco.
+     *
+     * Es idempotente: solo mira los archivos que no tienen fila.
+     */
+    suspend fun adoptarStickersSueltos() {
+        runCatching {
+            val conocidos = dao.stickers().first().map { it.archivo }.toSet()
+            Stickers.mios(contexto).filter { it.absolutePath !in conocidos }.forEach { f ->
+                dao.guardarSticker(
+                    StickerEnt(
+                        id = UUID.randomUUID().toString(),
+                        packId = "",
+                        archivo = f.absolutePath,
+                        emoji = "",
+                        favorito = false,
+                        usadoEn = 0L,
+                        creadoEn = f.lastModified(),
+                        animado = runCatching { Stickers.esAnimado(f.readBytes().take(4096).toByteArray()) }
+                            .getOrDefault(false),
+                    )
+                )
+            }
+        }.onFailure { Log.w(TAG, "No se pudieron adoptar los stickers sueltos: ${it.message}") }
+    }
+
+    /** Registra un sticker recien creado. Devuelve su id. */
+    suspend fun registrarSticker(archivo: File, animado: Boolean, packId: String = ""): String {
+        val id = UUID.randomUUID().toString()
+        dao.guardarSticker(
+            StickerEnt(
+                id = id,
+                packId = packId,
+                archivo = archivo.absolutePath,
+                emoji = "",
+                favorito = false,
+                usadoEn = 0L,
+                creadoEn = System.currentTimeMillis(),
+                animado = animado,
+            )
+        )
+        return id
+    }
+
+    /**
+     * Guarda en mi coleccion un sticker que me mandaron.
+     *
+     * Es lo que hace que la funcion sirva para dos: sin esto, cada quien solo
+     * puede usar los que recorto, y un sticker que llega es un callejon sin
+     * salida. Se **copia** el archivo, no se referencia: el original vive con
+     * el mensaje y vaciar el chat se lo llevaria.
+     */
+    suspend fun guardarStickerRecibido(origen: File): Boolean = runCatching {
+        val animado = Stickers.esAnimado(origen.readBytes().take(256 * 1024).toByteArray())
+        val destino = Stickers.nuevoAnimado(contexto, origen.extension.ifBlank { "webp" })
+        origen.copyTo(destino, overwrite = true)
+        registrarSticker(destino, animado)
+        true
+    }.onFailure { Log.w(TAG, "No se pudo guardar el sticker recibido: ${it.message}") }
+        .getOrDefault(false)
+
+    /** Al mandarlo sube a "recientes". La hora real, que es la que ordena entre sesiones. */
+    suspend fun usarSticker(id: String) = dao.marcarUsado(id, System.currentTimeMillis())
+
+    suspend fun favoritoSticker(id: String, v: Boolean) = dao.marcarFavorito(id, v)
+    suspend fun emojiSticker(id: String, e: String) = dao.ponerEmoji(id, e.take(8))
+    suspend fun moverSticker(id: String, packId: String) = dao.moverA(id, packId)
+
+    suspend fun borrarSticker(s: StickerEnt) {
+        dao.borrarSticker(s.id)
+        Stickers.borrar(File(s.archivo))
+    }
+
+    suspend fun crearPack(nombre: String): String {
+        val id = UUID.randomUUID().toString()
+        dao.guardarPack(PackEnt(id, nombre.trim().take(40), System.currentTimeMillis()))
+        return id
+    }
+
+    suspend fun renombrarPack(id: String, nombre: String) =
+        dao.renombrarPack(id, nombre.trim().take(40))
+
+    /** Borra el pack y **suelta** sus stickers. Ver la nota del DAO. */
+    suspend fun borrarPack(id: String) {
+        dao.soltarDelPack(id)
+        dao.borrarPack(id)
+    }
+
     suspend fun contactos(): List<Contacto> =
         runCatching { api.contactos().contactos }
             .onSuccess { guardarLibretaLocal(it) }
