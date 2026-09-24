@@ -1,5 +1,17 @@
 // El intermediario de GIFs: el unico sitio donde el servidor sale a internet.
 //
+// ## La suite corre CON clave y SIN ella, y comprueba cosas distintas
+//
+// Estaba escrita para un entorno sin clave: afirmaba, por ejemplo, que la
+// busqueda contesta "no configurado". Al poner una clave de verdad, tres
+// afirmaciones empezaron a fallar **por funcionar**, que es el peor tipo de
+// rojo: el que significa "el entorno cambio" y al que se deja de hacer caso.
+//
+// Ahora detecta el entorno preguntandole AL SERVIDOR -no leyendo el `process.env`
+// de este proceso, que no dice nada si la suite corre contra otra maquina- y
+// afirma lo que corresponde a cada caso. Lo de la forma del id se comprueba en
+// los dos, porque es la parte de seguridad.
+//
 // ## Que se comprueba y por que se puede sin clave de Giphy
 //
 // El `{id}` de `GET /v1/gifs/{id}/bytes` termina interpolado en una URL hacia
@@ -57,13 +69,34 @@ console.log('\n=== la ruta exige sesion ===');
 const sin = await fetch(BASE + '/v1/gifs/abc/bytes');
 ck('sin token no se puede ni preguntar', sin.status === 401, String(sin.status));
 
-console.log('\n=== un id con forma buena: 404 porque no hay clave ===');
+// ¿Hay clave configurada? Se le pregunta al servidor en vez de leer el entorno
+// de este proceso: la suite puede correr contra un servidor de otra maquina, y
+// ahi `process.env` no dice nada de como esta configurado AQUEL.
+//
+// Esto existe porque la suite estaba escrita para un entorno SIN clave y
+// afirmaba, por ejemplo, que la busqueda contesta "no configurado". Al poner
+// una clave de verdad, tres afirmaciones empezaron a fallar **por funcionar**.
+// Un rojo que significa "el entorno cambio" es un rojo al que se deja de hacer
+// caso; es la misma razon por la que el runner distingue OMIT de OK.
+const sonda = await pedir('/v1/gifs/buscar?q=gato', yo.t);
+const CONFIGURADO = (sonda.b?.resultados || []).length > 0 || !(sonda.b?.aviso || '');
+console.log(`  (buscador ${CONFIGURADO ? 'CONFIGURADO' : 'sin clave'})`);
+
+console.log('\n=== un id con forma buena: no se rechaza por forma ===');
 // Esta es la mitad que da sentido a la otra. Si un id valido diera tambien 400,
 // la suite estaria pasando por el motivo equivocado.
 const bueno = await pedir('/v1/gifs/l0HlBO7eyXzSZkJri/bytes', yo.t);
 ck('un id bien formado NO se rechaza por forma',
    bueno.s !== 400, `respondio ${bueno.s} ${JSON.stringify(bueno.b).slice(0, 90)}`);
-ck('y sin clave configurada da 404', bueno.s === 404, String(bueno.s));
+if (CONFIGURADO) {
+  // Con clave, ese id o existe (200 con bytes) o no (404). Lo que NO puede es
+  // dar 400: eso seria rechazarlo por forma, que es el defecto que la suite
+  // fija. Y tampoco 5xx: un id que Giphy no conoce no es un fallo nuestro.
+  ck('con clave, responde 200 o 404 y nunca 5xx',
+     bueno.s === 200 || bueno.s === 404, String(bueno.s));
+} else {
+  ck('sin clave configurada da 404', bueno.s === 404, String(bueno.s));
+}
 
 console.log('\n=== ids que no son ids: 400 antes de llamar a nadie ===');
 const HOSTILES = [
@@ -107,13 +140,43 @@ ck('el motivo explica que el identificador no vale',
 ck('y NO menciona giphy, la clave ni la URL interna',
    !/giphy|api_key|http/i.test(motivo), motivo);
 
-console.log('\n=== el buscador sin clave lo dice en vez de fingir ===');
+console.log('\n=== el buscador ===');
 const busq = await pedir('/v1/gifs/buscar?q=gato', yo.t);
 ck('el buscador contesta 200', busq.s === 200, String(busq.s));
-ck('con un aviso de que no esta configurado',
-   (busq.b?.aviso || '').length > 0, JSON.stringify(busq.b).slice(0, 120));
-ck('y sin resultados inventados',
-   (busq.b?.resultados || []).length === 0, JSON.stringify(busq.b?.resultados || []).slice(0, 90));
+
+if (!CONFIGURADO) {
+  // Sin clave lo DICE en vez de fingir una busqueda vacia: "no hay resultados"
+  // y "no puedo buscar" son cosas distintas y la pantalla tiene que poder
+  // distinguirlas. Mismo principio que el modulo X.
+  ck('sin clave, avisa que no esta configurado',
+     (busq.b?.aviso || '').length > 0, JSON.stringify(busq.b).slice(0, 120));
+  ck('y no inventa resultados',
+     (busq.b?.resultados || []).length === 0,
+     JSON.stringify(busq.b?.resultados || []).slice(0, 90));
+} else {
+  const res = busq.b?.resultados || [];
+  ck('con clave, trae resultados', res.length > 0, JSON.stringify(busq.b).slice(0, 120));
+  ck('y NO manda aviso de no configurado', !(busq.b?.aviso || ''), busq.b?.aviso ?? '');
+
+  // Lo que viene de Giphy es de un TERCERO y se dibuja en la rejilla del
+  // selector. El servidor tiene que haberlo acotado antes de pasarlo.
+  ck('cada id tiene la forma que el cliente va a interpolar',
+     res.every(g => /^[A-Za-z0-9]{1,64}$/.test(g.id ?? '')),
+     JSON.stringify(res.map(g => g.id).filter(i => !/^[A-Za-z0-9]{1,64}$/.test(i ?? ''))));
+  ck('ningun titulo pasa el tope de 120',
+     res.every(g => (g.titulo ?? '').length <= 120),
+     String(Math.max(...res.map(g => (g.titulo ?? '').length))));
+  ck('y las medidas y el peso no vienen negativos',
+     res.every(g => g.ancho >= 0 && g.alto >= 0 && g.bytes >= 0),
+     JSON.stringify(res.filter(g => g.ancho < 0 || g.alto < 0 || g.bytes < 0)));
+
+  // Y los bytes de uno de verdad, que es el camino que nunca se habia podido
+  // probar de punta a punta: el servidor sale a internet, comprueba el host
+  // contra la lista blanca y devuelve el archivo.
+  const uno = res[0].id;
+  const bytes = await pedir(`/v1/gifs/${uno}/bytes?previa=true`, yo.t);
+  ck('se pueden traer los bytes de un GIF real', bytes.s === 200, String(bytes.s));
+}
 
 console.log(`\n=== ${ok} pasan, ${fail} fallan ===`);
 process.exit(fail === 0 ? 0 : 1);

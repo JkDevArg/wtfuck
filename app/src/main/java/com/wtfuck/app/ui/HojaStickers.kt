@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wtfuck.app.WtfuckApp
@@ -145,8 +146,17 @@ fun PanelGifs(onElegirGif: (String) -> Unit, modifier: Modifier = Modifier) {
             }
         }
 
-        // La nota va a la vista y no solo al codigo: quien manda un GIF tiene
-        // derecho a saber que ese pedido salio de la red institucional.
+        // Dos notas en una fila, y las dos tienen que estar.
+        //
+        // La de privacidad va a la vista y no solo al codigo: quien manda un
+        // GIF tiene derecho a saber que ese pedido salio de la red
+        // institucional.
+        //
+        // Y la atribucion **la exigen los terminos de GIPHY**. No es
+        // decoracion ni cortesia: usar su API sin decir que el contenido es
+        // suyo incumple la licencia con la que se nos permite usarla. Estaba
+        // faltando desde que se construyo el buscador, y no se habia notado
+        // porque sin clave configurada no se veia ningun GIF.
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -156,6 +166,14 @@ fun PanelGifs(onElegirGif: (String) -> Unit, modifier: Modifier = Modifier) {
             Text(
                 "Las busquedas pasan por el servidor de wtfuck, no por el proveedor.",
                 fontSize = 10.5.sp,
+                color = TextoTerciario,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Vía GIPHY",
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium,
                 color = TextoTerciario,
             )
         }

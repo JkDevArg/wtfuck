@@ -17,9 +17,9 @@ docs/       decisiones de arquitectura, hoja de ruta, API, despliegue
 ## Estado
 
 Servidor y app funcionando, verificados en dos emuladores.
-**1646 pruebas en verde** con todo levantado (1350 de integración en 35 suites,
+**1650 pruebas en verde** con todo levantado (1354 de integración en 35 suites,
 75 de JUnit en el servidor, 221 en la app). En la configuración mínima —una
-instancia, sin Redis ni push— son **1555**: dos suites se omiten cuando les
+instancia, sin Redis ni push— son **1559**: dos suites se omiten cuando les
 falta el entorno, y el runner las marca `OMIT` en vez de `OK`.
 
 Tres de ellas **hacen ataques de verdad**:
@@ -83,7 +83,7 @@ quien no debe.
 | Qué | Por qué |
 |---|---|
 | **Una credencial de Firebase** | El push está construido y probado contra un FCM de mentira; falta el proyecto, la cuenta de servicio y su clave. Se ponen en el servidor y el próximo arranque de cada teléfono se registra solo: **no hay que recompilar**. Hasta entonces, con la app **cerrada** no hay proceso que despertar. Ver `docs/09-DESPLIEGUE.md` |
-| `WTFUCK_GIPHY_KEY` | La búsqueda de GIFs responde que no está configurada hasta que exista |
+| ~~`WTFUCK_GIPHY_KEY`~~ | **Configurada.** Vive en `.env` (ignorado por git); hay plantilla en `.env.ejemplo`. En producción la inyecta el despliegue |
 | SFU para llamadas de más de 4 | La malla tiene techo declarado: con N participantes son N-1 conexiones por aparato |
 | Cliente web de **mensajería** | Exige libsignal en el navegador (WASM, claves en IndexedDB) y la pregunta seria de si un navegador es sitio para claves de largo plazo. En web está la consola de **administración**, que es otra cosa |
 

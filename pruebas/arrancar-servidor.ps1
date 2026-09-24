@@ -25,6 +25,38 @@ param(
 $raiz = Split-Path -Parent $PSScriptRoot
 $log = Join-Path $env:TEMP "wtfuck-servidor-$Puerto.log"
 
+# ------------------------------------------------------------------
+#  Secretos de verdad: salen de .env, que NO esta en el repo
+# ------------------------------------------------------------------
+#
+# Los valores de este archivo son de desarrollo y estan a la vista porque no
+# protegen nada. Una clave real de un proveedor SI protege algo -aunque sea
+# poco, como la de Giphy, que es de lectura y con limite de tasa- y no puede
+# vivir en un archivo versionado: una vez commiteada queda en el historial
+# aunque despues se borre.
+#
+# Asi que se leen de `.env` en la raiz, que ya esta en .gitignore. Formato
+# CLAVE=valor, una por linea. Hay una plantilla en `.env.ejemplo`.
+#
+# Una variable que YA este en el entorno gana sobre el archivo: asi el
+# despliegue de produccion, que las inyecta de otra forma, no necesita un .env.
+$dotenv = Join-Path $raiz '.env'
+if (Test-Path $dotenv) {
+    foreach ($linea in Get-Content $dotenv) {
+        $t = $linea.Trim()
+        if ($t -eq '' -or $t.StartsWith('#')) { continue }
+        $i = $t.IndexOf('=')
+        if ($i -lt 1) { continue }
+        $nombre = $t.Substring(0, $i).Trim()
+        $valor = $t.Substring($i + 1).Trim()
+        # Sin pisar lo que ya venga del entorno.
+        if (-not [Environment]::GetEnvironmentVariable($nombre)) {
+            Set-Item -Path "env:$nombre" -Value $valor
+        }
+    }
+    Write-Host "Cargado .env"
+}
+
 $env:WTFUCK_PUERTO = "$Puerto"
 $env:WTFUCK_PROPIETARIO = 'joaquin'
 $env:WTFUCK_TURN_URL = 'turn:127.0.0.1:3478?transport=udp'

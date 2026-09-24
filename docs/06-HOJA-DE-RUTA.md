@@ -182,9 +182,28 @@ ese servidor ya sabe que existe un adjunto, y a diferencia del proveedor es
 nuestro, con nuestras políticas de retención. La pantalla lo dice en una línea,
 porque quien manda un GIF tiene derecho a saberlo.
 
-**Pendiente de configuración:** falta la variable `WTFUCK_GIPHY_KEY` en el
-servidor. Sin ella el buscador responde "no está configurado" en vez de fallar,
-y el resto de multimedia funciona igual.
+**Configurado el 2026-09-24.** La clave vive en `.env` en la raíz —que está
+en `.gitignore`— y la carga `pruebas/arrancar-servidor.ps1`. Hay plantilla en
+`.env.ejemplo`. Una variable que ya esté en el entorno gana sobre el archivo,
+así que en producción no hace falta un `.env`: la inyecta el despliegue.
+
+> Los valores de desarrollo que **no protegen nada** —el secreto del bus, el
+> pepper de pruebas, el TURN local— siguen a la vista dentro del script, y eso
+> es deliberado. Una clave real de un proveedor sí protege algo, aunque sea
+> poco, y **una clave que entra al historial de git sigue ahí aunque después se
+> borre el archivo**.
+
+Sin la variable el buscador sigue respondiendo "no está configurado" en vez de
+fallar, y el resto de multimedia funciona igual.
+
+**Y faltaba la atribución a GIPHY**, que sus términos exigen. No se había
+notado porque sin clave no se veía ningún GIF: el defecto estaba desde que se
+construyó el buscador y sólo se pudo ver el día que empezó a funcionar. Está
+en el pie del panel, junto a la nota de privacidad.
+
+> Queda una cosa por comprobar contra sus términos actuales: si exigen su
+> **marca oficial** (el logo que ellos distribuyen) o si alcanza con el texto.
+> Puse texto, que es lo que puedo poner sin descargar arte de terceros.
 
 ### Defecto de fondo encontrado al probar
 
