@@ -73,7 +73,7 @@ fun PanelVacio(modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.height(18.dp))
         Text(
-            "Elegí una conversación",
+            "Elige una conversación",
             style = MaterialTheme.typography.titleMedium,
             color = TextoSecundario,
         )

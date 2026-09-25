@@ -167,19 +167,19 @@ fun BandejaStickers(
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             when {
                 todos.isEmpty() -> VacioDeStickers(
-                    "Todavía no tenés ninguno.",
-                    "Elegí una foto y recortala: queda guardada acá para volver a usarla. " +
-                        "Si elegís un GIF o un WebP animado, se conserva el movimiento.",
+                    "Todavía no tienes ninguno.",
+                    "Elige una foto y recórtala: queda guardada acá para volver a usarla. " +
+                        "Si eliges un GIF o un WebP animado, se conserva el movimiento.",
                 )
 
                 visibles.isEmpty() && busqueda.isNotBlank() -> VacioDeStickers(
                     "Ninguno con $busqueda",
-                    "Mantené pulsado un sticker para ponerle un emoji.",
+                    "Mantén pulsado un sticker para ponerle un emoji.",
                 )
 
                 visibles.isEmpty() && pestana == TAB_TODOS -> VacioDeStickers(
-                    "Todavía no tenés ninguno.",
-                    "Creá uno de una foto o guardá los que te manden.",
+                    "Todavía no tienes ninguno.",
+                    "Crea uno de una foto o guarda los que te manden.",
                 )
 
                 visibles.isEmpty() && pestana == TAB_RECIENTES -> VacioDeStickers(
@@ -189,12 +189,12 @@ fun BandejaStickers(
 
                 visibles.isEmpty() && pestana == TAB_FAVORITOS -> VacioDeStickers(
                     "Sin favoritos",
-                    "Mantené pulsado un sticker para marcarlo con la estrella.",
+                    "Mantén pulsado un sticker para marcarlo con la estrella.",
                 )
 
                 visibles.isEmpty() -> VacioDeStickers(
                     "Este pack está vacío",
-                    "Mantené pulsado un sticker para moverlo acá.",
+                    "Mantén pulsado un sticker para moverlo acá.",
                 )
 
                 // Cuatro columnas fijas y sin tarjeta debajo de cada uno.
@@ -390,7 +390,7 @@ private fun CeldaSticker(s: StickerEnt, onEnviar: () -> Unit, onMantener: () -> 
                     if (s.emoji.isNotBlank()) append(" ${s.emoji}")
                     if (s.animado) append(", con movimiento")
                     if (s.favorito) append(", favorito")
-                    append(". Mantené pulsado para más opciones.")
+                    append(". Mantén pulsado para más opciones.")
                 }
             },
         contentAlignment = Alignment.Center,

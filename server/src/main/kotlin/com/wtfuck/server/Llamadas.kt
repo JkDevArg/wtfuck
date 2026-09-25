@@ -49,16 +49,14 @@ object Llamadas {
     /**
      * Tope de personas en una llamada de grupo.
      *
-     * Cuatro, y es una limitacion real que conviene declarar. Sin servidor de
-     * medios la llamada es en MALLA: cada uno se conecta con cada otro, asi
-     * que cada telefono sube su propio video N-1 veces. Con cinco personas,
-     * cada uno sube cuatro copias, y con datos moviles eso no se sostiene.
-     *
-     * Subirlo exige un SFU -un servidor que recibe un flujo de cada uno y lo
-     * reparte-, que es infraestructura aparte y no una linea de codigo. Es
-     * preferible un tope declarado a una llamada de ocho que se cae sola.
+     * El numero vive en el protocolo —`com.wtfuck.protocol.MAX_EN_LLAMADA`—
+     * porque la app lo necesita para no dejar elegir a mas gente de la que
+     * cabe. Aqui queda el alias, y sobre todo la razon: sin servidor de medios
+     * la llamada es en MALLA y cada telefono sube su video una vez por
+     * participante. Es preferible un tope declarado a una llamada de ocho que
+     * se cae sola.
      */
-    const val MAX_EN_LLAMADA = 4
+    const val MAX_EN_LLAMADA = com.wtfuck.protocol.MAX_EN_LLAMADA
 
     // ============================================================
     //  Iniciar
@@ -103,8 +101,41 @@ object Llamadas {
                 throw ErrorNegocio(409, "Ya estas en una llamada.")
             }
 
-            val otros = participantesDe(c, conv, excepto = yo.usuarioId)
-            if (otros.isEmpty()) throw ErrorNegocio(409, "No hay nadie mas en esta conversacion.")
+            val miembros = participantesDe(c, conv, excepto = yo.usuarioId)
+            if (miembros.isEmpty()) throw ErrorNegocio(409, "No hay nadie mas en esta conversacion.")
+
+            // A quienes hacer sonar.
+            //
+            // ## El agujero que esto tapa
+            //
+            // Antes se llamaba a TODOS y, si eran mas de cuatro, se rechazaba
+            // la llamada entera. O sea: en un grupo de ocho no se podia hacer
+            // una llamada nunca, ni entre tres. El tope de la malla se estaba
+            // aplicando al grupo en vez de a la llamada.
+            //
+            // ## Y por que la lista del cliente no basta
+            //
+            // Viene de fuera. Se CRUZA con quien esta de verdad en la
+            // conversacion: sin eso, un id cualquiera en ese campo haria sonar
+            // el telefono de alguien que no esta en el grupo, saltandose de un
+            // salto los bloqueos, la privacidad y la pertenencia.
+            val otros = if (req.invitados.isEmpty()) {
+                miembros
+            } else {
+                val pedidos = req.invitados.map { uuidUsuario(it) }.toSet() - yo.usuarioId
+                if (pedidos.isEmpty()) throw ErrorNegocio(409, "No elegiste a nadie.")
+                val ajenos = pedidos - miembros.toSet()
+                if (ajenos.isNotEmpty()) {
+                    // Se avisa en vez de ignorarlos en silencio. Quien pregunta
+                    // ya puede ver la lista de miembros, asi que no se le
+                    // revela nada; y un invitado que desaparece sin decirlo se
+                    // lee como una llamada que no suena.
+                    throw ErrorNegocio(403, "Alguien a quien elegiste no esta en esta conversacion.")
+                }
+                // Se conserva el orden de la conversacion, no el del cliente.
+                miembros.filter { it in pedidos }
+            }
+
             if (otros.size + 1 > MAX_EN_LLAMADA) {
                 throw ErrorNegocio(
                     409,
@@ -122,10 +153,28 @@ object Llamadas {
                 exigirPuedeLlamar(c, yo.usuarioId, otros.first(), req.conVideo)
             }
 
+            // En un grupo, elegir a quien llamar cambia lo que significa un
+            // bloqueo.
+            //
+            // Cuando se llamaba al grupo entero, un bloqueo era ruido de
+            // fondo: la llamada iba dirigida a la conversacion. Elegir a una
+            // persona es senialarla, y hacer sonar el telefono de quien te
+            // bloqueo -o de quien bloqueaste- por la via de un grupo compartido
+            // seria rodear el bloqueo sin romperlo.
+            //
+            // Se quitan EN SILENCIO y no con un error: decir "esa persona te
+            // bloqueo" revela justo lo que un bloqueo esconde.
+            val otrosFinal = if (tipo == "directa" || req.invitados.isEmpty()) {
+                otros
+            } else {
+                otros.filter { !Autz.hayBloqueo(c, yo.usuarioId, it) }
+            }
+            if (otrosFinal.isEmpty()) throw ErrorNegocio(409, "No hay nadie a quien llamar.")
+
             // Quien esta ocupado no recibe el timbre, pero SI queda en la
             // llamada como 'rechazo' con motivo ocupado: es informacion que el
             // que llama necesita para no volver a intentar cinco veces.
-            val ocupados = otros.filter { ocupado(c, it) }
+            val ocupados = otrosFinal.filter { ocupado(c, it) }
 
             val llamadaId = c.prepareStatement(
                 """INSERT INTO llamada
@@ -153,7 +202,7 @@ object Llamadas {
                 """INSERT INTO llamada_participante (llamada_id, usuario_id, estado)
                    VALUES (?, ?, ?)"""
             ).use { st ->
-                for (u in otros) {
+                for (u in otrosFinal) {
                     st.setObject(1, llamadaId)
                     st.setObject(2, u)
                     st.setString(3, if (u in ocupados) "rechazo" else "sonando")
@@ -162,7 +211,7 @@ object Llamadas {
                 st.executeBatch()
             }
 
-            val aSonar = otros - ocupados.toSet()
+            val aSonar = otrosFinal - ocupados.toSet()
             val avisos = if (aSonar.isEmpty()) {
                 emptyList()
             } else {
@@ -173,11 +222,22 @@ object Llamadas {
 
             LlamadaCreada(
                 llamadaId = llamadaId.toString(),
-                // Los destinos salen de la misma funcion que usan los mensajes:
-                // todos los dispositivos de todos los participantes menos el
-                // que llama. Incluye MIS otros aparatos, que es lo que permite
-                // que la tablet deje de sonar cuando contesto en el telefono.
-                destinos = Claves.destinos(yo, conv).destinos,
+                // Los destinos salen de la misma funcion que usan los
+                // mensajes: todos los dispositivos de todos los participantes
+                // menos el que llama.
+                //
+                // Y se RECORTAN a quienes estan en la llamada. Sin este
+                // filtro, elegir invitados no serviria de nada: el que llama
+                // le mandaria la oferta a todo el grupo y a los no invitados
+                // les sonaria el telefono igual, porque una oferta cifrada que
+                // llega hace sonar el aparato sin preguntarle al servidor.
+                //
+                // Mis propios aparatos se conservan: es lo que hace que la
+                // tablet deje de sonar cuando contesto en el telefono.
+                destinos = Claves.destinos(yo, conv).destinos.filter {
+                    val u = runCatching { UUID.fromString(it.usuarioId) }.getOrNull()
+                    u != null && (u == yo.usuarioId || u in otrosFinal)
+                },
                 turn = credencialesTurn(yo.username),
             ) to avisos
         }
@@ -304,6 +364,10 @@ object Llamadas {
                 yo.username, llamadaId.toString(),
             ).filter { it.first != yo.dispositivoId }
 
+            // Una sola vez, fuera del filtro: dentro se consultaria la base
+            // una vez por dispositivo.
+            val enLlamada = enLaLlamada(c, llamadaId)
+
             LlamadaEnCurso(
                 llamadaId = llamadaId.toString(),
                 conversacionId = l.conversacionId.toString(),
@@ -311,7 +375,16 @@ object Llamadas {
                 origen = l.origenUsername,
                 estado = "en_curso",
                 turn = credencialesTurn(yo.username),
-                destinos = Claves.destinos(yo, l.conversacionId).destinos,
+                // Solo los de la LLAMADA, no los de la conversacion.
+                //
+                // Con esta lista el que contesta cierra la malla -ofrece a los
+                // demas participantes-. Si trajera el grupo entero, contestar
+                // en un grupo de ocho abriria conexiones contra los ocho y le
+                // haria sonar el telefono a cinco que nadie invito: la
+                // eleccion de invitados quedaria deshecha por el segundo que
+                // contesta.
+                destinos = Claves.destinos(yo, l.conversacionId).destinos
+                    .filter { it.usuarioId in enLlamada },
             ) to avisos
         }
 
@@ -338,15 +411,36 @@ object Llamadas {
             }
             if (eraParticipante == 0) throw ErrorNegocio(404, "No estas en esa llamada.")
 
-            val dentro = c.prepareStatement(
-                "SELECT count(*) FROM llamada_participante WHERE llamada_id = ? AND estado = 'dentro'"
+            // Dos cuentas, y las dos hacen falta.
+            val (dentro, vivos) = c.prepareStatement(
+                """SELECT count(*) FILTER (WHERE estado = 'dentro'),
+                          count(*) FILTER (WHERE estado IN ('dentro','sonando'))
+                     FROM llamada_participante WHERE llamada_id = ?"""
             ).use { st ->
                 st.setObject(1, llamadaId)
-                st.executeQuery().use { rs -> rs.primero { it.getInt(1) } } ?: 0
-            }
+                st.executeQuery().use { rs -> rs.primero { it.getInt(1) to it.getInt(2) } }
+            } ?: (0 to 0)
 
-            // Una llamada de una sola persona no es una llamada.
-            if (dentro >= 2 && l.estado == "en_curso") return@tx emptyList()
+            // La llamada sigue si queda alguien DENTRO y hay al menos dos
+            // personas en juego —dentro o sonando—.
+            //
+            // ## Lo que esto arregla
+            //
+            // Antes la condicion era `dentro >= 2 && estado == "en_curso"`, o
+            // sea que mientras la llamada SONABA cualquier rechazo la mataba
+            // entera. En una llamada de grupo eso significaba que llamar a
+            // tres y que el primero dijera que no cortaba el timbre de los
+            // otros dos. Se vio en un emulador: uno declino y la llamada
+            // termino como 'rechazada' con el segundo todavia sonando.
+            //
+            // ## Por que las dos cuentas
+            //
+            //  - `dentro >= 1`: si no queda nadie dentro, no hay llamada a la
+            //    que entrar. Es lo que hace que cancelar siendo quien llama
+            //    la termine, aunque los demas sigan sonando.
+            //  - `vivos >= 2`: una llamada de uno no es una llamada. Cuenta
+            //    tambien a los que suenan, porque todavia pueden contestar.
+            if (dentro >= 1 && vivos >= 2) return@tx emptyList()
 
             // El motivo se afina aqui, no se toma tal cual del cliente: quien
             // cuelga un timbre que nadie contesto esta CANCELANDO, no
@@ -390,18 +484,21 @@ object Llamadas {
      * cierra la app, nadie manda el "cancelada" y la llamada quedaria sonando
      * para siempre en la base y el otro telefono sonando de verdad.
      */
-    fun cerrarTimbresVencidos(): Int = Db.tx { c ->
+    fun cerrarTimbresVencidos(): Pair<Int, List<Pair<UUID, Bajada.Evento>>> = Db.tx { c ->
         val vencidas = c.prepareStatement(
-            """SELECT id FROM llamada
+            """SELECT id, conversacion_id FROM llamada
                WHERE estado = 'sonando'
                  AND iniciada_en < now() - make_interval(secs => ?)"""
         ).use { st ->
             st.setDouble(1, TIMBRE.seconds.toDouble())
-            st.executeQuery().use { rs -> rs.mapear { it.getObject(1, UUID::class.java) } }
+            st.executeQuery().use { rs ->
+                rs.mapear { it.getObject(1, UUID::class.java) to it.getObject(2, UUID::class.java) }
+            }
         }
-        if (vencidas.isEmpty()) return@tx 0
+        if (vencidas.isEmpty()) return@tx 0 to emptyList()
+        val ids = vencidas.map { it.first }
 
-        val arr = c.createArrayOf("uuid", vencidas.toTypedArray())
+        val arr = c.createArrayOf("uuid", ids.toTypedArray())
         c.prepareStatement(
             """UPDATE llamada
                SET estado = 'terminada', terminada_en = now(), fin_motivo = 'sin_respuesta'
@@ -413,7 +510,23 @@ object Llamadas {
                    salido_en = coalesce(salido_en, now())
                WHERE llamada_id = ANY(?) AND estado IN ('sonando','dentro')"""
         ).use { st -> st.setArray(1, arr); st.executeUpdate() }
-        vencidas.size
+
+        // Y SE AVISA. Esto no estaba, y era la mitad que faltaba: el barrido
+        // cerraba la llamada en la base y no se lo decia a nadie, asi que el
+        // telefono del que llamaba seguia diciendo "Llamando..." para una
+        // llamada que ya no existia, y el del otro seguia sonando. Se vio en
+        // un emulador: la fila decia 'terminada' y las dos pantallas no.
+        //
+        // La prueba que existia miraba la fila. Una prueba que afirma sobre un
+        // estado no afirma sobre el aviso.
+        val avisos = vencidas.flatMap { (id, conv) ->
+            Eventos.emitir(
+                c, participantesDe(c, conv, excepto = null),
+                "llamada_terminada", conv, "",
+                """{"llamada":"$id","motivo":"${FinLlamada.SIN_RESPUESTA}"}""",
+            )
+        }
+        ids.size to avisos
     }
 
     // ============================================================
@@ -422,17 +535,24 @@ object Llamadas {
 
     /** La llamada viva de esta persona, si hay alguna. La usa el arranque. */
     fun enCurso(yo: Auth): LlamadaEnCurso? = Db.query { c ->
-        val id = c.prepareStatement(
-            """SELECT l.id FROM llamada l
+        // Se trae tambien MI estado: la app necesita saber si esta llamada me
+        // esta sonando o si es una en la que ya estaba. Sin esa diferencia,
+        // arrancar la app colgaba la llamada entrante.
+        val fila = c.prepareStatement(
+            """SELECT l.id, p.estado FROM llamada l
                  JOIN llamada_participante p ON p.llamada_id = l.id AND p.usuario_id = ?
                WHERE l.estado <> 'terminada' AND p.estado IN ('sonando','dentro')
                ORDER BY l.iniciada_en DESC LIMIT 1"""
         ).use { st ->
             st.setObject(1, yo.usuarioId)
-            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+            st.executeQuery().use { rs ->
+                rs.primero { it.getObject(1, UUID::class.java) to it.getString(2) }
+            }
         } ?: return@query null
+        val (id, miEstado) = fila
 
         val l = leerBasico(c, id)
+        val enLlamada = enLaLlamada(c, id)
         LlamadaEnCurso(
             llamadaId = id.toString(),
             conversacionId = l.conversacionId.toString(),
@@ -440,7 +560,11 @@ object Llamadas {
             origen = l.origenUsername,
             estado = l.estado,
             turn = credencialesTurn(yo.username),
-            destinos = Claves.destinos(yo, l.conversacionId).destinos,
+            // Los de la llamada, no los de la conversacion: el mismo recorte
+            // que en `contestar`, por la misma razon.
+            destinos = Claves.destinos(yo, l.conversacionId).destinos
+                .filter { it.usuarioId in enLlamada },
+            miEstado = miEstado,
         )
     }
 
@@ -591,6 +715,24 @@ object Llamadas {
             st.executeQuery().use { it.next() }
         }
 
+    /**
+     * Quien figura en la llamada, como texto para comparar con los destinos.
+     *
+     * Incluye a los que aun estan sonando: la malla se arma con quien fue
+     * invitado, no con quien ya contesto. Si esperara a que contestaran, el
+     * segundo en entrar no tendria a quien ofrecerle y la llamada de tres se
+     * quedaria a medias otra vez.
+     */
+    private fun enLaLlamada(c: Connection, llamadaId: UUID): Set<String> =
+        c.prepareStatement(
+            "SELECT usuario_id FROM llamada_participante WHERE llamada_id = ?"
+        ).use { st ->
+            st.setObject(1, llamadaId)
+            st.executeQuery().use { rs ->
+                rs.mapear { it.getObject(1, UUID::class.java).toString() }.toSet()
+            }
+        }
+
     private fun participantesDe(c: Connection, conv: UUID, excepto: UUID?): List<UUID> =
         c.prepareStatement(
             """SELECT usuario_id FROM participante
@@ -600,6 +742,17 @@ object Llamadas {
             st.setObject(1, conv); st.setObject(2, excepto); st.setObject(3, excepto)
             st.executeQuery().use { rs -> rs.mapear { it.getObject(1, UUID::class.java) } }
         }
+
+    /**
+     * Un id de usuario que llega del cliente.
+     *
+     * Aparte de [uuid] solo por el mensaje: decirle "identificador de
+     * conversacion invalido" a quien eligio mal un invitado manda a mirar el
+     * sitio equivocado.
+     */
+    private fun uuidUsuario(s: String): UUID =
+        runCatching { UUID.fromString(s) }
+            .getOrElse { throw ErrorNegocio(400, "Identificador de persona invalido.") }
 
     private fun uuid(s: String): UUID =
         runCatching { UUID.fromString(s) }

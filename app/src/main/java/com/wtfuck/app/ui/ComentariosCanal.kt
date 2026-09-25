@@ -156,7 +156,7 @@ fun HojaComentarios(
 
                     remotos!!.isEmpty() -> AvisoVacio(
                         "Todavía nadie comentó esta publicación.",
-                        if (puedeComentar) "Podés ser el primero." else null,
+                        if (puedeComentar) "Puedes ser el primero." else null,
                     )
 
                     else -> LazyColumn {
@@ -202,7 +202,7 @@ fun HojaComentarios(
                     OutlinedTextField(
                         value = texto,
                         onValueChange = { texto = it },
-                        placeholder = { Text("Escribí un comentario", color = TextoTerciario) },
+                        placeholder = { Text("Escribe un comentario", color = TextoTerciario) },
                         modifier = Modifier.weight(1f),
                         maxLines = 4,
                         shape = RoundedCornerShape(20.dp),

@@ -37,6 +37,21 @@ import kotlinx.serialization.Serializable
 
 const val RUTA_LLAMADAS = "/v1/llamadas"
 
+/**
+ * Tope de personas en una llamada.
+ *
+ * Cuatro. Sin servidor de medios la llamada es en MALLA: cada uno se conecta
+ * con cada otro, asi que cada telefono sube su propio video N-1 veces. Con
+ * cinco, cada uno sube cuatro copias, y con datos moviles eso no se sostiene.
+ * Subirlo exige un SFU, que es infraestructura aparte.
+ *
+ * Vive en el protocolo y no solo en el servidor porque **la app tambien lo
+ * necesita**: es el numero que limita cuantos invitados deja elegir. Con una
+ * copia en cada lado, el dia que cambie uno la pantalla dejaria elegir a cinco
+ * para que el servidor los rechace despues.
+ */
+const val MAX_EN_LLAMADA = 4
+
 // ============================================================
 //  Empezar y terminar
 // ============================================================
@@ -45,6 +60,27 @@ const val RUTA_LLAMADAS = "/v1/llamadas"
 data class IniciarLlamadaReq(
     val conversacionId: String,
     val conVideo: Boolean = false,
+    /**
+     * A quienes hacer sonar, por `usuarioId`. Vacio = a todos.
+     *
+     * ## Por que hace falta elegir
+     *
+     * Una llamada en malla admite cuatro. Sin esta lista, el servidor llamaba
+     * a **todos** los de la conversacion y rechazaba la llamada entera si eran
+     * mas: un grupo de ocho no podia hacer una llamada **nunca**, ni entre
+     * tres de sus miembros. La app ni siquiera mostraba el boton.
+     *
+     * Vacia sigue significando "a todos", que es lo correcto en una directa y
+     * mantiene el comportamiento anterior en los grupos pequenios.
+     *
+     * ## El servidor no se fia de esta lista
+     *
+     * Llega del cliente, asi que es una peticion, no una orden: el servidor la
+     * cruza con quien esta de verdad en la conversacion. Sin eso, poner un id
+     * cualquiera aqui seria hacer sonar el telefono de un desconocido desde un
+     * grupo al que no pertenece.
+     */
+    val invitados: List<String> = emptyList(),
 )
 
 @Serializable
@@ -162,4 +198,23 @@ data class LlamadaEnCurso(
     val estado: String = "",
     val turn: ConfigTurn = ConfigTurn(),
     val destinos: List<DestinoDispositivo> = emptyList(),
+    /**
+     * Mi estado en esta llamada: `sonando` o `dentro`.
+     *
+     * ## Por que hace falta, y no basta con `estado`
+     *
+     * `estado` es el de la LLAMADA; este es el mio, y la diferencia decide que
+     * hacer al arrancar la app.
+     *
+     * Al arrancar hay que cerrar la llamada en la que el proceso murio: las
+     * sesiones WebRTC se fueron con el y no se retoman. Pero sin este campo la
+     * app no distinguia eso de **una llamada que me esta sonando ahora**, y la
+     * colgaba: bastaba que el telefono no tuviera la app abierta —o sea, el
+     * caso normal cuando llega un aviso— para que abrirla matara la llamada
+     * entrante antes de que sonara.
+     *
+     * Con `sonando` no se toca nada: la oferta cifrada sigue en el buzon y
+     * hace sonar el telefono al llegar.
+     */
+    val miEstado: String = "",
 )

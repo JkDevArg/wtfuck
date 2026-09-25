@@ -59,7 +59,17 @@ if (Test-Path $dotenv) {
 
 $env:WTFUCK_PUERTO = "$Puerto"
 $env:WTFUCK_PROPIETARIO = 'joaquin'
-$env:WTFUCK_TURN_URL = 'turn:127.0.0.1:3478?transport=udp'
+# El TURN de desarrollo, en la direccion que el EMULADOR puede alcanzar.
+#
+# Estaba en 127.0.0.1, que desde un emulador de Android es el emulador mismo:
+# una llamada entre dos emuladores nunca podia relevar y el medio se quedaba
+# en ICE CHECKING para siempre. 10.0.2.2 es como el emulador ve la maquina
+# anfitriona, que es donde corre el coturn.
+#
+# Sigue siendo un valor de desarrollo. En produccion sale del entorno.
+if (-not $env:WTFUCK_TURN_URL) {
+    $env:WTFUCK_TURN_URL = 'turn:10.0.2.2:3478?transport=udp'
+}
 $env:WTFUCK_TURN_SECRETO = 'secreto-turn-de-pruebas'
 $env:WTFUCK_PEPPER_TELEFONO = 'pepper-de-pruebas-local-no-produccion'
 # Modulo P. La beta de tipos de cuenta se resuelve por username y se lee UNA

@@ -123,7 +123,7 @@ fun ComunidadesPantalla(
             ) {
                 Icon(Icons.Filled.Campaign, null, tint = Slate, modifier = Modifier.size(44.dp))
                 Spacer(Modifier.height(14.dp))
-                Text("Todavía no tenés comunidades.", color = TextoSecundario, fontSize = 14.sp)
+                Text("Todavía no tienes comunidades.", color = TextoSecundario, fontSize = 14.sp)
                 Spacer(Modifier.height(6.dp))
                 // Un vacío que explica de qué se trata: "no tenés ninguna" no
                 // dice para qué sirve, y esta es una función que casi nadie usó
@@ -308,7 +308,7 @@ private fun HojaNuevaComunidad(onCerrar: () -> Unit, onCreada: () -> Unit) {
 
             if (grupos.isEmpty()) {
                 Text(
-                    "No tenés grupos todavía. Podés crear la comunidad y agregarlos después.",
+                    "No tienes grupos todavía. Puedes crear la comunidad y agregarlos después.",
                     color = TextoTerciario,
                     fontSize = 12.5.sp,
                     modifier = Modifier.padding(vertical = 8.dp),
@@ -504,7 +504,7 @@ private fun HojaComunidad(
                     if (d.grupos.isEmpty()) {
                         Text(
                             if (d.comunidad.soyAdmin) {
-                                "Todavía no tiene grupos. Agregá los que administres " +
+                                "Todavía no tiene grupos. Agrega los que administres " +
                                     "y su gente entrará al canal de anuncios."
                             } else {
                                 "Todavía no tiene grupos."
@@ -571,7 +571,7 @@ private fun HojaComunidad(
                     if (!d.comunidad.soyAdmin) {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "Sos parte de esta comunidad porque estás en alguno de sus grupos.",
+                            "Eres parte de esta comunidad porque estás en alguno de sus grupos.",
                             color = TextoTerciario, fontSize = 11.5.sp,
                         )
                     }

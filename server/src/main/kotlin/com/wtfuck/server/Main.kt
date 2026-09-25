@@ -285,7 +285,11 @@ private fun arrancarTareas() {
     Thread({
         while (true) {
             runCatching {
-                val cerradas = Llamadas.cerrarTimbresVencidos()
+                val (cerradas, avisos) = Llamadas.cerrarTimbresVencidos()
+                // Los avisos se empujan FUERA de la transaccion, igual que en
+                // el resto del servidor. Sin esto, la pantalla del que llamaba
+                // se quedaba en "Llamando..." para siempre.
+                avisos.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
                 if (cerradas > 0) bitacora.info("Cerradas {} llamadas sin respuesta.", cerradas)
             }.onFailure { bitacora.warn("Fallo el barrido de timbres: {}", it.message) }
             runCatching { Thread.sleep(10_000) }.onFailure { return@Thread }

@@ -111,7 +111,7 @@ fun HojaCrearSticker(
                     "Tiene movimiento, así que se agrega tal cual: recortarlo " +
                         "obligaría a dejarlo en un solo fotograma."
                 } else {
-                    "Arrastrá y pellizcá para elegir el cuadrado. Si la foto tiene " +
+                    "Arrastra y pellizca para elegir el cuadrado. Si la foto tiene " +
                         "fondo transparente, se conserva."
                 },
                 color = TextoTerciario,
@@ -197,7 +197,7 @@ fun HojaCrearSticker(
 
                 fallo -> EstadoDeError(
                     titulo = "No se pudo abrir la imagen",
-                    detalle = "Probá con otra foto de la galería.",
+                    detalle = "Prueba con otra foto de la galería.",
                 )
 
                 bmp == null -> Box(
@@ -229,8 +229,8 @@ fun HojaCrearSticker(
                             }
                             .semantics {
                                 contentDescription =
-                                    "Vista previa del sticker. Arrastrá para mover, " +
-                                        "pellizcá para acercar."
+                                    "Vista previa del sticker. Arrastra para mover, " +
+                                        "pellizca para acercar."
                             },
                         contentAlignment = Alignment.Center,
                     ) {

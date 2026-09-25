@@ -53,6 +53,7 @@ const call = async (m, ruta, t, body) => {
 const get = (r, t) => call('GET', r, t);
 const post = (r, t, b) => call('POST', r, t, b);
 const put = (r, t, b) => call('PUT', r, t, b);
+const del = (r, t) => call('DELETE', r, t);
 
 const psql = (sql) => execSync(
   `docker exec wtfuck_db psql -U wtfuck -d wtfuck -t -A -c "${sql}"`,
@@ -288,10 +289,214 @@ ck('el barrido del servidor la cierra sola, aunque nadie avise',
 ck('con motivo sin_respuesta',
    psql(`SELECT fin_motivo FROM llamada WHERE id='${LLT}'`) === 'sin_respuesta',
    psql(`SELECT fin_motivo FROM llamada WHERE id='${LLT}'`));
+// Y el barrido AVISA, que es la mitad que faltaba.
+//
+// Cerraba la llamada en la base y no se lo decia a nadie: la pantalla del que
+// llamaba se quedaba en "Llamando..." para una llamada que ya no existia y el
+// otro telefono seguia sonando. Se vio en un emulador. La prueba de arriba
+// mira la FILA, y una prueba que afirma sobre un estado no afirma sobre el
+// aviso: por eso hacia falta esta.
+ck('el barrido emite llamada_terminada a quien llamaba',
+   psql(`SELECT count(*) FROM evento_pendiente e JOIN dispositivo d ON d.id=e.destino_dispositivo ` +
+        `WHERE e.tipo='llamada_terminada' AND d.usuario_id='${ana.id}' AND e.detalle LIKE '%${LLT}%'`) !== '0',
+   psql(`SELECT count(*) FROM evento_pendiente e JOIN dispositivo d ON d.id=e.destino_dispositivo ` +
+        `WHERE e.tipo='llamada_terminada' AND d.usuario_id='${ana.id}' AND e.detalle LIKE '%${LLT}%'`));
+ck('y tambien a quien estaba sonando',
+   psql(`SELECT count(*) FROM evento_pendiente e JOIN dispositivo d ON d.id=e.destino_dispositivo ` +
+        `WHERE e.tipo='llamada_terminada' AND d.usuario_id='${beto.id}' AND e.detalle LIKE '%${LLT}%'`) !== '0');
+ck('con el motivo real, no uno generico',
+   psql(`SELECT count(*) FROM evento_pendiente WHERE tipo='llamada_terminada' ` +
+        `AND detalle LIKE '%${LLT}%' AND detalle LIKE '%sin_respuesta%'`) !== '0');
+
 r = await get('/v1/llamadas/historial', beto.t);
 ck('y del otro lado queda como perdida',
    (r.b.llamadas || []).find((x) => x.id === LLT)?.perdida === true,
    JSON.stringify((r.b.llamadas || []).find((x) => x.id === LLT)).slice(0, 140));
+
+console.log('\n=== AF: llamada de grupo eligiendo a quien ===');
+//
+// El defecto que esto cubre: el servidor llamaba a TODOS los de la
+// conversacion y rechazaba la llamada entera si pasaban del tope. O sea que un
+// grupo de cinco NO PODIA tener una llamada nunca, ni entre tres de sus
+// miembros. El tope de la malla se aplicaba al grupo en vez de a la llamada.
+const emi = await reg('kg');
+
+await put('/v1/claves', emi.t, juego(5));
+const grupoAF = (await post('/v1/conversaciones/grupo', ana.t, {
+  nombre: 'Grupo grupoAF ' + S,
+  usernames: [beto.user, ceci.user, dani.user, emi.user],
+})).b.id;
+
+r = await post('/v1/llamadas', ana.t, { conversacionId: grupoAF });
+ck('sin elegir, un grupo de cinco sigue sin caber: el tope es real', r.s === 409, String(r.s));
+ck('y el motivo explica por que, no solo que no',
+   /malla|video|medios|hasta 4/i.test(r.b?.motivo || ''), JSON.stringify(r.b).slice(0, 160));
+
+r = await post('/v1/llamadas', ana.t, {
+  conversacionId: grupoAF, conVideo: true, invitados: [beto.id, ceci.id],
+});
+ck('ELIGIENDO a dos, la llamada sale: un grupo grande ya puede llamar', r.s === 200,
+   String(r.s) + JSON.stringify(r.b).slice(0, 160));
+const LLAF = r.b.llamadaId;
+const destAF = (r.b.destinos || []).map((d) => d.username);
+ck('los destinos traen a los elegidos', destAF.includes(beto.user) && destAF.includes(ceci.user),
+   JSON.stringify(destAF));
+// La parte que de verdad importa: una oferta cifrada que llega hace sonar el
+// telefono sin preguntarle al servidor. Si los destinos trajeran a todo el
+// grupo, elegir invitados no serviria absolutamente de nada.
+ck('y NO a los que no se eligio: si no, les sonaria el telefono igual',
+   !destAF.includes(dani.user) && !destAF.includes(emi.user), JSON.stringify(destAF));
+ck('en la base quedan 3 participantes y no 5',
+   psql(`SELECT count(*) FROM llamada_participante WHERE llamada_id='${LLAF}'`) === '3',
+   psql(`SELECT count(*) FROM llamada_participante WHERE llamada_id='${LLAF}'`));
+ck('y a los no elegidos no se les emitio nada',
+   psql(`SELECT count(*) FROM llamada_participante WHERE llamada_id='${LLAF}' AND usuario_id='${dani.id}'`) === '0');
+
+// Quien contesta cierra la malla con los DESTINOS que le devuelve el servidor.
+// Si ahi viniera el grupo entero, el segundo en contestar desharia la eleccion.
+r = await post(`/v1/llamadas/${LLAF}/contestar`, beto.t);
+ck('un invitado contesta', r.s === 200, String(r.s));
+const destAFB = (r.b.destinos || []).map((d) => d.username);
+ck('y sus destinos son los de la LLAMADA, no los del grupo',
+   destAFB.includes(ana.user) && destAFB.includes(ceci.user) &&
+   !destAFB.includes(dani.user) && !destAFB.includes(emi.user), JSON.stringify(destAFB));
+// Y de paso queda asentado el efecto de la regla nueva: que se vaya QUIEN
+// LLAMO no corta a los que quedan. Con beto dentro y ceci todavia sonando,
+// la llamada sigue.
+await post(`/v1/llamadas/${LLAF}/terminar`, ana.t, { motivo: 'colgada' });
+ck('que se vaya quien llamo no corta a los que quedan',
+   psql(`SELECT estado FROM llamada WHERE id='${LLAF}'`) !== 'terminada',
+   psql(`SELECT estado FROM llamada WHERE id='${LLAF}'`));
+await post(`/v1/llamadas/${LLAF}/terminar`, beto.t, { motivo: 'colgada' });
+await post(`/v1/llamadas/${LLAF}/terminar`, ceci.t, { motivo: 'rechazada' });
+ck('y cuando se van todos, si termina',
+   psql(`SELECT estado FROM llamada WHERE id='${LLAF}'`) === 'terminada',
+   psql(`SELECT estado FROM llamada WHERE id='${LLAF}'`));
+
+console.log('\n=== AF: la lista de invitados NO se cree ===');
+// Llega del cliente, asi que es una peticion y no una orden.
+r = await post('/v1/llamadas', ana.t, { conversacionId: directa, invitados: [ceci.id] });
+ck('invitar a alguien que no esta en la conversacion se rechaza', r.s === 403, String(r.s));
+ck('y no crea ninguna llamada',
+   psql(`SELECT count(*) FROM llamada WHERE conversacion_id='${directa}' AND estado<>'terminada'`) === '0');
+
+r = await post('/v1/llamadas', ana.t, {
+  conversacionId: grupoAF, invitados: [beto.id, ceci.id, dani.id, emi.id],
+});
+ck('elegir a cuatro -cinco contandome- se rechaza por el tope', r.s === 409, String(r.s));
+
+r = await post('/v1/llamadas', ana.t, { conversacionId: grupoAF, invitados: ['no-es-un-uuid'] });
+ck('un id que no es un uuid da 400 y no un 500', r.s === 400, String(r.s));
+ck('y el mensaje habla de una PERSONA, no de una conversacion',
+   /persona/i.test(r.b?.motivo || ''), JSON.stringify(r.b).slice(0, 120));
+
+r = await post('/v1/llamadas', ana.t, { conversacionId: grupoAF, invitados: [ana.id] });
+ck('invitarme solo a mi mismo no es una llamada', r.s === 409, String(r.s));
+
+console.log('\n=== AF: elegir no sirve para rodear un bloqueo ===');
+// Cuando se llamaba al grupo entero, un bloqueo era ruido de fondo: la llamada
+// iba dirigida a la conversacion. Elegir a una persona es senalarla, y hacer
+// sonar su telefono por la via de un grupo compartido seria rodear el bloqueo.
+r = await post(`/v1/bloqueos/${ana.user}`, emi.t);
+ck('emi bloquea a ana', r.s === 204, String(r.s));
+
+r = await post('/v1/llamadas', ana.t, { conversacionId: grupoAF, invitados: [beto.id, emi.id] });
+ck('ana igual puede llamar al grupo', r.s === 200, String(r.s));
+const LLAFB = r.b.llamadaId;
+const destBl = (r.b.destinos || []).map((d) => d.username);
+ck('pero a quien la bloqueo NO le suena', !destBl.includes(emi.user), JSON.stringify(destBl));
+ck('y al otro si', destBl.includes(beto.user), JSON.stringify(destBl));
+ck('ni queda como participante de la llamada',
+   psql(`SELECT count(*) FROM llamada_participante WHERE llamada_id='${LLAFB}' AND usuario_id='${emi.id}'`) === '0');
+// El silencio es deliberado: decir "esa persona te bloqueo" revela justo lo
+// que un bloqueo esconde.
+ck('y sin decirselo a ana, que es lo que un bloqueo esconde', r.s === 200, String(r.s));
+await post(`/v1/llamadas/${LLAFB}/terminar`, ana.t, { motivo: 'colgada' });
+
+r = await post('/v1/llamadas', ana.t, { conversacionId: grupoAF, invitados: [emi.id] });
+ck('si el unico elegido la bloqueo, no hay llamada', r.s === 409, String(r.s));
+await del(`/v1/bloqueos/${ana.user}`, emi.t);
+
+console.log('\n=== AF: un rechazo no corta el timbre de los demas ===');
+//
+// Se vio en un emulador: se llamo a dos, el primero declino y la llamada
+// termino entera con el segundo todavia sonando. La condicion para seguir
+// viva era `dentro >= 2 && estado == 'en_curso'`, o sea que mientras SONABA
+// cualquier rechazo la mataba.
+r = await post('/v1/llamadas', ana.t, { conversacionId: grupoAF, invitados: [beto.id, ceci.id] });
+ck('ana llama a dos', r.s === 200, String(r.s));
+const LLR = r.b.llamadaId;
+
+r = await post(`/v1/llamadas/${LLR}/terminar`, beto.t, { motivo: 'rechazada' });
+ck('el primero rechaza', r.s === 204, String(r.s));
+ck('y la llamada SIGUE VIVA: el otro todavia suena',
+   psql(`SELECT estado FROM llamada WHERE id='${LLR}'`) === 'sonando',
+   psql(`SELECT estado FROM llamada WHERE id='${LLR}'`));
+ck('con el que rechazo marcado como rechazo',
+   psql(`SELECT estado FROM llamada_participante WHERE llamada_id='${LLR}' AND usuario_id='${beto.id}'`) === 'rechazo');
+ck('y el otro sigue sonando',
+   psql(`SELECT estado FROM llamada_participante WHERE llamada_id='${LLR}' AND usuario_id='${ceci.id}'`) === 'sonando');
+
+r = await post(`/v1/llamadas/${LLR}/contestar`, ceci.t);
+ck('el segundo todavia puede contestar: era lo que se perdia', r.s === 200, String(r.s));
+ck('y ahora si esta en curso',
+   psql(`SELECT estado FROM llamada WHERE id='${LLR}'`) === 'en_curso',
+   psql(`SELECT estado FROM llamada WHERE id='${LLR}'`));
+await post(`/v1/llamadas/${LLR}/terminar`, ana.t, { motivo: 'colgada' });
+
+// Y el limite del otro lado: si rechaza el ULTIMO que sonaba, no queda nadie
+// que pueda contestar y la llamada si termina.
+// Llama beto y no ana: el limitador deja 20 llamadas por usuario cada diez
+// minutos, y esta suite ya hace muchas. Repartirlas es parte de no pelearse
+// con un limite que existe a proposito.
+r = await post('/v1/llamadas', beto.t, { conversacionId: grupoAF, invitados: [ana.id, ceci.id] });
+const LLR2 = r.b.llamadaId;
+await post(`/v1/llamadas/${LLR2}/terminar`, ana.t, { motivo: 'rechazada' });
+r = await post(`/v1/llamadas/${LLR2}/terminar`, ceci.t, { motivo: 'rechazada' });
+ck('si rechaza el ultimo que sonaba, la llamada termina', r.s === 204, String(r.s));
+ck('con motivo rechazada',
+   psql(`SELECT fin_motivo FROM llamada WHERE id='${LLR2}'`) === 'rechazada',
+   psql(`SELECT fin_motivo FROM llamada WHERE id='${LLR2}'`));
+
+// Y cancelar siendo quien llama termina igual, aunque los demas suenen: sin
+// nadie dentro no hay llamada a la que entrar.
+r = await post('/v1/llamadas', ceci.t, { conversacionId: grupoAF, invitados: [ana.id, beto.id] });
+const LLR3 = r.b.llamadaId;
+r = await post(`/v1/llamadas/${LLR3}/terminar`, ceci.t, { motivo: 'colgada' });
+ck('quien llama cancela y se termina, aunque los dos siguieran sonando', r.s === 204, String(r.s));
+ck('y queda como cancelada, no como colgada',
+   psql(`SELECT fin_motivo FROM llamada WHERE id='${LLR3}'`) === 'cancelada',
+   psql(`SELECT fin_motivo FROM llamada WHERE id='${LLR3}'`));
+
+console.log('\n=== AF: abrir la app no mata la llamada entrante ===');
+//
+// El otro defecto del emulador, y el peor: al arrancar, la app pedia
+// /en-curso y colgaba lo que viniera. Con un aviso de llamada, abrir la app
+// -que es lo que hace cualquiera- mataba la llamada antes de que sonara.
+r = await post('/v1/llamadas', dani.t, { conversacionId: grupoAF, invitados: [beto.id] });
+const LLE = r.b.llamadaId;
+ck('dani llama a beto', r.s === 200, String(r.s) + JSON.stringify(r.b).slice(0, 120));
+
+r = await get('/v1/llamadas/en-curso', beto.t);
+ck('a quien le suena, /en-curso se la devuelve', r.s === 200 && r.b.llamadaId === LLE,
+   String(r.s) + JSON.stringify(r.b).slice(0, 110));
+ck('y dice que le esta SONANDO, no que esta dentro', r.b.miEstado === 'sonando', r.b.miEstado);
+// Es el dato del que depende no colgarla: sin el, la app no puede distinguir
+// esto de una llamada en la que ya estaba y cuyo medio se perdio.
+
+r = await get('/v1/llamadas/en-curso', dani.t);
+ck('a quien llamo le dice que esta dentro', r.b.miEstado === 'dentro', r.b.miEstado);
+
+r = await post(`/v1/llamadas/${LLE}/contestar`, beto.t);
+ck('contesta', r.s === 200, String(r.s));
+r = await get('/v1/llamadas/en-curso', beto.t);
+ck('y ya figura dentro', r.b.miEstado === 'dentro', r.b.miEstado);
+const destE = (r.b.destinos || []).map((d) => d.username);
+ck('los destinos de /en-curso tambien son los de la llamada',
+   destE.includes(dani.user) && !destE.includes(ceci.user) && !destE.includes(emi.user),
+   JSON.stringify(destE));
+await post(`/v1/llamadas/${LLE}/terminar`, dani.t, { motivo: 'colgada' });
+await post(`/v1/llamadas/${LLE}/terminar`, beto.t, { motivo: 'colgada' });
 
 console.log('\n=== coherencia del estado en la base ===');
 ck('no hay llamadas "terminada" sin fecha de fin: lo impide un CHECK',

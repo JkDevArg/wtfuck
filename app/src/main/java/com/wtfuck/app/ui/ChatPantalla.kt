@@ -210,6 +210,8 @@ fun ChatPantalla(
     // proposito no sabe nada de la capa de Android.
     val llamar = recordarInicioLlamada { aviso = it }
     var confirmarSalir by remember { mutableStateOf(false) }
+    /** Modulo AF: elegir a quien llamar en un grupo. */
+    var hojaLlamarGrupo by remember { mutableStateOf(false) }
     val lista = rememberLazyListState()
     val contexto = LocalContext.current
 
@@ -514,16 +516,28 @@ fun ChatPantalla(
                     }
                 },
                 actions = {
-                    // Llamar solo en una directa donde sigo siendo miembro. En
-                    // un grupo la llamada en malla esta limitada a 4 y no hay
-                    // interfaz para elegir a quien, asi que ofrecer el boton
-                    // seria prometer algo que la pantalla no cumple.
+                    // Una directa llama directo: no hay a quien elegir.
                     if (chat?.tipo == "directa" && chat.soyMiembro) {
                         IconButton(onClick = { llamar(conversacionId, chat.titulo, false) }) {
                             Icon(Icons.Filled.Phone, "Llamar", tint = TextoSecundario)
                         }
                         IconButton(onClick = { llamar(conversacionId, chat.titulo, true) }) {
                             Icon(Icons.Filled.Videocam, "Videollamada", tint = TextoSecundario)
+                        }
+                    }
+                    // Modulo AF. Un grupo abre la hoja para elegir a quien.
+                    //
+                    // Antes aqui no habia boton, y el comentario que lo
+                    // ocultaba decia que la malla admite cuatro y no habia
+                    // forma de elegir. Era cierto —y el servidor era peor: le
+                    // llamaba a todo el grupo y rechazaba la llamada entera si
+                    // pasaban de cuatro, asi que un grupo de ocho no podia
+                    // tener una llamada NUNCA, ni entre tres—. Ahora se elige,
+                    // y un solo boton porque audio o video se decide dentro,
+                    // junto con la gente: es una misma decision.
+                    if (chat?.tipo == "grupo" && chat.soyMiembro) {
+                        IconButton(onClick = { hojaLlamarGrupo = true }) {
+                            Icon(Icons.Filled.Phone, "Llamar al grupo", tint = TextoSecundario)
                         }
                     }
                     IconButton(onClick = { menuAbierto = true }) {
@@ -963,6 +977,17 @@ fun ChatPantalla(
                 }
             },
             onCerrar = { hojaContacto = false },
+        )
+    }
+
+    if (hojaLlamarGrupo) {
+        HojaLlamarAlGrupo(
+            conversacionId = conversacionId,
+            onCerrar = { hojaLlamarGrupo = false },
+            onLlamar = { invitados, conVideo ->
+                hojaLlamarGrupo = false
+                llamar(conversacionId, chat?.titulo ?: "Grupo", conVideo, invitados)
+            },
         )
     }
 

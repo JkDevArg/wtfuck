@@ -30,6 +30,23 @@ data class EstadoLlamada(
     val conVideo: Boolean,
     /** La inicie yo. Decide si se muestra "llamando..." o "contestar/rechazar". */
     val saliente: Boolean,
+    /**
+     * Quien esta en la llamada, por DISPOSITIVO: id del aparato -> username.
+     *
+     * Por dispositivo y no por persona, igual que los motores, porque esa es
+     * la unidad real: alguien con telefono y tablet son dos conexiones y dos
+     * recuadros. Y el nombre hace falta para rotular cada recuadro: una
+     * rejilla de cuatro videos sin nombres no dice quien es quien.
+     */
+    val participantes: Map<String, String> = emptyMap(),
+    /**
+     * El nombre del grupo, cuando la llamada sale de uno. Vacio en una directa.
+     *
+     * Existe para quien RECIBE. Veia solo "@tatiana" y no tenia como saber
+     * que era una llamada de grupo ni de cual: contestar sin saber quien mas
+     * esta del otro lado no es lo mismo que contestarle a una persona.
+     */
+    val grupo: String = "",
     val fase: Fase,
     val silenciado: Boolean = false,
     val camaraActiva: Boolean = true,
@@ -77,6 +94,14 @@ class ServicioLlamadas(
     private val sesion: Sesion,
     /** Manda una carga cifrada a UN dispositivo. Lo implementa el Repositorio. */
     private val enviarCifrado: suspend (convId: String, dispositivoId: String, carga: Carga) -> Unit,
+    /**
+     * El nombre del grupo de una conversacion, o vacio si es una directa.
+     *
+     * Se inyecta en vez de leer la base aqui por la misma razon que
+     * `enviarCifrado`: este servicio no sabe nada de Room ni del Repositorio,
+     * y esa frontera es lo que lo hace probable.
+     */
+    private val nombreDeGrupo: suspend (convId: String) -> String = { "" },
 ) {
 
     private val TAG = "Llamadas"
@@ -85,8 +110,21 @@ class ServicioLlamadas(
     private val _estado = MutableStateFlow<EstadoLlamada?>(null)
     val estado: StateFlow<EstadoLlamada?> = _estado.asStateFlow()
 
-    private val _videoRemoto = MutableStateFlow<VideoTrack?>(null)
-    val videoRemoto: StateFlow<VideoTrack?> = _videoRemoto.asStateFlow()
+    /**
+     * Los videos remotos, por dispositivo.
+     *
+     * ## Por que un mapa y no una pista
+     *
+     * Era `VideoTrack?`, o sea UNA. Con dos personas funciona; con tres, cada
+     * pista que llega pisa a la anterior y **gana la ultima**: se ve a uno
+     * solo y ademas cambia sin motivo aparente. El servidor admitia llamadas
+     * de hasta cuatro desde el modulo K y la app solo sabia dibujar una.
+     *
+     * La clave es el dispositivo porque es la unidad de la malla: un motor,
+     * una pista, un recuadro.
+     */
+    private val _videosRemotos = MutableStateFlow<Map<String, VideoTrack>>(emptyMap())
+    val videosRemotos: StateFlow<Map<String, VideoTrack>> = _videosRemotos.asStateFlow()
 
     private val _videoLocal = MutableStateFlow<VideoTrack?>(null)
     val videoLocal: StateFlow<VideoTrack?> = _videoLocal.asStateFlow()
@@ -100,11 +138,20 @@ class ServicioLlamadas(
     //  Llamar
     // ============================================================
 
-    suspend fun llamar(convId: String, conQuien: String, conVideo: Boolean): Result<Unit> =
+    /**
+     * @param invitados a quienes hacer sonar, por `usuarioId`. Vacio = a todos,
+     *   que es lo correcto en una directa y en un grupo que entra entero.
+     */
+    suspend fun llamar(
+        convId: String,
+        conQuien: String,
+        conVideo: Boolean,
+        invitados: List<String> = emptyList(),
+    ): Result<Unit> =
         runCatching {
             if (_estado.value != null) error("Ya hay una llamada en curso.")
 
-            val creada = api.iniciarLlamada(IniciarLlamadaReq(convId, conVideo))
+            val creada = api.iniciarLlamada(IniciarLlamadaReq(convId, conVideo, invitados))
             turn = creada.turn
 
             _estado.value = EstadoLlamada(
@@ -114,6 +161,8 @@ class ServicioLlamadas(
                 conVideo = conVideo,
                 saliente = true,
                 fase = EstadoLlamada.Fase.SONANDO,
+                participantes = creada.destinos.associate { it.dispositivoId to it.username },
+                grupo = runCatching { nombreDeGrupo(convId) }.getOrDefault(""),
             )
 
             // K.8. DESPUES de fijar el estado, y el orden no es un detalle: el
@@ -152,6 +201,27 @@ class ServicioLlamadas(
      */
     suspend fun ofertaEntrante(convId: String, deQuien: String, dispositivoOrigen: String, o: Carga.LlamadaOferta) {
         val actual = _estado.value
+
+        // Una oferta de la llamada en la que YA estoy no es un timbre: es otro
+        // participante cerrando la malla conmigo. Se responde en el acto, sin
+        // volver a sonar ni pedir que se conteste otra vez.
+        if (actual != null && actual.llamadaId == o.llamadaId &&
+            actual.fase != EstadoLlamada.Fase.SONANDO
+        ) {
+            runCatching {
+                val motor = crearMotor(dispositivoOrigen, actual.conVideo)
+                val sdp = motor.responder(o.sdp)
+                enviarCifrado(
+                    convId, dispositivoOrigen,
+                    Carga.LlamadaRespuesta(actual.llamadaId, sdp),
+                )
+                _estado.value = _estado.value?.let {
+                    it.copy(participantes = it.participantes + (dispositivoOrigen to deQuien))
+                }
+            }.onFailure { Log.w(TAG, "No se pudo cerrar la malla: ${it.message}") }
+            return
+        }
+
         if (actual != null && actual.llamadaId != o.llamadaId) {
             // Ocupado. Se rechaza en el acto en vez de dejar sonar las dos.
             runCatching {
@@ -171,6 +241,7 @@ class ServicioLlamadas(
                 conVideo = o.conVideo,
                 saliente = false,
                 fase = EstadoLlamada.Fase.SONANDO,
+                grupo = runCatching { nombreDeGrupo(convId) }.getOrDefault(""),
             )
         }
 
@@ -195,6 +266,11 @@ class ServicioLlamadas(
         _estado.value = e.copy(fase = EstadoLlamada.Fase.CONECTANDO)
         modoLlamada(true)
 
+        // Se anota con quien se esta hablando, para rotular los recuadros.
+        _estado.value = _estado.value?.copy(
+            participantes = curso.destinos.associate { it.dispositivoId to it.username },
+        )
+
         // Recien ahora se responde a cada oferta guardada.
         for ((dispositivo, oferta) in ofertasPendientes) {
             ambito.launch {
@@ -209,6 +285,53 @@ class ServicioLlamadas(
             }
         }
         ofertasPendientes.clear()
+
+        // Y se cierra la MALLA con los demas.
+        //
+        // ## El agujero que esto tapa
+        //
+        // Quien llama ofrece a todos, y cada uno le responde a el. Pero entre
+        // ellos no pasaba nada: en una llamada de tres, B y C hablaban los dos
+        // con A y **no se oian entre si**. La llamada de grupo existia a
+        // medias y parecia un fallo de red.
+        //
+        // ## El desempate, y por que hace falta
+        //
+        // Si B y C se ofrecen a la vez, cada uno recibe una oferta mientras
+        // espera una respuesta: es el *glare* clasico de WebRTC y deja las dos
+        // conexiones a medio negociar. Hace falta que **exactamente uno** de
+        // los dos ofrezca, decidido sin hablarlo.
+        //
+        // Se compara el id del dispositivo, que los dos lados ya conocen y es
+        // unico: ofrece el menor. No necesita ningun mensaje extra y los dos
+        // llegan siempre a la misma conclusion.
+        //
+        // La regla vive en [Malla] y no aqui: de esa comparacion depende que
+        // una llamada de grupo conecte o no, y alli se puede probar sin
+        // WebRTC, sin red y sin tres telefonos.
+        val mio = sesion.dispositivoId
+        if (mio != null) {
+            val aOfrecer = Malla.aQuienesOfrecer(
+                mio = mio,
+                candidatos = curso.destinos.map { it.dispositivoId },
+                yaConectados = motores.keys.toSet(),
+            ).toSet()
+            for (d in curso.destinos) {
+                if (d.dispositivoId !in aOfrecer) continue
+                ambito.launch {
+                    runCatching {
+                        val motor = crearMotor(d.dispositivoId, e.conVideo)
+                        val sdp = motor.ofertar()
+                        enviarCifrado(
+                            e.conversacionId, d.dispositivoId,
+                            Carga.LlamadaOferta(e.llamadaId, sdp, e.conVideo),
+                        )
+                    }.onFailure {
+                        Log.w(TAG, "No se pudo cerrar la malla con ${d.dispositivoId}: ${it.message}")
+                    }
+                }
+            }
+        }
     }
 
     suspend fun respuestaEntrante(dispositivoOrigen: String, r: Carga.LlamadaRespuesta) {
@@ -344,6 +467,13 @@ class ServicioLlamadas(
                         // debe cortar las otras.
                         terminado -> {
                             motores.remove(dispositivoId)?.colgar()
+                            // Y se quita su recuadro: dejarlo deja un video
+                            // congelado de alguien que ya no esta, que es peor
+                            // que no mostrar nada.
+                            _videosRemotos.value = _videosRemotos.value - dispositivoId
+                            _estado.value = _estado.value?.let {
+                                it.copy(participantes = it.participantes - dispositivoId)
+                            }
                             if (motores.isEmpty()) {
                                 ambito.launch { colgar(FinLlamada.FALLO_RED) }
                             }
@@ -352,7 +482,11 @@ class ServicioLlamadas(
                 }
 
                 override fun onPistaRemota(pista: org.webrtc.MediaStreamTrack) {
-                    if (pista is VideoTrack) _videoRemoto.value = pista
+                    // Se guarda BAJO SU DISPOSITIVO. Antes se asignaba a una
+                    // sola variable y la ultima pista tapaba a las demas.
+                    if (pista is VideoTrack) {
+                        _videosRemotos.value = _videosRemotos.value + (dispositivoId to pista)
+                    }
                 }
             },
         )
@@ -363,9 +497,9 @@ class ServicioLlamadas(
 
     private fun limpiar(motivo: String?) {
         motores.values.forEach { runCatching { it.colgar() } }
+        _videosRemotos.value = emptyMap()
         motores.clear()
         ofertasPendientes.clear()
-        _videoRemoto.value = null
         _videoLocal.value = null
         modoLlamada(false)
         _estado.value = _estado.value?.copy(fase = EstadoLlamada.Fase.TERMINADA, motivoFin = motivo)
@@ -395,12 +529,33 @@ class ServicioLlamadas(
     suspend fun historial(): List<LlamadaEnHistorial> =
         runCatching { api.historialLlamadas().llamadas }.getOrElse { emptyList() }
 
-    /** Al arrancar: si la app se cerro en medio de una llamada, aqui aparece. */
+    /**
+     * Al arrancar: si la app se cerro en medio de una llamada, aqui aparece.
+     *
+     * ## Lo que NO hay que hacer, y se hacia
+     *
+     * Esto colgaba **cualquier** llamada que el servidor devolviera. El
+     * razonamiento era correcto para una llamada en la que yo ya estaba: las
+     * sesiones WebRTC murieron con el proceso y no se retoman, asi que lo
+     * honesto es colgar y dejar el historial coherente.
+     *
+     * Pero el servidor tambien devuelve **la llamada que me esta sonando**, y
+     * esa no tiene nada que recuperar: todavia no empezo. Colgarla significaba
+     * que abrir la app con una llamada entrante la mataba antes de que sonara
+     * —y abrir la app al ver el aviso es exactamente lo que hace cualquiera—.
+     *
+     * Ahora decide por `miEstado`, no por que exista la llamada:
+     *
+     *  - `dentro`: yo estaba en ella y el medio se perdio. Se cierra.
+     *  - `sonando`: me esta llamando. **No se toca.** La oferta cifrada sigue
+     *    en el buzon y hace sonar el telefono cuando llega, como siempre.
+     */
     suspend fun recuperar() {
         val l = runCatching { api.llamadaEnCurso() }.getOrNull() ?: return
-        // No se reconstruye el medio: las sesiones WebRTC murieron con el
-        // proceso y no hay forma de retomarlas. Lo unico honesto es colgar y
-        // que el historial quede coherente.
+        if (l.miEstado == "sonando") {
+            Log.i(TAG, "Hay una llamada sonando al arrancar: se deja sonar")
+            return
+        }
         Log.i(TAG, "Habia una llamada abierta al arrancar: se cierra")
         runCatching { api.terminarLlamada(l.llamadaId, FinLlamada.FALLO_RED) }
     }

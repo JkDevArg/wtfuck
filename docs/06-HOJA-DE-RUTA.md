@@ -5213,3 +5213,173 @@ Seis capturas, antes y después, en
 
 **1707 pruebas en verde**, sin cambio de conteo: dos de accesibilidad
 cambiaron de expectativa, ninguna se agregó ni se quitó.
+
+---
+
+## Módulo AF · Llamadas de grupo ✅
+
+*"Que haya llamada grupal y videollamada grupal."*
+
+Existían desde el módulo K y no se podían usar. Lo que faltaba no era el
+protocolo: era poder **elegir a quién**.
+
+### AF.1 · El tope se aplicaba al grupo, no a la llamada
+
+En un grupo **no había botón de llamar**. El comentario que lo ocultaba decía
+la verdad a medias:
+
+> *"En un grupo la llamada en malla está limitada a 4 y no hay interfaz para
+> elegir a quién, así que ofrecer el botón sería prometer algo que la pantalla
+> no cumple."*
+
+El servidor era peor de lo que ese comentario admitía: llamaba a **todos** los
+de la conversación y rechazaba la llamada entera si eran más de cuatro. O sea
+que **un grupo de ocho no podía tener una llamada nunca**, ni entre tres de sus
+miembros.
+
+Ahora `IniciarLlamadaReq` lleva `invitados`, y `MAX_EN_LLAMADA` se mudó al
+protocolo: la app lo necesita para no dejar elegir más gente de la que cabe, y
+con una copia en cada lado el día que cambie uno la pantalla dejaría elegir a
+cinco para que el servidor los rechace después.
+
+### AF.2 · El servidor no se cree esa lista
+
+Llega del cliente, así que es una petición y no una orden. Se cruza con quien
+está de verdad en la conversación; un id ajeno da **403**.
+
+Y hay un segundo recorte que es el que de verdad importa: **los destinos**. Una
+oferta cifrada que llega hace sonar el teléfono **sin preguntarle al servidor**.
+Si `LlamadaCreada.destinos` trajera el grupo entero, elegir invitados no
+serviría absolutamente de nada — les sonaría igual. Lo mismo en `contestar`: si
+ahí viniera el grupo entero, el segundo en contestar cerraría malla contra los
+ocho y desharía la elección.
+
+### AF.3 · Elegir cambia lo que significa un bloqueo
+
+Cuando se llamaba al grupo entero, un bloqueo era ruido de fondo: la llamada
+iba dirigida a la conversación. **Elegir a una persona es señalarla**, y hacer
+sonar el teléfono de quien te bloqueó por la vía de un grupo compartido sería
+rodear el bloqueo sin romperlo.
+
+Se quitan **en silencio** y no con un error: decir *"esa persona te bloqueó"*
+revela justo lo que un bloqueo esconde.
+
+### AF.4 · La malla, y el *glare*
+
+Quien llama ofrecía a todos y cada uno le respondía. Entre ellos no pasaba
+nada: en una llamada de tres, B y C hablaban los dos con A y **no se oían entre
+sí**. La llamada de grupo existía a medias y parecía un fallo de red.
+
+Al cerrarla aparece el problema de verdad: si B y C se ofrecen a la vez, cada
+uno recibe una oferta mientras espera una respuesta —el *glare* de WebRTC— y
+las dos conexiones quedan a medio negociar. Hace falta que **exactamente uno**
+ofrezca, decidido sin mandar ningún mensaje extra: ofrece el del id de
+dispositivo menor.
+
+Esa comparación vive en [`Malla.kt`](../app/src/main/java/com/wtfuck/app/datos/Malla.kt)
+y no dentro del servicio, porque de una línea depende que una llamada de grupo
+conecte o no, y allí se puede probar sin WebRTC, sin red y sin tres teléfonos.
+`MallaTest` simula la llamada entera para 2, 3 y 4 participantes y **con cada
+uno como iniciador**, y exige que cada par tenga exactamente una oferta: cero es
+el defecto original, dos es el glare.
+
+Y el vídeo: `_videoRemoto` era **una** pista, así que con tres personas cada una
+que llegaba pisaba a la anterior y ganaba la última. Ahora es un mapa por
+dispositivo y una rejilla de dos columnas —el techo es cuatro, así que dan 1x1,
+2x1 y 2x2— con el nombre sobre cada recuadro.
+
+---
+
+## Tres defectos que sólo aparecen haciendo la llamada
+
+Ninguno salió de leer el código.
+
+### AF.5 · Un rechazo cortaba el timbre de los demás
+
+Se llamó a dos, el primero declinó y la llamada terminó entera **con el segundo
+todavía sonando**. La condición era `dentro >= 2 && estado == "en_curso"`: o
+sea que mientras la llamada *sonaba*, cualquier rechazo la mataba.
+
+### AF.6 · Abrir la app mataba la llamada entrante
+
+El peor. Al arrancar, la app pedía `/en-curso` y **colgaba lo que viniera**. El
+razonamiento era correcto para una llamada en la que uno ya estaba —las
+sesiones WebRTC murieron con el proceso—, pero el servidor devuelve también la
+llamada que te está sonando. Con un aviso de llamada, **abrir la app la mataba
+antes de que sonara**, que es exactamente el flujo normal.
+
+### AF.7 · El barrido cerraba la llamada y no avisaba a nadie
+
+`cerrarTimbresVencidos` cerraba la fila y se callaba: la pantalla del que
+llamaba se quedaba en *"Llamando…"* para una llamada que ya no existía.
+
+> La prueba que existía miraba la **fila**. Una prueba que afirma sobre un
+> estado no afirma sobre el aviso.
+
+### AF.8 · El TURN de desarrollo apuntaba al propio emulador
+
+`turn:127.0.0.1:3478`. Desde un emulador, `127.0.0.1` es el emulador mismo: una
+llamada entre dos nunca podía relevar y el medio se quedaba en `ICE CHECKING`
+para siempre. Con `10.0.2.2` —la máquina anfitriona vista desde el emulador— el
+vídeo de la evidencia es vídeo de verdad viajando por el relevo.
+
+---
+
+## AF.9 · La app estaba escrita en dos dialectos
+
+26 apariciones de voseo en 8 archivos —`tenés`, `Elegí`, `Podés`, `Mantené`—
+mientras el resto de la app tuteaba. La misma clase de defecto que las tildes
+del módulo AE: no se nota escribiendo el código y se nota entero leyendo la
+pantalla.
+
+El script tocó **sólo cadenas**, nunca comentarios ni identificadores. Aun así
+dejó un daño que hubo que cazar a mano:
+
+> `('sos ', 'eres ')` convirtió **"acce*sos* recientes"** en *"acceeres
+> recientes"*.
+
+Una regla sin límite de palabra entra dentro de otra palabra. Es la misma
+lección del módulo AE con `${publicacion.autor}`, y esta vez el compilador no
+podía ayudar porque el resultado compila perfectamente.
+
+---
+
+## AF.10 · La pantalla de llamada
+
+- El título se metía **debajo de la ventanita del vídeo propio**: se leía
+  "@Equipo seguri" y el resto quedaba tapado por la cara de uno. Ahora el
+  encabezado se va a la izquierda cuando hay vídeo, donde no compite con el
+  botón de minimizar ni con la ventanita.
+- La base del texto era `alpha = 0.55`. Sobre un vídeo **claro** eso da un gris
+  medio y el texto secundario desaparecía. Ahora `0.82`, y el botón de
+  minimizar tiene su propia base.
+- La tercera línea dice cosas **distintas** a cada lado: quien llama ve
+  `con joaquin, rocio` —ya sabe a qué grupo, lo que no ve es a quién eligió— y
+  quien recibe ve `llamada de grupo · Equipo seguridad`, porque veía un nombre
+  de persona y no sabía de dónde salía.
+
+---
+
+### Cómo se comprobó que las pruebas sirven
+
+Siete guardias del servidor, rotos **de a uno** y cada uno con su servidor
+recompilado, porque dos defectos a la vez se tapan entre sí. El que menos, una
+prueba; el que más, seis.
+
+Y una lección sobre el propio arnés: la primera versión del guion de validación
+mandaba la salida de Gradle a `Out-Null`, así que un defecto **que no
+compilaba** dejaba el jar anterior —el bueno— y la suite pasaba entera.
+
+> Una validación que no comprueba que el defecto llegó a instalarse no valida
+> nada. Durante un rato creí que una prueba no servía cuando el problema era
+> que el defecto nunca se había instalado.
+
+### Evidencias
+
+Siete capturas del recorrido completo, con vídeo conectado de verdad, en
+[`docs/evidencias/llamadas-grupales/`](evidencias/llamadas-grupales/). El guion
+que las produce es [`pruebas/llamada-de-grupo.sh`](../pruebas/llamada-de-grupo.sh).
+
+**1761 pruebas en verde**: 1456 de integración en 36 suites, 230 JUnit de app
+y 75 de servidor. Son **+54** sobre las 1707 del módulo anterior — 45 de
+integración y 9 de `MallaTest`.

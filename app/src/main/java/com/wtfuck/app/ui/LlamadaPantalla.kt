@@ -33,6 +33,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -71,7 +73,10 @@ fun CapaLlamada() {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val servicio = app.repo.llamadas
     val estado by servicio.estado.collectAsState()
-    val videoRemoto by servicio.videoRemoto.collectAsState()
+    val videosRemotos by servicio.videosRemotos.collectAsState()
+    // Para la ventana flotante y el fondo de una llamada de dos: la unica que
+    // hay. Con mas de una se dibuja la rejilla.
+    val videoRemoto = videosRemotos.values.firstOrNull()
     val videoLocal by servicio.videoLocal.collectAsState()
     val ambito = rememberCoroutineScope()
 
@@ -107,10 +112,22 @@ fun CapaLlamada() {
     Surface(color = BgBase, modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
 
-            // El video remoto ocupa el fondo. Si no hay -llamada de audio, o
-            // video que aun no llega- queda el fondo liso y el nombre grande,
-            // que es lo que se quiere ver mientras suena.
-            if (e.conVideo && videoRemoto != null) {
+            // Con UNA persona al otro lado, su video ocupa el fondo: es la
+            // llamada que existe desde el modulo K y sigue siendo el caso
+            // normal.
+            //
+            // Con VARIAS, una rejilla. No es una preferencia: el servidor
+            // admite hasta cuatro desde el modulo K y la app dibujaba una
+            // sola pista, asi que en una llamada de tres se veia a uno -y
+            // cambiaba sin motivo, porque la ultima pista en llegar pisaba a
+            // la anterior-.
+            if (e.conVideo && videosRemotos.size > 1) {
+                RejillaVideos(
+                    videos = videosRemotos,
+                    nombres = e.participantes,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else if (e.conVideo && videoRemoto != null) {
                 VistaVideo(
                     track = videoRemoto,
                     espejo = false,
@@ -127,27 +144,103 @@ fun CapaLlamada() {
             ) {
                 // Con video de fondo el texto necesita su propia base oscura o
                 // se vuelve ilegible sobre una imagen clara.
-                val conFondo = e.conVideo && videoRemoto != null
+                val conFondo = e.conVideo && videosRemotos.isNotEmpty()
+                // Con video, el encabezado se va a la IZQUIERDA.
+                //
+                // Centrado se metia debajo de la ventanita del video propio,
+                // que flota arriba a la derecha: se leia "@Equipo seguri" y el
+                // resto quedaba tapado por la cara de uno. Recortarlo y
+                // dejarlo centrado lo apretaba contra el boton de minimizar,
+                // que esta arriba a la izquierda.
+                //
+                // A la izquierda no compite con nada: el boton de minimizar
+                // deja su hueco al principio y la ventanita ocupa el final.
+                // Es ademas donde lo pone cualquier pantalla de video.
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                    horizontalAlignment = if (conFondo) {
+                        Alignment.Start
+                    } else {
+                        Alignment.CenterHorizontally
+                    },
                     modifier = if (conFondo) {
                         Modifier
-                            .background(BgBase.copy(alpha = 0.55f), RoundedCornerShape(16.dp))
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
-                    } else Modifier,
+                            .align(Alignment.Start)
+                            .padding(start = 32.dp, end = 124.dp)
+                            // 0.82 y no 0.55. Sobre un video CLARO —una cara
+                            // con la luz de frente, una pared blanca— un 55%
+                            // de un color oscuro da un gris medio, y encima de
+                            // ese gris el texto secundario desaparecia. Se vio
+                            // en el emulador, cuya camara de mentira es casi
+                            // blanca: el nombre se leia y el pie no.
+                            .background(BgBase.copy(alpha = 0.82f), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    } else {
+                        Modifier.padding(horizontal = 8.dp)
+                    },
                 ) {
                     if (!conFondo) {
                         Avatar(nombre = e.conQuien, url = null, tamano = 112.dp)
                         Spacer(Modifier.height(20.dp))
                     }
+                    // Una linea y con puntos suspensivos si no entra.
+                    //
+                    // Sin esto, un nombre largo —el de un grupo, casi
+                    // siempre— se metia DEBAJO de la ventanita del video
+                    // propio, que flota en la misma banda: se leia
+                    // "@Equipo seguri" y la palabra cortada quedaba tapada
+                    // por la cara de uno.
                     Text(
                         "@${e.conQuien}",
                         fontSize = 26.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = TextoPrimario,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = if (conFondo) TextAlign.Start else TextAlign.Center,
                     )
                     Spacer(Modifier.height(6.dp))
                     TextoDeFase(e)
+
+                    // En una llamada de grupo, de donde sale.
+                    //
+                    // Quien recibe veia solo "@tatiana" y no tenia como saber
+                    // que era una llamada de grupo ni de que grupo: contestar
+                    // sin saber quien mas esta del otro lado es distinto de
+                    // contestar una llamada de una persona.
+                    // La tercera linea dice cosas DISTINTAS segun de que lado
+                    // se mire, porque la pregunta es distinta:
+                    //
+                    //  - Quien llama ya sabe a que grupo: el titulo ES el
+                    //    grupo. Lo que no ve es a quien eligio, que es lo unico
+                    //    que cambia entre una llamada y otra. Repetir ahi el
+                    //    nombre del grupo era decir dos veces lo mismo.
+                    //  - Quien recibe ve "@tatiana" y no tiene como saber que
+                    //    es una llamada de grupo ni de cual. Contestar sin
+                    //    saber quien mas esta del otro lado no es lo mismo que
+                    //    contestarle a una persona.
+                    //
+                    // No se condiciona al numero de participantes: quien recibe
+                    // tiene esa lista vacia mientras suena, o sea justo cuando
+                    // el dato hace falta.
+                    val aQuienes = e.participantes.values.distinct()
+                    val pie = when {
+                        e.saliente && aQuienes.isNotEmpty() -> "con " + aQuienes.joinToString(", ")
+                        e.grupo.isNotBlank() -> "llamada de grupo · ${e.grupo}"
+                        else -> ""
+                    }
+                    if (pie.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            pie,
+                            // Secundario y no terciario: dice con quien se
+                            // esta hablando, que no es un adorno.
+                            fontSize = 12.sp,
+                            color = if (conFondo) TextoSecundario else TextoTerciario,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = if (conFondo) TextAlign.Start else TextAlign.Center,
+                        )
+                    }
                 }
 
                 Spacer(Modifier.weight(1f))
@@ -189,7 +282,14 @@ fun CapaLlamada() {
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .statusBarsPadding()
-                        .padding(4.dp),
+                        .padding(4.dp)
+                        // Su propia base, por lo mismo que el encabezado:
+                        // sobre un video claro un icono claro no se ve.
+                        .then(
+                            if (e.conVideo) {
+                                Modifier.background(BgBase.copy(alpha = 0.6f), CircleShape)
+                            } else Modifier
+                        ),
                 ) {
                     Icon(
                         Icons.Filled.CloseFullscreen,
@@ -359,6 +459,68 @@ private fun BotonChico(icono: ImageVector, desc: String, activo: Boolean, onClic
             contentColor = if (activo) TextoSobreAcento else TextoPrimario,
         ),
     ) { Icon(icono, desc, modifier = Modifier.size(24.dp)) }
+}
+
+/**
+ * Los videos de una llamada de grupo, en rejilla.
+ *
+ * ## Por que dos columnas y no "las que quepan"
+ *
+ * Porque el techo son cuatro. La malla actual abre N-1 conexiones por aparato
+ * —esta declarado en el modulo K— y con cinco personas cada telefono subiria
+ * su video cuatro veces. Con un maximo de cuatro recuadros, dos columnas dan
+ * 1x1, 2x1, 2x2 y nada mas: no hace falta un calculo para tres casos.
+ *
+ * Cada recuadro lleva **el nombre encima**. Cuatro videos sin rotular no
+ * dicen quien es quien, y en una llamada de trabajo eso es justo lo que hace
+ * falta saber.
+ */
+@Composable
+private fun RejillaVideos(
+    videos: Map<String, VideoTrack>,
+    nombres: Map<String, String>,
+    modifier: Modifier = Modifier,
+) {
+    val filas = videos.entries.toList().chunked(2)
+    Column(modifier) {
+        filas.forEach { fila ->
+            Row(Modifier.fillMaxWidth().weight(1f)) {
+                fila.forEach { (dispositivo, pista) ->
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(1.dp)
+                            .background(BgElev),
+                    ) {
+                        VistaVideo(
+                            track = pista,
+                            espejo = false,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        // El nombre sobre su propia base: encima de un video
+                        // claro, el texto solo desaparece.
+                        Text(
+                            nombres[dispositivo] ?: "",
+                            color = TextoPrimario,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(6.dp)
+                                .background(BgBase.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                        )
+                    }
+                }
+                // Con un numero impar, el ultimo recuadro NO se estira a todo
+                // el ancho: quedaria uno el doble de grande que los demas sin
+                // que eso signifique nada.
+                if (fila.size == 1 && videos.size > 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
 }
 
 /**
@@ -566,15 +728,15 @@ private fun TextoCorto(e: EstadoLlamada): String = when (e.fase) {
  * perfil, y repetirlo tres veces es garantia de que en alguno se olvide.
  */
 @Composable
-fun recordarInicioLlamada(onError: (String) -> Unit): (String, String, Boolean) -> Unit {
+fun recordarInicioLlamada(onError: (String) -> Unit): IniciadorLlamada {
     val ctx = LocalContext.current
     val app = ctx.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
-    var pendiente by remember { mutableStateOf<Triple<String, String, Boolean>?>(null) }
+    var pendiente by remember { mutableStateOf<PeticionLlamada?>(null) }
 
-    fun arrancar(convId: String, conQuien: String, conVideo: Boolean) {
+    fun arrancar(p: PeticionLlamada) {
         ambito.launch {
-            app.repo.llamadas.llamar(convId, conQuien, conVideo)
+            app.repo.llamadas.llamar(p.convId, p.conQuien, p.conVideo, p.invitados)
                 .onFailure { onError(it.message ?: "No se pudo llamar.") }
         }
     }
@@ -586,26 +748,63 @@ fun recordarInicioLlamada(onError: (String) -> Unit): (String, String, Boolean) 
         pendiente = null
         when {
             p == null -> Unit
-            res.values.all { it } -> arrancar(p.first, p.second, p.third)
+            res.values.all { it } -> arrancar(p)
             // Sin micro no hay llamada que valga la pena: es mas honesto
             // decirlo que abrir una llamada donde el otro no te oye.
             else -> onError("Sin permiso de microfono no se puede llamar.")
         }
     }
 
-    return { convId, conQuien, conVideo ->
-        val necesarios = buildList {
-            add(Manifest.permission.RECORD_AUDIO)
-            if (conVideo) add(Manifest.permission.CAMERA)
-        }
-        val faltan = necesarios.any {
-            ContextCompat.checkSelfPermission(ctx, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (faltan) {
-            pendiente = Triple(convId, conQuien, conVideo)
-            lanzador.launch(necesarios.toTypedArray())
-        } else {
-            arrancar(convId, conQuien, conVideo)
+    return object : IniciadorLlamada {
+        override fun invoke(
+            convId: String,
+            conQuien: String,
+            conVideo: Boolean,
+            invitados: List<String>,
+        ) {
+            val peticion = PeticionLlamada(convId, conQuien, conVideo, invitados)
+            val necesarios = buildList {
+                add(Manifest.permission.RECORD_AUDIO)
+                if (conVideo) add(Manifest.permission.CAMERA)
+            }
+            val faltan = necesarios.any {
+                ContextCompat.checkSelfPermission(ctx, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (faltan) {
+                pendiente = peticion
+                lanzador.launch(necesarios.toTypedArray())
+            } else {
+                arrancar(peticion)
+            }
         }
     }
+}
+
+/** Lo que hace falta para empezar una llamada, junto. */
+data class PeticionLlamada(
+    val convId: String,
+    val conQuien: String,
+    val conVideo: Boolean,
+    val invitados: List<String> = emptyList(),
+)
+
+/**
+ * El disparador de llamadas que devuelve [recordarInicioLlamada].
+ *
+ * Es una interfaz y no un `(String, String, Boolean, List<String>) -> Unit`
+ * para poder darle un **valor por defecto a `invitados`**: los tres sitios que
+ * ya llamaban —chat directo, historial, perfil— siguen escribiendo tres
+ * argumentos, y solo el grupo, que es el unico que elige, pasa el cuarto.
+ *
+ * Y una `interface` normal y no una `fun interface`, porque el metodo de una
+ * `fun interface` no admite valores por defecto —que es justo lo unico que se
+ * queria de ella—.
+ */
+interface IniciadorLlamada {
+    operator fun invoke(
+        convId: String,
+        conQuien: String,
+        conVideo: Boolean,
+        invitados: List<String> = emptyList(),
+    )
 }

@@ -2024,6 +2024,14 @@ class Repositorio(
             // mete en un sobre cifrado como cualquier mensaje. Es lo que hace
             // que la señalizacion herede el E2EE sin duplicar nada.
             enviarCifrado = ::enviarCifradoA,
+            // Solo un grupo tiene nombre que mostrar: en una directa el
+            // titulo ya ES la persona, y repetirlo debajo no dice nada.
+            nombreDeGrupo = { convId ->
+                dao.conversacion(convId)
+                    ?.takeIf { it.tipo == "grupo" }
+                    ?.let { it.nombreMostrado.ifBlank { it.nombre } }
+                    .orEmpty()
+            },
         )
     }
 

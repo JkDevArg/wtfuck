@@ -995,7 +995,7 @@ fun HojaPublicarHistoria(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = {
                     Text(
-                        if (medio == null) "Qué querés contar" else "Un pie, si querés",
+                        if (medio == null) "Qué quieres contar" else "Un pie, si quieres",
                         color = TextoTerciario,
                     )
                 },
@@ -1033,7 +1033,7 @@ fun HojaPublicarHistoria(
                             // Se dice que no hay que rehacer nada: es la
                             // duda inmediata al ver un error despues de
                             // elegir una foto y escribir un pie.
-                            "Tu foto y tu texto siguen aquí. Tocá Publicar otra vez.",
+                            "Tu foto y tu texto siguen aquí. Toca Publicar otra vez.",
                             color = TextoTerciario,
                             fontSize = 11.5.sp,
                         )
@@ -1124,7 +1124,7 @@ fun HojaVistasHistoria(vistas: VistasDeHistoria, onCerrar: () -> Unit) {
                 // apagadas las confirmaciones, no registra vista y por
                 // reciprocidad tampoco ve las suyas. Se dice POR QUÉ.
                 vistas.motivo == MotivoSinVistas.SIN_LECTURA -> Text(
-                    "Tenés apagadas las confirmaciones de lectura, así que no se " +
+                    "Tienes apagadas las confirmaciones de lectura, así que no se " +
                         "registra quién ve tus historias —ni las tuyas cuentan para " +
                         "los demás—. Se puede cambiar en Privacidad.",
                     color = TextoSecundario,
