@@ -459,20 +459,27 @@ private fun Raiz() {
                 // vuelve a la lista.
                 onSalio = { nav.navigate("chats") { popUpTo("chats") { inclusive = true } } },
                 onVerificarCifrado = { nav.navigate("huella/$id") },
+                // Con arroba: la ficha se abre sin crear la conversacion. Ver
+                // `PersonaPantalla.clave`.
+                onVerPersona = { u -> nav.navigate("persona/@$u") },
             )
         }
 
-        composable("persona/{id}") { entry ->
-            val id = entry.arguments?.getString("id").orEmpty()
+        composable("persona/{clave}") { entry ->
+            val clave = entry.arguments?.getString("clave").orEmpty()
             PersonaPantalla(
-                conversacionId = id,
+                clave = clave,
                 onAtras = { nav.popBackStack() },
-                // "Mensaje" es volver al chat y no apilar otro: se llega aqui
-                // DESDE el chat, y navegar hacia adelante dejaria dos copias
-                // de la misma conversacion en la pila.
-                onMensaje = { nav.popBackStack() },
-                onVerificarCifrado = { nav.navigate("huella/$id") },
-                onCompartido = { clase: String -> nav.navigate("compartido/$id/$clase") },
+                // Desde el chat, "Mensaje" es VOLVER y no apilar otra copia de
+                // la misma conversacion. Desde un grupo o desde contactos no
+                // hay chat detras, asi que hay que navegar. Se distingue por
+                // como se llego: con `@username` no habia conversacion.
+                onMensaje = { conv ->
+                    if (clave.startsWith("@")) nav.navigate("chat/$conv")
+                    else nav.popBackStack()
+                },
+                onVerificarCifrado = { conv -> nav.navigate("huella/$conv") },
+                onCompartido = { conv, clase -> nav.navigate("compartido/$conv/$clase") },
                 onDenunciar = { nav.popBackStack() },
             )
         }

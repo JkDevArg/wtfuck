@@ -78,6 +78,13 @@ fun textoConMenciones(
     // mayoria de los mensajes no mencionan a nadie- y construir un
     // AnnotatedString con un solo tramo por cada mensaje de la lista es
     // trabajo por nada en la pantalla que mas se desplaza.
+    //
+    // **QUIEN LLAMA TIENE QUE PONER `color` EN SU `Text`.** Por este atajo,
+    // lo que vuelve no lleva color propio, y sin el del `Text` cae al color de
+    // contenido por defecto. Estuvo mal justo asi: el texto de las burbujas
+    // propias salia claro sobre el cian, ilegible, y solo ahi — en las
+    // recibidas el color por defecto coincide con el correcto, asi que el
+    // defecto era invisible en media pantalla.
     val hallazgos = PATRON_MENCION.findAll(texto.lowercase()).toList()
     if (hallazgos.isEmpty()) return AnnotatedString(texto)
 

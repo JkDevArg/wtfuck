@@ -104,11 +104,24 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PersonaPantalla(
-    conversacionId: String,
+    /**
+     * Un id de conversacion, **o** `@username`.
+     *
+     * Dos formas en un solo parametro, y se penso: la alternativa era una
+     * segunda pantalla casi identica, o una ruta con dos argumentos donde uno
+     * siempre viaja vacio. La ambiguedad no existe —un UUID no empieza por
+     * arroba— y el `@` se lee de un vistazo en la barra de navegacion.
+     *
+     * Con `@username` se busca la directa que YA exista. Si no hay, el perfil
+     * se abre igual, sin los recuentos —no hay nada compartido que contar— y
+     * "Mensaje" crea la conversacion. Entrar a mirar quien es alguien no es
+     * empezar a hablarle.
+     */
+    clave: String,
     onAtras: () -> Unit,
-    onMensaje: () -> Unit,
-    onVerificarCifrado: () -> Unit,
-    onCompartido: (String) -> Unit,
+    onMensaje: (String) -> Unit,
+    onVerificarCifrado: (String) -> Unit,
+    onCompartido: (String, String) -> Unit,
     onDenunciar: () -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
@@ -116,6 +129,9 @@ fun PersonaPantalla(
     val portapapeles = LocalClipboardManager.current
 
     var chat by remember { mutableStateOf<ConversacionEnt?>(null) }
+    /** Cuando se llego por `@username` y todavia no hay conversacion. */
+    var suelto by remember { mutableStateOf<String?>(null) }
+    var cargando by remember { mutableStateOf(true) }
     var perfil by remember { mutableStateOf<UsuarioPublico?>(null) }
     var resumen by remember { mutableStateOf<Map<String, Int>?>(null) }
     var enLibreta by remember { mutableStateOf(false) }
@@ -133,10 +149,21 @@ fun PersonaPantalla(
     // perfil viene de la red y puede tardar o no llegar: por eso son tres
     // estados y no uno. Esperar a los tres para pintar algo dejaría la
     // pantalla en blanco por culpa de lo único que no es imprescindible.
-    LaunchedEffect(conversacionId) {
-        chat = runCatching { app.repo.conversacion(conversacionId) }.getOrNull()
-        resumen = runCatching { app.repo.compartidoResumen(conversacionId) }.getOrElse { emptyMap() }
-        val user = chat?.nombre.orEmpty()
+    LaunchedEffect(clave) {
+        cargando = true
+        if (clave.startsWith("@")) {
+            val u = clave.removePrefix("@")
+            chat = runCatching { app.repo.directaCon(u) }.getOrNull()
+            if (chat == null) suelto = u
+        } else {
+            chat = runCatching { app.repo.conversacion(clave) }.getOrNull()
+        }
+        val conv = chat?.id
+        if (conv != null) {
+            resumen = runCatching { app.repo.compartidoResumen(conv) }.getOrElse { emptyMap() }
+        }
+        cargando = false
+        val user = chat?.nombre ?: suelto.orEmpty()
         if (user.isNotBlank()) {
             perfil = app.repo.perfilDe(user)
             val libreta = runCatching { app.repo.contactos() }.getOrElse { emptyList() }
@@ -147,7 +174,29 @@ fun PersonaPantalla(
     }
 
     val c = chat
-    val usuario = c?.nombre.orEmpty()
+    val usuario = c?.nombre ?: suelto.orEmpty()
+
+    /**
+     * Hace algo que NECESITA una conversacion, creandola si no la hay.
+     *
+     * Llamar, silenciar o verificar la huella no existen sin un chat. Pero
+     * crearlo al ABRIR el perfil llenaria la lista de conversaciones vacias
+     * con gente que uno solo miro en un grupo, asi que se crea aqui: en el
+     * momento en que la persona hace algo que de verdad la necesita.
+     */
+    fun conConversacion(luego: (String) -> Unit) {
+        val ya = chat?.id
+        if (ya != null) { luego(ya); return }
+        ambito.launch {
+            runCatching { app.repo.nuevaDirecta(usuario) }
+                .onSuccess { id ->
+                    chat = app.repo.conversacion(id)
+                    suelto = null
+                    luego(id)
+                }
+                .onFailure { aviso = it.message }
+        }
+    }
     val silenciado = c != null &&
         (c.silenciadoHasta == -1L || c.silenciadoHasta > System.currentTimeMillis())
 
@@ -165,12 +214,15 @@ fun PersonaPantalla(
             )
         },
     ) { pad ->
-        if (c == null) {
+        if (cargando || usuario.isBlank()) {
             Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Cian)
             }
             return@Scaffold
         }
+
+        val nombreActual = c?.titulo(alias)
+            ?: alias.ifBlank { perfil?.nombreMostrado.orEmpty() }.ifBlank { usuario }
 
         Column(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()),
@@ -180,15 +232,22 @@ fun PersonaPantalla(
                 Modifier.fillMaxWidth().padding(vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                // El nombre y la foto salen de la conversacion si la hay, y
+                // del perfil publico si no. Llegando desde un grupo no hay
+                // conversacion todavia y la cara tiene que salir igual.
+                val nombre = c?.titulo(alias)
+                    ?: alias.ifBlank { perfil?.nombreMostrado.orEmpty() }.ifBlank { usuario }
                 AvatarDeChat(
-                    nombre = c.titulo(alias),
-                    url = ApiCliente.urlImagen(c.avatarUsername, "avatar", c.avatarVersion),
+                    nombre = nombre,
+                    url = ApiCliente.urlImagen(
+                        usuario, "avatar", c?.avatarVersion ?: perfil?.avatarVersion ?: 0L,
+                    ),
                     clase = ClaseDeChat.DIRECTA,
                     tamano = 96.dp,
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    c.titulo(alias),
+                    nombre,
                     style = MaterialTheme.typography.headlineSmall,
                     color = TextoPrimario,
                 )
@@ -217,26 +276,30 @@ fun PersonaPantalla(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                AccionRapida("Mensaje", Icons.AutoMirrored.Filled.Chat, Modifier.weight(1f), onMensaje)
+                AccionRapida("Mensaje", Icons.AutoMirrored.Filled.Chat, Modifier.weight(1f)) {
+                    conConversacion { onMensaje(it) }
+                }
                 AccionRapida("Llamar", Icons.Filled.Phone, Modifier.weight(1f)) {
-                    llamar(conversacionId, c.titulo(alias), false)
+                    conConversacion { llamar(it, nombreActual, false) }
                 }
                 AccionRapida("Video", Icons.Filled.Videocam, Modifier.weight(1f)) {
-                    llamar(conversacionId, c.titulo(alias), true)
+                    conConversacion { llamar(it, nombreActual, true) }
                 }
                 AccionRapida(
                     if (silenciado) "Activar" else "Silenciar",
                     if (silenciado) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
                     Modifier.weight(1f),
                 ) {
-                    ambito.launch {
-                        runCatching {
-                            app.repo.preferencias(
-                                conversacionId,
-                                PreferenciasChat(silenciarMinutos = if (silenciado) 0 else -1),
-                            )
-                            chat = app.repo.conversacion(conversacionId)
-                        }.onFailure { aviso = it.message }
+                    conConversacion { id ->
+                        ambito.launch {
+                            runCatching {
+                                app.repo.preferencias(
+                                    id,
+                                    PreferenciasChat(silenciarMinutos = if (silenciado) 0 else -1),
+                                )
+                                chat = app.repo.conversacion(id)
+                            }.onFailure { aviso = it.message }
+                        }
                     }
                 }
             }
@@ -279,7 +342,7 @@ fun PersonaPantalla(
                 Icons.Filled.Shield,
                 "Verificar el cifrado",
                 "Comparen la huella y sabrán que nadie está en el medio",
-                onClick = onVerificarCifrado,
+                onClick = { conConversacion { onVerificarCifrado(it) } },
             )
 
             HorizontalDivider(color = Slate.copy(alpha = 0.25f))
@@ -292,8 +355,9 @@ fun PersonaPantalla(
                 // hace que la lista se reacomode sola a medida que se usa la
                 // app: la fila de las fotos aparecería hoy tercera y mañana
                 // primera, y nunca se aprendería dónde está nada.
+                val conv = c?.id
                 for ((clase, cuantos) in ordenCompartido(r)) {
-                    FilaCompartido(clase, cuantos) { onCompartido(clase) }
+                    FilaCompartido(clase, cuantos) { if (conv != null) onCompartido(conv, clase) }
                 }
                 HorizontalDivider(color = Slate.copy(alpha = 0.25f))
             }
@@ -382,7 +446,10 @@ fun PersonaPantalla(
                         app.repo.guardarContacto(usuario, alias = v)
                             .onSuccess {
                                 alias = v
-                                chat = app.repo.conversacion(conversacionId)
+                                // Solo si hay conversacion: el alias se puede
+                                // poner desde un perfil al que se llego sin
+                                // chat, y ahi no hay fila que releer.
+                                chat?.id?.let { chat = app.repo.conversacion(it) }
                             }
                             .onFailure { aviso = it.message }
                     }

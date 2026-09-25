@@ -1534,8 +1534,22 @@ private fun Burbuja(
                 if (m.texto.isNotBlank()) {
                     // Las menciones, marcadas. La mia en negrita y con fondo;
                     // las de otros solo en color. Ver `textoConMenciones`.
+                    // `color` va AQUI y no solo dentro de los tramos.
+                    //
+                    // `textoConMenciones` tiene un atajo: sin menciones
+                    // devuelve el texto sin ningun tramo de color, que es el
+                    // caso comun y evita construir un AnnotatedString por cada
+                    // mensaje de la lista. Pero entonces el color lo pone el
+                    // `Text`, y no lo ponia: caia al color de contenido por
+                    // defecto de Material.
+                    //
+                    // Solo se veia en la burbuja PROPIA. En las recibidas el
+                    // color por defecto coincide con el correcto, asi que el
+                    // defecto era invisible en la mitad de la pantalla y
+                    // dejaba el texto claro sobre el cian en la otra mitad.
                     Text(
                         textoConMenciones(m.texto, miUsuario, colorTexto, colorMencion),
+                        color = colorTexto,
                         fontSize = 16.sp,
                     )
                 }

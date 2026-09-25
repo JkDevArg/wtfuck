@@ -706,6 +706,16 @@ interface ChatDao {
     @Query("SELECT * FROM conversacion WHERE id = :id")
     suspend fun conversacion(id: String): ConversacionEnt?
 
+    /**
+     * La directa que ya existe con alguien, o null.
+     *
+     * Existe para poder ABRIR un perfil sin crear la conversacion. Entrar a
+     * mirar quien es alguien no es empezar a hablarle, y crear el chat al
+     * mirar llenaria la lista de conversaciones vacias con gente de un grupo.
+     */
+    @Query("SELECT * FROM conversacion WHERE tipo = 'directa' AND nombre = :username LIMIT 1")
+    suspend fun directaCon(username: String): ConversacionEnt?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun guardarConversacion(c: ConversacionEnt)
 

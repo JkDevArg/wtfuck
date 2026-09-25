@@ -5969,7 +5969,7 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+**1932 pruebas en verde**: 1523 de integración en 36 suites, 329 JUnit de app
 y 80 de servidor.
 
 ---
@@ -6077,7 +6077,7 @@ si fuera de ahora. Ahora se valida primero.
 [`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
 dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
 
-**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+**1932 pruebas en verde**: 1523 de integración en 36 suites, 329 JUnit de app
 y 80 de servidor.
 
 ---
@@ -6145,7 +6145,7 @@ contestan "quién es esta persona" son dos respuestas que se separan.
 [`docs/evidencias/perfil-de-una-persona/`](evidencias/perfil-de-una-persona/)
 — la ficha, la galería y el salto al mensaje.
 
-**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+**1932 pruebas en verde**: 1523 de integración en 36 suites, 329 JUnit de app
 y 80 de servidor.
 
 ---
@@ -6221,7 +6221,7 @@ siendo ilegible.
 — los cinco hallazgos, lo que se miró y estaba bien, y lo que se decidió no
 hacer.
 
-**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+**1932 pruebas en verde**: 1523 de integración en 36 suites, 329 JUnit de app
 y 80 de servidor.
 
 ---
@@ -6295,7 +6295,7 @@ cubos, y obligó a bajar el máximo de 128 KiB a 60 KiB.
 [`docs/evidencias/relleno-del-sobre/`](evidencias/relleno-del-sobre/) — los
 tamaños antes y después, medidos en Postgres.
 
-**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+**1932 pruebas en verde**: 1523 de integración en 36 suites, 329 JUnit de app
 y 80 de servidor.
 
 ---
@@ -6368,7 +6368,7 @@ emulador para tocarla.
 [`docs/evidencias/sobre-hostil/`](evidencias/sobre-hostil/) — el defecto del
 bucle, el fuzzer y lo que encontró.
 
-**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+**1932 pruebas en verde**: 1523 de integración en 36 suites, 329 JUnit de app
 y 80 de servidor.
 
 ---
@@ -6435,5 +6435,5 @@ vuelve tras un día caído tiene un día de cosas vencidas encima.
 
 `RetencionTest`, 5 pruebas contra la base real.
 
-**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+**1932 pruebas en verde**: 1523 de integración en 36 suites, 329 JUnit de app
 y 80 de servidor.

@@ -33,6 +33,8 @@ import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.*
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 
 /**
  * Administracion de un grupo.
@@ -48,6 +50,8 @@ fun GrupoPantalla(
     onAtras: () -> Unit,
     onSalio: () -> Unit,
     onVerificarCifrado: () -> Unit,
+    /** Abrir la ficha de un miembro. */
+    onVerPersona: (String) -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
@@ -311,7 +315,15 @@ fun GrupoPantalla(
                     esYo = m.usuario.username == miUsuario,
                     // Solo se ofrecen acciones sobre quien esta por debajo.
                     puedeActuar = puedoModerar && m.jerarquia < miJerarquia,
-                    onClick = { accionesDe = m },
+                    // Tocar abre la ficha, mantener pulsado modera.
+                    //
+                    // Antes tocar abria las acciones de moderacion, y solo
+                    // para quien podia moderar: el resto de la gente tenia una
+                    // lista de nombres que no se podian tocar. "Quien es
+                    // este" es la pregunta comun y la tenia cualquiera menos
+                    // el que solo queria mirar.
+                    onClick = { onVerPersona(m.usuario.username) },
+                    onMantener = { accionesDe = m },
                 )
             }
 
@@ -537,12 +549,24 @@ private fun FilaAccion(texto: String, icono: androidx.compose.ui.graphics.vector
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FilaMiembro(m: MiembroDetalle, esYo: Boolean, puedeActuar: Boolean, onClick: () -> Unit) {
+private fun FilaMiembro(
+    m: MiembroDetalle,
+    esYo: Boolean,
+    puedeActuar: Boolean,
+    onClick: () -> Unit,
+    onMantener: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
-            .then(if (puedeActuar) Modifier.clickable(onClick = onClick) else Modifier)
+            .combinedClickable(
+                onClick = onClick,
+                // Sin permiso para moderar, mantener pulsado no hace nada; no
+                // se pasa `null` porque eso quita tambien el efecto de toque.
+                onLongClick = if (puedeActuar) onMantener else null,
+            )
             .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

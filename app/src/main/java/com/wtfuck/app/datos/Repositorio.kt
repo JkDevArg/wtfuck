@@ -2829,6 +2829,10 @@ class Repositorio(
      */
     suspend fun conversacion(id: String): ConversacionEnt? = dao.conversacion(id)
 
+    /** La directa que YA existe con alguien, sin crearla. Ver el DAO. */
+    suspend fun directaCon(username: String): ConversacionEnt? =
+        dao.directaCon(username.lowercase().trim())
+
     /**
      * Cuantas cosas de cada clase hay en una conversacion.
      *
