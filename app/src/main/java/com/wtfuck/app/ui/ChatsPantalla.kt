@@ -122,6 +122,24 @@ fun ChatsPantalla(
     val fallidos by app.repo.tamanoFallidos.collectAsStateWithLifecycle(0)
     val convsConFallidos by app.repo.conversacionesConFallidos
         .collectAsStateWithLifecycle(emptyList())
+
+    /**
+     * Abre el chat donde quedo un mensaje sin enviar, en el mensaje.
+     *
+     * Con nombre y no como lambda dentro del argumento: `ambito.launch`
+     * devuelve un `Job`, asi que la lambda quedaba de tipo `() -> Job` y hacia
+     * falta un `Unit` colgando al final para corregirlo. Un `Unit` suelto es
+     * justo lo que el compilador marca como "expresion sin usar", y tenia
+     * razon: no es lo que se queria decir.
+     */
+    fun irAlFallo(c: com.wtfuck.app.datos.ChatFila) {
+        ambito.launch {
+            val m = app.repo.primerFallidoDe(c.id)
+            // Al mensaje si se sabe cual; si no, al chat, que ya es mucho
+            // mejor que nada.
+            if (m != null) onAbrirEnMensaje(c.id, m) else onAbrir(c.id, c.tipo)
+        }
+    }
     val perfil by app.repo.miPerfil.collectAsStateWithLifecycle()
 
     var mostrarNueva by remember { mutableStateOf(false) }
@@ -342,23 +360,12 @@ fun ChatsPantalla(
                             "$preposicion ${c.titulo}"
                         }
                     },
-                    onIrAlFallo = convsConFallidos.firstOrNull()?.let { id ->
-                        // Si el chat no esta en la lista cargada no hay a
-                        // donde ir, y el aviso se queda sin toque en vez de
-                        // llevar a una pantalla vacia.
-                        chats.firstOrNull { it.id == id }?.let { c ->
-                            {
-                                ambito.launch {
-                                    val m = app.repo.primerFallidoDe(c.id)
-                                    // Al mensaje si se sabe cual; si no, al
-                                    // chat, que ya es mucho mejor que nada.
-                                    if (m != null) onAbrirEnMensaje(c.id, m)
-                                    else onAbrir(c.id, c.tipo)
-                                }
-                                Unit
-                            }
-                        }
-                    },
+                    // Si el chat no esta en la lista cargada no hay a donde
+                    // ir, y el aviso se queda sin toque en vez de llevar a
+                    // una pantalla vacia.
+                    onIrAlFallo = convsConFallidos.firstOrNull()
+                        ?.let { id -> chats.firstOrNull { it.id == id } }
+                        ?.let { c -> { irAlFallo(c) } },
                 )
                 BuscadorChats(busqueda) { busqueda = it }
                 // Dentro de Archivados no hay filtros: es ya una lista aparte.

@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -603,7 +603,7 @@ fun VisorHistorias(
                             enabled = respuesta.isNotBlank(),
                         ) {
                             Icon(
-                                Icons.Filled.Send, "Enviar la respuesta",
+                                Icons.AutoMirrored.Filled.Send, "Enviar la respuesta",
                                 tint = if (respuesta.isBlank()) Color.White.copy(alpha = 0.4f)
                                        else Color.White,
                             )

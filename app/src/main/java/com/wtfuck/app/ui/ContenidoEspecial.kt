@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -196,7 +197,7 @@ fun BurbujaContacto(v: ContactoSeguro, onAbrir: (String) -> Unit) {
             onClick = { onAbrir(v.username) },
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
         ) {
-            Icon(Icons.Filled.Chat, null, tint = Cian, modifier = Modifier.size(16.dp))
+            Icon(Icons.AutoMirrored.Filled.Chat, null, tint = Cian, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text("Abrir conversación", color = Cian, fontSize = 13.sp)
         }

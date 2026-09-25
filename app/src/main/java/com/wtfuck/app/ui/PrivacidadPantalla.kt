@@ -12,10 +12,10 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Notes
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,7 +38,7 @@ import androidx.compose.material.icons.filled.Badge
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.PlaylistAddCheck
+import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -136,13 +136,13 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
             // Va pegada al estado y no al final: son los dos textos del
             // perfil y se deciden mirandolos juntos.
             Ajuste(
-                icono = Icons.Filled.Notes,
+                icono = Icons.AutoMirrored.Filled.Notes,
                 titulo = "Quien ve mi biografia",
                 valor = actual.biografia,
             ) { abierto = "biografia" }
 
             Ajuste(
-                icono = Icons.Filled.Chat,
+                icono = Icons.AutoMirrored.Filled.Chat,
                 titulo = "Quien me puede escribir",
                 valor = actual.escribe,
             ) { abierto = "escribe" }
@@ -381,7 +381,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    Icons.Filled.PlaylistAddCheck,
+                    Icons.AutoMirrored.Filled.PlaylistAddCheck,
                     null,
                     tint = Cian,
                     modifier = Modifier.size(20.dp),

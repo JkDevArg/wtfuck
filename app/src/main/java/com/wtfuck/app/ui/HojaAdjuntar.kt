@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -58,7 +59,7 @@ fun HojaAdjuntar(
 ) {
     val opciones = listOfNotNull(
         OpcionAdjunto("Galeria", Icons.Filled.Image, Cian, onGaleria),
-        OpcionAdjunto("Documento", Icons.Filled.InsertDriveFile, Ambar, onDocumento),
+        OpcionAdjunto("Documento", Icons.AutoMirrored.Filled.InsertDriveFile, Ambar, onDocumento),
         OpcionAdjunto("Nota de voz", Icons.Filled.Mic, Coral, onNotaVoz),
         // Ya no dice "Sticker o GIF": son dos cosas separadas y este boton
         // abre el panel por la pestaña de stickers. Los GIFs tienen la suya.

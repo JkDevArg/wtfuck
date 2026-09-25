@@ -12,7 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Phone
@@ -84,7 +84,7 @@ fun NotificacionesPantalla(onAtras: () -> Unit) {
             Encabezado("Que avisa")
 
             FilaAviso(
-                icono = Icons.Filled.Chat,
+                icono = Icons.AutoMirrored.Filled.Chat,
                 titulo = "Mensajes directos",
                 detalle = "Cuando alguien te escribe",
                 marcado = mensajes,

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -76,7 +77,10 @@ fun ContenidoAdjunto(
     val alTocar: () -> Unit = when {
         m.estado == EstadoEnvio.FALLIDO.name -> onReintentar
         local == null -> onDescargar
-        else -> ({ if (local != null) onAbrir(local) })
+        // Sin `if`: para llegar aqui `local` ya paso la rama de arriba, asi
+        // que no puede ser nulo. La comprobacion no protegia de nada y hacia
+        // dudar de si podia serlo.
+        else -> ({ onAbrir(local) })
     }
 
     when (m.adjuntoClase) {
@@ -597,6 +601,6 @@ private fun iconoDeArchivo(mime: String, nombre: String): ImageVector {
         ext in setOf("ppt", "pptx", "odp") -> Icons.Filled.Slideshow
         ext in setOf("zip", "rar", "7z", "tar", "gz") -> Icons.Filled.FolderZip
         ext in setOf("apk") -> Icons.Filled.Android
-        else -> Icons.Filled.InsertDriveFile
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 }

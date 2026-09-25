@@ -17,7 +17,7 @@ import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.*
@@ -435,7 +435,7 @@ private fun BotonesEnCurso(
                 onClick = onSilenciar,
             )
             BotonChico(
-                Icons.Filled.VolumeUp,
+                Icons.AutoMirrored.Filled.VolumeUp,
                 if (e.altavoz) "Quitar altavoz" else "Poner altavoz",
                 activo = e.altavoz,
                 onClick = onAltavoz,
