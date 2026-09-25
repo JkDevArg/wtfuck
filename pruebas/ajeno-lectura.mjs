@@ -8,7 +8,12 @@
 // ajena no deja rastro y es exactamente lo que el §3 entero —quién puede ver
 // tu perfil, tu actividad, tus grupos— existe para impedir.
 //
-// El mapa de `Main.kt` da **49 rutas de lectura**: 20 con un `{id}` en el
+// `lib/auditor-de-rutas.mjs` lee `Main.kt` y da las rutas de lectura. Hoy son
+// **57**. Ese numero estaba escrito aqui a mano —«49»— y era una foto de un dia:
+// toda ruta agregada despues quedaba fuera y la suite seguia dando verde. Al
+// final del archivo se le pregunta al auditor si quedo alguna.
+//
+// De las de entonces, 20 con un `{id}` en el
 // camino y 29 sin parámetro. De las segundas, **siete son del panel**, y ahí
 // `ajeno.mjs` tenía un punto ciego real: comprobó que una persona de a pie no
 // puede *suspender* a nadie, pero nunca que no puede *leer la bitácora de
@@ -67,6 +72,8 @@ const post = (r, t, b) => call('POST', r, t, b);
 const get = (r, t) => call('GET', r, t);
 
 const { execSync } = await import('node:child_process');
+const { readFileSync } = await import('node:fs');
+const { rutas: auditor, normalizar } = await import('./lib/auditor-de-rutas.mjs');
 const hacerStaff = (username, nivel) => execSync(
   `docker exec wtfuck_db psql -U wtfuck -d wtfuck -q -c ` +
   `"UPDATE usuario SET staff_nivel=${nivel} WHERE username='${username}'"`,
@@ -125,7 +132,30 @@ async function sembrar(etiqueta) {
   });
   const DENUNCIA = den.b?.id;
 
-  return { duena, socio, G, M, CANAL_PRIV, CANAL_PUB, ALIAS_PUB, INV, ADJ, DENUNCIA };
+  // Una publicacion DENTRO del canal privado: los comentarios cuelgan de una
+  // publicacion, asi que sin ella no hay nada que intentar leer.
+  //
+  // Van dos pasos y no uno: publicar cuelga contenido de un MENSAJE que ya
+  // tiene que existir en el canal. Y la ruta responde 204, asi que el id es el
+  // que uno manda, no uno que devuelva el servidor.
+  const PUB_PRIV = uuid();
+  await post('/v1/mensajes', duena.t, { mensajeId: PUB_PRIV, conversacionId: CANAL_PRIV });
+  await post(`/v1/canales/${CANAL_PRIV}/publicaciones`, duena.t, {
+    mensajeId: PUB_PRIV, cuerpo: 'privada',
+  });
+
+  const com = await post('/v1/comunidades', duena.t, {
+    nombre: 'Comunidad ' + etiqueta, grupos: [G],
+  });
+  const COMUNIDAD = com.b?.comunidad?.id;
+
+  const HISTORIA = uuid();
+  await post('/v1/historias', duena.t, { historiaId: HISTORIA, clase: 'texto' });
+
+  return {
+    duena, socio, G, M, CANAL_PRIV, CANAL_PUB, ALIAS_PUB, INV, ADJ, DENUNCIA,
+    PUB_PRIV, COMUNIDAD, HISTORIA,
+  };
 }
 
 console.log('\n=== siembra ===');
@@ -164,6 +194,16 @@ const CERRADAS = [
   { n: 'las publicaciones de un canal privado ajeno', r: (w) => `/v1/canales/${w.CANAL_PRIV}/publicaciones` },
   { n: 'las estadisticas de un canal privado ajeno', r: (w) => `/v1/canales/${w.CANAL_PRIV}/estadisticas` },
   { n: 'el detalle de una denuncia ajena', r: (w) => `/v1/moderacion/denuncias/${w.DENUNCIA}` },
+
+  // --- lo que nunca habia pasado por aqui ------------------------------
+  //
+  // Son rutas posteriores al recuento que encabezaba esta suite, y ese
+  // recuento era un comentario. Sin el auditor del final, ninguna de las tres
+  // se habria mirado jamas.
+  { n: 'el detalle de una comunidad ajena', r: (w) => `/v1/comunidades/${w.COMUNIDAD}` },
+  { n: 'quien vio la historia de otra persona', r: (w) => `/v1/historias/${w.HISTORIA}/vistas` },
+  { n: 'los comentarios de un canal PRIVADO ajeno',
+    r: (w) => `/v1/canales/${w.CANAL_PRIV}/publicaciones/${w.PUB_PRIV}/comentarios` },
 ];
 
 console.log('\n=== 1 · el tercero no puede LEER lo ajeno ===');
@@ -205,6 +245,78 @@ const PANEL = [
 // mismo, tampoco sirve de oraculo para saber si esa conversacion existe.
 //
 // Lo que hay que comprobar no es el codigo de estado sino que venga VACIA.
+/**
+ * Rutas GET que NO se atacan, y por que.
+ *
+ * La inmensa mayoria son «mis propios datos»: `/v1/perfil`, `/v1/cuenta`,
+ * `/v1/sesiones`. Leer lo de uno no es leer lo ajeno, y no hay id en el camino
+ * que resolver. Van una por linea igualmente, y eso es a proposito: el dia que
+ * alguien agregue una ruta tiene que venir aqui y escribir su razon, y
+ * escribirla obliga a pensarla. Una categoria generica —«todo lo que empiece
+ * por /v1/perfil»— dejaria entrar la siguiente sin que nadie la mire.
+ */
+const EXENTAS_LECTURA = [
+  ['/salud', 'sonda de vida, sin autenticacion a proposito'],
+  ['/consola', 'la pagina HTML; el acceso lo guarda /v1/panel/consola'],
+  ['/v1/perfil', 'mi propio perfil'],
+  ['/v1/perfil/privacidad', 'mis propios ajustes'],
+  ['/v1/perfil/privacidad/excepciones', 'mis propias excepciones'],
+  ['/v1/conversaciones', 'mis propias conversaciones'],
+  ['/v1/adjuntos/uso', 'mi propio consumo'],
+  ['/v1/cuenta', 'mi propia cuenta'],
+  ['/v1/cuenta/tipo', 'mi propio tipo de cuenta'],
+  ['/v1/sesiones', 'mis propias sesiones'],
+  ['/v1/dispositivos', 'mis propios aparatos'],
+  ['/v1/contactos', 'mis propios contactos'],
+  ['/v1/push/config', 'configuracion publica del cliente, sin secretos'],
+  ['/v1/claves/estado', 'el estado de MIS claves'],
+  ['/v1/comunidades', 'las comunidades a las que pertenezco'],
+  ['/v1/llamadas/en-curso', 'mi propia llamada'],
+  ['/v1/llamadas/historial', 'mi propio historial'],
+  ['/v1/llamadas/turn', 'credenciales TURN propias, con vencimiento'],
+  ['/v1/historias', 'las historias que puedo ver, filtradas en el servidor'],
+  ['/v1/historias/mias', 'las mias'],
+  ['/v1/historias/destinos', 'a quienes alcanzaria MI historia'],
+  ['/v1/moderacion/mi-estado', 'mis propias sanciones'],
+  ['/v1/moderacion/mis-eventos', 'mis propios eventos'],
+  ['/v1/canales/directorio', 'directorio publico, por diseno'],
+  ['/v1/canales/buscar', 'buscador publico, por diseno'],
+  ['/v1/canales/alias/{}', 'un alias publico resuelve a un canal publico'],
+  ['/v1/usuarios/{}', 'perfil publico: la privacidad la aplica el servidor y lo mira privacidad.mjs'],
+  ['/v1/usuarios/{}/{}', 'un CAMPO del perfil publico; misma puerta que el anterior'],
+  ['/v1/invitaciones/{}', 'el codigo ES la credencial'],
+  ['/v1/gifs/buscar', 'el intermediario de Giphy; lo mira gifs.mjs'],
+  ['/v1/gifs/{}/bytes', 'idem: el id es de Giphy, no de este servidor'],
+  ['/v1/claves/dispositivo/{}', 'claves publicas: son publicas por definicion, lo mira claves.mjs'],
+  ['/v1/conversaciones/{}/leidos', 'contesta 200 VACIO a proposito; se comprueba aqui abajo'],
+  ['/v1/panel/consola', 'pese al prefijo /panel no es global: es `Consola.mias(yo)`; se comprueba aqui abajo'],
+];
+
+console.log('\n=== ninguna ruta de lectura queda sin mirar ===');
+{
+  const { rutas, sinResolver } = auditor();
+  ck('el auditor resuelve TODAS las rutas del servidor', sinResolver.length === 0,
+     sinResolver.map((x) => `${x.metodo} ${x.expr}`).join(' | '));
+
+  const fuente = readFileSync(new URL(import.meta.url), 'utf8');
+  const cubiertas = new Set();
+  for (const m of fuente.matchAll(/r:\s*\(w?\)\s*=>\s*[`']([^`']*)[`']/g)) {
+    cubiertas.add(m[1].replace(/\$\{[^}]*\}/g, '{}').split('?')[0]);
+  }
+  const eximidas = new Set(EXENTAS_LECTURA.map(([ruta]) => ruta));
+
+  const gets = rutas.filter((r) => !r.muta).map((r) => normalizar(r.patron));
+  const huerfanas = gets.filter((g) => !cubiertas.has(g) && !eximidas.has(g));
+  ck(`las ${gets.length} rutas de lectura estan cubiertas o eximidas`,
+     huerfanas.length === 0, huerfanas.join(' | '));
+
+  const muertas = EXENTAS_LECTURA.filter(([ruta]) => !gets.includes(ruta));
+  ck('ninguna exencion apunta a una ruta que ya no existe', muertas.length === 0,
+     muertas.map(([r]) => r).join(' | '));
+
+  console.log(`  ${gets.length} de lectura · ${cubiertas.size} atacadas · ${EXENTAS_LECTURA.length} eximidas`);
+}
+
 const leidos = await get(`/v1/conversaciones/${X.G}/leidos`, ajena.t);
 ck('los acuses de lectura de un grupo ajeno vienen vacios',
    Array.isArray(leidos.b?.mensajeIds) && leidos.b.mensajeIds.length === 0,
@@ -212,6 +324,17 @@ ck('los acuses de lectura de un grupo ajeno vienen vacios',
 ck('y un id inventado devuelve lo mismo, asi que no es un oraculo',
    JSON.stringify((await get(`/v1/conversaciones/${uuid()}/leidos`, ajena.t)).b) ===
    JSON.stringify(leidos.b));
+
+// `/v1/panel/consola` es el otro caso de 200 honesto, y el prefijo engania:
+// parece una ruta del panel -una lista global de quien tiene acceso a la
+// consola- y es `Consola.mias(yo)`, o sea los accesos de quien pregunta. Un
+// desconocido recibe una lista vacia porque no tiene ninguno.
+//
+// Lo que hay que comprobar no es el 200 sino que no venga NADIE.
+const consolas = await get('/v1/panel/consola', ajena.t);
+ck('los accesos de consola de un desconocido vienen vacios',
+   Array.isArray(consolas.b?.consolas) && consolas.b.consolas.length === 0,
+   JSON.stringify(consolas.b).slice(0, 140));
 
 console.log('\n=== 2 · quien no es staff no LEE el panel ===');
 for (const f of PANEL) {

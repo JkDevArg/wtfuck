@@ -5483,6 +5483,30 @@ cuidados:
 
 ---
 
-**1780 pruebas en verde**: 1475 de integración en 36 suites, 230 JUnit de app y
+### AG.6 · Y lo mismo del lado de la lectura
+
+`ajeno-lectura.mjs` tenía el mismo comentario con el mismo problema: *"El mapa
+de `Main.kt` da 49 rutas de lectura"*. Hoy son **57**.
+
+Tres que nunca se habían mirado ya se atacan: el detalle de una comunidad
+ajena, quién vio la historia de otra persona, y los comentarios de un canal
+privado ajeno. Las 34 exenciones son casi todas *"mis propios datos"* —leer lo
+de uno no es leer lo ajeno— y van una por línea igualmente: el día que alguien
+agregue una ruta tiene que venir a escribir su razón, y escribirla obliga a
+pensarla.
+
+Y apareció un caso que el prefijo disfrazaba: `GET /v1/panel/consola` **no es
+una lista global** pese al `/panel`. Es `Consola.mias(yo)`, los accesos de
+quien pregunta, así que un desconocido recibe 200 con la lista vacía y eso está
+bien. Se comprueba como `/leidos`: lo que importa no es el código de estado
+sino que no venga nadie.
+
+Los dos guardianes se validaron agregando una ruta inventada —`POST
+/v1/inventada/{id}/tomar` y `GET /v1/espiar/{id}`—: las suites las señalaron
+por su nombre.
+
+---
+
+**1790 pruebas en verde**: 1485 de integración en 36 suites, 230 JUnit de app y
 75 de servidor. En la configuración mínima —una instancia, sin Redis— son
-**1760**, con `bus` y `bus-inyeccion` marcadas `OMIT`.
+**1770**, con `bus` y `bus-inyeccion` marcadas `OMIT`.
