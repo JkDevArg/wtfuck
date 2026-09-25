@@ -65,6 +65,8 @@ fun Inicio(
     onMiCuenta: () -> Unit,
     onPanel: () -> Unit,
     onSeguridad: () -> Unit,
+    /** Abrir un chat saltando a un mensaje: lo pide el aviso de "no se envio". */
+    onAbrirEnMensaje: (conversacionId: String, mensajeId: String) -> Unit,
     onLlamadas: () -> Unit,
     onNotificaciones: () -> Unit,
     onTipoCuenta: () -> Unit,
@@ -138,6 +140,7 @@ fun Inicio(
             when (pestana) {
                 Pestana.CHATS -> ChatsPantalla(
                     onAbrir = { id, tipo -> if (tipo == "canal") onAbrirCanal(id) else onAbrirChat(id) },
+                    onAbrirEnMensaje = onAbrirEnMensaje,
                     onPerfil = { pestana = Pestana.PERFIL },
                     onCanales = { pestana = Pestana.CANALES },
                     onNuevoCanal = { pedirNuevoCanal = true; pestana = Pestana.CANALES },

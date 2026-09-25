@@ -76,6 +76,15 @@ fun ChatsPantalla(
      */
     onAbrir: (String, String) -> Unit,
     /**
+     * Abrir un chat SALTANDO a un mensaje. Lo usa el aviso de "no se envio".
+     *
+     * Aparte de [onAbrir] y no un tercer argumento suyo porque es un gesto
+     * distinto: los seis sitios que abren un chat no quieren saltar a nada, y
+     * anadirles un parametro vacio seria pedirles que decidan algo que no les
+     * toca.
+     */
+    onAbrirEnMensaje: (conversacionId: String, mensajeId: String) -> Unit = { _, _ -> },
+    /**
      * Ir al perfil. Sigue aqui porque tocar tu propia foto es el gesto que la
      * gente ya trae aprendido, aunque ahora el perfil tambien sea una pestaña.
      */
@@ -111,6 +120,8 @@ fun ChatsPantalla(
     val conexion by app.repo.estadoConexion.collectAsStateWithLifecycle()
     val enCola by app.repo.tamanoCola.collectAsStateWithLifecycle(0)
     val fallidos by app.repo.tamanoFallidos.collectAsStateWithLifecycle(0)
+    val convsConFallidos by app.repo.conversacionesConFallidos
+        .collectAsStateWithLifecycle(emptyList())
     val perfil by app.repo.miPerfil.collectAsStateWithLifecycle()
 
     var mostrarNueva by remember { mutableStateOf(false) }
@@ -313,7 +324,42 @@ fun ChatsPantalla(
                         }
                     },
                 )
-                BarraEstado(conexion, enCola, fallidos)
+                BarraEstado(
+                    conexion = conexion,
+                    enCola = enCola,
+                    fallidos = fallidos,
+                    // El nombre del chat, para que el aviso diga DONDE. Se
+                    // busca en la lista que ya esta cargada: un chat que no
+                    // este ahi no tiene nombre que mostrar y el aviso se queda
+                    // generico, que es mejor que inventar uno.
+                    dondeFallo = convsConFallidos.singleOrNull()?.let { id ->
+                        chats.firstOrNull { it.id == id }?.let { c ->
+                            // "a joaquin" y "en Equipo seguridad". Un mensaje
+                            // se le manda A una persona y se manda EN un
+                            // grupo; la preposicion equivocada se nota al
+                            // leer aunque nadie sepa decir por que.
+                            val preposicion = if (c.tipo == "directa") "a" else "en"
+                            "$preposicion ${c.titulo}"
+                        }
+                    },
+                    onIrAlFallo = convsConFallidos.firstOrNull()?.let { id ->
+                        // Si el chat no esta en la lista cargada no hay a
+                        // donde ir, y el aviso se queda sin toque en vez de
+                        // llevar a una pantalla vacia.
+                        chats.firstOrNull { it.id == id }?.let { c ->
+                            {
+                                ambito.launch {
+                                    val m = app.repo.primerFallidoDe(c.id)
+                                    // Al mensaje si se sabe cual; si no, al
+                                    // chat, que ya es mucho mejor que nada.
+                                    if (m != null) onAbrirEnMensaje(c.id, m)
+                                    else onAbrir(c.id, c.tipo)
+                                }
+                                Unit
+                            }
+                        }
+                    },
+                )
                 BuscadorChats(busqueda) { busqueda = it }
                 // Dentro de Archivados no hay filtros: es ya una lista aparte.
                 if (!verArchivados) {
@@ -848,7 +894,20 @@ private fun BuscadorChats(valor: String, onCambio: (String) -> Unit) {
  * cola, el usuario ve en ambar cuantos son y que no se perdieron.
  */
 @Composable
-private fun BarraEstado(conexion: EstadoConexion, enCola: Int, fallidos: Int) {
+private fun BarraEstado(
+    conexion: EstadoConexion,
+    enCola: Int,
+    fallidos: Int,
+    /**
+     * Donde fallo, ya con preposicion: "a joaquin", "en Equipo seguridad".
+     *
+     * Llega armado y no como nombre suelto porque la preposicion depende del
+     * tipo de conversacion, y eso lo sabe quien tiene la lista, no la barra.
+     */
+    dondeFallo: String? = null,
+    /** Abre ese chat. Nulo cuando no hay ninguno al que ir. */
+    onIrAlFallo: (() -> Unit)? = null,
+) {
     // Un mensaje FALLIDO no esta "enviandose": no va a salir solo. Mezclarlo
     // con los pendientes dejaba la barra diciendo "Enviando 1..." para siempre.
     // **"Conectado" no se dibuja.** Ocupaba una banda entera de la pantalla,
@@ -863,8 +922,16 @@ private fun BarraEstado(conexion: EstadoConexion, enCola: Int, fallidos: Int) {
     if (conexion == EstadoConexion.CONECTADO && enCola == 0 && fallidos == 0) return
 
     val (color, texto) = when {
-        fallidos > 0 && enCola == 0 ->
-            Coral to "$fallidos ${if (fallidos == 1) "mensaje no se envio" else "mensajes no se enviaron"}"
+        fallidos > 0 && enCola == 0 -> {
+            val cuantos = "$fallidos ${if (fallidos == 1) "mensaje no se envió" else "mensajes no se enviaron"}"
+            // Con un solo chat se dice cual. Con varios no se enumeran: tres
+            // nombres no entran y decir "en 2 chats" ya orienta.
+            Coral to when {
+                dondeFallo != null -> "$cuantos $dondeFallo · toca para ir"
+                onIrAlFallo != null -> "$cuantos · toca para ir"
+                else -> cuantos
+            }
+        }
         enCola > 0 && conexion != EstadoConexion.CONECTADO ->
             Ambar to "Sin conexión - $enCola ${if (enCola == 1) "mensaje" else "mensajes"} en cola"
         conexion == EstadoConexion.CONECTADO && enCola > 0 ->
@@ -875,12 +942,29 @@ private fun BarraEstado(conexion: EstadoConexion, enCola: Int, fallidos: Int) {
     }
     Surface(color = BgElev, modifier = Modifier.fillMaxWidth()) {
         Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            Modifier
+                // Solo se puede tocar cuando hay algo que hacer. Una barra
+                // "clicable" que no lleva a ningun lado es peor que una que no
+                // lo parece.
+                .then(
+                    if (onIrAlFallo != null) {
+                        Modifier.clickable(onClick = onIrAlFallo)
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(color))
             Spacer(Modifier.width(8.dp))
-            Text(texto, style = MaterialTheme.typography.labelSmall, color = color)
+            Text(
+                texto,
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

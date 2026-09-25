@@ -854,6 +854,28 @@ interface ChatDao {
     @Query("SELECT COUNT(*) FROM mensaje WHERE esMio = 1 AND estado = 'FALLIDO'")
     fun tamanoFallidos(): Flow<Int>
 
+    /**
+     * En QUE conversaciones quedaron mensajes fallidos.
+     *
+     * El contador solo decia cuantos. La barra de estado anunciaba "1 mensaje
+     * no se envio" y no se podia tocar: para reintentarlo habia que adivinar
+     * en cual de los chats estaba y abrirlos uno por uno. Un aviso que informa
+     * de un problema y no deja actuar sobre el es medio aviso.
+     */
+    @Query(
+        """SELECT DISTINCT conversacionId FROM mensaje
+                  WHERE esMio = 1 AND estado = 'FALLIDO'"""
+    )
+    fun conversacionesConFallidos(): Flow<List<String>>
+
+    /** El mas viejo sin enviar de una conversacion: el que hay que ir a ver. */
+    @Query(
+        """SELECT id FROM mensaje
+                  WHERE esMio = 1 AND estado = 'FALLIDO' AND conversacionId = :conv
+                  ORDER BY creadoEn ASC LIMIT 1"""
+    )
+    suspend fun primerFallidoDe(conv: String): String?
+
     @Query("UPDATE mensaje SET estado = 'FALLIDO', motivoFallo = :motivo WHERE id = :id")
     suspend fun marcarFallido(id: String, motivo: String?)
 

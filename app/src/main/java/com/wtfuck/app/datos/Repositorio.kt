@@ -152,6 +152,12 @@ class Repositorio(
     val tamanoCola: Flow<Int> = dao.tamanoCola()
     val tamanoFallidos: Flow<Int> = dao.tamanoFallidos()
 
+    /** En que conversaciones quedaron, para que el aviso lleve a alguna parte. */
+    val conversacionesConFallidos: Flow<List<String>> = dao.conversacionesConFallidos()
+
+    /** Cual es, para que el aviso lleve al mensaje y no solo al chat. */
+    suspend fun primerFallidoDe(conv: String): String? = dao.primerFallidoDe(conv)
+
     /** Mi propio perfil, para pintarlo en la cabecera y en la pantalla de perfil. */
     private val _miPerfil = MutableStateFlow<UsuarioPublico?>(null)
     val miPerfil = _miPerfil.asStateFlow()

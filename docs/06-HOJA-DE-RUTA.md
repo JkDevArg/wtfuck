@@ -5825,3 +5825,60 @@ una tercera bandera opcional que nadie pasa.
 
 **1846 pruebas en verde**: 1515 de integración en 36 suites, 256 JUnit de app
 y 75 de servidor.
+
+---
+
+## Módulo AL · Un aviso que no llevaba a ningún lado ✅
+
+> ● 1 mensaje no se envió
+
+Y nada más. No se podía tocar y **no decía en qué chat**. Para reintentarlo
+había que abrir los chats uno por uno hasta dar con la burbuja coral.
+
+Un aviso que informa de un problema y no deja actuar sobre él es medio aviso:
+traslada el trabajo entero a quien lo lee.
+
+Ahora dice dónde y **lleva al mensaje**, no al chat. En la evidencia el mensaje
+estaba en la posición **18 de 39**, que es justo el caso donde abrir el chat
+por el final no alcanzaba.
+
+### Tres detalles que no son obvios
+
+**"a joaquin" y "en Equipo seguridad".** Un mensaje se le manda *a* una persona
+y se manda *en* un grupo. La preposición equivocada se nota al leer aunque
+nadie sepa decir por qué, y la decide quien tiene la lista de chats — no la
+barra, que no sabe de tipos.
+
+**La barra sólo se puede tocar cuando hay a dónde ir.** Si el chat no está en
+la lista cargada, se queda sin toque: una barra que parece tocable y no lleva a
+ningún lado es peor que una que no lo parece.
+
+**El salto se da por hecho aunque falle.** Si el mensaje no aparece en la
+lista, la marca se pone igual. Dejarla sin poner parecía inofensivo y dejaba la
+pantalla **sin volver al final nunca más**, porque el salto al final estaba
+condicionado a esa misma marca.
+
+### Y un defecto que me hice yo, en el mismo rato
+
+La primera versión tenía **dos efectos peleándose**: el salto al mensaje ponía
+la marca, la marca era una clave del otro efecto, el otro efecto se relanzaba y
+mandaba la lista al final. El salto ocurría y se deshacía en el mismo instante,
+así que la pantalla quedaba **exactamente igual que sin el arreglo** — y
+durante un rato pareció que el argumento de navegación no llegaba.
+
+> Dos efectos con una clave compartida no son dos decisiones: son una
+> decisión escrita en dos sitios, y el orden lo decide el framework.
+
+Ahora es uno solo y la prioridad se lee de arriba abajo: primero el mensaje al
+que se vino, si lo hay; si no, el final.
+
+También costó un rato descubrir que el argumento opcional de navegación hay que
+**declararlo** (`navArgument("m") { defaultValue = "" }`): sin eso, la ruta
+`chat/{id}` a secas —los seis sitios que ya existían— deja de coincidir.
+
+### Evidencias
+
+[`docs/evidencias/aviso-accionable/`](evidencias/aviso-accionable/).
+
+**1846 pruebas en verde**, sin cambio de conteo: esto es interfaz y navegación,
+y lo que se comprobó se comprobó en el emulador.

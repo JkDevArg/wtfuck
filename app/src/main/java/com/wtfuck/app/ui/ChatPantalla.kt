@@ -93,6 +93,14 @@ import com.wtfuck.protocol.UsuarioPublico
 @Composable
 fun ChatPantalla(
     conversacionId: String,
+    /**
+     * Un mensaje al que saltar al abrir, o vacio.
+     *
+     * Lo usa el aviso de "no se envio": llevar al chat no alcanzaba, porque el
+     * mensaje fallido puede ser viejo y el chat abre por el final. Se llegaba
+     * al sitio correcto y habia que buscar igual.
+     */
+    irAMensaje: String = "",
     onInfoGrupo: () -> Unit,
     onVerificarCifrado: () -> Unit,
     /** Abrir la conversacion con alguien: lo pide la tarjeta de contacto. */
@@ -378,11 +386,47 @@ fun ChatPantalla(
         }
     }
 
+    /**
+     * Si ya se salto al mensaje pedido.
+     *
+     * Hace falta la marca porque el salto al final se dispara con cada mensaje
+     * nuevo, y sin esto una respuesta que llegara justo despues arrastraria la
+     * lista lejos del mensaje al que se vino a mirar.
+     */
+    var yaSalto by remember(irAMensaje) { mutableStateOf(irAMensaje.isBlank()) }
+
+    /**
+     * A donde mirar cuando la lista cambia: UN solo efecto, no dos.
+     *
+     * Eran dos y se peleaban. El salto al mensaje ponia `yaSalto = true`, eso
+     * era una clave del otro efecto, el otro efecto se relanzaba y mandaba la
+     * lista al final: el salto ocurria y se deshacia en el mismo instante. La
+     * pantalla quedaba exactamente igual que sin el arreglo.
+     *
+     * Con uno solo la prioridad se lee de arriba abajo, que es lo que era todo
+     * el tiempo: primero el mensaje al que se vino, si hay; si no, el final.
+     */
     LaunchedEffect(mensajes.size, buscando) {
-        // Mientras se busca NO se salta al final: el buscador acaba de mover la
-        // lista al resultado, y un mensaje nuevo que llegue en ese momento
-        // arrastraria la pantalla lejos de lo que la persona estaba leyendo.
-        if (mensajes.isNotEmpty() && !buscando) lista.animateScrollToItem(mensajes.lastIndex)
+        // Mientras se busca no se mueve nada: el buscador acaba de poner la
+        // lista donde la persona esta leyendo, y un mensaje nuevo que llegue
+        // en ese momento se la arrastraria lejos.
+        if (mensajes.isEmpty() || buscando) return@LaunchedEffect
+
+        if (!yaSalto && irAMensaje.isNotBlank()) {
+            // El indice sale de la lista que YA esta cargada, no de otra
+            // consulta: si el mensaje no esta en ella no hay a donde saltar, y
+            // quedarse donde se estaba es mejor que saltar a un sitio
+            // cualquiera.
+            val i = mensajes.indexOfFirst { it.id == irAMensaje }
+            if (i >= 0) runCatching { lista.scrollToItem(i) }
+            // Se da por hecho PASE LO QUE PASE: dejarlo en false cuando el
+            // mensaje no aparece dejaria la pantalla intentandolo con cada
+            // mensaje nuevo, y sin volver al final nunca.
+            yaSalto = true
+            return@LaunchedEffect
+        }
+
+        lista.animateScrollToItem(mensajes.lastIndex)
     }
 
     // §15 · Atajos de teclado, que en esta pantalla son dos y no diez.

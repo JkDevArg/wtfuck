@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.wtfuck.app.ui.ComunidadesPantalla
 import com.wtfuck.app.ui.ChatPantalla
 import com.wtfuck.app.ui.DiagnosticoPantalla
@@ -310,6 +311,7 @@ private fun Raiz() {
                     onMiCuenta = { nav.navigate("mi-cuenta") },
                     onPanel = { nav.navigate("panel") },
                     onSeguridad = { nav.navigate("seguridad") },
+                    onAbrirEnMensaje = { id, m -> nav.navigate("chat/$id?m=$m") },
                     onLlamadas = { nav.navigate("llamadas") },
                     onNotificaciones = { nav.navigate("notificaciones") },
                 onTipoCuenta = { nav.navigate("tipo-cuenta") },
@@ -471,10 +473,19 @@ private fun Raiz() {
             )
         }
 
-        composable("chat/{id}") { entry ->
+        // El argumento `m` va DECLARADO con su valor por defecto. Sin eso la
+        // ruta `chat/$id` a secas —los seis sitios que ya existian— deja de
+        // coincidir, y el argumento tampoco llega cuando si viene.
+        composable(
+            route = "chat/{id}?m={m}",
+            arguments = listOf(navArgument("m") { defaultValue = "" }),
+        ) { entry ->
             val id = entry.arguments?.getString("id").orEmpty()
             ChatPantalla(
                 conversacionId = id,
+                // Opcional y con nombre: `chat/{id}` a secas sigue valiendo, y
+                // los seis sitios que ya navegaban asi no se tocan.
+                irAMensaje = entry.arguments?.getString("m").orEmpty(),
                 onInfoGrupo = { nav.navigate("grupo/$id") },
                 onVerificarCifrado = { nav.navigate("huella/$id") },
                 onAbrirChatCon = { otro -> nav.navigate("chat/$otro") },
