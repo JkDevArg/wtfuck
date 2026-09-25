@@ -1481,6 +1481,60 @@ object Repo {
     }
 
     /**
+     * Los registros con datos personales tienen fecha de caducidad.
+     *
+     * ## Por que
+     *
+     * `evento_seguridad` guarda usuario, **IP** y **agente** de cada ingreso,
+     * cambio de clave y limite excedido. `auditoria` guarda quien hizo que a
+     * quien. Las dos crecian para siempre: en diez dias de un entorno de
+     * desarrollo con dos usuarios de prueba juntaron 96.000 filas.
+     *
+     * Multiplicar eso por una institucion de decenas de miles de cuentas da un
+     * archivo permanente de direcciones IP y horarios de conexion de todo el
+     * mundo — que es exactamente la clase de dato que la Ley 29733 obliga a
+     * conservar solo mientras haga falta para su finalidad.
+     *
+     * Y hay una razon menos legal y mas directa: **lo que no esta guardado no
+     * se puede filtrar**. Un servidor comprometido entrega lo que tiene.
+     *
+     * ## Por que dos ventanas distintas
+     *
+     * No es lo mismo. `evento_seguridad` existe para que alguien reconozca un
+     * acceso raro en "sesiones recientes" y para detectar abuso en curso: a
+     * los tres meses ya no sirve para ninguna de las dos cosas. `auditoria` es
+     * el rastro de moderacion —quien expulso a quien, quien cambio un rol— y
+     * ahi un ano es defendible, porque una decision se puede discutir mucho
+     * despues.
+     *
+     * Las dos salen del entorno: quien despliegue esto puede tener otra
+     * obligacion legal, y cambiarla no deberia exigir recompilar.
+     */
+    fun barrerRegistros(): Pair<Int, Int> = Db.tx { c ->
+        val seguridad = System.getenv("WTFUCK_RETENCION_SEGURIDAD_DIAS")?.toIntOrNull() ?: 90
+        val auditoria = System.getenv("WTFUCK_RETENCION_AUDITORIA_DIAS")?.toIntOrNull() ?: 365
+
+        // Cero o menos apaga el barrido en vez de borrarlo todo.
+        //
+        // Importa que sea asi y no al reves: `0` se lee como "sin retencion",
+        // y con la otra interpretacion una variable mal puesta vaciaria el
+        // registro de seguridad entero sin que nadie lo pidiera.
+        val a = if (seguridad > 0) {
+            c.prepareStatement(
+                "DELETE FROM evento_seguridad WHERE creado_en < now() - make_interval(days => ?)"
+            ).use { st -> st.setInt(1, seguridad); st.executeUpdate() }
+        } else 0
+
+        val b = if (auditoria > 0) {
+            c.prepareStatement(
+                "DELETE FROM auditoria WHERE creado_en < now() - make_interval(days => ?)"
+            ).use { st -> st.setInt(1, auditoria); st.executeUpdate() }
+        } else 0
+
+        a to b
+    }
+
+    /**
      * L.1 · Anota que alguien leyo esos mensajes y devuelve a quien avisar.
      *
      * ## Las dos reglas que lo hacen reciproco

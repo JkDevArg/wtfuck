@@ -5381,7 +5381,7 @@ Siete capturas del recorrido completo, con vídeo conectado de verdad, en
 que las produce es [`pruebas/llamada-de-grupo.sh`](../pruebas/llamada-de-grupo.sh).
 
 **1761 pruebas en verde**: 1456 de integración en 36 suites, 230 JUnit de app
-y 75 de servidor. Son **+54** sobre las 1707 del módulo anterior — 45 de
+y 80 de servidor. Son **+54** sobre las 1707 del módulo anterior — 45 de
 integración y 9 de `MallaTest`.
 
 ---
@@ -5508,7 +5508,7 @@ por su nombre.
 ---
 
 **1790 pruebas en verde**: 1485 de integración en 36 suites, 230 JUnit de app y
-75 de servidor. En la configuración mínima —una instancia, sin Redis— son
+80 de servidor. En la configuración mínima —una instancia, sin Redis— son
 **1770**, con `bus` y `bus-inyeccion` marcadas `OMIT`.
 
 ---
@@ -5620,7 +5620,7 @@ una llamada de grupo sin saber con quién es raro. Quien contesta ve
 `con tatiana · llamando a rocio`.
 
 **1815 pruebas en verde**: 1502 de integración en 36 suites, 238 JUnit de app
-y 75 de servidor.
+y 80 de servidor.
 
 ---
 
@@ -5687,7 +5687,7 @@ Dos capturas en
 llamada conectada y el momento en que uno se cae.
 
 **1823 pruebas en verde**: 1502 de integración en 36 suites, 246 JUnit de app
-y 75 de servidor.
+y 80 de servidor.
 
 ---
 
@@ -5772,7 +5772,7 @@ para y levanta las dos, y con eso el defecto cae con 6 pruebas — incluida la
 que importa: `409 Ya hay una llamada en curso aquí`.
 
 **1842 pruebas en verde**: 1515 de integración en 36 suites, 252 JUnit de app
-y 75 de servidor.
+y 80 de servidor.
 
 ---
 
@@ -5824,7 +5824,7 @@ una tercera bandera opcional que nadie pasa.
 > por defecto.
 
 **1846 pruebas en verde**: 1515 de integración en 36 suites, 256 JUnit de app
-y 75 de servidor.
+y 80 de servidor.
 
 ---
 
@@ -5969,8 +5969,8 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
-y 75 de servidor.
+**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+y 80 de servidor.
 
 ---
 
@@ -6077,8 +6077,8 @@ si fuera de ahora. Ahora se valida primero.
 [`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
 dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
 
-**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
-y 75 de servidor.
+**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+y 80 de servidor.
 
 ---
 
@@ -6145,8 +6145,8 @@ contestan "quién es esta persona" son dos respuestas que se separan.
 [`docs/evidencias/perfil-de-una-persona/`](evidencias/perfil-de-una-persona/)
 — la ficha, la galería y el salto al mensaje.
 
-**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
-y 75 de servidor.
+**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+y 80 de servidor.
 
 ---
 
@@ -6221,8 +6221,8 @@ siendo ilegible.
 — los cinco hallazgos, lo que se miró y estaba bien, y lo que se decidió no
 hacer.
 
-**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
-y 75 de servidor.
+**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+y 80 de servidor.
 
 ---
 
@@ -6295,8 +6295,8 @@ cubos, y obligó a bajar el máximo de 128 KiB a 60 KiB.
 [`docs/evidencias/relleno-del-sobre/`](evidencias/relleno-del-sobre/) — los
 tamaños antes y después, medidos en Postgres.
 
-**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
-y 75 de servidor.
+**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+y 80 de servidor.
 
 ---
 
@@ -6368,5 +6368,72 @@ emulador para tocarla.
 [`docs/evidencias/sobre-hostil/`](evidencias/sobre-hostil/) — el defecto del
 bucle, el fuzzer y lo que encontró.
 
-**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
-y 75 de servidor.
+**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+y 80 de servidor.
+
+---
+
+## Módulo AT · El buzón tonto también tiene que olvidar ✅
+
+Tres cosas que el servidor guardaba para siempre y no debía.
+
+### AT.1 · Una función que existía y no llamaba nadie
+
+`Repo.barrerExpirados` estaba desde el módulo C, con su `expira_en` bien
+puesto en cada sobre. **Nadie la invocaba.** Los sobres que ningún dispositivo
+recogía se quedaban en la base indefinidamente — cuerpos cifrados dirigidos a
+teléfonos que no volvieron nunca.
+
+Un buzón tonto que no olvida no es un buzón tonto: es un archivo.
+
+No lo vio ninguna prueba porque el código estaba ahí y compilaba. **Es la
+segunda vez en este proyecto** —`llamadas.recuperar` fue la primera, y su
+comentario ya lo decía: *"la única forma de que un arreglo no arregle nada"*.
+
+### AT.2 · Dos tablas de datos personales sin caducidad
+
+En diez días, un entorno de desarrollo con **dos usuarios de prueba** juntó:
+
+```
+evento_seguridad   40.893 filas   usuario, IP, agente, fecha
+auditoria          55.162 filas   quién hizo qué a quién
+```
+
+Ninguna de las dos se barría. Multiplicado por una institución de decenas de
+miles de cuentas, eso es un archivo permanente de direcciones IP y horarios de
+conexión de todo el mundo — exactamente la clase de dato que la Ley 29733
+obliga a conservar sólo mientras haga falta para su finalidad.
+
+Y una razón menos legal y más directa: **lo que no está guardado no se puede
+filtrar**. Un servidor comprometido entrega lo que tiene.
+
+Ahora 90 días para los eventos de seguridad y 365 para la auditoría, las dos
+configurables. **No es lo mismo y no pueden caducar juntas**: un evento de
+seguridad sirve para reconocer un acceso raro y para detectar abuso en curso,
+y a los meses ya no sirve para ninguna de las dos; una auditoría es el rastro
+de una decisión de moderación, y una decisión se discute mucho después.
+
+Cero o menos **apaga** el barrido en vez de borrarlo todo. Importa que sea así
+y no al revés: con la otra interpretación, una variable mal puesta vaciaría el
+registro entero sin que nadie lo pidiera.
+
+### AT.3 · Lo que hacía falta para que no vuelva a pasar
+
+El cuerpo de la tarea periódica estaba dentro de un `Thread` anónimo, donde no
+hay forma de comprobarlo. Ahora es `tareasDeMantenimiento()`, con nombre, y
+devuelve qué barrió cada cosa.
+
+Las pruebas van **contra esa función**, no contra las consultas: quitar una
+línea de la lista hace caer la prueba de ese barrido aunque el código borrado
+siga compilando en su sitio. Validado volviendo a meter el defecto original
+—el barrido de sobres sin llamar— y viendo caer la prueba.
+
+Y el primer barrido es **al arrancar**, no dentro de una hora: un servidor que
+vuelve tras un día caído tiene un día de cosas vencidas encima.
+
+### Evidencias
+
+`RetencionTest`, 5 pruebas contra la base real.
+
+**1927 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+y 80 de servidor.

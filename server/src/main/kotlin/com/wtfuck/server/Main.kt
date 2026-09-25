@@ -238,18 +238,59 @@ private val sms: Sms by lazy { SmsFactory.desdeEntorno() }
  * La primera es la que importa: **un periodo de gracia que no se ejecuta no es
  * un periodo de gracia**, es una cuenta que quedo inutilizable para siempre.
  */
+/**
+ * Todo lo que hay que barrer, en un sitio con nombre.
+ *
+ * ## Por que es publica y esta fuera del hilo
+ *
+ * Porque lo que se rompio aqui no fue ninguna de las consultas: fue que una de
+ * ellas **no se llamaba**. `Repo.barrerExpirados` existia desde el modulo C
+ * con su `expira_en` bien puesto, y los sobres se quedaban en la base para
+ * siempre porque nadie la invocaba. No lo vio ninguna prueba: el codigo estaba
+ * ahi y compilaba.
+ *
+ * Es la segunda vez en este proyecto (`llamadas.recuperar` fue la primera).
+ * Una funcion que existe y no se llama es la unica forma de que un arreglo no
+ * arregle nada.
+ *
+ * Con el cuerpo dentro de un `Thread` anonimo no habia forma de comprobarlo.
+ * Sacado aqui, una prueba lo ejecuta y mira la base: si alguien quita una
+ * linea de esta funcion, la prueba de ese barrido cae. Eso es lo que no
+ * existia.
+ *
+ * Devuelve lo barrido por cada cosa, para el log y para las pruebas.
+ */
+fun tareasDeMantenimiento(): Map<String, Int> {
+    val cuentas = Identidad.ejecutarEliminacionesVencidas()
+    val cupos = Db.tx { c -> Cupos.barrer(c) }
+    val codigos = Db.tx { c -> Dispositivos.barrerCodigos(c) }
+    // Los sobres que nadie recogio. Un buzon tonto que no olvida no es un
+    // buzon tonto: es un archivo.
+    val sobres = Repo.barrerExpirados()
+    val (seguridad, auditoria) = Repo.barrerRegistros()
+    return mapOf(
+        "cuentas" to cuentas,
+        "cupos" to cupos,
+        "codigos" to codigos,
+        "sobres" to sobres,
+        "seguridad" to seguridad,
+        "auditoria" to auditoria,
+    )
+}
+
 private fun arrancarTareas() {
     Thread({
+        // El primer barrido es AL ARRANCAR y no dentro de una hora.
+        //
+        // Un servidor que vuelve despues de estar caido un dia tiene un dia de
+        // cosas vencidas encima, y esperar otra hora para tocarlas no tiene
+        // ninguna ventaja. De paso, el log de arranque dice que los barridos
+        // existen — que es justo lo que faltaba cuando uno llevaba modulos sin
+        // llamarse.
         while (true) {
             runCatching {
-                val borradas = Identidad.ejecutarEliminacionesVencidas()
-                if (borradas > 0) bitacora.info("Eliminadas {} cuentas con la gracia vencida.", borradas)
-
-                val barridos = Db.tx { c -> Cupos.barrer(c) }
-                if (barridos > 0) bitacora.debug("Barridos {} contadores de uso viejos.", barridos)
-
-                val codigos = Db.tx { c -> Dispositivos.barrerCodigos(c) }
-                if (codigos > 0) bitacora.debug("Barridos {} codigos de vinculacion viejos.", codigos)
+                val hecho = tareasDeMantenimiento().filterValues { it > 0 }
+                if (hecho.isNotEmpty()) bitacora.info("Mantenimiento: {}", hecho)
             }.onFailure { bitacora.warn("Fallo una tarea periodica: {}", it.message) }
 
             // Una hora. La precision no importa: la gracia se mide en dias.
