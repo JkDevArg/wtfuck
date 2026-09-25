@@ -5773,3 +5773,55 @@ que importa: `409 Ya hay una llamada en curso aquí`.
 
 **1842 pruebas en verde**: 1515 de integración en 36 suites, 252 JUnit de app
 y 75 de servidor.
+
+---
+
+## Módulo AK · Dejar de arreglar instancias ✅
+
+Tres veces se dibujó una cosa como si fuera otra:
+
+| Dónde | Qué se veía |
+|---|---|
+| Módulo AE | Un canal con el icono de grupo en "Mis canales" |
+| Módulo AJ | Una llamada de grupo con el icono de una persona en el historial |
+| Pantalla de llamada | `@Equipo seguridad` con iniciales, como una persona |
+
+Las tres por la misma causa, y estaba escrita en el código desde el principio:
+
+```kotlin
+esGrupo: Boolean = false,
+/**
+ * Van dos banderas y no un `tipo: String` porque `Avatar` lo usan doce
+ * sitios y la mayoría sólo sabe si es una persona o no. [...] añadirlo como
+ * opcional no obliga a tocar los once restantes.
+ */
+esCanal: Boolean = false,
+```
+
+El razonamiento era correcto el día que se escribió y **la economía salió
+cara**: `esGrupo = false` significa *"si no dices nada, es una persona"*, y un
+sitio nuevo no dice nada. Se ahorró tocar once sitios y costó tres defectos, de
+los cuales dos llegaron a verse en pantalla.
+
+### Lo que cambió
+
+- `Avatar` **no tiene banderas**. Dibuja una persona y ya.
+- `AvatarDeChat(nombre, url, clase, …)` exige `clase: ClaseDeChat`, **sin valor
+  por defecto**: quien dibuja una conversación no puede olvidarse.
+- `claseDeTipo(tipo)` es el único punto donde se traduce el `tipo` del
+  servidor, y tiene prueba.
+
+Marcar las banderas `internal` no habría alcanzado: toda la app es un solo
+módulo, así que `internal` no impide nada desde dentro. La única forma de que
+el defecto no vuelva es que la firma no lo permita.
+
+El dibujo recibe ahora un `icono` en vez de dos booleanos, y el `when` sobre
+`ClaseDeChat` es exhaustivo: un cuarto tipo de conversación **rompe la
+compilación** hasta que alguien decida cómo se dibuja, en vez de aparecer como
+una tercera bandera opcional que nadie pasa.
+
+> Arreglar tres instancias no es arreglar el defecto. El defecto era el valor
+> por defecto.
+
+**1846 pruebas en verde**: 1515 de integración en 36 suites, 256 JUnit de app
+y 75 de servidor.

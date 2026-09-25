@@ -48,29 +48,104 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 /**
- * Foto de perfil, con las iniciales como respaldo.
+ * Que clase de cosa dibuja un avatar de conversacion.
  *
- * El respaldo no es gris: el color sale del propio nombre, asi que cada persona
- * tiene siempre el mismo tono y la lista se lee de un vistazo aunque nadie haya
- * subido foto.
+ * Un `enum` sin valor por defecto, y ahi esta todo el cambio. Antes eran dos
+ * banderas opcionales —`esGrupo` y `esCanal`—, y la razon escrita era que
+ * "anadirlo como opcional no obliga a tocar los once sitios restantes". Esa
+ * economia salio cara: `esGrupo = false` significa **"si no dices nada, es una
+ * persona"**, y un sitio nuevo no dice nada.
+ *
+ * Se dibujo una cosa como si fuera otra tres veces:
+ *
+ *  - modulo AE, un canal con el icono de grupo en "Mis canales";
+ *  - modulo AJ, una llamada de grupo con el icono de una persona en el
+ *    historial;
+ *  - y la pantalla de llamada, que dibujaba "@Equipo seguridad" con iniciales.
+ *
+ * A la tercera el problema deja de ser el sitio.
+ */
+enum class ClaseDeChat { DIRECTA, GRUPO, CANAL }
+
+/** El `tipo` que manda el servidor, como clase. */
+fun claseDeTipo(tipo: String?): ClaseDeChat = when (tipo) {
+    "grupo" -> ClaseDeChat.GRUPO
+    "canal" -> ClaseDeChat.CANAL
+    // Una directa es el unico caso donde el avatar es una PERSONA, y por eso
+    // es el que se puede caer aqui sin hacer dano: si el tipo llega vacio o
+    // desconocido, dibujar iniciales de un nombre es lo menos equivocado.
+    else -> ClaseDeChat.DIRECTA
+}
+
+/**
+ * El avatar de una CONVERSACION.
+ *
+ * Aparte de [Avatar] a proposito: el que dibuja una persona no necesita
+ * decidir nada, y el que dibuja una conversacion **no puede olvidarse**,
+ * porque `clase` no tiene valor por defecto.
+ */
+@Composable
+fun AvatarDeChat(
+    nombre: String,
+    url: String?,
+    clase: ClaseDeChat,
+    tamano: Dp = 48.dp,
+    modifier: Modifier = Modifier,
+) {
+    AvatarBase(
+        nombre = nombre,
+        url = url,
+        tamano = tamano,
+        icono = when (clase) {
+            ClaseDeChat.GRUPO -> Icons.Filled.Group
+            ClaseDeChat.CANAL -> Icons.Filled.Campaign
+            // Una directa cae a las iniciales de la persona, que es lo que
+            // `Avatar` hace para todo el mundo.
+            ClaseDeChat.DIRECTA -> null
+        },
+        modifier = modifier,
+    )
+}
+
+/**
+ * Foto de perfil de una PERSONA, con las iniciales como respaldo.
+ *
+ * **No tiene banderas.** Para una conversacion va [AvatarDeChat], que obliga a
+ * decir de que clase es porque `clase` no tiene valor por defecto.
+ *
+ * Marcarlas `internal` no habria alcanzado: toda la app es un solo modulo, asi
+ * que `internal` no impide nada desde dentro. La unica forma de que el defecto
+ * no vuelva es que la firma no lo permita.
  */
 @Composable
 fun Avatar(
     nombre: String,
     url: String?,
     tamano: Dp = 48.dp,
-    esGrupo: Boolean = false,
-    /**
-     * Un canal, que no es un grupo.
-     *
-     * Van dos banderas y no un `tipo: String` porque `Avatar` lo usan doce
-     * sitios y la mayoria solo sabe si es una persona o no. El unico caso que
-     * hay que distinguir de verdad es este, y anadirlo como opcional no obliga
-     * a tocar los once restantes.
-     */
-    esCanal: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    AvatarBase(nombre = nombre, url = url, tamano = tamano, icono = null, modifier = modifier)
+}
+
+/**
+ * El circulo, con una foto, un icono o las iniciales. Privado.
+ *
+ * `icono` en vez de dos banderas: quien dibuja ya decidio QUE es, y aqui solo
+ * queda pintarlo. Un tercer tipo de conversacion se agrega en [ClaseDeChat] y
+ * el compilador obliga a mapearlo —el `when` es exhaustivo—, en vez de
+ * aparecer como una tercera bandera opcional que nadie pasa.
+ */
+@Composable
+private fun AvatarBase(
+    nombre: String,
+    url: String?,
+    tamano: Dp,
+    icono: androidx.compose.ui.graphics.vector.ImageVector?,
+    modifier: Modifier = Modifier,
+) {
+    // El respaldo no es gris: el color sale del propio nombre, asi que cada
+    // persona tiene siempre el mismo tono y la lista se lee de un vistazo
+    // aunque nadie haya subido foto.
     val fondo = colorDeNombre(nombre)
     Box(
         modifier
@@ -87,10 +162,8 @@ fun Avatar(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().clip(CircleShape),
             )
-        } else if (esCanal) {
-            Icon(Icons.Filled.Campaign, null, tint = fondo, modifier = Modifier.size(tamano * 0.52f))
-        } else if (esGrupo) {
-            Icon(Icons.Filled.Group, null, tint = fondo, modifier = Modifier.size(tamano * 0.5f))
+        } else if (icono != null) {
+            Icon(icono, null, tint = fondo, modifier = Modifier.size(tamano * 0.51f))
         } else {
             Text(
                 iniciales(nombre),

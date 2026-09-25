@@ -322,11 +322,11 @@ private fun FilaCanal(k: CanalEnBusqueda, onAbrir: () -> Unit) {
         // color derivado del nombre. Dos implementaciones de lo mismo, una
         // encima de la otra en la misma pantalla: se leia como dos listas de
         // dos aplicaciones distintas.
-        Avatar(
+        AvatarDeChat(
             nombre = k.nombre.ifBlank { k.alias },
             url = null,
+            clase = ClaseDeChat.CANAL,
             tamano = 44.dp,
-            esCanal = true,
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -500,7 +500,7 @@ private fun FilaMiCanal(c: ChatFila, onAbrir: () -> Unit) {
         // dibujado de dos maneras distintas en la misma pantalla -megafono
         // abajo en "Descubrir", grupo arriba en "Mis canales"-. `Avatar` ya
         // tenia la bandera; esta fila pasaba la otra.
-        Avatar(nombre = c.nombre, url = null, tamano = 44.dp, esCanal = true)
+        AvatarDeChat(nombre = c.nombre, url = null, clase = ClaseDeChat.CANAL, tamano = 44.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(

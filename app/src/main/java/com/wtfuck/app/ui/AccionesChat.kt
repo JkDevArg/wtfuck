@@ -57,11 +57,11 @@ fun HojaAccionesChat(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Avatar(
+                AvatarDeChat(
                     nombre = chat.titulo,
                     url = null,
+                    clase = claseDeTipo(chat.tipo),
                     tamano = 40.dp,
-                    esGrupo = chat.tipo == "grupo",
                 )
                 Spacer(Modifier.width(12.dp))
                 Column {

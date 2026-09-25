@@ -924,16 +924,15 @@ private fun FilaChat(
         verticalAlignment = Alignment.Top,
     ) {
         Box(contentAlignment = Alignment.BottomEnd) {
-            Avatar(
+            // Un canal llevaba el icono de grupo, asi que en la lista un
+            // canal y un grupo eran identicos salvo por una etiqueta que solo
+            // tenia uno de los dos. Son cosas distintas -en un canal publican
+            // unos pocos y el resto lee- y ahora se ven distintas.
+            AvatarDeChat(
                 nombre = c.titulo,
                 url = ApiCliente.urlImagen(c.avatarUsername, "avatar", c.avatarVersion),
+                clase = claseDeTipo(c.tipo),
                 tamano = 50.dp,
-                // Un canal llevaba el icono de grupo, asi que en la lista un
-                // canal y un grupo eran identicos salvo por una etiqueta que
-                // solo tenia uno de los dos. Son cosas distintas -en un canal
-                // publican unos pocos y el resto lee- y ahora se ven distintas.
-                esGrupo = c.tipo == "grupo",
-                esCanal = c.tipo == "canal",
             )
             if (marcado) {
                 Box(

@@ -127,7 +127,7 @@ fun GrupoPantalla(
                 Modifier.fillMaxWidth().padding(vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Avatar(cfg?.nombre.orEmpty(), null, 88.dp, esGrupo = true)
+                AvatarDeChat(cfg?.nombre.orEmpty(), null, ClaseDeChat.GRUPO, 88.dp)
                 Spacer(Modifier.height(14.dp))
                 Text(
                     cfg?.nombre.orEmpty(),

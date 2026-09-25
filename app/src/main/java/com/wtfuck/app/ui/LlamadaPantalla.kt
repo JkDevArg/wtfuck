@@ -183,7 +183,16 @@ fun CapaLlamada() {
                     },
                 ) {
                     if (!conFondo) {
-                        Avatar(nombre = e.conQuien, url = null, tamano = 112.dp)
+                        // El tercer sitio donde se dibujaba una cosa como
+                        // otra: en una llamada de grupo `conQuien` es el
+                        // nombre del GRUPO, y salian sus iniciales como si
+                        // fuera una persona.
+                        AvatarDeChat(
+                            nombre = e.conQuien,
+                            url = null,
+                            clase = claseDeLlamada(e),
+                            tamano = 112.dp,
+                        )
                         Spacer(Modifier.height(20.dp))
                     }
                     // Una linea y con puntos suspensivos si no entra.
@@ -471,6 +480,18 @@ private fun BotonChico(icono: ImageVector, desc: String, activo: Boolean, onClic
 }
 
 /**
+ * Que clase de conversacion es una llamada.
+ *
+ * Se deduce de que haya nombre de grupo, que es el unico dato que la llamada
+ * lleva del otro lado: `EstadoLlamada` no guarda el `tipo` de la conversacion
+ * porque no lo necesita para nada mas. Un canal no puede tener llamada —el
+ * servidor lo rechaza con "No se puede llamar a un canal"— asi que las dos
+ * clases posibles aqui son las dos que se contemplan.
+ */
+private fun claseDeLlamada(e: EstadoLlamada): ClaseDeChat =
+    if (e.grupo.isNotBlank()) ClaseDeChat.GRUPO else ClaseDeChat.DIRECTA
+
+/**
  * La linea que dice en que anda cada persona de una llamada de grupo.
  *
  * ## Por que no basta con "con joaquin, rocio"
@@ -737,7 +758,12 @@ private fun VentanaFlotante(
                     Modifier.fillMaxSize().padding(start = 8.dp, end = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Avatar(nombre = e.conQuien, url = null, tamano = 34.dp)
+                    AvatarDeChat(
+                        nombre = e.conQuien,
+                        url = null,
+                        clase = claseDeLlamada(e),
+                        tamano = 34.dp,
+                    )
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(

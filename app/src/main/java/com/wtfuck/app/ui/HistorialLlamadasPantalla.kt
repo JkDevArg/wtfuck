@@ -145,7 +145,6 @@ fun HistorialLlamadasPantalla(onAtras: () -> Unit, onAbrirChat: (String) -> Unit
 
 @Composable
 private fun FilaLlamada(l: LlamadaEnHistorial, onAbrir: () -> Unit, onDevolver: () -> Unit) {
-    val esGrupo = l.esGrupo
     // Perdida en coral, el resto neutro. Es el unico caso que reclama una
     // accion, y pintar los tres estados de colores distintos convertiria la
     // lista en un semaforo sin significado.
@@ -163,10 +162,15 @@ private fun FilaLlamada(l: LlamadaEnHistorial, onAbrir: () -> Unit, onDevolver: 
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // `esGrupo` y no adivinarlo: un grupo dibujado con el icono de una
+        // Del servidor y no adivinado: un grupo dibujado con el icono de una
         // persona es el mismo defecto que el modulo AE encontro en los
         // canales, y aqui estaba esperando un archivo mas alla.
-        Avatar(nombre = l.titulo, url = null, tamano = 40.dp, esGrupo = esGrupo)
+        AvatarDeChat(
+            nombre = l.titulo,
+            url = null,
+            clase = if (l.esGrupo) ClaseDeChat.GRUPO else ClaseDeChat.DIRECTA,
+            tamano = 40.dp,
+        )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(

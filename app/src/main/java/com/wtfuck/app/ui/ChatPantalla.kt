@@ -458,13 +458,13 @@ fun ChatPantalla(
                 },
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Avatar(
+                        AvatarDeChat(
                             nombre = chat?.titulo.orEmpty(),
                             url = ApiCliente.urlImagen(
                                 chat?.avatarUsername.orEmpty(), "avatar", chat?.avatarVersion ?: 0L,
                             ),
+                            clase = claseDeTipo(chat?.tipo),
                             tamano = 38.dp,
-                            esGrupo = chat?.tipo == "grupo",
                         )
                         Spacer(Modifier.width(10.dp))
                         Column {
@@ -1221,11 +1221,11 @@ fun ChatPantalla(
             onDismissRequest = { mostrarInfo = false },
             containerColor = BgElev,
             icon = {
-                Avatar(
+                AvatarDeChat(
                     nombre = chat.titulo,
                     url = ApiCliente.urlImagen(chat.avatarUsername, "avatar", chat.avatarVersion),
+                    clase = claseDeTipo(chat.tipo),
                     tamano = 72.dp,
-                    esGrupo = chat.tipo == "grupo",
                 )
             },
             title = {
