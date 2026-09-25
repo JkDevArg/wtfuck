@@ -771,6 +771,21 @@ interface ChatDao {
     @Query("UPDATE mensaje SET especialJson = :json WHERE id = :id AND especial = :clase")
     suspend fun actualizarEspecial(id: String, clase: String, json: String): Int
 
+    /**
+     * MIS compartidos de ubicacion, del mas nuevo al mas viejo.
+     *
+     * No filtra por vencidos aqui: el `hasta` vive dentro del JSON y filtrarlo
+     * en SQL obligaria a buscar dentro de una cadena. Son pocas filas —una
+     * persona no abre cientos de compartidos— y quien llama ya tiene que
+     * deserializar la carga de todos modos.
+     */
+    @Query(
+        """SELECT * FROM mensaje
+                  WHERE esMio = 1 AND especial = 'ubicacion_viva'
+                  ORDER BY creadoEn DESC"""
+    )
+    suspend fun misCompartidosDeUbicacion(): List<MensajeEnt>
+
     @Query("UPDATE mensaje SET fijado = :fijado WHERE id = :id")
     suspend fun marcarFijado(id: String, fijado: Boolean)
 

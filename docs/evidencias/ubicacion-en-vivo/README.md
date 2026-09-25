@@ -56,6 +56,22 @@ cada posición pisa la anterior en la misma fila.
 Una posición cada medio minuto durante ocho horas serían mil burbujas para
 decir siempre lo mismo, y el chat dejaría de ser un chat.
 
+## 5 · La cara es el marcador
+
+![El avatar como marcador](5-la-cara-es-el-marcador.png)
+
+El punto genérico obligaba a leer el nombre para saber de quién era la
+posición. Ahora el marcador **es la persona**, con una antena pequeña encima
+que la distingue de una foto de perfil cualquiera — en cian mientras está en
+vivo, gris cuando terminó.
+
+Sin foto quedan las iniciales con su color derivado del nombre, que también
+identifican: el color es siempre el mismo para el mismo nombre. Y eso pasa más
+de lo que parece, porque la URL de un avatar necesita su `version` y este
+teléfono sólo la conoce en dos casos — la propia y la del otro lado de una
+directa. En un grupo haría falta una consulta de red **por burbuja**, y eso no
+vale lo que cuesta para decorar un icono.
+
 ---
 
 ## Lo que el servidor sabe de todo esto
@@ -102,6 +118,19 @@ otro lado se veían "en vivo" con un punto congelado hasta que venciera su plazo
 — hasta 24 horas. Ahora empezar uno cierra el anterior de verdad: *"estoy
 compartiendo mi ubicación" es un estado, no una lista*, y la notificación
 también es una sola.
+
+**Un compartido a la vez, pero sólo mientras viviera el servicio.** La primera
+versión de esa regla la hacía cumplir el servicio comparando con lo que
+recordaba; si mataban la app, arrancaba en blanco y el compartido viejo quedaba
+huérfano igual. Ahora la hace cumplir el repositorio antes de crear el nuevo:
+**la verdad de que hay un compartido vivo está en la base, no en la memoria de
+un proceso que pueden matar.**
+
+Y por lo mismo, al arrancar la app se **reanuda** el que siguiera vivo. En las
+llamadas, `recuperar()` cierra lo que encuentra —una sesión WebRTC murió con el
+proceso y no se retoma—; aquí es al revés: quien pidió ocho horas no pidió
+"ocho horas o hasta que Android mate la app", y no se perdió nada, porque la
+posición se vuelve a leer del GPS y la fecha sigue guardada.
 
 **Cortar desde la burbuja dejaba el servicio corriendo.** Llamaba al
 repositorio —marcaba terminado, avisaba al otro lado— y el servicio seguía con

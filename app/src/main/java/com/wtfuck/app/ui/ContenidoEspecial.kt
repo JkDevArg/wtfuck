@@ -183,6 +183,10 @@ fun BurbujaUbicacionViva(
     carga: Carga.UbicacionEnVivo,
     esMia: Boolean,
     ultimaActualizacion: Long,
+    /** De quién es la posición: su cara es el marcador. */
+    autor: String,
+    /** Su foto, o `null` para caer a las iniciales de color. */
+    fotoAutor: String?,
     onCortar: () -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -203,18 +207,35 @@ fun BurbujaUbicacionViva(
 
     Column(Modifier.widthIn(max = 260.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(38.dp).clip(CircleShape).background(
-                    if (v.enVivo) Cian.copy(alpha = 0.16f) else Slate.copy(alpha = 0.18f),
-                ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Filled.Sensors,
-                    null,
-                    tint = if (v.enVivo) Cian else TextoTerciario,
-                    modifier = Modifier.size(21.dp),
-                )
+            // El marcador es LA PERSONA, no un icono genérico.
+            //
+            // Un punto igual para todos obliga a leer el nombre para saber de
+            // quién es la posición; una cara se reconoce sin leer. Y en un
+            // grupo con dos compartidos a la vez, el icono genérico los hacía
+            // indistinguibles de un vistazo.
+            //
+            // Sin foto queda el [Avatar] con las iniciales y su color derivado
+            // del nombre, que **también** identifica a la persona: el color es
+            // siempre el mismo para el mismo nombre.
+            Box(contentAlignment = Alignment.BottomEnd) {
+                Avatar(nombre = autor, url = fotoAutor, tamano = 40.dp)
+                // La antena encima, pequeña. Es lo que distingue esta burbuja
+                // de una foto de perfil cualquiera, y va sobre su propia base
+                // porque encima de una foto clara un icono claro desaparece.
+                Box(
+                    Modifier
+                        .size(17.dp)
+                        .clip(CircleShape)
+                        .background(if (v.enVivo) Cian else Slate),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Sensors,
+                        null,
+                        tint = if (v.enVivo) TextoSobreAcento else TextoTerciario,
+                        modifier = Modifier.size(11.dp),
+                    )
+                }
             }
             Spacer(Modifier.width(10.dp))
             Column {
@@ -974,6 +995,8 @@ fun ContenidoEspecialBurbuja(
             // de la ultima posicion va dentro, escrita por el reloj de quien
             // la esta leyendo.
             ultimaActualizacion = carga.recibidaEn,
+            autor = if (m.esMio) yo else m.autor,
+            fotoAutor = fotoDe(if (m.esMio) yo else m.autor, m, app),
             onCortar = {
                 // Las dos cosas, y en este orden: el estado primero -para que
                 // la burbuja cambie ya aunque el servicio tarde- y despues el
@@ -1012,4 +1035,43 @@ fun ContenidoEspecialBurbuja(
             fontSize = 13.sp,
         )
     }
+}
+
+/**
+ * La foto de alguien, si este teléfono la tiene **sin preguntar a nadie**.
+ *
+ * ## Por qué no siempre hay foto
+ *
+ * Porque la URL de un avatar necesita su `version` —es el truco que invalida
+ * la caché— y este teléfono sólo la conoce en dos casos: la propia, del perfil
+ * cargado, y la del otro lado de una directa, que viaja con la conversación.
+ * En un grupo haría falta una consulta por autor, y una consulta de red por
+ * burbuja para decorar un icono no vale lo que cuesta.
+ *
+ * Cuando no hay, el [Avatar] cae a las iniciales con su color derivado del
+ * nombre — que identifica igual, porque el color es siempre el mismo para el
+ * mismo nombre.
+ */
+@Composable
+private fun fotoDe(
+    autor: String,
+    m: com.wtfuck.app.datos.MensajeEnt,
+    app: com.wtfuck.app.WtfuckApp,
+): String? {
+    val mio by app.repo.miPerfil.collectAsState()
+    if (m.esMio) {
+        return com.wtfuck.app.datos.ApiCliente.urlImagen(
+            autor, "avatar", mio?.avatarVersion ?: 0L,
+        )
+    }
+    // De la conversación, y **sólo si es de este autor**: en un grupo el avatar
+    // de la conversación es el del grupo, y ponérselo a una persona diría que
+    // esa posición es del grupo entero.
+    //
+    // Sale de la lista que la app ya tiene cargada, no de una consulta nueva:
+    // es la misma de la que se dibuja la pantalla de chats.
+    val chats by app.repo.conversaciones.collectAsState(emptyList())
+    val c = chats.firstOrNull { it.id == m.conversacionId } ?: return null
+    if (c.avatarUsername != autor) return null
+    return com.wtfuck.app.datos.ApiCliente.urlImagen(autor, "avatar", c.avatarVersion)
 }

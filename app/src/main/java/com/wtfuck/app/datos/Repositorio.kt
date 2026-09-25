@@ -397,6 +397,7 @@ class Repositorio(
             // llamaba nadie, que es la unica forma de que un arreglo no
             // arregle nada.
             launch { runCatching { llamadas.recuperar() } }
+            launch { runCatching { reanudarUbicacionEnVivo() } }
             launch { socket.entrantes.collect { manejar(it) } }
             // Cada reconexion vacia la cola. Es el corazon del comportamiento offline.
             launch {
@@ -1136,6 +1137,21 @@ class Repositorio(
         precisionM: Int,
         hasta: Long,
     ): String {
+        // Primero se cierran los MIOS que sigan vivos, en cualquier chat.
+        //
+        // El servicio ya cerraba el anterior, pero solo el que el recordaba:
+        // si la app se habia cerrado en el medio, el servicio arrancaba en
+        // blanco y el compartido viejo quedaba huerfano —"en vivo" con un
+        // punto congelado hasta 24 horas—. Se vio en el emulador con dos
+        // burbujas contando a la vez.
+        //
+        // Va aqui y no en el servicio porque esto no depende de que nada
+        // siga corriendo: la verdad de que hay un compartido vivo esta en la
+        // base, no en la memoria de un proceso que pueden matar.
+        for (viejo in vivosMios()) {
+            runCatching { terminarUbicacionEnVivo(viejo.conversacionId, viejo.id) }
+        }
+
         val id = UUID.randomUUID().toString()
         val carga = Carga.UbicacionEnVivo(
             mensajeId = id, lat = lat, lon = lon,
@@ -1221,6 +1237,53 @@ class Repositorio(
             oculto = true,
         )
     }
+
+    /**
+     * Al arrancar: si habia un compartido en curso, se vuelve a arrancar.
+     *
+     * ## Por que reanudar y no cerrar
+     *
+     * En las llamadas, `recuperar()` cierra lo que encuentra: una sesion
+     * WebRTC murio con el proceso y no se retoma. Aqui es al reves. Quien
+     * pidio compartir OCHO HORAS no pidio "ocho horas o hasta que Android
+     * mate la app", y nada se perdio con el proceso: la posicion se vuelve a
+     * leer del GPS y la fecha sigue guardada.
+     *
+     * Cerrarlo seria mas facil y seria peor: el compartido largo es
+     * justamente el que mas tiempo pasa con la app en segundo plano, o sea el
+     * que mas probabilidades tiene de que lo maten.
+     *
+     * ## Solo el mas nuevo
+     *
+     * Si quedaron varios —de una version anterior, o de un cierre a
+     * destiempo—, se reanuda uno y se cierran los demas. Es la misma regla de
+     * `iniciarUbicacionEnVivo`: un compartido a la vez, porque la
+     * notificacion tambien es una sola.
+     */
+    private suspend fun reanudarUbicacionEnVivo() {
+        val vivos = vivosMios()
+        if (vivos.isEmpty()) return
+        for (sobrante in vivos.drop(1)) {
+            runCatching { terminarUbicacionEnVivo(sobrante.conversacionId, sobrante.id) }
+        }
+        val fila = vivos.first()
+        val carga = vivaGuardada(fila.id) ?: return
+        ServicioUbicacionViva.arrancar(contexto, fila.conversacionId, fila.id, carga.hasta)
+    }
+
+    /**
+     * Mis compartidos que TODAVIA valen.
+     *
+     * Vivo es `hasta > ahora`. El cero de "cortado a mano" queda fuera solo,
+     * que es justo lo que se queria de usar cero como estado.
+     */
+    suspend fun vivosMios(): List<MensajeEnt> =
+        dao.misCompartidosDeUbicacion().filter { fila ->
+            val c = runCatching {
+                jsonApp.decodeFromString(Carga.serializer(), fila.especialJson)
+            }.getOrNull() as? Carga.UbicacionEnVivo
+            c != null && c.hasta > System.currentTimeMillis()
+        }
 
     /** La carga guardada de un compartido, o null si no esta o no es de esta clase. */
     suspend fun vivaGuardada(mensajeId: String): Carga.UbicacionEnVivo? {
