@@ -399,6 +399,8 @@ object Llamadas {
                 // contesta.
                 destinos = Claves.destinos(yo, l.conversacionId).destinos
                     .filter { it.usuarioId in enLlamada },
+                // Sin el propio: la pantalla cuenta quien MAS esta.
+                estados = estadosDe(c, llamadaId) - yo.username,
             ) to avisos
         }
 
@@ -603,6 +605,7 @@ object Llamadas {
             destinos = Claves.destinos(yo, l.conversacionId).destinos
                 .filter { it.usuarioId in enLlamada },
             miEstado = miEstado,
+            estados = estadosDe(c, id) - yo.username,
         )
     }
 
@@ -761,6 +764,26 @@ object Llamadas {
      * segundo en entrar no tendria a quien ofrecerle y la llamada de tres se
      * quedaria a medias otra vez.
      */
+    /**
+     * En que anda cada persona de la llamada: username -> estado.
+     *
+     * Es la foto del momento de entrar. Quien se une a una llamada que ya
+     * empezo se perdio los avisos anteriores —alguien que entro antes no emite
+     * uno nuevo para el recien llegado—, asi que sin esto se le mostraria como
+     * "sonando" para siempre.
+     */
+    private fun estadosDe(c: Connection, llamadaId: UUID): Map<String, String> =
+        c.prepareStatement(
+            """SELECT u.username, p.estado
+                 FROM llamada_participante p JOIN usuario u ON u.id = p.usuario_id
+                WHERE p.llamada_id = ?"""
+        ).use { st ->
+            st.setObject(1, llamadaId)
+            st.executeQuery().use { rs ->
+                rs.mapear { it.getString(1) to it.getString(2) }.toMap()
+            }
+        }
+
     private fun enLaLlamada(c: Connection, llamadaId: UUID): Set<String> =
         c.prepareStatement(
             "SELECT usuario_id FROM llamada_participante WHERE llamada_id = ?"

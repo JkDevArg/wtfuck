@@ -217,4 +217,18 @@ data class LlamadaEnCurso(
      * hace sonar el telefono al llegar.
      */
     val miEstado: String = "",
+    /**
+     * En que anda cada persona de la llamada: username -> `sonando` |
+     * `dentro` | `rechazo`.
+     *
+     * ## Por que no basta con los avisos
+     *
+     * `llamada_participante` cuenta los CAMBIOS, y quien se une a una llamada
+     * que ya empezo se perdio los anteriores: alguien que entro antes no va a
+     * emitir un aviso nuevo para el recien llegado, asi que sin esto se le
+     * mostraria como "sonando" para siempre.
+     *
+     * Esto es la foto del momento de entrar; los avisos la van moviendo.
+     */
+    val estados: Map<String, String> = emptyMap(),
 )

@@ -530,6 +530,19 @@ const avisosDe = (usuarioId, estado) => psql(
 
 r = await post(`/v1/llamadas/${LLP}/contestar`, pb.t);
 ck('pb contesta', r.s === 200, String(r.s));
+
+// La FOTO del momento de entrar. Hace falta porque los avisos cuentan
+// CAMBIOS: quien se une a una llamada que ya empezo se perdio los anteriores,
+// y alguien que entro antes no emite uno nuevo para el recien llegado. Sin
+// esto, en la pantalla de pb los demas se quedarian en "sonando" para
+// siempre.
+ck('al contestar se recibe en que anda cada uno', r.b.estados?.[pa.user] === 'dentro',
+   JSON.stringify(r.b.estados));
+ck('incluido quien todavia suena', r.b.estados?.[pc.user] === 'sonando', JSON.stringify(r.b.estados));
+ck('y sin uno mismo: la pantalla cuenta quien MAS esta',
+   r.b.estados?.[pb.user] === undefined, JSON.stringify(r.b.estados));
+ck('ni gente del grupo que no fue invitada', r.b.estados?.[pd.user] === undefined,
+   JSON.stringify(r.b.estados));
 ck('y a pa le llega que pb ENTRO', avisosDe(pa.id, 'dentro') !== '0', avisosDe(pa.id, 'dentro'));
 ck('a pc, que sigue sonando, tambien', avisosDe(pc.id, 'dentro') !== '0');
 ck('pero no se le manda a pb mismo', avisosDe(pb.id, 'dentro') === '0', avisosDe(pb.id, 'dentro'));
@@ -538,6 +551,10 @@ r = await post(`/v1/llamadas/${LLP}/terminar`, pc.t, { motivo: 'rechazada' });
 ck('pc rechaza', r.s === 204, String(r.s));
 ck('y a pa le llega que RECHAZO, no que la llamada termino',
    avisosDe(pa.id, 'rechazo') !== '0', avisosDe(pa.id, 'rechazo'));
+// Y quien llegue AHORA ve el rechazo en la foto, no solo en los avisos.
+r = await get('/v1/llamadas/en-curso', pb.t);
+ck('la foto de /en-curso refleja el rechazo', r.b.estados?.[pc.user] === 'rechazo',
+   JSON.stringify(r.b.estados));
 ck('la llamada sigue viva: el aviso no la cierra',
    psql(`SELECT estado FROM llamada WHERE id='${LLP}'`) === 'en_curso',
    psql(`SELECT estado FROM llamada WHERE id='${LLP}'`));

@@ -280,9 +280,17 @@ class ServicioLlamadas(
         _estado.value = e.copy(fase = EstadoLlamada.Fase.CONECTANDO)
         modoLlamada(true)
 
-        // Se anota con quien se esta hablando, para rotular los recuadros.
+        // Se anota con quien se esta hablando, para rotular los recuadros, y en
+        // que anda cada uno.
+        //
+        // `estados` es la foto del momento de entrar y hace falta porque los
+        // avisos cuentan CAMBIOS: quien se une a una llamada que ya empezo se
+        // perdio los anteriores, y alguien que entro antes no va a emitir uno
+        // nuevo para el recien llegado. Sin esto se le mostraria como
+        // "sonando" para siempre.
         _estado.value = _estado.value?.copy(
             participantes = curso.destinos.associate { it.dispositivoId to it.username },
+            estadoDe = curso.estados,
         )
 
         // Recien ahora se responde a cada oferta guardada.

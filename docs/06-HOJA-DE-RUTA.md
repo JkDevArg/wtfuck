@@ -5605,5 +5605,19 @@ Dos capturas nuevas en
 llamó viendo `con joaquin · llamando a rocio`, y el rechazo con la llamada
 todavía viva.
 
-**1810 pruebas en verde**: 1497 de integración en 36 suites, 238 JUnit de app
+### AH.5 · La foto del momento de entrar
+
+Los avisos cuentan **cambios**, y quien se une a una llamada que ya empezó se
+perdió los anteriores: alguien que entró antes no va a emitir uno nuevo para el
+recién llegado, así que en su pantalla se quedaría como "sonando" para siempre.
+
+`LlamadaEnCurso.estados` es la foto del momento —username → `sonando` /
+`dentro` / `rechazo`, sin uno mismo, porque la pantalla cuenta quién **más**
+está— y los avisos la van moviendo desde ahí.
+
+Con eso la línea vale para los dos lados y no sólo para quien llamó: entrar a
+una llamada de grupo sin saber con quién es raro. Quien contesta ve
+`con tatiana · llamando a rocio`.
+
+**1815 pruebas en verde**: 1502 de integración en 36 suites, 238 JUnit de app
 y 75 de servidor.

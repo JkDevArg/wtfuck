@@ -222,8 +222,14 @@ fun CapaLlamada() {
                     // No se condiciona al numero de participantes: quien recibe
                     // tiene esa lista vacia mientras suena, o sea justo cuando
                     // el dato hace falta.
+                    // No se condiciona a `saliente`. Quien contesta tambien
+                    // necesita ver quien mas esta —entrar a una llamada de
+                    // grupo sin saber con quien es raro—, y desde que el
+                    // servidor manda la foto al contestar, ese lado tiene el
+                    // dato. Mientras suena sigue sin tenerlo, y ahi la frase
+                    // del grupo es la util.
                     val pie = when {
-                        e.saliente && e.estadoDe.isNotEmpty() -> pieDeParticipantes(e.estadoDe)
+                        e.estadoDe.isNotEmpty() -> pieDeParticipantes(e.estadoDe)
                         e.grupo.isNotBlank() -> "llamada de grupo · ${e.grupo}"
                         else -> ""
                     }
