@@ -1041,7 +1041,11 @@ fun Application.modulo() {
         }
 
         post("$RUTA_MODERACION/advertencias/{id}/reconocer") {
-            Moderacion.reconocer(call.autenticar(), call.idRuta())
+            // 404 si no se toco ninguna fila: la advertencia no es tuya o no
+            // existe. Antes respondia 204 en los tres casos, o sea que le
+            // decia "hecho" a quien no habia hecho nada.
+            val filas = Moderacion.reconocer(call.autenticar(), call.idRuta())
+            if (filas == 0) throw ErrorNegocio(404, "Esa advertencia no existe.")
             call.respond(HttpStatusCode.NoContent)
         }
 

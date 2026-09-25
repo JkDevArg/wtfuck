@@ -5383,3 +5383,106 @@ que las produce es [`pruebas/llamada-de-grupo.sh`](../pruebas/llamada-de-grupo.s
 **1761 pruebas en verde**: 1456 de integración en 36 suites, 230 JUnit de app
 y 75 de servidor. Son **+54** sobre las 1707 del módulo anterior — 45 de
 integración y 9 de `MallaTest`.
+
+---
+
+## Módulo AG · La garantía del §16 dejó de ser una foto ✅
+
+*"Aparte de aplicar seguridad."*
+
+`ajeno.mjs` es el barrido de acceso ajeno: recorre las rutas que mutan algo con
+un id, las ataca con un tercero sin relación con el objeto y exige que el
+servidor se niegue. Es una de las mejores suites del proyecto —cada fila se
+corre dos veces, ataque y control, para que un 400 por cuerpo mal formado no
+cuente como verde—.
+
+Y abría con esta frase:
+
+> *"Un auditor de rutas sobre `Main.kt` da 127 rutas, 78 de ellas mutantes y 45
+> con un `{id}` en el camino."*
+
+**Ese número estaba en un comentario.** No había auditor: era una foto de un
+día, y las filas son una lista fija.
+
+### AG.1 · Lo que eso significaba
+
+Toda ruta agregada después quedaba fuera del barrido **y la suite seguía dando
+verde**. Hoy el servidor tiene 149 rutas, 92 mutantes y **54 con un `{id}`**:
+diecinueve más de las que el comentario decía, y ninguna de las nuevas se
+atacaba nunca. Entre ellas, las tres de comunidades (módulo AD), las de
+historias, y las del panel.
+
+Es la cuarta vez que este proyecto se encuentra la misma forma de defecto:
+
+| Dónde | La forma |
+|---|---|
+| Módulo AD | Una capacidad que la API tiene y la interfaz no ofrece |
+| Módulo AD | Una prueba que afirma sobre un contador y no sobre el contenido |
+| Módulo AF | Un barrido que cierra la llamada y no avisa a nadie |
+| **Aquí** | **Una garantía que no alcanza al código nuevo** |
+
+### AG.2 · El auditor, que ahora es código
+
+[`pruebas/lib/auditor-de-rutas.mjs`](../pruebas/lib/auditor-de-rutas.mjs) lee
+`Main.kt`, resuelve las constantes `RUTA_*` del protocolo —la mitad de las
+rutas se declaran como `post(RUTA_PERFIL)` o `post("$RUTA_LLAMADAS/{id}/contestar")`,
+y una expresión regular que sólo mire cadenas literales se las pierde y da un
+número que parece bien— y devuelve el inventario.
+
+`ajeno.mjs` le pregunta al final: **si queda una ruta mutante con id sin
+atacar ni eximir, falla y la nombra**. Se comprobó agregando una ruta
+inventada: la suite la señaló por su nombre.
+
+Vive en `lib/` porque es una biblioteca. Dejada junto a las suites, el runner
+intentaba correrla y la marcaba `ROTA`.
+
+### AG.3 · Las exenciones llevan motivo
+
+Once rutas no se atacan, y cada una dice por qué. Una exención sin motivo es
+una ruta olvidada con otro nombre.
+
+- `PUT /v1/perfil/{campo}` — el parámetro es un **campo**, no un objeto.
+- `POST/DELETE /v1/bloqueos/{username}` — bloquear a cualquiera está permitido
+  a propósito.
+- `POST /v1/invitaciones/{codigo}` — el código **es** la credencial.
+- `POST /v1/canales/{id}/suscribir` — un canal público es abierto por diseño.
+
+Y al revés: una exención que ya no corresponde a ninguna ruta también falla,
+porque es basura que se queda tapando el hueco siguiente.
+
+### AG.4 · Nueve rutas nuevas atacadas, y una que se movió
+
+Entraron al barrido las tres de comunidades, dos de historias, y tres del panel
+que un no-staff no debería tocar.
+
+La de reconocer una advertencia **se movió a `moderacion.mjs`** en vez de
+eximirse: una advertencia sólo existe después de resolver una denuncia, y
+sembrar denuncias en los veinte mundos de control de `ajeno.mjs` inunda la cola
+global de moderación y tira abajo esa otra suite. Se ataca donde el objeto ya
+existe.
+
+### AG.5 · Y ahí apareció algo
+
+`POST /v1/moderacion/advertencias/{id}/reconocer` respondía **204 a cualquiera**.
+
+No era una fuga: el `UPDATE` ya filtraba por `usuario_id`, así que la
+advertencia de otro nunca se tocaba. Pero la ruta decía *"hecho"* cuando no
+había pasado nada, y un cliente que lea ese 204 pinta la advertencia como leída
+y se queda mintiendo hasta que recargue.
+
+Ahora devuelve cuántas filas tocó y contesta **404** si fueron cero. Con dos
+cuidados:
+
+- **No es un oráculo.** Un id ajeno y un id inventado responden exactamente lo
+  mismo, así que nadie averigua si una advertencia existe. Hay una prueba que
+  lo fija.
+- **Sigue siendo idempotente.** La condición `reconocida_en IS NULL` habría
+  hecho que reconocer dos veces diera 404 la segunda, y un reintento tras un
+  corte de red se leería como *"esa advertencia no es tuya"*. El `coalesce`
+  conserva la fecha original.
+
+---
+
+**1780 pruebas en verde**: 1475 de integración en 36 suites, 230 JUnit de app y
+75 de servidor. En la configuración mínima —una instancia, sin Redis— son
+**1760**, con `bus` y `bus-inyeccion` marcadas `OMIT`.

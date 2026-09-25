@@ -8,11 +8,15 @@
 // canales.mjs los canales-, y cada una lo hace bien. Lo que ninguna hace es
 // preguntarse si quedo alguna ruta fuera.
 //
-// Un auditor de rutas sobre Main.kt da 127 rutas, 78 de ellas mutantes y 45 con
-// un `{id}` en el camino. Esas son la superficie: si una sola resuelve el id sin
-// comprobar quien lo pide, hay acceso a un objeto ajeno. Esta suite las recorre
-// con un tercero que no tiene ninguna relacion con el objeto y exige que el
-// servidor se niegue.
+// `auditor-de-rutas.mjs` lee Main.kt y da las rutas mutantes con un `{id}` en el
+// camino. Esas son la superficie: si una sola resuelve el id sin comprobar quien
+// lo pide, hay acceso a un objeto ajeno. Esta suite las recorre con un tercero
+// que no tiene ninguna relacion con el objeto y exige que el servidor se niegue.
+//
+// El auditor es codigo y no un comentario, y eso es el punto. Antes este numero
+// estaba escrito aqui a mano —«45 rutas»— y era una foto de un dia: toda ruta
+// agregada despues quedaba fuera del barrido y la suite seguia dando verde. Al
+// final del archivo se le pregunta al auditor si quedo alguna.
 //
 // ## El control es la mitad importante
 //
@@ -82,6 +86,8 @@ const get = (r, t) => call('GET', r, t);
 // ruta que conceda staff sin ser staff, y eso es justamente lo que esta suite
 // comprueba mas abajo.
 const { execSync } = await import('node:child_process');
+const { readFileSync } = await import('node:fs');
+const { rutas: auditor, normalizar } = await import('./lib/auditor-de-rutas.mjs');
 const hacerStaff = (username, nivel) => execSync(
   `docker exec wtfuck_db psql -U wtfuck -d wtfuck -q -c ` +
   `"UPDATE usuario SET staff_nivel=${nivel} WHERE username='${username}'"`,
@@ -154,7 +160,26 @@ async function sembrar(etiqueta, conDenuncia = false) {
   const ses = await get('/v1/sesiones', duena.t);
   const SESION = ses.b?.sesiones?.[0]?.id;
 
-  return { duena, socio, G, DIRECTA, M, CANAL, LLAMADA, INV, ROL, ADJ, CONSOLA, DENUNCIA, SESION };
+  // Comunidad, historia y advertencia: tres objetos de la duena que el barrido
+  // no tocaba. Los dos primeros son de modulos posteriores al ultimo recuento
+  // de rutas, que es exactamente el agujero que el auditor viene a cerrar.
+  const com = await post('/v1/comunidades', duena.t, {
+    nombre: 'Comunidad ' + etiqueta, grupos: [G],
+  });
+  const COMUNIDAD = com.b?.comunidad?.id;
+
+  const HISTORIA = uuid();
+  await post('/v1/historias', duena.t, { historiaId: HISTORIA, clase: 'texto' });
+
+  // La clave de un limite no es un objeto: es un nombre fijo del sistema. Va
+  // en el mundo igual, para que la plantilla de la fila lleve interpolacion y
+  // el auditor la reconozca como el `{clave}` de la ruta.
+  const LIMITE = 'enviar_mensaje';
+
+  return {
+    duena, socio, G, DIRECTA, M, CANAL, LLAMADA, INV, ROL, ADJ, CONSOLA,
+    DENUNCIA, SESION, COMUNIDAD, HISTORIA, LIMITE,
+  };
 }
 
 console.log('\n=== siembra ===');
@@ -296,6 +321,64 @@ const FILAS = [
     ruta: (w) => `/v1/panel/usuarios/${w.duena.user}/restaurar`, soloPanel: true },
   { n: 'darse staff a uno mismo', m: 'PUT',
     ruta: () => `/v1/panel/usuarios/${ajena.user}/staff`, cuerpo: () => ({ nivel: 100 }), soloPanel: true },
+
+  // --- comunidades (modulo AD) -----------------------------------------
+  //
+  // Nunca habian pasado por aqui: son posteriores al recuento de rutas que
+  // encabezaba esta suite, y ese recuento era un comentario, no un auditor.
+  { n: 'renombrar una comunidad ajena', m: 'PUT',
+    ruta: (w) => `/v1/comunidades/${w.COMUNIDAD}`,
+    cuerpo: () => ({ nombre: 'Tomada', descripcion: 'mia ahora' }) },
+  { n: 'meter un grupo en una comunidad ajena', m: 'POST',
+    ruta: (w) => `/v1/comunidades/${w.COMUNIDAD}/grupos`,
+    cuerpo: (w) => ({ grupos: [w.G] }),
+    sinControl: 'el grupo de la duena ya esta en su comunidad' },
+  { n: 'sacar un grupo de una comunidad ajena', m: 'DELETE',
+    ruta: (w) => `/v1/comunidades/${w.COMUNIDAD}/grupos/${w.G}` },
+
+  // --- historias --------------------------------------------------------
+  { n: 'borrar la historia de otra persona', m: 'DELETE',
+    ruta: (w) => `/v1/historias/${w.HISTORIA}` },
+  { n: 'subir sobres para la historia de otra persona', m: 'POST',
+    ruta: (w) => `/v1/historias/${w.HISTORIA}/sobres`,
+    cuerpo: () => ({ sobres: [] }),
+    sinControl: 'la duena ya subio los suyos al publicarla' },
+
+  // --- panel: sin ser staff --------------------------------------------
+  { n: 'verificar una cuenta sin ser staff', m: 'PUT',
+    ruta: (w) => `/v1/panel/cuentas/${w.duena.user}/verificar`,
+    cuerpo: () => ({ verificada: true }), soloPanel: true },
+  { n: 'cambiar un limite del sistema sin ser staff', m: 'PUT',
+    ruta: (w) => `/v1/panel/limites/${w.LIMITE}`,
+    cuerpo: () => ({ tope: 99999, ventanaSegundos: 1 }), soloPanel: true },
+  { n: 'borrar un limite del sistema sin ser staff', m: 'DELETE',
+    ruta: (w) => `/v1/panel/limites/${w.LIMITE}`, soloPanel: true },
+];
+
+/**
+ * Rutas mutantes con id que NO se atacan, y por que.
+ *
+ * Una exencion sin motivo es una ruta olvidada con otro nombre. Cada una dice
+ * que tiene de distinto; si alguien agrega una ruta y no la cubre, tiene que
+ * venir aqui a escribir la razon, y escribirla obliga a pensarla.
+ */
+const EXENTAS = [
+  ['PUT', '/v1/perfil/{}', 'el parametro es un CAMPO, no un objeto: siempre edita el perfil de quien pide'],
+  ['POST', '/v1/bloqueos/{}', 'bloquear a cualquiera esta permitido a proposito: no hay objeto ajeno'],
+  ['DELETE', '/v1/bloqueos/{}', 'idem: se desbloquea lo que uno mismo bloqueo'],
+  ['DELETE', '/v1/contactos/{}', 'el contacto es de quien pide por construccion'],
+  ['POST', '/v1/invitaciones/{}', 'el codigo ES la credencial: usarlo teniendolo es justo el caso legitimo'],
+  ['POST', '/v1/canales/{}/suscribir', 'suscribirse a un canal publico es abierto por diseno'],
+  ['POST', '/v1/canales/{}/desuscribir', 'idem, y solo afecta a la suscripcion de quien pide'],
+  ['POST', '/v1/canales/{}/comentarios', 'comentar en un canal publico es abierto; lo cubre canales.mjs'],
+  ['POST', '/v1/historias/{}/vista', 'marcar vista una historia que ya se puede ver no toma nada ajeno'],
+  ['PUT', '/v1/conversaciones/{}/solicitud', 'la solicitud es la de quien pide; lo cubre privacidad-fina.mjs'],
+  // Esta se movio, no se perdono: una advertencia solo existe despues de
+  // resolver una denuncia, y sembrar denuncias en los veinte mundos de control
+  // inunda la cola global y tira abajo `moderacion.mjs`. Se ataca alli, donde
+  // la advertencia ya existe: un tercero y el moderador que la puso reciben
+  // 404, igual que un id inventado.
+  ['POST', '/v1/moderacion/advertencias/{}/reconocer', 'se ataca en moderacion.mjs, donde la advertencia existe'],
 ];
 
 // ---------------------------------------------------------------------------
@@ -373,6 +456,48 @@ console.log(`  ${panel} privativas del panel: el control seria un staff y eso lo
 console.log(`  ${sin.length} sin control aplicable, cada una con su motivo:`);
 for (const f of sin) console.log(`      - ${f.n}: ${f.sinControl}`);
 console.log('');
+// ============================================================
+//  Y que no quede ninguna fuera SIN QUE NADIE SE ENTERE
+// ============================================================
+//
+// Esta suite abria diciendo que un auditor daba 45 rutas mutantes con id. Ese
+// numero estaba en un COMENTARIO: era una foto de un dia. Toda ruta agregada
+// despues quedaba fuera del barrido y la suite seguia dando verde.
+//
+// Ahora el auditor existe, lee Main.kt, y esto le pregunta. Hoy son 54.
+console.log('\n=== ninguna ruta mutante con id queda sin mirar ===');
+{
+  const { rutas, sinResolver } = auditor();
+  ck('el auditor resuelve TODAS las rutas del servidor', sinResolver.length === 0,
+     sinResolver.map((x) => `${x.metodo} ${x.expr}`).join(' | '));
+
+  const fuente = readFileSync(new URL(import.meta.url), 'utf8');
+  const bloque = fuente.slice(fuente.indexOf('const FILAS = ['));
+  const cubiertas = new Set();
+  for (const m of bloque.matchAll(/ruta:\s*\(w?\)\s*=>\s*`([^`]*)`/g)) {
+    cubiertas.add(m[1].replace(/\$\{[^}]*\}/g, '{}'));
+  }
+  const eximidas = new Set(EXENTAS.map(([, ruta]) => ruta));
+
+  const conId = rutas.filter((r) => r.muta && r.conId);
+  const huerfanas = conId
+    .map((r) => ({ m: r.metodo, p: normalizar(r.patron) }))
+    .filter((r) => !cubiertas.has(r.p) && !eximidas.has(r.p));
+
+  ck(`las ${conId.length} rutas mutantes con id estan cubiertas o eximidas`,
+     huerfanas.length === 0,
+     huerfanas.map((r) => `${r.m} ${r.p}`).join(' | '));
+
+  // Y al reves: una exencion que ya no corresponde a ninguna ruta es basura
+  // que se queda ahi tapando el hueco siguiente.
+  const patrones = new Set(conId.map((r) => normalizar(r.patron)));
+  const muertas = EXENTAS.filter(([, ruta]) => !patrones.has(ruta));
+  ck('ninguna exencion apunta a una ruta que ya no existe', muertas.length === 0,
+     muertas.map(([m, r]) => `${m} ${r}`).join(' | '));
+
+  console.log(`  ${conId.length} mutantes con id · ${cubiertas.size} atacadas · ${EXENTAS.length} eximidas`);
+}
+
 console.log('  NO cubre: rutas GET -eso es lectura y lo miran privacidad.mjs y');
 console.log('  moderacion.mjs-, ni el contenido de los sobres, que el servidor');
 console.log('  no puede leer ni con el permiso mas alto.');

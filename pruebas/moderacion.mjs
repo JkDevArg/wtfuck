@@ -309,11 +309,37 @@ const ADV = r.b.advertencias?.[0]?.id;
 ck('cada advertencia trae su motivo', !!r.b.advertencias?.[0]?.motivo, JSON.stringify(r.b.advertencias?.[0]));
 ck('y arranca sin reconocer', r.b.advertencias?.[0]?.reconocida === false);
 
+// Primero, que NO la pueda reconocer otro.
+//
+// Reconocer una advertencia la marca leida, y ese es el gesto que el sistema
+// registra como "se enteró". Si lo pudiera hacer un tercero, la constancia de
+// una sancion se firmaria desde fuera. No lo cubria ninguna suite: el barrido
+// de acceso ajeno no llega aqui porque una advertencia solo existe despues de
+// resolver una denuncia, y sembrar denuncias en sus veinte mundos inunda esta
+// misma cola.
+r = await post(`/v1/moderacion/advertencias/${ADV}/reconocer`, ajeno.t);
+ck('un tercero no puede reconocer la advertencia de otro', r.s === 403 || r.s === 404, String(r.s));
+r = await post(`/v1/moderacion/advertencias/${ADV}/reconocer`, modera.t);
+ck('ni el moderador que la puso', r.s === 403 || r.s === 404, String(r.s));
+r = await get('/v1/moderacion/mi-estado', acosa.t);
+ck('y sigue sin reconocer', r.b.advertencias.find((a) => a.id === ADV)?.reconocida === false,
+   JSON.stringify(r.b.advertencias?.find((a) => a.id === ADV)));
+
 r = await post(`/v1/moderacion/advertencias/${ADV}/reconocer`, acosa.t);
 ck('se puede reconocer una advertencia', r.s === 204, String(r.s));
 r = await get('/v1/moderacion/mi-estado', acosa.t);
 ck('y queda anotado como leida', r.b.advertencias.find((a) => a.id === ADV)?.reconocida === true);
 ck('reconocerla NO la borra', r.b.advertenciasVigentes === 3, String(r.b.advertenciasVigentes));
+
+// Reconocer dos veces tiene que seguir dando 204: un reintento tras un corte
+// de red no puede leerse como "esa advertencia no es tuya".
+r = await post(`/v1/moderacion/advertencias/${ADV}/reconocer`, acosa.t);
+ck('reconocer dos veces es idempotente, no un error', r.s === 204, String(r.s));
+
+// Y un id inventado responde IGUAL que uno ajeno: si un id ajeno diera 403 y
+// uno inventado 404, la diferencia contestaria si esa advertencia existe.
+r = await post(`/v1/moderacion/advertencias/${uuid()}/reconocer`, ajeno.t);
+ck('un id inventado responde lo mismo que uno ajeno: no hay oraculo', r.s === 404, String(r.s));
 
 console.log('\n=== una suspension corta lo que produce contenido ===');
 r = await post('/v1/mensajes', acosa.t, { mensajeId: uuid(), conversacionId: GRUPO });

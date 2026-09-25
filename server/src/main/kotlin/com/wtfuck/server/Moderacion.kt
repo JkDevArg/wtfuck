@@ -711,14 +711,35 @@ object Moderacion {
     }
 
     /** Marcar una advertencia como vista. No la borra: la deja constar como leida. */
-    fun reconocer(yo: Auth, advertenciaId: UUID) = Db.tx { c ->
+    /**
+     * Marca leida una advertencia PROPIA.
+     *
+     * ## Que se arreglo
+     *
+     * El `UPDATE` ya filtraba por `usuario_id`, asi que la advertencia de otro
+     * nunca se tocaba: no habia fuga. Pero la ruta respondia **204 igual**, o
+     * sea que le decia a quien preguntaba que la operacion habia salido bien
+     * cuando no habia pasado nada. Un cliente que lea ese 204 pinta la
+     * advertencia como leida y se queda mintiendo hasta que recargue.
+     *
+     * Ahora se devuelve cuantas filas se tocaron y la ruta contesta 404 si
+     * fueron cero. **No es un oraculo**: un id ajeno y un id inventado dan
+     * exactamente lo mismo, asi que nadie averigua si una advertencia existe.
+     *
+     * ## Y por que sin `reconocida_en IS NULL`
+     *
+     * Con esa condicion, reconocer dos veces daba cero filas la segunda y
+     * ahora eso seria un 404: un reintento tras un corte de red se leeria como
+     * "esa advertencia no es tuya". El `coalesce` conserva la fecha original y
+     * deja la operacion idempotente, que es lo que un cliente espera.
+     */
+    fun reconocer(yo: Auth, advertenciaId: UUID): Int = Db.tx { c ->
         c.prepareStatement(
-            """UPDATE advertencia SET reconocida_en = now()
-               WHERE id = ? AND usuario_id = ? AND reconocida_en IS NULL"""
+            """UPDATE advertencia SET reconocida_en = coalesce(reconocida_en, now())
+               WHERE id = ? AND usuario_id = ?"""
         ).use { st ->
             st.setObject(1, advertenciaId); st.setObject(2, yo.usuarioId); st.executeUpdate()
         }
-        Unit
     }
 
     // ============================================================
