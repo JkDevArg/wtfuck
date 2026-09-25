@@ -103,6 +103,8 @@ fun ChatPantalla(
      */
     irAMensaje: String = "",
     onInfoGrupo: () -> Unit,
+    /** La ficha de la otra persona, en una directa. */
+    onInfoPersona: () -> Unit,
     onVerificarCifrado: () -> Unit,
     /** Abrir la conversacion con alguien: lo pide la tarjeta de contacto. */
     onAbrirChatCon: (String) -> Unit,
@@ -163,7 +165,6 @@ fun ChatPantalla(
     var editando by remember { mutableStateOf<MensajeEnt?>(null) }
     var aviso by remember { mutableStateOf<String?>(null) }
     val portapapeles = LocalClipboardManager.current
-    var mostrarInfo by remember { mutableStateOf(false) }
     /**
      * La ficha de empresa de la otra persona, si tiene.
      *
@@ -171,7 +172,6 @@ fun ChatPantalla(
      * nadie va a mirar, y pedirlo siempre seria una peticion de red por cada
      * conversacion que se abre para dibujar algo que esta detras de un menu.
      */
-    var fichaDelOtro by remember { mutableStateOf<FichaEmpresa?>(null) }
 
     // L.1 · Quien escribe. Se apaga solo: ver `Repositorio.escribiendo`.
     val escribiendoTodos by app.repo.escribiendo.collectAsStateWithLifecycle()
@@ -502,7 +502,16 @@ fun ChatPantalla(
                     }
                 },
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Tocar la cabecera abre la ficha, como en cualquier app
+                    // de mensajeria. Antes eso solo estaba en el menu de tres
+                    // puntos: el sitio donde nadie lo buscaba, porque el sitio
+                    // donde todo el mundo lo busca es el nombre.
+                    Row(
+                        Modifier.clickable {
+                            if (chat?.tipo == "grupo") onInfoGrupo() else onInfoPersona()
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         AvatarDeChat(
                             nombre = chat?.titulo.orEmpty(),
                             url = ApiCliente.urlImagen(
@@ -600,23 +609,7 @@ fun ChatPantalla(
                             menuAbierto = false
                             // Un grupo tiene administracion; una directa solo
                             // una tarjeta con los datos del contacto.
-                            if (chat?.tipo == "grupo") {
-                                onInfoGrupo()
-                            } else {
-                                mostrarInfo = true
-                                // El perfil publico se pide aqui. Si falla, la
-                                // tarjeta simplemente no aparece: el contacto
-                                // se abre igual, porque una ficha de empresa no
-                                // es lo que se vino a ver.
-                                val quien = chat?.titulo
-                                if (quien != null) {
-                                    ambito.launch {
-                                        fichaDelOtro =
-                                            runCatching { app.repo.perfilDe(quien)?.empresa }
-                                                .getOrNull()
-                                    }
-                                }
-                            }
+                            if (chat?.tipo == "grupo") onInfoGrupo() else onInfoPersona()
                         }
 
                         OpcionMenu("Buscar en el chat", Icons.Filled.Search) {
@@ -1284,87 +1277,6 @@ fun ChatPantalla(
             title = { Text("No se pudo completar", color = TextoPrimario) },
             text = { Text(msg, color = TextoSecundario) },
             confirmButton = { TextButton(onClick = { aviso = null }) { Text("Entendido", color = Cian) } },
-        )
-    }
-
-    if (mostrarInfo && chat != null) {
-        val miembros = chat.participantes.split(",").filter { it.isNotBlank() }
-        AlertDialog(
-            onDismissRequest = { mostrarInfo = false },
-            containerColor = BgElev,
-            icon = {
-                AvatarDeChat(
-                    nombre = chat.titulo,
-                    url = ApiCliente.urlImagen(chat.avatarUsername, "avatar", chat.avatarVersion),
-                    clase = claseDeTipo(chat.tipo),
-                    tamano = 72.dp,
-                )
-            },
-            title = {
-                Text(
-                    chat.titulo,
-                    color = TextoPrimario,
-                )
-            },
-            text = {
-                // Con scroll: la descripcion de una ficha admite 600
-                // caracteres y en un telefono corto el dialogo se pasaba de
-                // alto, dejando el boton de cerrar fuera de la pantalla.
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text(
-                        // El username va AQUI, y es obligatorio ahora que el
-                        // titulo puede ser un alias que escribi yo. Sin el, un
-                        // chat que dice "Tatiana" no permite comprobar CON QUE
-                        // CUENTA se esta hablando, y el nombre lo puse yo: si
-                        // lo puse en la cuenta equivocada, nada me lo diria.
-                        if (chat.tipo == "grupo") "${miembros.size + 1} miembros"
-                        else "@${chat.nombre}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextoSecundario,
-                    )
-                    // La lista de miembros solo en un grupo. En una directa
-                    // el unico miembro es la persona cuyo nombre ya esta de
-                    // titulo dos lineas mas arriba, asi que se leia
-                    // "@fulano / Conversacion directa / @fulano".
-                    if (chat.tipo == "grupo") {
-                        Spacer(Modifier.height(12.dp))
-                        miembros.forEach { u ->
-                            Row(
-                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Avatar(nombre = u, url = null, tamano = 30.dp)
-                                Spacer(Modifier.width(9.dp))
-                                Text(
-                                    "@$u",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextoPrimario,
-                                )
-                            }
-                        }
-                    }
-                    // La ficha de empresa de la otra persona. Va aqui y no en
-                    // una pantalla aparte porque "ver contacto" es donde se va
-                    // a buscar quien es alguien.
-                    //
-                    // `margenLateral = 0.dp`: el dialogo ya trae el suyo.
-                    fichaDelOtro?.let { TarjetaEmpresa(it, margenLateral = 0.dp) }
-
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Lock, null, tint = Cian, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Historial cifrado en este dispositivo",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextoTerciario,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { mostrarInfo = false }) { Text("Cerrar", color = Cian) }
-            },
         )
     }
 

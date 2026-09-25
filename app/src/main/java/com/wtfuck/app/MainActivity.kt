@@ -26,6 +26,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.wtfuck.app.ui.ComunidadesPantalla
 import com.wtfuck.app.ui.ChatPantalla
+import com.wtfuck.app.ui.CompartidoPantalla
+import com.wtfuck.app.ui.PersonaPantalla
 import com.wtfuck.app.ui.DiagnosticoPantalla
 import com.wtfuck.app.ui.TipoCuentaPantalla
 import com.wtfuck.app.ui.DosPaneles
@@ -335,6 +337,7 @@ private fun Raiz() {
                             ChatPantalla(
                                 conversacionId = id,
                                 onInfoGrupo = { nav.navigate("grupo/$id") },
+                                onInfoPersona = { nav.navigate("persona/$id") },
                                 onVerificarCifrado = { nav.navigate("huella/$id") },
                                 onAbrirChatCon = { otro -> elegido = otro },
                                 // Con dos paneles, "atras" es cerrar el panel
@@ -459,6 +462,32 @@ private fun Raiz() {
             )
         }
 
+        composable("persona/{id}") { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            PersonaPantalla(
+                conversacionId = id,
+                onAtras = { nav.popBackStack() },
+                // "Mensaje" es volver al chat y no apilar otro: se llega aqui
+                // DESDE el chat, y navegar hacia adelante dejaria dos copias
+                // de la misma conversacion en la pila.
+                onMensaje = { nav.popBackStack() },
+                onVerificarCifrado = { nav.navigate("huella/$id") },
+                onCompartido = { clase: String -> nav.navigate("compartido/$id/$clase") },
+                onDenunciar = { nav.popBackStack() },
+            )
+        }
+
+        composable("compartido/{id}/{clase}") { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            val clase = entry.arguments?.getString("clase").orEmpty()
+            CompartidoPantalla(
+                conversacionId = id,
+                clase = clase,
+                onAtras = { nav.popBackStack() },
+                onVerEnElChat = { msg: String -> nav.navigate("chat/$id?m=$msg") },
+            )
+        }
+
         composable("notificaciones") {
             NotificacionesPantalla(onAtras = { nav.popBackStack() })
         }
@@ -487,6 +516,7 @@ private fun Raiz() {
                 // los seis sitios que ya navegaban asi no se tocan.
                 irAMensaje = entry.arguments?.getString("m").orEmpty(),
                 onInfoGrupo = { nav.navigate("grupo/$id") },
+                onInfoPersona = { nav.navigate("persona/$id") },
                 onVerificarCifrado = { nav.navigate("huella/$id") },
                 onAbrirChatCon = { otro -> nav.navigate("chat/$otro") },
                 onAtras = { nav.popBackStack() },

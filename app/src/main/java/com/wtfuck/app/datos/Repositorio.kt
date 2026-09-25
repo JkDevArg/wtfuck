@@ -2783,6 +2783,51 @@ class Repositorio(
         dao.borrarPack(id)
     }
 
+    // ============================================================
+    //  Modulo AO: lo que se compartio en un chat
+    // ============================================================
+
+    /**
+     * Una conversacion por su id, de la base.
+     *
+     * Se lee del DAO y no del flujo `conversaciones`: ese flujo deja fuera lo
+     * archivado, y el perfil de alguien tiene que abrirse igual aunque su
+     * chat este archivado.
+     */
+    suspend fun conversacion(id: String): ConversacionEnt? = dao.conversacion(id)
+
+    /**
+     * Cuantas cosas de cada clase hay en una conversacion.
+     *
+     * Sale de la base LOCAL, y no hay otro sitio de donde pudiera salir: el
+     * servidor no guarda el historial, asi que no sabe cuantas fotos se
+     * mandaron en un chat. Es la misma propiedad del buzon tonto vista desde
+     * el otro lado — la cuenta no se le pide a nadie porque nadie la tiene.
+     *
+     * Las notas de voz van aparte de los audios a proposito: un audio es un
+     * archivo que alguien eligio y una nota de voz es alguien hablando. En la
+     * lista de Telegram tambien estan separados, y por lo mismo.
+     */
+    suspend fun compartidoResumen(convId: String): Map<String, Int> {
+        val m = LinkedHashMap<String, Int>()
+        for (r in dao.recuentoAdjuntos(convId)) if (r.cuantos > 0) m[r.clase] = r.cuantos
+        for (r in dao.recuentoEspeciales(convId)) {
+            // Solo las clases que son "una cosa que se mando". Un voto o una
+            // posicion en vivo no se cuentan: la fila existe, pero no es algo
+            // que nadie haya compartido para volver a mirarlo.
+            if (r.clase in CLASES_COMPARTIBLES && r.cuantos > 0) m[r.clase] = r.cuantos
+        }
+        val enlaces = dao.cuantosConEnlace(convId)
+        if (enlaces > 0) m[CLASE_ENLACE] = enlaces
+        return m
+    }
+
+    /** Las filas de una clase, para la galeria. */
+    suspend fun compartidoDe(convId: String, clase: String): List<MensajeEnt> =
+        if (clase == CLASE_ENLACE) dao.conEnlace(convId)
+        else if (clase in CLASES_COMPARTIBLES) dao.especialesDe(convId, clase)
+        else dao.adjuntosDe(convId, clase)
+
     suspend fun contactos(): List<Contacto> =
         runCatching { api.contactos().contactos }
             .onSuccess { guardarLibretaLocal(it) }
@@ -3817,3 +3862,25 @@ class TransporteMalla : Transporte {
     override suspend fun entregar(sobre: Sobre): Result<Unit> =
         Result.failure(NotImplementedError("Transporte de malla: fase 7"))
 }
+
+/**
+ * La clase inventada para los enlaces.
+ *
+ * No es una clase del contrato: un enlace no es un adjunto, es un mensaje de
+ * texto que ademas lleva una direccion. Vive aqui, del lado de la vista, y
+ * por eso lleva un nombre que no puede chocar con los del protocolo.
+ */
+const val CLASE_ENLACE = "_enlace"
+
+/**
+ * Que contenido con estructura cuenta como "algo compartido".
+ *
+ * Una ubicacion se comparte; un voto de una encuesta no. La diferencia es si
+ * tiene sentido volver a buscarlo despues, que es para lo que existe esta
+ * pantalla.
+ */
+val CLASES_COMPARTIBLES = setOf(
+    ClaseContenido.UBICACION,
+    ClaseContenido.CONTACTO,
+    ClaseContenido.ENCUESTA,
+)

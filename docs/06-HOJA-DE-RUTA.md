@@ -5969,7 +5969,7 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1891 pruebas en verde**: 1520 de integración en 36 suites, 296 JUnit de app
+**1900 pruebas en verde**: 1520 de integración en 36 suites, 305 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6077,5 +6077,73 @@ si fuera de ahora. Ahora se valida primero.
 [`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
 dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
 
-**1891 pruebas en verde**: 1520 de integración en 36 suites, 296 JUnit de app
+**1900 pruebas en verde**: 1520 de integración en 36 suites, 305 JUnit de app
+y 75 de servidor.
+
+---
+
+## Módulo AO · El perfil de una persona ✅
+
+Tocar el nombre en la cabecera de un chat abre su ficha. La referencia es el
+panel de contacto de Telegram y la mayor parte traduce directo, con dos
+diferencias que no son de estilo.
+
+### AO.1 · Lo que esta app no tiene, y lo que tiene de más
+
+**No hay teléfono ni id numérico.** El registro es por username, sin teléfono
+ni correo, así que esas filas no existen. Poner un hueco donde otra app pone
+un teléfono sería copiar la forma sin la sustancia.
+
+**Y hay una fila que allá no está: verificar el cifrado.** Ocupa el sitio del
+teléfono, y no por casualidad: es el único dato con el que se puede comprobar
+que se está hablando con quien uno cree. Existía desde el módulo F, enterrada
+en el menú de tres puntos.
+
+### AO.2 · Los recuentos los hace este teléfono
+
+"6 fotos" no se le pregunta a nadie: el servidor es un buzón tonto que no
+guarda el historial, así que **no sabe** cuántas fotos se mandaron en un chat
+ni podría decirlo si quisiera. Sale de la base local.
+
+Es la propiedad central del producto vista desde el otro lado — la función no
+le pide nada al servidor porque el servidor no tiene el dato.
+
+Sólo aparece lo que existe, y en **orden fijo**: ordenar por cuántos hay hace
+que la lista se reacomode sola a medida que se usa la app, y nunca se
+aprendería dónde está nada.
+
+### AO.3 · Un recuento que no se abre es decoración
+
+Dice "hay 6 fotos" y deja a la persona haciendo scroll por el chat para
+encontrar una. La razón de contar es poder volver, así que cada fila abre su
+galería — rejilla para lo que se identifica mirándolo, lista para lo que se
+identifica por su nombre.
+
+Las miniaturas ya están en la base descifradas, así que se ve **sin red**. Y
+se decodifican con `miniaturaAjena`, el decodificador endurecido del módulo D:
+esos bytes vienen de un sobre ajeno, y pasarlos por un cargador de imágenes
+cualquiera habría salteado la única comprobación que hay.
+
+Tocar una lleva **al mensaje** y no a un visor suelto, reusando el salto de
+AB. Los enlaces son la excepción: lo que alguien quiere de un enlace es el
+enlace.
+
+---
+
+## Un defecto que se llevó puesto el diálogo que reemplaza
+
+La ficha vieja pedía la tarjeta de empresa con `chat.titulo`, que **puede ser
+el alias que yo le puse** — el propio diálogo lo explicaba dos líneas más
+abajo. Para cualquier contacto renombrado la consulta salía con un nombre que
+el servidor no conoce y la tarjeta no aparecía nunca, en silencio.
+
+El diálogo se borró entero en lugar de dejarlo al lado: dos sitios que
+contestan "quién es esta persona" son dos respuestas que se separan.
+
+### Evidencias
+
+[`docs/evidencias/perfil-de-una-persona/`](evidencias/perfil-de-una-persona/)
+— la ficha, la galería y el salto al mensaje.
+
+**1900 pruebas en verde**: 1520 de integración en 36 suites, 305 JUnit de app
 y 75 de servidor.

@@ -21,6 +21,9 @@ import javax.crypto.spec.GCMParameterSpec
 //  Entidades
 // ============================================================
 
+/** Una clase y cuantas hay. Proyeccion de [BaseDao.recuentoAdjuntos]. */
+data class RecuentoClase(val clase: String, val cuantos: Int)
+
 @Entity(tableName = "conversacion")
 data class ConversacionEnt(
     @PrimaryKey val id: String,
@@ -623,6 +626,84 @@ interface ChatDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun guardarAjusteLocal(a: AjusteLocalEnt)
+
+    // ================================================================
+    //  Modulo AO: lo compartido en una conversacion
+    // ================================================================
+    //
+    // Estas cuentas salen de la base LOCAL y no podrian salir de otro lado:
+    // el servidor es un buzon tonto que no guarda el historial, asi que no
+    // sabe —ni puede saber— cuantas fotos se mandaron en un chat. Es la misma
+    // propiedad que hace que este producto sea lo que dice ser, vista desde
+    // el otro lado: la funcion no existe en el servidor porque el dato
+    // tampoco.
+
+    /**
+     * Cuantos adjuntos de cada clase hay en una conversacion.
+     *
+     * `oculto = 0` deja fuera los sobres que viajan por la cola pero no son
+     * lineas del chat -votos, posiciones en vivo-. `adjuntoId IS NOT NULL`
+     * deja fuera el texto.
+     */
+    @Query(
+        """SELECT adjuntoClase AS clase, COUNT(*) AS cuantos FROM mensaje
+                  WHERE conversacionId = :convId AND oculto = 0
+                    AND adjuntoId IS NOT NULL AND adjuntoClase != ''
+                  GROUP BY adjuntoClase"""
+    )
+    suspend fun recuentoAdjuntos(convId: String): List<RecuentoClase>
+
+    /** Lo mismo para el contenido con estructura: ubicaciones, encuestas... */
+    @Query(
+        """SELECT especial AS clase, COUNT(*) AS cuantos FROM mensaje
+                  WHERE conversacionId = :convId AND oculto = 0 AND especial != ''
+                  GROUP BY especial"""
+    )
+    suspend fun recuentoEspeciales(convId: String): List<RecuentoClase>
+
+    /**
+     * Cuantos mensajes llevan un enlace.
+     *
+     * Se cuentan MENSAJES y no enlaces: un mensaje con tres direcciones es
+     * una cosa que alguien mando, y contarlo tres veces haria que el numero
+     * no coincidiera con las filas que se ven al abrirlo.
+     *
+     * El `LIKE` es tosco a proposito. La alternativa seria una columna que se
+     * escribe al guardar, y eso es una migracion y un sitio mas donde
+     * equivocarse para un recuento que nadie audita.
+     */
+    @Query(
+        """SELECT COUNT(*) FROM mensaje
+                  WHERE conversacionId = :convId AND oculto = 0
+                    AND (texto LIKE '%http://%' OR texto LIKE '%https://%')"""
+    )
+    suspend fun cuantosConEnlace(convId: String): Int
+
+    /** Los adjuntos de una clase, del mas nuevo al mas viejo. */
+    @Query(
+        """SELECT * FROM mensaje
+                  WHERE conversacionId = :convId AND oculto = 0
+                    AND adjuntoId IS NOT NULL AND adjuntoClase = :clase
+                  ORDER BY creadoEn DESC"""
+    )
+    suspend fun adjuntosDe(convId: String, clase: String): List<MensajeEnt>
+
+    /** Lo mismo para el contenido con estructura. */
+    @Query(
+        """SELECT * FROM mensaje
+                  WHERE conversacionId = :convId AND oculto = 0 AND especial = :clase
+                  ORDER BY creadoEn DESC"""
+    )
+    suspend fun especialesDe(convId: String, clase: String): List<MensajeEnt>
+
+    /** Los mensajes con enlace, del mas nuevo al mas viejo. */
+    @Query(
+        """SELECT * FROM mensaje
+                  WHERE conversacionId = :convId AND oculto = 0
+                    AND (texto LIKE '%http://%' OR texto LIKE '%https://%')
+                  ORDER BY creadoEn DESC"""
+    )
+    suspend fun conEnlace(convId: String): List<MensajeEnt>
 
     @Query("SELECT COUNT(*) FROM sticker")
     suspend fun cuantosStickers(): Int
