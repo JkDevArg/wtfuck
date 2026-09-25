@@ -1,0 +1,16 @@
+# Fin de linea LF para lo que se monta dentro de un contenedor Linux.
+#
+# En Windows, git convierte a CRLF al hacer checkout, y estos archivos se
+# montan TAL CUAL en los contenedores. `turnserver.conf` con retornos de carro
+# hace que coturn lea el valor del secreto con un `\r` pegado al final: el HMAC
+# no coincide con el que calcula el servidor y TODAS las llamadas relevadas
+# fallan la autenticacion, sin ningun error que diga por que.
+#
+# Es el tipo de fallo que cuesta una tarde porque el archivo se ve bien.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+Caddyfile       text eol=lf
+*.conf          text eol=lf
+.env.*          text eol=lf
