@@ -756,6 +756,21 @@ interface ChatDao {
     @Query("UPDATE mensaje SET editado = 1, texto = :texto WHERE id = :id")
     suspend fun marcarEditado(id: String, texto: String)
 
+    /**
+     * Reemplaza la carga de un mensaje con estructura.
+     *
+     * Lo usa la ubicacion en vivo: cada posicion nueva pisa la anterior en la
+     * MISMA fila, en vez de crear una burbuja. Una posicion que cambia cada
+     * medio minuto durante ocho horas serian mil burbujas para decir siempre
+     * lo mismo, y el chat dejaria de ser un chat.
+     *
+     * Filtra por `especial` ademas del id: sin eso, una carga de ubicacion
+     * podria caer sobre un mensaje de otra clase si dos ids coincidieran, y
+     * eso deja una fila que la pantalla no sabe dibujar.
+     */
+    @Query("UPDATE mensaje SET especialJson = :json WHERE id = :id AND especial = :clase")
+    suspend fun actualizarEspecial(id: String, clase: String, json: String): Int
+
     @Query("UPDATE mensaje SET fijado = :fijado WHERE id = :id")
     suspend fun marcarFijado(id: String, fijado: Boolean)
 

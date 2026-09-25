@@ -121,7 +121,7 @@ fun BurbujaUbicacion(v: UbicacionSegura) {
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(
-                    v.coordenadas ?: "Posicion no valida",
+                    v.coordenadas ?: "Posición no válida",
                     color = if (v.coordenadas != null) TextoPrimario else Coral,
                     fontSize = 13.sp,
                     style = estiloHuella,
@@ -154,6 +154,156 @@ fun BurbujaUbicacion(v: UbicacionSegura) {
             Spacer(Modifier.width(6.dp))
             Text("Abrir en el mapa", color = Cian, fontSize = 13.sp)
         }
+    }
+}
+
+/**
+ * Una ubicación que se sigue moviendo.
+ *
+ * ## Lo que la distingue de [BurbujaUbicacion], y no es el mapa
+ *
+ * Es **el tiempo**. Una ubicación normal dice dónde estuviste y no cambia
+ * nunca; ésta afirma dónde estás *ahora*, y esa afirmación caduca. Así que la
+ * burbuja tiene que decir tres cosas que la otra no necesita:
+ *
+ *  - que está en vivo, y cuánto le queda;
+ *  - **cuándo se actualizó por última vez** —quien está quieto no genera
+ *    posiciones nuevas, así que una posición de hace veinte minutos puede ser
+ *    perfectamente correcta, y quien mira tiene derecho a saberlo—;
+ *  - y, si es propia, cómo cortarla.
+ *
+ * ## Por qué se repinta sola
+ *
+ * El texto depende del reloj, no sólo del dato. Sin un latido, una burbuja
+ * abierta se quedaría diciendo "quedan 15 min" media hora después. Late cada
+ * treinta segundos: los minutos no cambian más rápido que eso.
+ */
+@Composable
+fun BurbujaUbicacionViva(
+    carga: Carga.UbicacionEnVivo,
+    esMia: Boolean,
+    ultimaActualizacion: Long,
+    onCortar: () -> Unit,
+) {
+    val ctx = LocalContext.current
+
+    // El latido. `ahora` es estado, así que cambiarlo recompone la burbuja.
+    var ahora by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(carga.hasta) {
+        while (carga.hasta > System.currentTimeMillis()) {
+            kotlinx.coroutines.delay(30_000)
+            ahora = System.currentTimeMillis()
+        }
+        // Un último repintado al vencer: si no, la burbuja se queda con el
+        // "quedan 1 min" del último latido y nunca dice que terminó.
+        ahora = System.currentTimeMillis()
+    }
+
+    val v = remember(carga, ahora) { seguraViva(carga, ahora) }
+
+    Column(Modifier.widthIn(max = 260.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(38.dp).clip(CircleShape).background(
+                    if (v.enVivo) Cian.copy(alpha = 0.16f) else Slate.copy(alpha = 0.18f),
+                ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.Sensors,
+                    null,
+                    tint = if (v.enVivo) Cian else TextoTerciario,
+                    modifier = Modifier.size(21.dp),
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    if (v.enVivo) "En tiempo real" else "Ubicación en tiempo real",
+                    color = TextoPrimario,
+                    fontSize = 14.sp,
+                )
+                Text(
+                    // Terminó y sigue siendo el mismo dato: no se borra la
+                    // posición, se deja de afirmar que es la de ahora.
+                    if (v.enVivo) v.queda else "Terminó",
+                    color = if (v.enVivo) Cian else TextoTerciario,
+                    fontSize = 11.sp,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            v.coordenadas ?: "Posición no válida",
+            color = if (v.coordenadas != null) TextoPrimario else Coral,
+            fontSize = 13.sp,
+            style = estiloHuella,
+        )
+        Text(v.margen ?: "Margen desconocido", color = TextoTerciario, fontSize = 11.sp)
+
+        // Cuándo se supo esto. Es el dato que impide confundir "está quieto"
+        // con "dejó de funcionar", y no lo puede dar el reloj de la burbuja:
+        // sale de cuándo llegó la última posición.
+        if (v.enVivo && ultimaActualizacion > 0) {
+            Text(
+                "actualizado " + haceCuanto(ahora - ultimaActualizacion),
+                color = TextoTerciario,
+                fontSize = 11.sp,
+            )
+        }
+
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val geo = v.geoUri
+            if (geo != null) {
+                TextButton(
+                    onClick = {
+                        // Igual que la ubicación normal: se delega en el
+                        // teléfono con un `geo:` y no se le pide el mapa a
+                        // ningún servidor. Un mapa incrustado obligaría a
+                        // contarle a un tercero dónde está la persona justo
+                        // mientras comparte dónde está — y aquí durante horas.
+                        runCatching {
+                            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(geo)))
+                        }
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Icon(Icons.Filled.Map, null, tint = Cian, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Abrir en el mapa", color = Cian, fontSize = 13.sp)
+                }
+            }
+            // Cortar sólo lo puede hacer quien comparte, y sólo mientras esté
+            // en vivo: un botón que no hace nada es peor que no tenerlo.
+            if (esMia && v.enVivo) {
+                TextButton(
+                    onClick = onCortar,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text("Dejar de compartir", color = Coral, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Hace cuánto, en palabras cortas.
+ *
+ * "hace un momento" por debajo del minuto: con los segundos a la vista, una
+ * burbuja que late cada treinta segundos se vería saltar de 12 a 42 y parece
+ * rota.
+ */
+internal fun haceCuanto(ms: Long): String {
+    val minutos = (ms / 60_000).toInt()
+    return when {
+        minutos < 1 -> "hace un momento"
+        minutos == 1 -> "hace 1 min"
+        minutos < 60 -> "hace $minutos min"
+        minutos < 120 -> "hace 1 h"
+        else -> "hace ${minutos / 60} h"
     }
 }
 
@@ -804,7 +954,8 @@ fun ContenidoEspecialBurbuja(
     m: MensajeEnt,
     onAbrirContacto: (String) -> Unit,
 ) {
-    val app = LocalContext.current.applicationContext as com.wtfuck.app.WtfuckApp
+    val ctxBurbuja = LocalContext.current
+    val app = ctxBurbuja.applicationContext as com.wtfuck.app.WtfuckApp
     val ambito = rememberCoroutineScope()
     val carga = remember(m.especialJson) { cargaEspecial(m) }
     val yo = app.sesion.username.orEmpty()
@@ -813,6 +964,26 @@ fun ContenidoEspecialBurbuja(
         // El unico sitio donde una `Carga` cruda se convierte en algo
         // dibujable. Todo lo que llega de un sobre ajeno pasa por aqui.
         is Carga.Ubicacion -> BurbujaUbicacion(segura(carga))
+
+        is Carga.UbicacionEnVivo -> BurbujaUbicacionViva(
+            carga = carga,
+            esMia = m.esMio,
+            // De la carga y no de `creadoEn`: la fila conserva la hora en
+            // que EMPEZO el compartido —moverla reordenaria el chat y la
+            // burbuja saltaria al final cada medio minuto—, asi que la hora
+            // de la ultima posicion va dentro, escrita por el reloj de quien
+            // la esta leyendo.
+            ultimaActualizacion = carga.recibidaEn,
+            onCortar = {
+                // Las dos cosas, y en este orden: el estado primero -para que
+                // la burbuja cambie ya aunque el servicio tarde- y despues el
+                // servicio, que tambien se lleva su notificacion.
+                ambito.launch {
+                    runCatching { app.repo.terminarUbicacionEnVivo(m.conversacionId, m.id) }
+                    com.wtfuck.app.datos.ServicioUbicacionViva.cortarSiEs(ctxBurbuja, m.id)
+                }
+            },
+        )
         is Carga.Contacto -> BurbujaContacto(segura(carga), onAbrirContacto)
 
         is Carga.Encuesta -> {

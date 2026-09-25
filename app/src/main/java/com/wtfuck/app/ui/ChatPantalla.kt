@@ -74,6 +74,7 @@ import com.wtfuck.app.datos.EstadoConexion
 import com.wtfuck.app.datos.jsonApp
 import com.wtfuck.app.datos.Media
 import com.wtfuck.app.datos.MensajeEnt
+import com.wtfuck.app.datos.ServicioUbicacionViva
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -1004,6 +1005,21 @@ fun ChatPantalla(
                 ambito.launch {
                     runCatching {
                         app.repo.enviarUbicacion(conversacionId, lat, lon, precision, etiqueta)
+                    }.onFailure { aviso = it.message }
+                }
+            },
+            onCompartirEnVivo = { lat, lon, precision, duracion ->
+                hojaUbicacion = false
+                ambito.launch {
+                    runCatching {
+                        // La fecha se calcula UNA vez, aqui, y viaja dentro de
+                        // la carga. Calcularla en el servicio dejaria el
+                        // vencimiento a merced de cuanto tardara en arrancar.
+                        val hasta = System.currentTimeMillis() + duracion
+                        val id = app.repo.iniciarUbicacionEnVivo(
+                            conversacionId, lat, lon, precision, hasta,
+                        )
+                        ServicioUbicacionViva.arrancar(contexto, conversacionId, id, hasta)
                     }.onFailure { aviso = it.message }
                 }
             },

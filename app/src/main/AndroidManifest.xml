@@ -19,6 +19,17 @@
     -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!--
+      Modulo AM. Compartir en tiempo real necesita un servicio en primer plano
+      de tipo `location`, y desde Android 14 cada tipo tiene su propio permiso.
+
+      Sigue SIN pedirse ACCESS_BACKGROUND_LOCATION, y la diferencia importa:
+      un servicio en primer plano arrancado con la app delante -la persona
+      toco el boton- puede leer la posicion mientras corre y con su
+      notificacion a la vista. Lo que el permiso de fondo permitiria es leerla
+      sin que nadie haya pedido nada, y eso esta app sigue sin hacerlo.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <!-- K.8: la llamada vive en un servicio en primer plano. Sin esto una
          llamada se corta al salir de la app, porque Android mata procesos en
          segundo plano sin avisar. Los permisos POR TIPO son obligatorios desde
@@ -69,6 +80,23 @@
             android:name=".datos.ServicioLlamadaFg"
             android:exported="false"
             android:foregroundServiceType="microphone|camera"
+            android:stopWithTask="false" />
+
+        <!--
+          Modulo AM. Compartir la ubicacion en tiempo real.
+
+          `stopWithTask="false"` porque el compartido tiene que sobrevivir a
+          cerrar la app: el caso normal es "comparto mientras voy" y nadie deja
+          la pantalla abierta durante ocho horas.
+
+          El tipo `location` es obligatorio desde Android 14 y el sistema
+          comprueba el permiso EN ESE MOMENTO: declarar el tipo equivocado -o
+          arrancar sin permiso- no es un aviso, es una excepcion.
+        -->
+        <service
+            android:name=".datos.ServicioUbicacionViva"
+            android:exported="false"
+            android:foregroundServiceType="location"
             android:stopWithTask="false" />
 
         <activity

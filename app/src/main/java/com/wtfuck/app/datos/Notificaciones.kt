@@ -98,6 +98,20 @@ object Notificaciones {
      */
     private const val CANAL_MODERACION = "moderacion"
 
+    /**
+     * Modulo AM. El aviso de que la app esta leyendo donde estas.
+     *
+     * Importancia BAJA a proposito, y no es descuido: esta notificacion no
+     * avisa de nada nuevo cada vez que se actualiza —se refresca sola cada
+     * minuto mientras dure el compartido— y con importancia alta sonaria o
+     * vibraria por algo que la persona ya sabe porque lo pidio. Lo que tiene
+     * que hacer es ESTAR, no interrumpir.
+     *
+     * Lo que si es obligatorio es que no se pueda descartar, y eso lo decide
+     * el `setOngoing(true)` de la notificacion, no el canal.
+     */
+    const val CANAL_UBICACION = "ubicacion"
+
     fun crearCanales(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         nm.createNotificationChannel(
@@ -132,6 +146,13 @@ object Notificaciones {
                 "Grupos",
                 NotificationManager.IMPORTANCE_DEFAULT,
             ).apply { description = "Cuando alguien te agrega a un grupo" }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CANAL_UBICACION,
+                "Ubicación en tiempo real",
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply { description = "Mientras compartes dónde estás" }
         )
         nm.createNotificationChannel(
             NotificationChannel(

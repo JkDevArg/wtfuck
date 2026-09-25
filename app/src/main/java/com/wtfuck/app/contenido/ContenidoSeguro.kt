@@ -167,6 +167,74 @@ fun segura(u: Carga.Ubicacion): UbicacionSegura {
     )
 }
 
+/**
+ * Lo que se dibuja de una ubicacion EN VIVO.
+ *
+ * Aparte de [UbicacionSegura] porque lo que hay que decidir es distinto: una
+ * ubicacion normal se dibuja siempre igual, y esta cambia segun la hora que
+ * sea. El mismo sobre, leido a las tres y a las cinco, dice cosas distintas.
+ */
+data class UbicacionVivaSegura(
+    /** `null` si las coordenadas no son un punto real: entonces no hay mapa. */
+    val coordenadas: String?,
+    val margen: String?,
+    val geoUri: String?,
+    /** Si todavia vale. Lo decide el RELOJ, no un aviso que pudo no llegar. */
+    val enVivo: Boolean,
+    /** Cuanto queda, ya en palabras. Vacio si ya termino. */
+    val queda: String,
+)
+
+/**
+ * @param ahora el reloj, inyectado para poder probar los limites. El unico
+ *   comportamiento que de verdad se rompe aqui es el cruce del vencimiento, y
+ *   con el reloj del sistema eso no se puede provocar.
+ */
+fun seguraViva(
+    u: Carga.UbicacionEnVivo,
+    ahora: Long = System.currentTimeMillis(),
+    terminada: Boolean = false,
+): UbicacionVivaSegura {
+    val coords = coordenadasLegibles(u.lat, u.lon)
+    // Vencida es vencida aunque nadie lo haya avisado: si el telefono que
+    // comparte se queda sin bateria no llega ningun final, y sin esto la
+    // pantalla mostraria una posicion de hace horas como si fuera de ahora.
+    val viva = !terminada && u.hasta > ahora
+    return UbicacionVivaSegura(
+        coordenadas = coords,
+        margen = margenLegible(u.precisionM),
+        geoUri = coords?.let { "geo:${u.lat},${u.lon}?q=${u.lat},${u.lon}" },
+        enVivo = viva,
+        queda = if (viva) restante(u.hasta - ahora) else "",
+    )
+}
+
+/**
+ * Cuanto queda, en palabras y redondeado hacia arriba.
+ *
+ * Hacia arriba porque "queda 1 min" con cincuenta segundos por delante es
+ * mejor que "quedan 0 min" con los mismos cincuenta: el cero dice que ya
+ * termino y todavia no.
+ *
+ * Y no se muestran los segundos: obligarian a repintar la burbuja una vez por
+ * segundo para un dato que nadie mira con esa precision.
+ */
+internal fun restante(ms: Long): String {
+    if (ms <= 0) return ""
+    val minutos = ((ms + 59_999) / 60_000).toInt()
+    if (minutos < 60) return if (minutos == 1) "queda 1 min" else "quedan $minutos min"
+    val horas = minutos / 60
+    val resto = minutos % 60
+    // Con mas de una hora los minutos sueltos sobran: entre "quedan 7 h 43
+    // min" y "quedan 7 h" nadie hace nada distinto.
+    return when {
+        horas == 1 && resto == 0 -> "queda 1 h"
+        horas == 1 -> "queda 1 h $resto min"
+        resto == 0 -> "quedan $horas h"
+        else -> "quedan $horas h $resto min"
+    }
+}
+
 /** Lo que se dibuja de un contacto compartido. */
 data class ContactoSeguro(
     val nombre: String,

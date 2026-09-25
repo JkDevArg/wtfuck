@@ -34,6 +34,7 @@ import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.ui.theme.*
 import kotlinx.coroutines.launch
 import com.wtfuck.protocol.Contacto
+import com.wtfuck.protocol.DuracionUbicacion
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
 import kotlin.coroutines.resume
@@ -141,12 +142,24 @@ private val Color_transparente = androidx.compose.ui.graphics.Color.Transparent
  * manera visible de cortarla desde cualquier pantalla. Es un modulo, no un
  * boton. No ofrecerlo es mejor que ofrecer algo que se queda encendido.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun HojaUbicacion(
     onEnviar: (Double, Double, Int, String) -> Unit,
+    /**
+     * Módulo AM. Empezar a compartir en vivo: posición y hasta cuándo.
+     *
+     * Va aparte de [onEnviar] y no como un quinto argumento suyo porque son
+     * dos gestos distintos: mandar dónde estás termina en el acto, y
+     * compartir en vivo arranca algo que sigue pasando después de cerrar la
+     * hoja. Meterlos en la misma función obligaría a quien la llama a mirar un
+     * parámetro para saber cuál de las dos cosas hizo.
+     */
+    onCompartirEnVivo: (Double, Double, Int, Long) -> Unit,
     onCerrar: () -> Unit,
 ) {
+    /** La duración elegida, o `null` mientras no se elija: entonces es un envío normal. */
+    var duracion by remember { mutableStateOf<Long?>(null) }
     val ctx = LocalContext.current
     var lugar by remember { mutableStateOf<Location?>(null) }
     var buscando by remember { mutableStateOf(false) }
@@ -170,11 +183,11 @@ fun HojaUbicacion(
         buscando = false
         r.onSuccess { p ->
             if (p == null) {
-                error = "No se pudo obtener la posicion. Prueba al aire libre."
+                error = "No se pudo obtener la posición. Prueba al aire libre."
             } else {
                 lugar = p
             }
-        }.onFailure { error = it.message ?: "No se pudo obtener la posicion." }
+        }.onFailure { error = it.message ?: "No se pudo obtener la posición." }
     }
 
     LaunchedEffect(conPermiso, relanzar) { if (conPermiso) localizar() }
@@ -198,7 +211,7 @@ fun HojaUbicacion(
         dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },
     ) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-            Text("Compartir ubicacion", style = MaterialTheme.typography.titleMedium, color = TextoPrimario)
+            Text("Compartir ubicación", style = MaterialTheme.typography.titleMedium, color = TextoPrimario)
             Spacer(Modifier.height(12.dp))
 
             if (!conPermiso) {
@@ -275,6 +288,44 @@ fun HojaUbicacion(
             )
 
             Spacer(Modifier.height(14.dp))
+            // --- AM: o compartirla EN VIVO -----------------------------
+            //
+            // Debajo de la nota y no arriba del todo: el caso común sigue
+            // siendo mandar dónde estás una vez, y poner primero la opción
+            // rara obligaría a saltársela siempre.
+            Text(
+                "En tiempo real",
+                style = MaterialTheme.typography.labelLarge,
+                color = TextoSecundario,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Tu posición se va actualizando sola hasta que se cumpla el tiempo " +
+                    "o hasta que la cortes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextoTerciario,
+            )
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DuracionUbicacion.OPCIONES.forEach { ms ->
+                    val elegida = duracion == ms
+                    FilterChip(
+                        // Volver a tocar la misma la des-elige: sin eso, quien
+                        // la toca por error tiene que cerrar la hoja para
+                        // poder mandar una ubicación normal.
+                        selected = elegida,
+                        onClick = { duracion = if (elegida) null else ms },
+                        label = { Text(etiquetaDuracion(ms)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Cian,
+                            selectedLabelColor = TextoSobreAcento,
+                            labelColor = TextoSecundario,
+                        ),
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 // Reintentar hace falta de verdad: la primera lectura dentro de
                 // un edificio suele volver con 500 m de margen, y a los pocos
@@ -283,10 +334,19 @@ fun HojaUbicacion(
                 OutlinedButton(onClick = { relanzar++ }, enabled = !buscando) {
                     Icon(Icons.Filled.Refresh, "Reintentar", tint = Cian, modifier = Modifier.size(18.dp))
                 }
+                // UN botón y no dos. Con dos —"enviar" y "compartir en
+                // vivo"— la duración elegida arriba no querría decir nada
+                // hasta tocar el segundo, y quedarían dos sitios donde
+                // decidir lo mismo. Aquí la elección de arriba manda y el
+                // botón dice lo que va a pasar.
+                val d = duracion
                 Button(
                     onClick = {
-                        lugar?.let {
-                            onEnviar(it.latitude, it.longitude, it.accuracy.toInt(), etiqueta)
+                        val l = lugar ?: return@Button
+                        if (d == null) {
+                            onEnviar(l.latitude, l.longitude, l.accuracy.toInt(), etiqueta)
+                        } else {
+                            onCompartirEnVivo(l.latitude, l.longitude, l.accuracy.toInt(), d)
                         }
                     },
                     enabled = lugar != null,
@@ -295,9 +355,16 @@ fun HojaUbicacion(
                     ),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Filled.Place, null, Modifier.size(18.dp))
+                    Icon(
+                        if (d == null) Icons.Filled.Place else Icons.Filled.Sensors,
+                        null,
+                        Modifier.size(18.dp),
+                    )
                     Spacer(Modifier.width(6.dp))
-                    Text("Enviar ubicacion")
+                    Text(
+                        if (d == null) "Enviar ubicación"
+                        else "Compartir ${etiquetaDuracion(d)}",
+                    )
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -323,13 +390,13 @@ private fun tienePermisoUbicacion(ctx: Context): Boolean =
  * otra ciudad, y compartirla seria peor que no compartir nada.
  */
 private suspend fun posicionActual(ctx: Context): Location? {
-    if (!tienePermisoUbicacion(ctx)) error("Sin permiso de ubicacion.")
+    if (!tienePermisoUbicacion(ctx)) error("Sin permiso de ubicación.")
     val lm = ctx.getSystemService(LocationManager::class.java)
-        ?: error("Este aparato no tiene servicio de ubicacion.")
+        ?: error("Este aparato no tiene servicio de ubicación.")
 
     val proveedores = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
         .filter { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
-    if (proveedores.isEmpty()) error("La ubicacion del teléfono esta apagada.")
+    if (proveedores.isEmpty()) error("La ubicación del teléfono está apagada.")
 
     val ahora = System.currentTimeMillis()
     val reciente = proveedores
@@ -505,4 +572,23 @@ fun HojaContacto(
             Spacer(Modifier.height(20.dp))
         }
     }
+}
+
+/**
+ * Cómo se lee cada duración en un chip.
+ *
+ * "15 min" y no "15 minutos": son seis chips en una fila y la palabra entera
+ * los rompe en dos líneas sin decir nada más.
+ */
+internal fun etiquetaDuracion(ms: Long): String = when (ms) {
+    DuracionUbicacion.MIN_15 -> "15 min"
+    DuracionUbicacion.MIN_30 -> "30 min"
+    DuracionUbicacion.HORA_1 -> "1 h"
+    DuracionUbicacion.HORAS_8 -> "8 h"
+    DuracionUbicacion.HORAS_12 -> "12 h"
+    DuracionUbicacion.HORAS_24 -> "24 h"
+    // No debería pasar: las opciones salen de la lista del contrato. Se
+    // calcula en vez de poner "?" para que un séptimo valor agregado allí se
+    // vea razonable aquí en vez de romper la fila.
+    else -> if (ms < DuracionUbicacion.HORA_1) "${ms / 60_000} min" else "${ms / 3_600_000} h"
 }

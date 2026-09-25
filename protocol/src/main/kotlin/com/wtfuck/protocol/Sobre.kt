@@ -341,6 +341,92 @@ sealed interface Carga {
     ) : Carga
 
     /**
+     * Modulo AM · Una ubicacion que se sigue moviendo.
+     *
+     * ## Que la diferencia de [Ubicacion]
+     *
+     * Una ubicacion normal dice "estuve aqui a esta hora" y no cambia nunca.
+     * Esta dice "estoy aqui AHORA" y se corrige sola hasta que vence. Son dos
+     * cosas distintas y por eso son dos cargas distintas: mezclarlas obligaria
+     * a mirar un campo para saber cual de las dos se esta leyendo.
+     *
+     * ## `hasta` viaja DENTRO del sobre, y eso es lo importante
+     *
+     * El servidor no puede caducar esto: no ve las coordenadas ni la fecha,
+     * porque va cifrado como cualquier mensaje. Asi que el vencimiento viaja
+     * en la carga y **lo hacen cumplir los dos lados por su cuenta**:
+     *
+     *  - quien comparte deja de mandar cuando llega la hora;
+     *  - quien recibe deja de mostrarla en vivo aunque no llegue ningun aviso.
+     *
+     * Ese "aunque no llegue" es el punto. Si el telefono que comparte se queda
+     * sin bateria, nadie manda el final, y sin esta fecha la otra pantalla se
+     * quedaria mostrando para siempre una posicion de hace horas como si fuera
+     * de ahora. Es el mismo razonamiento que los mensajes temporales del
+     * modulo C: el que caduca es el dato, no el aviso de que caduco.
+     *
+     * ## `secuencia`
+     *
+     * Los sobres pueden llegar desordenados —se reintentan, y la cola no
+     * garantiza orden entre reintentos—. Una actualizacion mas vieja que la
+     * que ya se tiene se descarta: sin esto, un reintento tardio movería el
+     * punto hacia atras en el tiempo.
+     */
+    @Serializable
+    data class UbicacionEnVivo(
+        /**
+         * El mensaje que abrio el compartido.
+         *
+         * Es el id del MENSAJE y no uno propio, por la misma razon que en
+         * [Edicion]: en esta app el id lo genera quien manda y los dos lados
+         * guardan el mismo, asi que una actualizacion puede encontrar su
+         * burbuja con un `WHERE id = ?` y sin buscar dentro de un JSON.
+         */
+        val mensajeId: String,
+        val lat: Double,
+        val lon: Double,
+        val precisionM: Int = 0,
+        /** Cuando deja de valer, en epoch ms. */
+        val hasta: Long,
+        /** Va subiendo. Una actualizacion con secuencia menor se descarta. */
+        val secuencia: Int = 0,
+        /**
+         * Cuando se supo esta posicion, **con el reloj de quien la guarda**.
+         *
+         * ## No viaja
+         *
+         * Sale siempre en 0 y lo escribe quien recibe, al guardar. Esta en la
+         * carga y no en una columna nueva porque `especialJson` ES el formato
+         * de almacenamiento local —esa fue la decision del modulo M, para no
+         * pagar una migracion por cada clase de contenido— y esto es un dato
+         * de almacenamiento.
+         *
+         * ## Por que no lo pone quien manda
+         *
+         * Porque seria su reloj. Un telefono con la hora mal puesta haria que
+         * la burbuja dijera "actualizado hace 3 h" de algo que acaba de
+         * llegar, o peor, "hace -2 h". El unico reloj en el que se puede
+         * confiar para decir "hace cuanto" es el de quien lo esta leyendo.
+         *
+         * `hasta` si viaja, y es del otro reloj — pero un vencimiento
+         * desplazado unos minutos no se nota, y "hace cuanto" se nota entero.
+         */
+        val recibidaEn: Long = 0,
+    ) : Carga
+
+    /**
+     * Se dejo de compartir antes de tiempo.
+     *
+     * No es imprescindible —la fecha de [UbicacionEnVivo.hasta] ya caduca sola—
+     * pero sin esto, quien deja de compartir a los dos minutos de un compartido
+     * de ocho horas seguiria apareciendo "en vivo" en la otra pantalla durante
+     * casi ocho horas, con una posicion congelada. El aviso es la diferencia
+     * entre "termino" y "dejo de actualizarse y no sabemos por que".
+     */
+    @Serializable
+    data class UbicacionEnVivoFin(val mensajeId: String) : Carga
+
+    /**
      * Una tarjeta de contacto, y solo de gente de esta plataforma.
      *
      * No se comparte la agenda del telefono: mandar el numero de un tercero es
@@ -568,13 +654,24 @@ val FORMA_USERNAME = Regex("^[a-z0-9_]{3,24}$")
 object ClaseContenido {
     const val TEXTO = ""
     const val UBICACION = "ubicacion"
+
+    /**
+     * Modulo AM. Dos clases y no una, por la misma razon que las cargas: el
+     * final no lleva coordenadas y la actualizacion no es un final.
+     */
+    const val UBICACION_VIVA = "ubicacion_viva"
+    const val UBICACION_VIVA_FIN = "ubicacion_viva_fin"
+
     const val CONTACTO = "contacto"
     const val ENCUESTA = "encuesta"
     const val EVENTO = "evento"
     const val VOTO = "voto"
 
     /** Las que el servidor acepta. Cualquier otra cosa es un 400. */
-    val VALIDAS = setOf(TEXTO, UBICACION, CONTACTO, ENCUESTA, EVENTO, VOTO)
+    val VALIDAS = setOf(
+        TEXTO, UBICACION, UBICACION_VIVA, UBICACION_VIVA_FIN,
+        CONTACTO, ENCUESTA, EVENTO, VOTO,
+    )
 }
 
 /**
@@ -624,4 +721,38 @@ interface Transporte {
     val prioridad: Int
 
     suspend fun entregar(sobre: Sobre): Result<Unit>
+}
+
+/**
+ * Cuanto se puede compartir la ubicacion en vivo.
+ *
+ * Una lista cerrada y no un numero libre. Con un campo abierto habria que
+ * decidir en la pantalla que es demasiado, y "demasiado" no es una pregunta
+ * de interfaz: compartir donde estas es la cosa mas sensible que hace esta
+ * app, y el tope tiene que estar declarado en el contrato donde se puede
+ * discutir.
+ *
+ * Veinticuatro horas es el techo a proposito. Mas que eso deja de ser
+ * "comparti mientras llego" y pasa a ser seguimiento, que es otra cosa y no
+ * la que se quiso construir.
+ */
+object DuracionUbicacion {
+    const val MIN_15 = 15 * 60 * 1000L
+    const val MIN_30 = 30 * 60 * 1000L
+    const val HORA_1 = 60 * 60 * 1000L
+    const val HORAS_8 = 8 * 60 * 60 * 1000L
+    const val HORAS_12 = 12 * 60 * 60 * 1000L
+    const val HORAS_24 = 24 * 60 * 60 * 1000L
+
+    /** En el orden en que se ofrecen. */
+    val OPCIONES = listOf(MIN_15, MIN_30, HORA_1, HORAS_8, HORAS_12, HORAS_24)
+
+    /**
+     * Si una duracion es una de las ofrecidas.
+     *
+     * Lo comprueba quien COMPARTE, no el servidor: el servidor no ve la carga.
+     * Sirve para que un error de la app no produzca un compartido de una
+     * semana, no para defenderse de nadie.
+     */
+    fun valida(ms: Long) = ms in OPCIONES
 }

@@ -646,6 +646,35 @@ class Repositorio(
                     return
                 }
 
+                // Una posicion nueva no crea un mensaje: pisa la carga del
+                // que abrio el compartido.
+                //
+                // ## Como se distingue una de otro, sin un campo mas
+                //
+                // El sobre que ABRE el compartido lleva su propio id como
+                // `mensajeId` de la carga —es el mismo mensaje— y los de las
+                // actualizaciones no, porque cada uno es un sobre aparte que
+                // apunta al primero. Comparar los dos ids es la diferencia, y
+                // no hizo falta inventar una bandera para decirla.
+                //
+                // Se vio en el emulador: sin esta comparacion la rama se
+                // tragaba TAMBIEN el mensaje que abre, la burbuja no llegaba
+                // a crearse del otro lado y el compartido parecia no salir.
+                val esActualizacion =
+                    carga is Carga.UbicacionEnVivo && msg.mensajeId.isNotBlank() &&
+                        msg.mensajeId != carga.mensajeId
+                if (carga is Carga.UbicacionEnVivo && esActualizacion) {
+                    aplicarUbicacionEnVivo(carga)
+                    socket.enviar(Subida.Acuse(listOf(msg.sobreId)))
+                    return
+                }
+
+                if (carga is Carga.UbicacionEnVivoFin) {
+                    marcarVivaTerminada(carga.mensajeId)
+                    socket.enviar(Subida.Acuse(listOf(msg.sobreId)))
+                    return
+                }
+
                 // Una edicion no crea un mensaje nuevo: modifica uno que ya esta.
                 if (carga is Carga.Edicion) {
                     dao.marcarEditado(carga.mensajeId, carga.textoNuevo)
@@ -662,7 +691,8 @@ class Repositorio(
                     // columna de texto como con cualquier mensaje, en vez de
                     // deserializar la carga de cada fila para armar un titulo.
                     is Carga.Ubicacion, is Carga.Contacto,
-                    is Carga.Encuesta, is Carga.Evento -> resumenDe(carga)
+                    is Carga.Encuesta, is Carga.Evento,
+                    is Carga.UbicacionEnVivo -> resumenDe(carga)
                     // No deberia verse nunca: el cifrador desenvuelve la clave
                     // de emisor y devuelve el interior. Si aparece, es que algo
                     // llego sin pasar por ahi, y mejor que se note.
@@ -1078,6 +1108,172 @@ class Repositorio(
         Carga.Ubicacion(lat, lon, precisionM, etiqueta.trim().take(80)),
     )
 
+    // ============================================================
+    //  Modulo AM: ubicacion en tiempo real
+    // ============================================================
+    //
+    // ## Lo que este modulo NO agrega al servidor
+    //
+    // Nada. Ni una tabla, ni una ruta, ni una caducidad en la base. Las
+    // actualizaciones son sobres cifrados como cualquier mensaje y el
+    // vencimiento viaja DENTRO de la carga, asi que el servidor no puede
+    // saber donde esta nadie ni hasta cuando. Lo unico que cambio alli fue
+    // agregar dos nombres a la lista de clases validas.
+    //
+    // Es exactamente lo que el buzon tonto compra: la funcion mas sensible de
+    // la app es la que menos le pide al servidor.
+
+    /**
+     * Empieza a compartir la ubicacion, hasta `hasta`.
+     *
+     * Devuelve el id del mensaje, que es tambien el del compartido: las
+     * actualizaciones lo usan para encontrar su burbuja.
+     */
+    suspend fun iniciarUbicacionEnVivo(
+        convId: String,
+        lat: Double,
+        lon: Double,
+        precisionM: Int,
+        hasta: Long,
+    ): String {
+        val id = UUID.randomUUID().toString()
+        val carga = Carga.UbicacionEnVivo(
+            mensajeId = id, lat = lat, lon = lon,
+            precisionM = precisionM, hasta = hasta, secuencia = 0,
+        )
+        val ahora = System.currentTimeMillis()
+        dao.guardarMensaje(
+            MensajeEnt(
+                id = id,
+                conversacionId = convId,
+                autor = sesion.username.orEmpty(),
+                esMio = true,
+                texto = resumenDe(carga),
+                creadoEn = System.currentTimeMillis(),
+                estado = EstadoEnvio.PENDIENTE.name,
+                especial = ClaseContenido.UBICACION_VIVA,
+                especialJson = jsonApp.encodeToString(
+                    Carga.serializer(),
+                    carga.copy(recibidaEn = ahora),
+                ),
+            )
+        )
+        despachar()
+        return id
+    }
+
+    /**
+     * Una posicion nueva del mismo compartido.
+     *
+     * Viaja como sobre OCULTO, igual que un voto: tiene que pasar por la cola,
+     * reintentarse sin red y respetar el orden, pero no es algo que nadie haya
+     * dicho en la conversacion.
+     */
+    suspend fun actualizarUbicacionEnVivo(
+        convId: String,
+        mensajeId: String,
+        lat: Double,
+        lon: Double,
+        precisionM: Int,
+        secuencia: Int,
+    ) {
+        // El `hasta` sale de lo que ya esta guardado y no de quien llama: es
+        // el compartido el que tiene fecha, no cada posicion. Pasarlo por
+        // parametro dejaria que un error de la app extendiera un compartido
+        // sin que nadie lo decidiera.
+        val actual = vivaGuardada(mensajeId) ?: return
+        if (actual.hasta <= 0L) return  // ya se termino a mano
+
+        val carga = actual.copy(
+            lat = lat, lon = lon, precisionM = precisionM, secuencia = secuencia,
+        )
+        // Primero la fila propia: quien comparte tiene que ver su posicion
+        // moverse aunque la red este caida.
+        //
+        // Lo que se GUARDA lleva la hora y lo que se MANDA no: `recibidaEn`
+        // es del reloj de quien lo lee, no de quien lo escribe.
+        dao.actualizarEspecial(
+            mensajeId,
+            ClaseContenido.UBICACION_VIVA,
+            jsonApp.encodeToString(
+                Carga.serializer(),
+                carga.copy(recibidaEn = System.currentTimeMillis()),
+            ),
+        )
+        encolarEspecial(convId, ClaseContenido.UBICACION_VIVA, carga, oculto = true)
+    }
+
+    /**
+     * Deja de compartir antes de tiempo.
+     *
+     * La fecha ya caduca sola, asi que esto no es imprescindible para que la
+     * otra pantalla deje de mostrarla en vivo. Lo es para que deje de
+     * mostrarla YA: sin el aviso, quien corta a los dos minutos de un
+     * compartido de ocho horas seguiria apareciendo en vivo casi ocho horas
+     * con una posicion congelada.
+     */
+    suspend fun terminarUbicacionEnVivo(convId: String, mensajeId: String) {
+        marcarVivaTerminada(mensajeId)
+        encolarEspecial(
+            convId,
+            ClaseContenido.UBICACION_VIVA_FIN,
+            Carga.UbicacionEnVivoFin(mensajeId),
+            oculto = true,
+        )
+    }
+
+    /** La carga guardada de un compartido, o null si no esta o no es de esta clase. */
+    suspend fun vivaGuardada(mensajeId: String): Carga.UbicacionEnVivo? {
+        val fila = dao.mensaje(mensajeId) ?: return null
+        if (fila.especial != ClaseContenido.UBICACION_VIVA) return null
+        return runCatching {
+            jsonApp.decodeFromString(Carga.serializer(), fila.especialJson)
+        }.getOrNull() as? Carga.UbicacionEnVivo
+    }
+
+    /**
+     * Marca un compartido como terminado poniendo `hasta = 0`.
+     *
+     * Cero y no "ahora": una actualizacion que venia en camino puede llegar
+     * DESPUES del final, y con `hasta = ahora` bastaria un reloj un segundo
+     * atrasado para revivirla. Cero no es una fecha, es un estado, y ninguna
+     * comparacion lo confunde con el futuro.
+     */
+    private suspend fun marcarVivaTerminada(mensajeId: String) {
+        val actual = vivaGuardada(mensajeId) ?: return
+        dao.actualizarEspecial(
+            mensajeId,
+            ClaseContenido.UBICACION_VIVA,
+            jsonApp.encodeToString(Carga.serializer(), actual.copy(hasta = 0L)),
+        )
+    }
+
+    /**
+     * Aplica una posicion que llego de otro aparato.
+     *
+     * Descarta dos cosas, y las dos pasan de verdad:
+     *
+     *  - la que llega **sin su mensaje**: los sobres se reintentan y no hay
+     *    garantia de orden entre reintentos, asi que una actualizacion puede
+     *    adelantarse al mensaje que abre el compartido. Se descarta en vez de
+     *    crear una fila suelta que la pantalla no sabria a que atar;
+     *  - la que llega **vieja**: por lo mismo, un reintento tardio moveria el
+     *    punto hacia atras en el tiempo.
+     */
+    private suspend fun aplicarUbicacionEnVivo(carga: Carga.UbicacionEnVivo) {
+        val actual = vivaGuardada(carga.mensajeId) ?: return
+        if (actual.hasta <= 0L) return
+        if (carga.secuencia <= actual.secuencia) return
+        dao.actualizarEspecial(
+            carga.mensajeId,
+            ClaseContenido.UBICACION_VIVA,
+            jsonApp.encodeToString(
+                Carga.serializer(),
+                carga.copy(recibidaEn = System.currentTimeMillis()),
+            ),
+        )
+    }
+
     suspend fun enviarContacto(convId: String, username: String, nombre: String) =
         encolarEspecial(
             convId,
@@ -1207,6 +1403,8 @@ class Repositorio(
         is Carga.Encuesta -> ClaseContenido.ENCUESTA
         is Carga.Evento -> ClaseContenido.EVENTO
         is Carga.Voto -> ClaseContenido.VOTO
+        is Carga.UbicacionEnVivo -> ClaseContenido.UBICACION_VIVA
+        is Carga.UbicacionEnVivoFin -> ClaseContenido.UBICACION_VIVA_FIN
         else -> ClaseContenido.TEXTO
     }
 
@@ -1245,7 +1443,8 @@ class Repositorio(
      * guarda entera. Recortarlo seria perder lo que alguien escribio.
      */
     private fun resumenDe(carga: Carga): String = when (carga) {
-        is Carga.Ubicacion -> segura(carga).etiqueta.ifBlank { "Ubicacion" }
+        is Carga.Ubicacion -> segura(carga).etiqueta.ifBlank { "Ubicación" }
+        is Carga.UbicacionEnVivo -> "Ubicación en tiempo real"
         is Carga.Contacto -> segura(carga).let { c ->
             // Sin username valido no se pone `@`: el resumen no puede afirmar
             // una cuenta que la tarjeta misma se niega a afirmar.

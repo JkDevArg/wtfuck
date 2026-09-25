@@ -120,6 +120,13 @@ r = await registrar(ana, { reenviadoDe: 'nadie_con_este_nombre' });
 ck('un autor que no existe NO rechaza el mensaje', r.s === 200, JSON.stringify(r.b).slice(0, 140));
 ck('solo se pierde la atribucion', !r.b?.reenviadoDe, String(r.b?.reenviadoDe));
 
+const { execSync: ejecutar } = await import('node:child_process');
+// Se mira la BASE y no solo la respuesta: lo que hay que demostrar es que el
+// servidor no guarda nada, y eso no se ve desde fuera.
+const psql = (sql) => ejecutar(
+  `docker exec wtfuck_db psql -U wtfuck -d wtfuck -t -A -c "${sql}"`,
+  { stdio: 'pipe' },
+).toString().trim();
 console.log('\n=== la clase declarada se valida ===');
 r = await registrar(ana, { clase: 'inventada' });
 ck('una clase desconocida es 400', r.s === 400, JSON.stringify(r.b));
@@ -168,6 +175,53 @@ r = await registrar(beto, { clase: 'encuesta' });
 ck('silenciado, ya no puede abrir encuestas', r.s === 403, JSON.stringify(r.b));
 r = await registrar(beto, { clase: 'voto' });
 ck('ni votar: `mensaje.enviar` se comprueba ANTES que la clase', r.s === 403, JSON.stringify(r.b));
+
+
+console.log('\n=== AM: la ubicacion en vivo, vista desde el servidor ===');
+//
+// Lo que hay que comprobar aqui no es que funcione —eso es del cliente y lo
+// fijan las pruebas unitarias— sino que el servidor NO SEPA NADA. La funcion
+// entera se apoya en que el buzon es tonto: si el servidor pudiera ver una
+// coordenada o una fecha, compartir la ubicacion ocho horas seria entregarle
+// ocho horas de recorrido.
+
+for (const clase of ['ubicacion_viva', 'ubicacion_viva_fin']) {
+  r = await registrar(ana, { clase });
+  ck(`"${clase}" se acepta y no pide permiso extra`, r.s === 200, JSON.stringify(r.b).slice(0, 90));
+}
+
+// Ni una columna con posicion en las tablas por donde pasan los mensajes.
+//
+// Se excluye `perfil_empresa.ubicacion` a proposito y no por comodidad: esa
+// es la direccion que un negocio PUBLICA de si mismo en su perfil, texto que
+// el duenio escribio para que se vea. No tiene nada que ver con donde esta
+// una persona ahora, que es lo que este modulo mueve.
+const columnasUbic = psql(
+  `SELECT count(*) FROM information_schema.columns WHERE table_schema='public' ` +
+  `AND table_name <> 'perfil_empresa' AND (` +
+  `column_name LIKE '%latitud%' OR column_name LIKE '%longitud%' OR ` +
+  `column_name LIKE '%ubicac%' OR column_name LIKE '%posicion%')`,
+);
+ck('ninguna columna del servidor guarda una posicion de nadie',
+   columnasUbic === '0', columnasUbic);
+
+// Ni una tabla. El modulo no agrego estado al servidor: las posiciones son
+// sobres cifrados y el vencimiento viaja dentro de la carga.
+const tablasUbic = psql(
+  `SELECT count(*) FROM information_schema.tables ` +
+  `WHERE table_schema='public' AND (table_name LIKE '%ubicac%' OR table_name LIKE '%posicion%')`,
+);
+ck('y no hay tabla de ubicaciones: el servidor no lleva ninguna cuenta',
+   tablasUbic === '0', tablasUbic);
+
+// Y la clase ni siquiera se guarda: se valida en el camino y se tira. O sea
+// que ni el METADATO de "aqui hubo un compartido en vivo" queda en la base.
+const dondeClase = psql(
+  `SELECT count(*) FROM information_schema.columns ` +
+  `WHERE table_name = 'mensaje_meta' AND column_name LIKE '%clase%'`,
+);
+ck('la clase se valida y se tira: no queda ni en los metadatos del mensaje',
+   dondeClase === '0', dondeClase);
 
 console.log(`\n=== ${ok} pasan, ${fail} fallan ===`);
 process.exit(fail === 0 ? 0 : 1);

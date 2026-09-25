@@ -5882,3 +5882,92 @@ También costó un rato descubrir que el argumento opcional de navegación hay q
 
 **1846 pruebas en verde**, sin cambio de conteo: esto es interfaz y navegación,
 y lo que se comprobó se comprobó en el emulador.
+
+---
+
+## Módulo AM · Ubicación en tiempo real ✅
+
+*"Quiero colocar el tema de mandar ubicación en tiempo real, por 15min, 30min
+1hora, 8hs, 12hs y 24hs."*
+
+Las seis duraciones, con la posición actualizándose sola hasta que se cumpla el
+tiempo o hasta que se corte.
+
+### AM.1 · Lo que NO agrega al servidor
+
+Nada. Ni una tabla, ni una ruta, ni una caducidad en la base. Lo único que
+cambió allí fue agregar dos nombres a la lista de clases válidas.
+
+Las posiciones son sobres cifrados por el mismo camino que un mensaje, y el
+vencimiento **viaja dentro de la carga**. El servidor no ve una coordenada, no
+sabe hasta cuándo, y ni siquiera guarda la clase: la valida al pasar y la tira.
+
+> Es exactamente lo que el buzón tonto compra: la función más sensible de la
+> app es la que menos le pide al servidor.
+
+Hay cuatro pruebas de integración que lo fijan, y son **negativas** a propósito:
+miran el catálogo de la base y exigen que no haya nada.
+
+### AM.2 · Quién hace cumplir el vencimiento
+
+Los dos teléfonos, cada uno por su cuenta, porque el servidor no puede.
+
+Eso importa en un caso concreto: si el teléfono que comparte **se queda sin
+batería**, nadie manda el final. Sin la fecha dentro de la carga, la otra
+pantalla mostraría una posición de hace horas como si fuera de ahora — la única
+forma en que esta función puede hacer daño de verdad.
+
+Cortar a mano escribe `hasta = 0`, y eso es un **estado, no una fecha**: con
+`hasta = ahora` bastaría un reloj un segundo atrasado para que una actualización
+en camino la reviviera.
+
+### AM.3 · Lo que costó en batería, y cómo se pagó
+
+Una posición cada 30 s durante 24 h serían 2.880 sobres por destinatario. Dos
+filtros: el sistema sólo avisa si pasaron 30 s **y** se movieron 25 m, y aun así
+sale como mucho un sobre cada 30 s.
+
+Quien está quieto no gasta casi nada, que es el caso más común de un compartido
+largo — se comparte "hasta que llegue", y llegar incluye estar parado. El precio
+es que una parada larga deja la última posición sin refrescar, y por eso la
+burbuja dice **cuándo** se actualizó y no sólo dónde.
+
+### AM.4 · Y sigue sin pedirse permiso de fondo
+
+El manifiesto decía desde el módulo M: *«no se pide `ACCESS_BACKGROUND_LOCATION`
+porque esta app no sigue a nadie»*. Esto cambia la primera mitad de esa frase y
+**no la segunda**.
+
+Un servicio en primer plano de tipo `location`, arrancado con la app delante
+—la persona tocó el botón— puede leer la posición mientras corre, con su
+notificación a la vista. Lo que el permiso de fondo permitiría es leerla **sin
+que nadie haya pedido nada**, y eso sigue sin hacerse.
+
+---
+
+## Tres defectos que sólo aparecieron probándolo
+
+**La burbuja no llegaba al otro lado.** La rama que aplica las actualizaciones
+se tragaba también el mensaje que **abre** el compartido. Se distinguen sin
+inventar una bandera: el sobre que abre lleva su propio id como `mensajeId` de
+la carga, y los de las actualizaciones apuntan al primero.
+
+**Se podían tener varios compartidos vivos a la vez** — llegó a haber tres. El
+servicio sólo sigue uno, así que los anteriores quedaban huérfanos: nadie
+volvía a mandar su posición ni avisaba que habían terminado, y del otro lado se
+veían "en vivo" con un punto congelado hasta 24 horas. Ahora empezar uno cierra
+el anterior: *"estoy compartiendo mi ubicación" es un estado, no una lista*.
+
+**Cortar desde la burbuja dejaba el servicio corriendo**, con su notificación
+puesta y el GPS encendido, diciendo "Compartiendo tu ubicación" sin compartir
+nada. La notificación es el contrato de este servicio; dejarla mintiendo lo
+rompe entero.
+
+### Evidencias
+
+[`docs/evidencias/ubicacion-en-vivo/`](evidencias/ubicacion-en-vivo/) — las dos
+pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
+sabe el servidor.
+
+**1865 pruebas en verde**: 1520 de integración en 36 suites, 270 JUnit de app
+y 75 de servidor.
