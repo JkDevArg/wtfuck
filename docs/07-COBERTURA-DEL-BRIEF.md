@@ -45,7 +45,7 @@ AD junto con el ajuste de privacidad número dieciséis.
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada · ninguna pantalla afirma lo que no comprobó (X, Z.5) | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero · el barrido lo mantiene un **auditor que lee `Main.kt`**, no un recuento a mano (AG) | A, N.7, N.8, AG |
-| 17 | Calidad y pruebas | ✅ 1865 con todo levantado · 1880 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1900 con todo levantado · 1880 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
