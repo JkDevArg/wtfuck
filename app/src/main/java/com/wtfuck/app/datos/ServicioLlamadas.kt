@@ -40,6 +40,17 @@ data class EstadoLlamada(
      */
     val participantes: Map<String, String> = emptyMap(),
     /**
+     * En que anda cada persona: username -> `sonando` | `dentro` | `rechazo` |
+     * `fuera`.
+     *
+     * Por PERSONA y no por dispositivo, al reves que [participantes], y eso es
+     * deliberado: los recuadros de video son uno por aparato, pero "rechazo la
+     * llamada" es algo que hace una persona, no un telefono. Si alguien
+     * rechaza desde el movil teniendo la tablet abierta, lo que hay que
+     * mostrar es que dijo que no.
+     */
+    val estadoDe: Map<String, String> = emptyMap(),
+    /**
      * El nombre del grupo, cuando la llamada sale de uno. Vacio en una directa.
      *
      * Existe para quien RECIBE. Veia solo "@tatiana" y no tenia como saber
@@ -162,6 +173,9 @@ class ServicioLlamadas(
                 saliente = true,
                 fase = EstadoLlamada.Fase.SONANDO,
                 participantes = creada.destinos.associate { it.dispositivoId to it.username },
+                // Todos empiezan sonando. Los avisos del servidor los van
+                // moviendo a `dentro` o `rechazo` segun contesten o no.
+                estadoDe = creada.destinos.associate { it.username to "sonando" },
                 grupo = runCatching { nombreDeGrupo(convId) }.getOrDefault(""),
             )
 
@@ -360,10 +374,66 @@ class ServicioLlamadas(
         limpiar(motivo)
     }
 
-    suspend fun finEntrante(f: Carga.LlamadaFin) {
+    /**
+     * Lo que le paso a UNA persona de una llamada que sigue viva.
+     *
+     * Existe por lo que arreglo el modulo AF: que uno rechace ya no corta el
+     * timbre de los demas, y sin este aviso la llamada seguia pero quien
+     * llamaba no se enteraba de nada. En una llamada de tres, B declinaba y la
+     * pantalla de A decia "llamando" por B durante los cuarenta y cinco
+     * segundos del timbre.
+     *
+     * No cierra nada a proposito: un `llamada_terminada` colgaria, y aqui la
+     * llamada sigue.
+     */
+    fun participanteCambio(llamadaId: String, quien: String, estado: String) {
+        val e = _estado.value ?: return
+        if (e.llamadaId != llamadaId) return
+        _estado.value = e.copy(estadoDe = e.estadoDe + (quien to estado))
+    }
+
+    /**
+     * Alguien se fue de la llamada.
+     *
+     * ## Que se arreglo
+     *
+     * Esto llamaba a `limpiar()` sin mirar nada: **el primer "fin" que llegara
+     * cerraba la pantalla**. Con dos personas esta bien —si el otro cuelga, la
+     * llamada se acabo— y es lo unico que existia cuando se escribio.
+     *
+     * En una llamada de grupo estaba mal, y es el gemelo exacto del defecto
+     * que AF arreglo en el servidor: alli la regla era `dentro >= 2 &&
+     * en_curso` y cualquier rechazo mataba la llamada entera. Se arreglo el
+     * servidor y el cliente siguio haciendo lo mismo por su cuenta: se vio en
+     * el emulador, con la llamada viva en la base —`dentro tatiana`, `sonando
+     * rocio`— y la pantalla de quien llamo de vuelta en el chat.
+     *
+     * > Arreglar una instancia de un defecto no es arreglar el defecto.
+     *
+     * Ahora se va **ese aparato** y la llamada sigue mientras quede alguien.
+     */
+    suspend fun finEntrante(dispositivoOrigen: String, f: Carga.LlamadaFin) {
         val e = _estado.value ?: return
         if (e.llamadaId != f.llamadaId) return
-        limpiar(f.motivo)
+
+        motores.remove(dispositivoOrigen)?.colgar()
+        ofertasPendientes.remove(dispositivoOrigen)
+        _videosRemotos.value = _videosRemotos.value - dispositivoOrigen
+        val quien = e.participantes[dispositivoOrigen]
+        _estado.value = e.copy(
+            participantes = e.participantes - dispositivoOrigen,
+            // El motivo del sobre dice si dijo que no o si estuvo y se fue. Es
+            // el mismo par que maneja el servidor.
+            estadoDe = if (quien == null) e.estadoDe else {
+                e.estadoDe + (quien to if (f.motivo == FinLlamada.RECHAZADA) "rechazo" else "fuera")
+            },
+        )
+
+        // Y se cierra solo cuando no queda nadie con quien hablar. Se cuentan
+        // los aparatos que siguen en la llamada, no los motores: mientras
+        // alguien SUENA todavia no hay motor de su lado y cerrar ahi seria
+        // colgarle a quien aun podia contestar.
+        if (_estado.value?.participantes.isNullOrEmpty()) limpiar(f.motivo)
     }
 
     // ============================================================

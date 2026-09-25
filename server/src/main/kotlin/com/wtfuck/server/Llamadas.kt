@@ -357,12 +357,26 @@ object Llamadas {
                    WHERE id = ? AND estado = 'sonando'"""
             ).use { st -> st.setObject(1, llamadaId); st.executeUpdate() }
 
-            // Solo a MIS otros aparatos: los demas participantes no necesitan
-            // saber en que aparato conteste.
+            // Dos avisos distintos, y la diferencia importa.
+            //
+            // `llamada_contestada` va solo a MIS otros aparatos: es lo que hace
+            // que la tablet deje de sonar cuando contesto en el telefono. Los
+            // demas no necesitan saber en que aparato conteste.
+            //
+            // `llamada_participante` va a los DEMAS: en una llamada de grupo,
+            // quien llamo necesita ver que entre. Antes se enteraba solo cuando
+            // el medio conectaba, que llega segundos despues y en una llamada
+            // de audio no se ve; hasta entonces mi nombre seguia como "sonando"
+            // en su pantalla.
             val avisos = Eventos.emitir(
                 c, listOf(yo.usuarioId), "llamada_contestada", l.conversacionId,
                 yo.username, llamadaId.toString(),
-            ).filter { it.first != yo.dispositivoId }
+            ).filter { it.first != yo.dispositivoId } +
+                Eventos.emitir(
+                    c, participantesDe(c, l.conversacionId, excepto = yo.usuarioId),
+                    "llamada_participante", l.conversacionId, yo.username,
+                    """{"llamada":"$llamadaId","estado":"dentro"}""",
+                )
 
             // Una sola vez, fuera del filtro: dentro se consultaria la base
             // una vez por dispositivo.
@@ -401,15 +415,20 @@ object Llamadas {
             if (motivo !in FinLlamada.TODOS) throw ErrorNegocio(400, "Motivo desconocido.")
             val l = leerBasico(c, llamadaId)
 
-            val eraParticipante = c.prepareStatement(
+            // `RETURNING` devuelve el estado YA escrito, que es justo el que
+            // hace falta contar: 'rechazo' si estaba sonando —dijo que no— o
+            // 'fuera' si estaba dentro —colgo—. El CASE de arriba ya hizo esa
+            // distincion, asi que no hay que leerla aparte.
+            val comoSalio = c.prepareStatement(
                 """UPDATE llamada_participante
                    SET estado = CASE WHEN estado = 'sonando' THEN 'rechazo' ELSE 'fuera' END,
                        salido_en = now()
-                   WHERE llamada_id = ? AND usuario_id = ? AND salido_en IS NULL"""
+                   WHERE llamada_id = ? AND usuario_id = ? AND salido_en IS NULL
+                   RETURNING estado"""
             ).use { st ->
-                st.setObject(1, llamadaId); st.setObject(2, yo.usuarioId); st.executeUpdate()
-            }
-            if (eraParticipante == 0) throw ErrorNegocio(404, "No estas en esa llamada.")
+                st.setObject(1, llamadaId); st.setObject(2, yo.usuarioId)
+                st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+            } ?: throw ErrorNegocio(404, "No estas en esa llamada.")
 
             // Dos cuentas, y las dos hacen falta.
             val (dentro, vivos) = c.prepareStatement(
@@ -440,7 +459,26 @@ object Llamadas {
             //    la termine, aunque los demas sigan sonando.
             //  - `vivos >= 2`: una llamada de uno no es una llamada. Cuenta
             //    tambien a los que suenan, porque todavia pueden contestar.
-            if (dentro >= 1 && vivos >= 2) return@tx emptyList()
+            if (dentro >= 1 && vivos >= 2) {
+                // La llamada sigue, pero hay que CONTARLO.
+                //
+                // Antes de AF este camino no existia: cualquier rechazo
+                // terminaba la llamada y el fin si se avisaba. Al arreglar eso
+                // aparecio un silencio nuevo: en una llamada de tres, B declina
+                // y la pantalla de A sigue diciendo "llamando" por B durante
+                // los cuarenta y cinco segundos del timbre. Un telefono normal
+                // dice "rechazada" en el acto, y la diferencia no es cosmetica:
+                // A espera a alguien que ya dijo que no.
+                //
+                // Es un tipo propio y no un `llamada_terminada` con otro
+                // motivo, porque un cliente que recibe "terminada" cuelga, y
+                // aqui la llamada sigue viva.
+                return@tx Eventos.emitir(
+                    c, participantesDe(c, l.conversacionId, excepto = yo.usuarioId),
+                    "llamada_participante", l.conversacionId, yo.username,
+                    """{"llamada":"$llamadaId","estado":"$comoSalio"}""",
+                )
+            }
 
             // El motivo se afina aqui, no se toma tal cual del cliente: quien
             // cuelga un timbre que nadie contesto esta CANCELANDO, no

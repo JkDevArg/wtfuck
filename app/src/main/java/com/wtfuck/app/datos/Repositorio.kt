@@ -590,7 +590,7 @@ class Repositorio(
                         return
                     }
                     is Carga.LlamadaFin -> {
-                        llamadas.finEntrante(carga)
+                        llamadas.finEntrante(msg.origenDispositivo, carga)
                         socket.enviar(Subida.Acuse(listOf(msg.sobreId)))
                         return
                     }
@@ -837,6 +837,24 @@ class Repositorio(
                 // Conteste en otro de mis aparatos: este tiene que callarse.
                 // Es el caso que solo existe con multi-dispositivo.
                 e.detalle?.let { llamadas.contestadaEnOtroAparato(it) }
+                socket.enviar(Subida.AcuseEvento(listOf(e.eventoId)))
+                return
+            }
+            "llamada_participante" -> {
+                // Lo que le paso a UNA persona de una llamada que SIGUE viva:
+                // rechazo, entro, se fue. No cierra nada —un
+                // `llamada_terminada` colgaria— y por eso es un tipo aparte.
+                //
+                // El actor del evento es quien cambio; el detalle trae la
+                // llamada y el estado.
+                runCatching {
+                    val o = jsonApp.parseToJsonElement(e.detalle.orEmpty()).jsonObject
+                    llamadas.participanteCambio(
+                        o["llamada"]?.jsonPrimitive?.content.orEmpty(),
+                        e.actor,
+                        o["estado"]?.jsonPrimitive?.content.orEmpty(),
+                    )
+                }
                 socket.enviar(Subida.AcuseEvento(listOf(e.eventoId)))
                 return
             }

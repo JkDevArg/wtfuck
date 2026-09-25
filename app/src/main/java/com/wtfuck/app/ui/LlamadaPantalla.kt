@@ -222,9 +222,8 @@ fun CapaLlamada() {
                     // No se condiciona al numero de participantes: quien recibe
                     // tiene esa lista vacia mientras suena, o sea justo cuando
                     // el dato hace falta.
-                    val aQuienes = e.participantes.values.distinct()
                     val pie = when {
-                        e.saliente && aQuienes.isNotEmpty() -> "con " + aQuienes.joinToString(", ")
+                        e.saliente && e.estadoDe.isNotEmpty() -> pieDeParticipantes(e.estadoDe)
                         e.grupo.isNotBlank() -> "llamada de grupo · ${e.grupo}"
                         else -> ""
                     }
@@ -459,6 +458,41 @@ private fun BotonChico(icono: ImageVector, desc: String, activo: Boolean, onClic
             contentColor = if (activo) TextoSobreAcento else TextoPrimario,
         ),
     ) { Icon(icono, desc, modifier = Modifier.size(24.dp)) }
+}
+
+/**
+ * La linea que dice en que anda cada persona de una llamada de grupo.
+ *
+ * ## Por que no basta con "con joaquin, rocio"
+ *
+ * Esa linea decia a quien se habia llamado, no quien estaba. Desde el modulo
+ * AF un rechazo ya no corta la llamada, asi que "rocio" podia seguir en la
+ * lista habiendo dicho que no. La pantalla nombraba gente que no estaba.
+ *
+ * ## Tres grupos, y el orden no es alfabetico
+ *
+ * Primero quien esta —es lo que se quiere saber—, despues quien todavia suena
+ * —lo que puede cambiar—, y al final quien no va a entrar. Dentro de cada
+ * grupo, alfabetico: sin eso, la linea se reordena sola cada vez que llega un
+ * aviso y la pantalla parpadea sin que haya pasado nada.
+ */
+internal fun pieDeParticipantes(estadoDe: Map<String, String>): String {
+    fun losDe(estado: String) = estadoDe.filterValues { it == estado }.keys.sorted()
+    val dentro = losDe("dentro")
+    val sonando = losDe("sonando")
+    // Rechazar y colgar se juntan: los dos significan "esta persona ya no
+    // esta", y separarlos daria tres frases donde la diferencia no cambia
+    // nada de lo que se puede hacer ahora.
+    val fuera = (losDe("rechazo") + losDe("fuera")).sorted()
+
+    val partes = buildList {
+        if (dentro.isNotEmpty()) add("con " + dentro.joinToString(", "))
+        if (sonando.isNotEmpty()) add("llamando a " + sonando.joinToString(", "))
+        if (fuera.isNotEmpty()) {
+            add(fuera.joinToString(", ") + if (fuera.size == 1) " no entró" else " no entraron")
+        }
+    }
+    return partes.joinToString(" · ")
 }
 
 /**

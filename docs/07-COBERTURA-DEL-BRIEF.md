@@ -9,8 +9,8 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-24: 1790 pruebas en verde** (1485 de integración + 305 de
-JUnit) con todo levantado; **1770** en la configuración mínima, porque dos
+**Estado al 2026-09-24: 1810 pruebas en verde** (1497 de integración + 313 de
+JUnit) con todo levantado; **1790** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
 Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
 beta cerrada**.
@@ -45,7 +45,7 @@ AD junto con el ajuste de privacidad número dieciséis.
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada · ninguna pantalla afirma lo que no comprobó (X, Z.5) | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero · el barrido lo mantiene un **auditor que lee `Main.kt`**, no un recuento a mano (AG) | A, N.7, N.8, AG |
-| 17 | Calidad y pruebas | ✅ 1790 con todo levantado · 1770 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1810 con todo levantado · 1790 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -60,7 +60,7 @@ AD junto con el ajuste de privacidad número dieciséis.
 | Texto, imágenes, videos, audios, documentos | ✅ |
 | Mensajes de voz | ✅ con adelantar y velocidad 1x/1.5x/2x (N.12) |
 | Llamadas de audio y video | ✅ módulo K, con ventana flotante |
-| Llamadas y videollamadas **de grupo** | ✅ módulo AF · hasta 4, eligiendo a quién; rejilla de vídeos |
+| Llamadas y videollamadas **de grupo** | ✅ módulo AF · hasta 4, eligiendo a quién; rejilla de vídeos · quien llama ve quién entró y quién dijo que no (AH) |
 | Respuestas, reacciones, menciones, reenvíos | ✅ una reacción por persona (V25) · responder deslizando (N.13) · menciones con selector y resaltado (T.2) · emojis, GIFs y stickers en un panel de tres pestañas (Y.3), con recientes, buscador, tonos de piel y stickers sugeridos al escribir un emoji (Z) |
 | Mensajes fijados | ✅ |
 | Búsqueda global y dentro de conversaciones | ✅ las dos (M.3) |
@@ -466,7 +466,7 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1790 pruebas con todo levantado**: 1485 de integración en 36 suites de Node,
+**1810 pruebas con todo levantado**: 1497 de integración en 36 suites de Node,
 75 de JUnit en el servidor (RBAC, seguridad, cuentas, auditoría y el
 intermediario de GIFs) y 230 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el

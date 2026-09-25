@@ -168,6 +168,33 @@ instalado.
 
 ---
 
+## 8 · Uno rechaza y la llamada sigue
+
+![Uno rechaza y la llamada sigue](8-uno-rechaza-y-la-llamada-sigue.png)
+
+`llamando a rocio · joaquin no entró`, con la llamada viva:
+
+```
+dentro   tatiana     (llamó)
+rechazo  joaquin     (dijo que no)
+sonando  rocio       (todavía suena)
+```
+
+Esta captura salió de **buscar el defecto gemelo**. El módulo AF arregló en el
+servidor que un rechazo matara la llamada entera; al probarlo se vio que la
+pantalla de quien llamó volvía al chat igual, con la llamada viva en la base.
+El cliente hacía lo mismo por su cuenta: `finEntrante` llamaba a `limpiar()`
+sin mirar nada, así que **el primer "fin" que llegara cerraba la pantalla**.
+
+> Arreglar una instancia de un defecto no es arreglar el defecto.
+
+Ahora se va ese aparato y la llamada sigue mientras quede alguien. Y el
+recuento mira **quién sigue en la llamada**, no los motores WebRTC: mientras
+alguien suena todavía no hay motor de su lado, y cerrar ahí sería colgarle a
+quien aún podía contestar.
+
+---
+
 ## Lo que NO se probó
 
 - **Tres aparatos a la vez.** Hay dos emuladores, así que la malla se probó con

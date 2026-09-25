@@ -75,6 +75,7 @@ object Db {
         35 to "/db/V35__aviso_de_comentario.sql",
         36 to "/db/V36__imagen_de_publicacion.sql",
         37 to "/db/V37__comunidades.sql",
+        38 to "/db/V38__aviso_de_participante.sql",
     )
 
     /**

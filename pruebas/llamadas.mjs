@@ -498,6 +498,76 @@ ck('los destinos de /en-curso tambien son los de la llamada',
 await post(`/v1/llamadas/${LLE}/terminar`, dani.t, { motivo: 'colgada' });
 await post(`/v1/llamadas/${LLE}/terminar`, beto.t, { motivo: 'colgada' });
 
+console.log('\n=== AF: quien llama se entera de lo que hace cada uno ===');
+//
+// Lo abrio el propio AF: que uno rechace ya no corta el timbre de los demas,
+// asi que la llamada sigue... y antes de esto quien llamaba no se enteraba de
+// nada. En una llamada de tres, B declinaba y la pantalla de A decia
+// "llamando" por B durante los 45 segundos del timbre.
+//
+// El aviso NO cierra nada, y por eso es un tipo propio: un cliente que recibe
+// `llamada_terminada` cuelga, y aqui la llamada sigue viva.
+// Gente nueva y grupo nuevo: `ana` ya gasto sus veinte llamadas por diez
+// minutos mas arriba. Contar cuantas lleva seria atar esta seccion a las de
+// antes, y agregar una fila alli rompería ésta.
+const pa = await reg('kp');
+const pb = await reg('kq');
+const pc = await reg('kr');
+const pd = await reg('ks');
+for (const [i, u] of [pa, pb, pc, pd].entries()) await put('/v1/claves', u.t, juego(10 + i));
+const grupoP = (await post('/v1/conversaciones/grupo', pa.t, {
+  nombre: 'Grupo avisos ' + S, usernames: [pb.user, pc.user, pd.user],
+})).b.id;
+
+r = await post('/v1/llamadas', pa.t, { conversacionId: grupoP, invitados: [pb.id, pc.id] });
+ck('pa llama a dos', r.s === 200, String(r.s) + JSON.stringify(r.b).slice(0, 120));
+const LLP = r.b.llamadaId;
+
+const avisosDe = (usuarioId, estado) => psql(
+  `SELECT count(*) FROM evento_pendiente e JOIN dispositivo d ON d.id=e.destino_dispositivo ` +
+  `WHERE e.tipo='llamada_participante' AND d.usuario_id='${usuarioId}' ` +
+  `AND e.detalle LIKE '%${LLP}%' AND e.detalle LIKE '%"${estado}"%'`);
+
+r = await post(`/v1/llamadas/${LLP}/contestar`, pb.t);
+ck('pb contesta', r.s === 200, String(r.s));
+ck('y a pa le llega que pb ENTRO', avisosDe(pa.id, 'dentro') !== '0', avisosDe(pa.id, 'dentro'));
+ck('a pc, que sigue sonando, tambien', avisosDe(pc.id, 'dentro') !== '0');
+ck('pero no se le manda a pb mismo', avisosDe(pb.id, 'dentro') === '0', avisosDe(pb.id, 'dentro'));
+
+r = await post(`/v1/llamadas/${LLP}/terminar`, pc.t, { motivo: 'rechazada' });
+ck('pc rechaza', r.s === 204, String(r.s));
+ck('y a pa le llega que RECHAZO, no que la llamada termino',
+   avisosDe(pa.id, 'rechazo') !== '0', avisosDe(pa.id, 'rechazo'));
+ck('la llamada sigue viva: el aviso no la cierra',
+   psql(`SELECT estado FROM llamada WHERE id='${LLP}'`) === 'en_curso',
+   psql(`SELECT estado FROM llamada WHERE id='${LLP}'`));
+ck('y NO se emitio ningun llamada_terminada todavia',
+   psql(`SELECT count(*) FROM evento_pendiente WHERE tipo='llamada_terminada' ` +
+        `AND detalle LIKE '%${LLP}%'`) === '0');
+
+// Se cierra la anterior ANTES de abrir la siguiente: dos llamadas vivas en la
+// misma conversacion se rechazan con 409, y el 409 se leeria como un fallo del
+// aviso.
+await post(`/v1/llamadas/${LLP}/terminar`, pa.t, { motivo: 'colgada' });
+await post(`/v1/llamadas/${LLP}/terminar`, pb.t, { motivo: 'colgada' });
+ck('la anterior queda cerrada', psql(`SELECT estado FROM llamada WHERE id='${LLP}'`) === 'terminada',
+   psql(`SELECT estado FROM llamada WHERE id='${LLP}'`));
+
+// Quien estaba DENTRO y cuelga sale como 'fuera', no como 'rechazo': la
+// diferencia es la que separa "dijo que no" de "estuvo y se fue".
+r = await post('/v1/llamadas', pd.t, { conversacionId: grupoP, invitados: [pa.id, pb.id] });
+ck('pd abre otra', r.s === 200, String(r.s) + JSON.stringify(r.b).slice(0, 110));
+const LLP2 = r.b.llamadaId;
+await post(`/v1/llamadas/${LLP2}/contestar`, pa.t);
+await post(`/v1/llamadas/${LLP2}/contestar`, pb.t);
+r = await post(`/v1/llamadas/${LLP2}/terminar`, pa.t, { motivo: 'colgada' });
+ck('quien estaba dentro y cuelga sale como fuera, no como rechazo',
+   psql(`SELECT count(*) FROM evento_pendiente e JOIN dispositivo d ON d.id=e.destino_dispositivo ` +
+        `WHERE e.tipo='llamada_participante' AND d.usuario_id='${pd.id}' ` +
+        `AND e.detalle LIKE '%${LLP2}%' AND e.detalle LIKE '%"fuera"%'`) !== '0');
+await post(`/v1/llamadas/${LLP2}/terminar`, pd.t, { motivo: 'colgada' });
+await post(`/v1/llamadas/${LLP2}/terminar`, pb.t, { motivo: 'colgada' });
+
 console.log('\n=== coherencia del estado en la base ===');
 ck('no hay llamadas "terminada" sin fecha de fin: lo impide un CHECK',
    psql(`SELECT count(*) FROM llamada WHERE estado='terminada' AND terminada_en IS NULL`) === '0');

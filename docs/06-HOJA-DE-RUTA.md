@@ -5510,3 +5510,100 @@ por su nombre.
 **1790 pruebas en verde**: 1485 de integración en 36 suites, 230 JUnit de app y
 75 de servidor. En la configuración mínima —una instancia, sin Redis— son
 **1770**, con `bus` y `bus-inyeccion` marcadas `OMIT`.
+
+---
+
+## Módulo AH · El silencio que abrió el AF ✅
+
+AF arregló que un "no" cortara el timbre de los demás. Y con eso apareció un
+silencio nuevo: **la llamada sigue y quien llamó no se entera de nada.**
+
+En una llamada de tres, A llama a B y C, B declina, y la pantalla de A sigue
+diciendo *"llamando"* por B durante los cuarenta y cinco segundos del timbre.
+Un teléfono normal dice "rechazada" en el acto, y la diferencia no es
+cosmética: A se queda esperando a alguien que ya dijo que no.
+
+Lo mismo al revés: cuando alguien **entra**, quien llamó sólo se enteraba al
+conectar el medio —segundos después, y en una llamada de audio no se ve—.
+Hasta entonces esa persona seguía apareciendo como "sonando".
+
+### AH.1 · Un tipo de aviso propio, no un `llamada_terminada` con otro motivo
+
+`llamada_participante` cuenta lo que le pasó a **una** persona: `dentro`,
+`rechazo`, `fuera`. No cierra nada, y por eso no puede reusar el evento que ya
+existía: **un cliente que recibe `llamada_terminada` cuelga**, y aquí la
+llamada sigue viva.
+
+Eso costó una migración (`V38`) porque `evento_pendiente.tipo` es una lista
+cerrada. Es la tercera vez que este proyecto paga ese peaje —`V11`, `V35`— y
+las tres veces valió la pena: sin el CHECK, el tipo nuevo habría llegado a los
+clientes sin que nadie lo notara hasta que uno se encontrara un evento que no
+sabe interpretar.
+
+### AH.2 · Rechazar y colgar no son lo mismo, y el `RETURNING` ya lo sabía
+
+El `UPDATE` que saca a alguien de la llamada ya distinguía los dos casos:
+
+```sql
+SET estado = CASE WHEN estado = 'sonando' THEN 'rechazo' ELSE 'fuera' END
+```
+
+Bastó con pedirle `RETURNING estado` para contarlo, en vez de leer el estado
+antes en una consulta aparte. `rechazo` es *"dijo que no"*; `fuera` es *"estuvo
+y se fue"*.
+
+### AH.3 · La línea de la pantalla decía a quién se llamó, no quién está
+
+Decía **"con joaquin, rocio"** — la lista de invitados. Desde AF, "rocio" podía
+seguir ahí habiendo dicho que no: la pantalla nombraba gente que no estaba.
+
+Ahora se arma por estado, y el orden **no es alfabético**: primero quien está
+—es lo que se quiere saber—, después quien todavía suena —lo que puede
+cambiar—, y al final quien no va a entrar.
+
+| Situación | Lo que se lee |
+|---|---|
+| Todos sonando | `llamando a joaquin, rocio` |
+| Uno entró | `con joaquin · llamando a rocio` |
+| Uno entró, otro declinó | `con joaquin · rocio no entró` |
+
+Dentro de cada grupo sí es alfabético, y eso no es un detalle: sin orden
+estable la línea se reordena sola cada vez que llega un aviso y la pantalla
+parpadea sin que haya pasado nada. Es el tipo de defecto que no se ve en una
+captura y sí molesta usando la app, así que se fija con una prueba que pasa el
+mismo mapa en dos órdenes distintos.
+
+Rechazar y colgar se juntan en la línea aunque el servidor los distinga: los
+dos significan *"esta persona ya no está"*, y separarlos daría tres frases
+donde la diferencia no cambia nada de lo que se puede hacer ahora.
+
+### AH.4 · Y el defecto gemelo, que estaba en el cliente
+
+Al probarlo en los emuladores, la pantalla de quien llamó **volvía al chat**
+aunque la base dijera que la llamada seguía viva. El cliente hacía por su
+cuenta lo que AF acababa de arreglar en el servidor: `finEntrante` llamaba a
+`limpiar()` sin mirar nada, así que **el primer "fin" que llegara cerraba la
+pantalla**.
+
+Con dos personas está bien —si el otro cuelga, se acabó— y es lo único que
+existía cuando se escribió. En un grupo está mal, y es el mismo razonamiento
+que la regla `dentro >= 2 && en_curso` del servidor.
+
+> Arreglar una instancia de un defecto no es arreglar el defecto. Es la cuarta
+> vez que esta frase aparece en esta hoja, y las cuatro veces la segunda
+> instancia estaba a un archivo de distancia.
+
+Ahora se va ese aparato y la llamada sigue mientras quede alguien. El recuento
+mira **quién sigue en la llamada**, no los motores WebRTC: mientras alguien
+suena todavía no hay motor de su lado, y cerrar ahí sería colgarle a quien aún
+podía contestar.
+
+### Evidencias
+
+Dos capturas nuevas en
+[`docs/evidencias/llamadas-grupales/`](evidencias/llamadas-grupales/): quien
+llamó viendo `con joaquin · llamando a rocio`, y el rechazo con la llamada
+todavía viva.
+
+**1810 pruebas en verde**: 1497 de integración en 36 suites, 238 JUnit de app
+y 75 de servidor.
