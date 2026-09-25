@@ -1000,11 +1000,17 @@ fun ChatPantalla(
 
     if (hojaUbicacion) {
         HojaUbicacion(
-            onEnviar = { lat, lon, precision, etiqueta ->
+            onEnviar = { lat, lon, precision, etiqueta, modo ->
+                // Elegir "con mapa" ES el permiso de este aparato, igual que
+                // en el compartido en vivo: se acaba de leer el costo.
+                if (modo.conMapa) app.ajustes.fijarMapaDeTerceros(true)
                 hojaUbicacion = false
                 ambito.launch {
                     runCatching {
-                        app.repo.enviarUbicacion(conversacionId, lat, lon, precision, etiqueta)
+                        app.repo.enviarUbicacion(
+                            conversacionId, lat, lon, precision, etiqueta,
+                            conMapa = modo.conMapa,
+                        )
                     }.onFailure { aviso = it.message }
                 }
             },

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -124,6 +125,22 @@ object TeselaCliente {
 }
 
 /**
+ * Qué se clava en el punto.
+ *
+ * Son dos cosas distintas y no un icono con variantes. La cara de alguien
+ * dice *"esta persona está acá ahora"*; el pin dice *"este lugar"*. Poner una
+ * cara en una ubicación de una sola vez afirmaría que sigue ahí, que es justo
+ * lo que una ubicación normal **no** afirma.
+ */
+sealed interface Marcador {
+    /** Quien comparte su posición en vivo. Su cara ES el marcador (AM.5). */
+    data class Persona(val autor: String, val foto: String?, val enVivo: Boolean) : Marcador
+
+    /** Un sitio. No hay nadie de quien poner la cara. */
+    data object Lugar : Marcador
+}
+
+/**
  * El recorrido de una ubicación en vivo, con mapa o sin él.
  *
  * ## Es una sola vista y no dos
@@ -150,8 +167,7 @@ fun MapaDeUbicacion(
     estela: List<PuntoEstela>,
     lat: Double,
     lon: Double,
-    autor: String,
-    fotoAutor: String?,
+    marcador: Marcador,
     enVivo: Boolean,
     conBaldosas: Boolean,
     /** El margen del GPS, en metros. Se dibuja como un halo alrededor. */
@@ -282,7 +298,11 @@ fun MapaDeUbicacion(
                     )
                 },
             ) {
-                MarcadorPersona(autor, fotoAutor, enVivo)
+                when (marcador) {
+                    is Marcador.Persona ->
+                        MarcadorPersona(marcador.autor, marcador.foto, marcador.enVivo)
+                    Marcador.Lugar -> MarcadorLugar()
+                }
             }
 
             // La barra de escala. Es lo que impide leer un paseo de cinco
@@ -375,6 +395,28 @@ private fun MarcadorPersona(autor: String, foto: String?, enVivo: Boolean) {
                 tint = if (enVivo) Color.Black else TextoTerciario,
                 modifier = Modifier.size(10.dp),
             )
+        }
+    }
+}
+
+/**
+ * El pin de un sitio.
+ *
+ * Del mismo tamaño que el de una persona para que las dos burbujas se lean
+ * igual, y con la misma base clara: sobre un mapa con calles, un icono sin
+ * contorno se pierde en el fondo.
+ */
+@Composable
+private fun MarcadorLugar() {
+    Box(
+        Modifier.size(40.dp).clip(CircleShape).background(Color.White),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(32.dp).clip(CircleShape).background(Cian),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Place, null, tint = Color.Black, modifier = Modifier.size(20.dp))
         }
     }
 }

@@ -149,7 +149,7 @@ private val Color_transparente = androidx.compose.ui.graphics.Color.Transparent
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun HojaUbicacion(
-    onEnviar: (Double, Double, Int, String) -> Unit,
+    onEnviar: (Double, Double, Int, String, ModoUbicacion) -> Unit,
     /**
      * Módulo AM. Empezar a compartir en vivo: posición y hasta cuándo.
      *
@@ -332,10 +332,12 @@ fun HojaUbicacion(
                 }
             }
 
-            // El modo sólo aparece cuando hay algo que compartir en vivo: sin
-            // duración elegida no hay recorrido, y una opción que no aplica
-            // todavía es ruido que hay que aprender a ignorar.
-            if (duracion != null) {
+            // El modo vale para LAS DOS formas de mandar la posición, así
+            // que está siempre. Tenerlo sólo para el compartido en vivo
+            // dejaría la pregunta a medias: mandar un punto una vez también
+            // puede dibujar un mapa, y ese mapa también se le pide a un
+            // tercero.
+            run {
                 Spacer(Modifier.height(12.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ModoUbicacion.entries.forEach { m ->
@@ -369,14 +371,28 @@ fun HojaUbicacion(
                 // El costo, escrito donde se decide y no en un ajuste lejano.
                 // Es la única diferencia real entre los dos modos, y sin ella
                 // "con mapa" parece estrictamente mejor.
+                // Cuatro textos y no dos: lo que cambia el modo no es lo
+                // mismo en un punto suelto que en un recorrido de horas, y un
+                // texto que valiera para los dos casos no diría nada de
+                // ninguno.
+                val enVivo = duracion != null
                 Text(
-                    if (modo == ModoUbicacion.OCULTO)
-                        "Se ve el rastro —por dónde vas y cuánto— sin mapa. " +
-                            "Ningún servidor de mapas se entera de dónde estás."
-                    else
-                        "Se dibuja sobre OpenStreetMap. Para pintar el mapa hay " +
-                            "que pedirle las imágenes de esa zona, así que ese " +
-                            "servidor sabrá por dónde andás mientras dure.",
+                    when {
+                        modo == ModoUbicacion.OCULTO && enVivo ->
+                            "Se ve el rastro —por dónde vas y cuánto— sin mapa. " +
+                                "Ningún servidor de mapas se entera de dónde estás."
+                        modo == ModoUbicacion.OCULTO ->
+                            "Se manda el punto sin mapa. Se puede abrir en la app " +
+                                "de mapas del teléfono, pero nadie más se entera."
+                        enVivo ->
+                            "Se dibuja sobre OpenStreetMap. Para pintar el mapa hay " +
+                                "que pedirle las imágenes de esa zona, así que ese " +
+                                "servidor sabrá por dónde andás mientras dure."
+                        else ->
+                            "Se dibuja sobre OpenStreetMap. Para pintar el mapa hay " +
+                                "que pedirle las imágenes de esa zona a ese servidor, " +
+                                "que sabrá qué lugar es."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (modo == ModoUbicacion.OCULTO) TextoTerciario else Ambar,
                 )
@@ -401,7 +417,9 @@ fun HojaUbicacion(
                     onClick = {
                         val l = lugar ?: return@Button
                         if (d == null) {
-                            onEnviar(l.latitude, l.longitude, l.accuracy.toInt(), etiqueta)
+                            onEnviar(
+                                l.latitude, l.longitude, l.accuracy.toInt(), etiqueta, modo,
+                            )
                         } else {
                             onCompartirEnVivo(
                                 l.latitude, l.longitude, l.accuracy.toInt(), d, modo,

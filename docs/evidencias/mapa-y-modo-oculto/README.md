@@ -98,6 +98,27 @@ estira para llenar la caja.
 Y la línea de abajo —*"Compartido en modo oculto: sólo el rastro"*— existe
 porque sin ella la lectura obvia de un dibujo sin mapa es "se rompió".
 
+## 5 · Y la ubicacion de una sola vez tambien
+
+![Una ubicacion normal con mapa](5-una-sola-vez.png)
+
+El caso comun sigue siendo mandar donde estas **una vez**, asi que el modo
+vale para las dos formas de compartir la posicion. Tenerlo solo para el
+compartido en vivo dejaba la pregunta a medias: un punto suelto tambien puede
+dibujar un mapa, y ese mapa tambien se le pide a un tercero.
+
+**El marcador aca es un pin, no una cara.** Son dos cosas distintas y no un
+icono con variantes: la cara de alguien dice *"esta persona esta aca ahora"*,
+y eso es justo lo que una ubicacion normal **no** afirma.
+
+Y el modo oculto aca no dibuja nada en lugar de dibujar un rastro: un punto
+solo sin fondo no es informacion, es un circulo en el aire. Queda la burbuja
+de siempre, con el boton que delega en la app de mapas del telefono.
+
+Un dato invalido no puede terminar en una peticion a un servidor ajeno: el
+punto para dibujar sale por la **misma puerta** que el `geo:`, que es donde se
+valida. Hay tres pruebas que lo fijan, y quitar esa puerta las hace caer.
+
 ---
 
 ## El rastro no viaja

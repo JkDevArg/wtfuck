@@ -1103,10 +1103,12 @@ class Repositorio(
         lon: Double,
         precisionM: Int,
         etiqueta: String = "",
+        /** Ver [Carga.Ubicacion.conMapa]: lo decide quien la manda. */
+        conMapa: Boolean = false,
     ) = encolarEspecial(
         convId,
         ClaseContenido.UBICACION,
-        Carga.Ubicacion(lat, lon, precisionM, etiqueta.trim().take(80)),
+        Carga.Ubicacion(lat, lon, precisionM, etiqueta.trim().take(80), conMapa),
     )
 
     // ============================================================

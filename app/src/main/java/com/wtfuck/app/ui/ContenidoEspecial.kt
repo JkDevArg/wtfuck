@@ -137,6 +137,44 @@ fun BurbujaUbicacion(v: UbicacionSegura) {
                 )
             }
         }
+        // El mapa de este punto, si quien la mando lo acepto Y este aparato
+        // tambien. Los dos permisos son los mismos que en la ubicacion en
+        // vivo; lo distinto es que aca el modo oculto no dibuja NADA en lugar
+        // de dibujar un rastro: un punto solo sin fondo no es informacion, es
+        // un circulo en el aire.
+        val punto = v.punto
+        if (punto != null && v.conMapa) {
+            val ajustes = (ctx.applicationContext as com.wtfuck.app.WtfuckApp).ajustes
+            Spacer(Modifier.height(8.dp))
+            if (ajustes.mapaDeTerceros) {
+                MapaDeUbicacion(
+                    estela = listOf(punto),
+                    lat = punto.lat,
+                    lon = punto.lon,
+                    marcador = Marcador.Lugar,
+                    enVivo = true,
+                    conBaldosas = true,
+                    precisionM = 0,
+                    modifier = Modifier.fillMaxWidth().height(140.dp),
+                )
+            } else if (TeselaCliente.hay) {
+                TextButton(
+                    onClick = { ajustes.fijarMapaDeTerceros(true) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Icon(Icons.Filled.Map, null, tint = Cian, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Mostrar el mapa", color = Cian, fontSize = 12.sp)
+                }
+                Text(
+                    "Las imágenes del mapa las da OpenStreetMap: pedirlas le " +
+                        "cuenta a ese servidor qué lugar estás mirando.",
+                    color = TextoTerciario,
+                    fontSize = 10.sp,
+                )
+            }
+        }
+
         Spacer(Modifier.height(8.dp))
         // Sin coordenadas validas no hay boton: abrir el mapa con un
         // `geo:NaN,NaN` es pasarle basura a otra app del telefono, y ofrecer
@@ -275,8 +313,7 @@ fun BurbujaUbicacionViva(
                 estela = carga.estela,
                 lat = carga.lat,
                 lon = carga.lon,
-                autor = autor,
-                fotoAutor = fotoAutor,
+                marcador = Marcador.Persona(autor, fotoAutor, v.enVivo),
                 enVivo = v.enVivo,
                 conBaldosas = conBaldosas,
                 precisionM = carga.precisionM,

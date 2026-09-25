@@ -3,6 +3,7 @@ package com.wtfuck.app.contenido
 import com.wtfuck.protocol.Carga
 import com.wtfuck.protocol.FORMA_USERNAME
 import com.wtfuck.protocol.TopesConsulta
+import com.wtfuck.protocol.PuntoEstela
 
 /**
  * Lo que se hace con el contenido de un sobre **ajeno** antes de dibujarlo.
@@ -153,6 +154,18 @@ data class UbicacionSegura(
      * haber pasado por la validacion.
      */
     val geoUri: String?,
+    /**
+     * El punto para dibujar, o `null`.
+     *
+     * Sale por la MISMA puerta que [geoUri] y por la misma razon: es un dato
+     * que se le entrega a algo de afuera —ahi otra app, aqui la URL de una
+     * baldosa— y este es el unico sitio donde se valida. Pasandolo por aqui,
+     * el unico camino para tener un punto es haber pasado la validacion, y un
+     * `NaN` no puede terminar en una peticion a un servidor ajeno.
+     */
+    val punto: PuntoEstela?,
+    /** Ver [Carga.Ubicacion.conMapa]: lo decide quien la manda. */
+    val conMapa: Boolean,
 )
 
 fun segura(u: Carga.Ubicacion): UbicacionSegura {
@@ -164,6 +177,8 @@ fun segura(u: Carga.Ubicacion): UbicacionSegura {
         coordenadas = coords,
         margen = margenLegible(u.precisionM),
         geoUri = coords?.let { "geo:${u.lat},${u.lon}?q=${u.lat},${u.lon}" },
+        punto = coords?.let { PuntoEstela(u.lat, u.lon, 0L) },
+        conMapa = u.conMapa,
     )
 }
 

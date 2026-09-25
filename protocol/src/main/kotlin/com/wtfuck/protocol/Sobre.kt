@@ -338,6 +338,17 @@ sealed interface Carga {
         val precisionM: Int = 0,
         /** Lo que escribio quien la comparte. Nunca viene de un tercero. */
         val etiqueta: String = "",
+        /**
+         * Si quien la manda acepta que se dibuje un mapa de este punto.
+         *
+         * Lo mismo que en [UbicacionEnVivo.conMapa] y por lo mismo: la
+         * posicion que llegaria al servidor de baldosas es la de quien
+         * comparte, asi que el permiso es suyo. Con la diferencia de que aqui
+         * es UN momento y no hasta 24 horas de recorrido, que es exactamente
+         * por que aqui el modo oculto no dibuja nada en lugar de dibujar un
+         * rastro: un punto solo sin fondo no es informacion, es un circulo.
+         */
+        val conMapa: Boolean = false,
     ) : Carga
 
     /**

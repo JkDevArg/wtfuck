@@ -1,6 +1,7 @@
 package com.wtfuck.app
 
 import com.wtfuck.app.ui.TeselaCliente
+import com.wtfuck.app.contenido.segura
 import com.wtfuck.protocol.Carga
 import com.wtfuck.protocol.ModoUbicacion
 import com.wtfuck.protocol.PuntoEstela
@@ -68,6 +69,44 @@ class MapaPrivacidadTest {
         assertEquals(2, ModoUbicacion.entries.size)
         assertFalse(ModoUbicacion.OCULTO.conMapa)
         assertTrue(ModoUbicacion.VISIBLE.conMapa)
+    }
+
+    // ------------------------------------------------------------------
+    // Un punto invalido no puede terminar en una peticion
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `una coordenada imposible no da punto para dibujar`() {
+        // El punto sale por la MISMA puerta que el `geo:`, que es donde se
+        // valida. Sin eso, un sobre armado a mano con NaN se convertiria en
+        // una peticion con NaN en la URL contra un servidor ajeno.
+        val malos = listOf(
+            Double.NaN to 0.0,
+            0.0 to Double.POSITIVE_INFINITY,
+            91.0 to 0.0,
+            0.0 to -181.0,
+        )
+        for ((lat, lon) in malos) {
+            val v = segura(Carga.Ubicacion(lat, lon, conMapa = true))
+            assertNull("lat=$lat lon=$lon", v.punto)
+            assertNull(v.geoUri)
+            // El permiso se conserva aunque no haya nada que dibujar: no es
+            // el sitio donde se decide eso.
+            assertTrue(v.conMapa)
+        }
+    }
+
+    @Test
+    fun `una coordenada buena si da punto`() {
+        val v = segura(Carga.Ubicacion(-12.0464, -77.0428, 5, "Oficina", conMapa = true))
+        val p = v.punto ?: error("tendria que haber punto")
+        assertEquals(-12.0464, p.lat, 1e-9)
+        assertEquals(-77.0428, p.lon, 1e-9)
+    }
+
+    @Test
+    fun `una ubicacion normal no lleva mapa si no se pidio`() {
+        assertFalse(segura(Carga.Ubicacion(-12.0, -77.0)).conMapa)
     }
 
     // ------------------------------------------------------------------

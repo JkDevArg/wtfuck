@@ -5969,7 +5969,7 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1888 pruebas en verde**: 1520 de integración en 36 suites, 293 JUnit de app
+**1891 pruebas en verde**: 1520 de integración en 36 suites, 296 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6044,6 +6044,16 @@ Las baldosas igual usan un cargador aparte, sin el interceptor: no es que no
 mande el token, es que no lo conoce. La diferencia importa cuando alguien
 toque el otro archivo dentro de un año.
 
+### AN.6 · Vale para las dos formas de mandar la posición
+
+El caso común sigue siendo mandar dónde estás **una vez**, así que el modo
+está siempre y no sólo con una duración elegida. El marcador ahí es un **pin
+y no una cara**: una cara diría "esta persona está acá ahora", que es justo lo
+que una ubicación normal no afirma.
+
+El modo oculto ahí no dibuja nada en lugar de dibujar un rastro — un punto
+solo sin fondo no es información, es un círculo en el aire.
+
 ---
 
 ## Dos defectos que no aparecieron probando
@@ -6067,5 +6077,5 @@ si fuera de ahora. Ahora se valida primero.
 [`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
 dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
 
-**1888 pruebas en verde**: 1520 de integración en 36 suites, 293 JUnit de app
+**1891 pruebas en verde**: 1520 de integración en 36 suites, 296 JUnit de app
 y 75 de servidor.
