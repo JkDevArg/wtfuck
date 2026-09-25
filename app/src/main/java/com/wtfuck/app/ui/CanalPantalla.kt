@@ -184,7 +184,7 @@ fun CanalPantalla(
                 },
                 actions = {
                     IconButton(onClick = { menuAbierto = true }) {
-                        Icon(Icons.Filled.MoreVert, "Mas opciones", tint = TextoPrimario)
+                        Icon(Icons.Filled.MoreVert, "Más opciones", tint = TextoPrimario)
                     }
                     DropdownMenu(
                         expanded = menuAbierto,
@@ -360,7 +360,7 @@ fun CanalPantalla(
                         Icon(Icons.Filled.Campaign, null, tint = TextoTerciario, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(9.dp))
                         Text(
-                            "Solo los administradores publican aqui",
+                            "Solo los administradores publican aquí",
                             color = TextoTerciario,
                             fontSize = 13.sp,
                         )
@@ -397,7 +397,7 @@ fun CanalPantalla(
                             if (rechazado) {
                                 "Canal rechazado" + (c.motivoRechazo?.let { ": $it" } ?: "")
                             } else {
-                                "Pendiente de aprobacion: todavia no se lista ni se puede seguir"
+                                "Pendiente de aprobacion: todavía no se lista ni se puede seguir"
                             },
                             color = tinte,
                             fontSize = 12.sp,
@@ -461,8 +461,8 @@ fun CanalPantalla(
                         Icon(Icons.Filled.Campaign, null, tint = Slate, modifier = Modifier.size(40.dp))
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            if (cfg?.puedoPublicar == true) "Todavia no publicaste nada."
-                            else "Este canal todavia no tiene publicaciones.",
+                            if (cfg?.puedoPublicar == true) "Todavía no publicaste nada."
+                            else "Este canal todavía no tiene publicaciones.",
                             color = TextoSecundario,
                             fontSize = 14.sp,
                             textAlign = TextAlign.Center,
@@ -471,7 +471,7 @@ fun CanalPantalla(
                             Spacer(Modifier.height(10.dp))
                             Text(
                                 "Es un canal privado: su historial no se guarda en el " +
-                                    "servidor, asi que solo se ve lo que llego a este telefono.",
+                                    "servidor, así que solo se ve lo que llego a este teléfono.",
                                 color = TextoTerciario,
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center,
@@ -537,7 +537,7 @@ fun CanalPantalla(
                     FilaDatoCanal("Reacciones", e.reacciones.toString())
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "No hay cuenta de lecturas: saber quien leyo cada publicacion " +
+                        "No hay cuenta de lecturas: saber quien leyo cada publicación " +
                             "exigiria que cada suscriptor lo reporte, y eso es un problema " +
                             "de privacidad antes que de escala.",
                         color = TextoTerciario,
@@ -588,7 +588,7 @@ fun CanalPantalla(
             ) {
                 coil3.compose.AsyncImage(
                     model = url,
-                    contentDescription = "Imagen de la publicacion",
+                    contentDescription = "Imagen de la publicación",
                     modifier = Modifier.fillMaxWidth(),
                     contentScale = ContentScale.Fit,
                 )
@@ -692,7 +692,7 @@ private fun TarjetaPublicacion(
                 if (urlImagen != null) {
                     coil3.compose.AsyncImage(
                         model = urlImagen,
-                        contentDescription = "Imagen de la publicacion",
+                        contentDescription = "Imagen de la publicación",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
                     )
@@ -735,7 +735,7 @@ private fun TarjetaPublicacion(
                     .padding(vertical = 5.dp, horizontal = 2.dp)
                     .semantics(mergeDescendants = true) {
                         contentDescription = when (p.comentarios) {
-                            0 -> "Comentar esta publicacion"
+                            0 -> "Comentar esta publicación"
                             1 -> "Ver 1 comentario"
                             else -> "Ver ${p.comentarios} comentarios"
                         }

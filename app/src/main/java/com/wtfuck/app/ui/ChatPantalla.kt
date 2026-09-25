@@ -479,7 +479,7 @@ fun ChatPantalla(
                                 // viejo: decir "2 miembros" es peor que no
                                 // decir nada.
                                 chat != null && !chat.soyMiembro -> "ya no eres miembro"
-                                conexion != EstadoConexion.CONECTADO -> "sin conexion"
+                                conexion != EstadoConexion.CONECTADO -> "sin conexión"
                                 // Escribiendo manda sobre todo lo demas: es lo
                                 // unico que esta pasando AHORA.
                                 quienEscribe != null && chat?.tipo != "directa" ->
@@ -527,7 +527,7 @@ fun ChatPantalla(
                         }
                     }
                     IconButton(onClick = { menuAbierto = true }) {
-                        Icon(Icons.Filled.MoreVert, "Mas opciones", tint = TextoSecundario)
+                        Icon(Icons.Filled.MoreVert, "Más opciones", tint = TextoSecundario)
                     }
                     DropdownMenu(
                         expanded = menuAbierto,

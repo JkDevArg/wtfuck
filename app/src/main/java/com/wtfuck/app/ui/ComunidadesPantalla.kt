@@ -55,7 +55,17 @@ import kotlinx.coroutines.launch
 @Composable
 fun ComunidadesPantalla(
     onAtras: () -> Unit,
-    onAbrirConversacion: (String) -> Unit,
+    /**
+     * Abrir el canal de anuncios. **Va a la pantalla de canal, no a la de chat.**
+     *
+     * Son dos callbacks y no uno, y esto se arreglo mirandolo: el canal de
+     * anuncios se abria con la ruta de chat, o sea en la pantalla de
+     * conversacion. Compila y navega, pero ahi no hay muro, ni reacciones, ni
+     * comentarios: justo lo que hace que un canal sea un canal.
+     */
+    onAbrirCanal: (String) -> Unit,
+    /** Abrir uno de los grupos de la comunidad. */
+    onAbrirChat: (String) -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
@@ -150,7 +160,8 @@ fun ComunidadesPantalla(
         HojaComunidad(
             comunidadId = id,
             onCerrar = { abierta = null; ambito.launch { recargar() } },
-            onAbrirConversacion = { abierta = null; onAbrirConversacion(it) },
+            onAbrirCanal = { abierta = null; onAbrirCanal(it) },
+            onAbrirChat = { abierta = null; onAbrirChat(it) },
         )
     }
 
@@ -384,7 +395,8 @@ private fun HojaNuevaComunidad(onCerrar: () -> Unit, onCreada: () -> Unit) {
 private fun HojaComunidad(
     comunidadId: String,
     onCerrar: () -> Unit,
-    onAbrirConversacion: (String) -> Unit,
+    onAbrirCanal: (String) -> Unit,
+    onAbrirChat: (String) -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
@@ -454,7 +466,7 @@ private fun HojaComunidad(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .background(BgElev)
-                            .clickable { onAbrirConversacion(d.comunidad.anunciosId) }
+                            .clickable { onAbrirCanal(d.comunidad.anunciosId) }
                             .padding(13.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -513,7 +525,7 @@ private fun HojaComunidad(
                                     // un grupo del que no soy parte lleva a un
                                     // 404 con forma de fallo.
                                     .clickable(enabled = g.estoy) {
-                                        onAbrirConversacion(g.conversacionId)
+                                        onAbrirChat(g.conversacionId)
                                     }
                                     .padding(vertical = 10.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,

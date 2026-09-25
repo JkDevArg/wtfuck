@@ -107,7 +107,7 @@ fun descripcionDeFila(c: ChatFila, miUsuario: String): String = buildList {
         !c.ultimoAdjuntoClase.isNullOrBlank() -> Media.resumen(
             c.ultimoAdjuntoClase, c.ultimoTexto.orEmpty(), c.ultimoAdjuntoNombre.orEmpty(),
         )
-        else -> c.ultimoTexto ?: "sin mensajes todavia"
+        else -> c.ultimoTexto ?: "sin mensajes todavía"
     }
     add(if (quien != null) "$quien: $cuerpo" else cuerpo)
 
@@ -204,7 +204,7 @@ fun SemanticsPropertyReceiver.estadoDeBurbuja(m: MensajeEnt) {
  * puesta, y eso a la vista lo dice el fondo cian.
  */
 fun descripcionDeReaccion(emoji: String, total: Int, mia: Boolean): String {
-    val cuantas = if (total == 1) "1 reaccion" else "$total reacciones"
+    val cuantas = if (total == 1) "1 reacción" else "$total reacciones"
     return if (mia) "$emoji, $cuantas, incluida la tuya" else "$emoji, $cuantas"
 }
 

@@ -244,5 +244,5 @@ private fun FilaDato(clave: String, valor: String) {
 
 private fun copiar(ctx: Context, texto: String) {
     val cb = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    cb.setPrimaryClip(ClipData.newPlainText("diagnostico wtfuck", texto))
+    cb.setPrimaryClip(ClipData.newPlainText("diagnóstico wtfuck", texto))
 }

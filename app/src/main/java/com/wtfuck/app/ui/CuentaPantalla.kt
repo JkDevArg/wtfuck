@@ -162,7 +162,7 @@ fun CuentaPantalla(
                             Icon(Icons.Filled.Warning, null, tint = Ambar, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Si olvidas la contrasena, pierdes la cuenta",
+                                "Si olvidas la contraseña, pierdes la cuenta",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = Ambar,
                                 fontWeight = FontWeight.SemiBold,
@@ -170,8 +170,8 @@ fun CuentaPantalla(
                         }
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Tu cuenta es solo usuario y contrasena, asi que hoy no hay por " +
-                                "donde devolverte el acceso. Verifica tu numero y eso deja de " +
+                            "Tu cuenta es solo usuario y contraseña, así que hoy no hay por " +
+                                "donde devolverte el acceso. Verifica tu número y eso deja de " +
                                 "ser cierto.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextoSecundario,
@@ -181,7 +181,7 @@ fun CuentaPantalla(
                 Spacer(Modifier.height(16.dp))
             }
 
-            Seccion("Numero de telefono", Icons.Filled.PhoneAndroid)
+            Seccion("Número de teléfono", Icons.Filled.PhoneAndroid)
 
             if (e.telefonoVerificado) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -197,7 +197,7 @@ fun CuentaPantalla(
                             // Lo importante de esta linea: explica por que el
                             // numero no se muestra, en vez de dejar que parezca
                             // un dato que se perdio.
-                            "Guardamos solo una huella de tu numero, no el numero. Por eso " +
+                            "Guardamos solo una huella de tu número, no el número. Por eso " +
                                 "hay que escribirlo de nuevo al recuperar la cuenta.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextoTerciario,
@@ -218,8 +218,8 @@ fun CuentaPantalla(
                 }
             } else {
                 Text(
-                    "Sirve para dos cosas: recuperar la cuenta si olvidas la contrasena, y " +
-                        "que te encuentren quienes ya tienen tu numero en la agenda. " +
+                    "Sirve para dos cosas: recuperar la cuenta si olvidas la contraseña, y " +
+                        "que te encuentren quienes ya tienen tu número en la agenda. " +
                         "No se usa para entrar.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoSecundario,
@@ -228,7 +228,7 @@ fun CuentaPantalla(
                 Button(
                     onClick = { verificandoTelefono = true },
                     colors = ButtonDefaults.buttonColors(containerColor = Cian, contentColor = TextoSobreAcento),
-                ) { Text("Verificar mi numero") }
+                ) { Text("Verificar mi número") }
             }
 
             if (e.telefonoVerificado) {
@@ -247,14 +247,14 @@ fun CuentaPantalla(
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(
-                            "Que me encuentren por mi numero",
+                            "Que me encuentren por mi número",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextoPrimario,
                         )
                         Text(
                             // El motivo del valor por defecto, dicho en una
                             // linea: quien tiene tu numero ya te conoce.
-                            "Solo aparece quien ya tiene tu numero guardado.",
+                            "Solo aparece quien ya tiene tu número guardado.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextoTerciario,
                         )
@@ -265,17 +265,17 @@ fun CuentaPantalla(
             Divisor()
 
             // --- 2FA ---------------------------------------------------
-            Seccion("Verificacion en dos pasos", Icons.Filled.Shield)
+            Seccion("Verificación en dos pasos", Icons.Filled.Shield)
 
             if (e.totpActivado) {
                 Text(
-                    "Activada. Al ingresar se pide un codigo de tu app de autenticacion.",
+                    "Activada. Al ingresar se pide un código de tu app de autenticación.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextoPrimario,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Te quedan ${e.codigosRespaldoSinUsar} codigos de respaldo.",
+                    "Te quedan ${e.codigosRespaldoSinUsar} códigos de respaldo.",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (e.codigosRespaldoSinUsar <= 2) Ambar else TextoTerciario,
                 )
@@ -285,7 +285,7 @@ fun CuentaPantalla(
                 }
             } else {
                 Text(
-                    "Un codigo que cambia cada 30 segundos, ademas de tu contrasena.",
+                    "Un código que cambia cada 30 segundos, además de tu contraseña.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoSecundario,
                 )
@@ -324,7 +324,7 @@ fun CuentaPantalla(
             // sesion no quita el dispositivo.
             Seccion("Mis dispositivos", Icons.Filled.PhoneAndroid)
             Text(
-                "Cada dispositivo es una copia mas de tus mensajes. Ahi se agregan, se " +
+                "Cada dispositivo es una copia más de tus mensajes. Ahi se agregan, se " +
                     "revocan, y se ve cual es el principal.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextoSecundario,
@@ -340,7 +340,7 @@ fun CuentaPantalla(
             // --- sesiones ----------------------------------------------
             Seccion("Sesiones abiertas", Icons.Filled.Devices)
             Text(
-                "Si ves una que no reconoces, cierrala y cambia tu contrasena.",
+                "Si ves una que no reconoces, cierrala y cambia tu contraseña.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextoTerciario,
             )
@@ -417,7 +417,7 @@ fun CuentaPantalla(
     if (apagandoTotp) {
         DialogoClave(
             titulo = "Desactivar los dos pasos",
-            explicacion = "Pedimos la contrasena porque, si no, una sesion robada podria " +
+            explicacion = "Pedimos la contraseña porque, si no, una sesión robada podria " +
                 "quitar el segundo factor y quedarse con la cuenta.",
             etiquetaBoton = "Desactivar",
             onCerrar = { apagandoTotp = false },
@@ -494,7 +494,7 @@ private fun TarjetaEliminacionPendiente(e: EstadoCuenta) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "Ya la cancelaste al volver a entrar. Si no querias eliminarla, no hagas nada mas.",
+                "Ya la cancelaste al volver a entrar. Si no querias eliminarla, no hagas nada más.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextoSecundario,
             )
@@ -511,7 +511,7 @@ private fun FilaSesion(s: SesionActiva, onCerrar: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (s.esLaActual) "Este dispositivo" else "Otra sesion",
+                    if (s.esLaActual) "Este dispositivo" else "Otra sesión",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextoPrimario,
                 )
@@ -578,13 +578,13 @@ private fun DialogoVerificarTelefono(onCerrar: () -> Unit, onListo: () -> Unit) 
     AlertDialog(
         onDismissRequest = { if (!trabajando) onCerrar() },
         containerColor = BgElev,
-        title = { Text("Verificar mi numero", color = TextoPrimario, fontSize = 18.sp) },
+        title = { Text("Verificar mi número", color = TextoPrimario, fontSize = 18.sp) },
         text = {
             Column {
                 OutlinedTextField(
                     value = telefono,
                     onValueChange = { telefono = it; error = null },
-                    label = { Text("Numero de telefono") },
+                    label = { Text("Número de teléfono") },
                     placeholder = { Text("+51 987 654 321", color = TextoTerciario) },
                     enabled = !pedido,
                     singleLine = true,
@@ -604,7 +604,7 @@ private fun DialogoVerificarTelefono(onCerrar: () -> Unit, onListo: () -> Unit) 
                         telefono.isBlank() ->
                             "Sin prefijo se asume +${Telefonos.PAIS_POR_DEFECTO}."
                         normalizado != null -> "Se enviara a $normalizado"
-                        else -> "Ese numero no parece completo."
+                        else -> "Ese número no parece completo."
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = if (normalizado == null && telefono.isNotBlank()) Ambar else TextoTerciario,
@@ -615,7 +615,7 @@ private fun DialogoVerificarTelefono(onCerrar: () -> Unit, onListo: () -> Unit) 
                     OutlinedTextField(
                         value = codigo,
                         onValueChange = { if (it.length <= 6) codigo = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("Codigo de 6 digitos") },
+                        label = { Text("Código de 6 digitos") },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -630,7 +630,7 @@ private fun DialogoVerificarTelefono(onCerrar: () -> Unit, onListo: () -> Unit) 
                     deprueba?.let {
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Servidor sin pasarela de SMS. Codigo: $it",
+                            "Servidor sin pasarela de SMS. Código: $it",
                             style = MaterialTheme.typography.labelSmall,
                             color = Ambar,
                             fontFamily = FontFamily.Monospace,
@@ -663,7 +663,7 @@ private fun DialogoVerificarTelefono(onCerrar: () -> Unit, onListo: () -> Unit) 
                         trabajando = false
                     }
                 },
-            ) { Text(if (pedido) "Verificar" else "Enviarme el codigo", color = Cian) }
+            ) { Text(if (pedido) "Verificar" else "Enviarme el código", color = Cian) }
         },
         dismissButton = {
             TextButton(enabled = !trabajando, onClick = onCerrar) {
@@ -699,7 +699,7 @@ private fun DialogoActivarTotp(onCerrar: () -> Unit, onListo: () -> Unit) {
         containerColor = BgElev,
         title = {
             Text(
-                if (respaldos != null) "Guarda estos codigos" else "Verificacion en dos pasos",
+                if (respaldos != null) "Guarda estos códigos" else "Verificación en dos pasos",
                 color = TextoPrimario,
                 fontSize = 18.sp,
             )
@@ -713,7 +713,7 @@ private fun DialogoActivarTotp(onCerrar: () -> Unit, onListo: () -> Unit) {
                         // mostrar porque en el servidor estan hasheados, y un
                         // segundo factor sin salida de emergencia convierte
                         // perder el telefono en perder la cuenta.
-                        "No se pueden volver a mostrar. Son tu salida si pierdes el telefono: " +
+                        "No se pueden volver a mostrar. Son tu salida si pierdes el teléfono: " +
                             "cada uno sirve una vez.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoSecundario,
@@ -730,7 +730,7 @@ private fun DialogoActivarTotp(onCerrar: () -> Unit, onListo: () -> Unit) {
                     }
                 } else {
                     Text(
-                        "Copia esta clave en tu app de autenticacion y escribe el codigo que te muestre.",
+                        "Copia esta clave en tu app de autenticación y escribe el código que te muestre.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoSecundario,
                     )
@@ -748,7 +748,7 @@ private fun DialogoActivarTotp(onCerrar: () -> Unit, onListo: () -> Unit) {
                     OutlinedTextField(
                         value = codigo,
                         onValueChange = { if (it.length <= 6) codigo = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("Codigo de la app") },
+                        label = { Text("Código de la app") },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -821,7 +821,7 @@ private fun DialogoClave(
                 OutlinedTextField(
                     value = clave,
                     onValueChange = { clave = it },
-                    label = { Text("Tu contrasena") },
+                    label = { Text("Tu contraseña") },
                     singleLine = true,
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     shape = RoundedCornerShape(10.dp),
@@ -836,7 +836,7 @@ private fun DialogoClave(
                     OutlinedTextField(
                         value = totp,
                         onValueChange = { totp = it },
-                        label = { Text("Codigo de dos pasos") },
+                        label = { Text("Código de dos pasos") },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -887,7 +887,7 @@ private fun DialogoEliminarCuenta(
                     )
                     Spacer(Modifier.height(10.dp))
                     listOf(
-                        "Los mensajes que enviaste estan en los telefonos de las otras personas. " +
+                        "Los mensajes que enviaste están en los teléfonos de las otras personas. " +
                             "El servidor no los tiene y nadie puede borrarlos de ahi.",
                         "Lo que publicaste en canales publicos no se borra: es de la audiencia " +
                             "del canal, no de tu cuenta.",
@@ -923,8 +923,8 @@ private fun DialogoEliminarCuenta(
     DialogoClave(
         titulo = "Eliminar mi cuenta",
         explicacion = error
-            ?: "Es la accion mas destructiva que hay aqui, asi que pedimos la contrasena: " +
-            "una sesion robada no deberia poder ejecutarla.",
+            ?: "Es la acción más destructiva que hay aquí, así que pedimos la contraseña: " +
+            "una sesión robada no deberia poder ejecutarla.",
         etiquetaBoton = "Eliminar",
         pideTotp = pideTotp,
         onCerrar = onCerrar,
@@ -981,7 +981,7 @@ private fun TarjetaHardware(ctx: android.content.Context) {
             }
             Spacer(Modifier.height(10.dp))
             FilaHardware("Cuentas", "Una por dispositivo")
-            FilaHardware("Historial", "Cifrado en este telefono")
+            FilaHardware("Historial", "Cifrado en este teléfono")
             Spacer(Modifier.height(10.dp))
             Text("Huella del dispositivo", style = MaterialTheme.typography.labelSmall, color = TextoTerciario)
             // Entera y en monoespaciada: si alguna vez hay que compararla con

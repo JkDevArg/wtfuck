@@ -187,7 +187,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
 
             Ajuste(
                 icono = Icons.Filled.Schedule,
-                titulo = "Quien ve mi ultima conexion",
+                titulo = "Quien ve mi última conexión",
                 valor = actual.ultimaVez,
             ) { abierto = "ultimaVez" }
 
@@ -267,7 +267,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                         // La senal no se guarda EN NINGUN SITIO, y decirlo aqui
                         // importa: es la diferencia entre un ajuste de cortesia
                         // y un dato que alguien podria pedir despues.
-                        "Tambien reciproco. Esta senal no se guarda en ningun sitio: vale " +
+                        "También reciproco. Esta senal no se guarda en ningún sitio: vale " +
                             "tres segundos y se olvida.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
@@ -310,7 +310,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text("Avisar cuando grabo un audio", color = TextoPrimario)
                     Text(
-                        "Va aparte de \"cuando escribo\": teclear dice que hay algo en camino, grabar dice ademas que el microfono esta abierto ahora.",
+                        "Va aparte de \"cuando escribo\": teclear dice que hay algo en camino, grabar dice además que el microfono esta abierto ahora.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
                     )
@@ -421,8 +421,8 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "wtfuck no lee tu agenda del telefono. Cuenta como conocida " +
-                            "cualquier persona con la que ya tengas una conversacion directa abierta.",
+                        "wtfuck no lee tu agenda del teléfono. Cuenta como conocida " +
+                            "cualquier persona con la que ya tengas una conversación directa abierta.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextoSecundario,
                     )
@@ -473,7 +473,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                         "biografia" -> "Quien ve mi biografia"
                         "videollamadas" -> "Quien me puede hacer videollamadas"
                         "nombre" -> "Quien ve mi nombre"
-                        "ultimaVez" -> "Quien ve mi ultima conexion"
+                        "ultimaVez" -> "Quien ve mi última conexión"
                         "busqueda" -> "Quien me encuentra por mi usuario"
                         "comunidades" -> "Quien me puede sumar a una comunidad"
                         else -> "Quien me puede agregar a grupos"
@@ -525,11 +525,11 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                             "No existe \"nadie\": una cuenta a la que nadie puede escribir no " +
                                 "es una cuenta de mensajeria."
                         "ultimaVez" ->
-                            "Es reciproco: con \"nadie\" tampoco ves la ultima conexion de " +
+                            "Es reciproco: con \"nadie\" tampoco ves la última conexión de " +
                                 "los demas."
                         "nombre" ->
                             "Tu usuario NO se puede ocultar: es la direccion con la que " +
-                                "existis aqui. Quien no vea tu nombre vera @tu_usuario."
+                                "existis aquí. Quien no vea tu nombre verá @tu_usuario."
                         "busqueda" ->
                             "Con \"nadie\" no dejas de ser alcanzable: quien ya habla con vos " +
                                 "sigue escribiendote y los enlaces de invitacion siguen " +

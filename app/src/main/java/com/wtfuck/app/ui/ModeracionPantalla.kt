@@ -193,7 +193,7 @@ fun ModeracionPantalla(onAtras: () -> Unit) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Si ves un ingreso que no reconoces, cambia tu contrasena.",
+                    "Si ves un ingreso que no reconoces, cambia tu contraseña.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoTerciario,
                 )
@@ -220,7 +220,7 @@ fun ModeracionPantalla(onAtras: () -> Unit) {
             } else if (registro.isEmpty()) {
                 item {
                     Text(
-                        "Todavia no hay nada registrado.",
+                        "Todavía no hay nada registrado.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextoTerciario,
                     )
@@ -336,14 +336,14 @@ private fun describir(tipo: String): Triple<ImageVector, Color, String> = when (
     "registro" -> Triple(Icons.Filled.DevicesOther, Cian, "Cuenta creada")
     "ingreso" -> Triple(Icons.AutoMirrored.Filled.Login, Cian, "Ingreso")
     "ingreso_fallido" -> Triple(Icons.Filled.Block, Coral, "Intento de ingreso fallido")
-    "sesion_cerrada" -> Triple(Icons.AutoMirrored.Filled.Login, Slate, "Sesion cerrada")
+    "sesion_cerrada" -> Triple(Icons.AutoMirrored.Filled.Login, Slate, "Sesión cerrada")
     "dispositivo_nuevo" -> Triple(Icons.Filled.DevicesOther, Ambar, "Dispositivo nuevo")
     "dispositivo_revocado" -> Triple(Icons.Filled.DevicesOther, Slate, "Dispositivo revocado")
     "clave_identidad_cambiada" -> Triple(Icons.Filled.Key, Ambar, "Cambio de clave de cifrado")
     "limite_excedido" -> Triple(Icons.Filled.Speed, Ambar, "Se alcanzo un limite de uso")
     "denuncia_creada" -> Triple(Icons.Filled.Warning, Slate, "Enviaste una denuncia")
     "advertencia_recibida" -> Triple(Icons.Filled.Warning, Ambar, "Recibiste una advertencia")
-    "restriccion_aplicada" -> Triple(Icons.Filled.Block, Ambar, "Te restringieron en una conversacion")
+    "restriccion_aplicada" -> Triple(Icons.Filled.Block, Ambar, "Te restringieron en una conversación")
     "cuenta_suspendida" -> Triple(Icons.Filled.Block, Coral, "Tu cuenta fue suspendida")
     "cuenta_restaurada" -> Triple(Icons.Filled.Block, Cian, "Tu cuenta fue restaurada")
     "staff_otorgado" -> Triple(Icons.Filled.Key, Cian, "Se te dio un rol de plataforma")

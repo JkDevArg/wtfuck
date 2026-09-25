@@ -256,7 +256,7 @@ fun PanelPantalla(
                 item {
                     Text(
                         "Un canal no aparece en el directorio ni admite suscriptores hasta " +
-                            "que lo apruebes. Es la superficie de mas alcance de la " +
+                            "que lo apruebes. Es la superficie de más alcance de la " +
                             "plataforma, y la unica cuyo contenido el servidor guarda en claro.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
@@ -301,7 +301,7 @@ fun PanelPantalla(
                             Icon(Icons.Filled.Inbox, null, tint = Slate, modifier = Modifier.size(36.dp))
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                if (verAprobados) "Ningun canal publicado" else "Ningun canal esperando",
+                                if (verAprobados) "Ningún canal publicado" else "Ningún canal esperando",
                                 color = TextoSecundario,
                             )
                         }
@@ -493,8 +493,8 @@ private fun Tablero(rs: ResumenPanel) {
         // pudiera confiar en ninguno de los de arriba.
         Spacer(Modifier.height(6.dp))
         Text(
-            "No se muestra uso de CPU ni memoria: el servidor no lo mide todavia, " +
-                "y un numero inventado en un panel de administracion vale menos que un hueco.",
+            "No se muestra uso de CPU ni memoria: el servidor no lo mide todavía, " +
+                "y un número inventado en un panel de administracion vale menos que un hueco.",
             style = MaterialTheme.typography.labelSmall,
             color = TextoTerciario,
         )
@@ -726,7 +726,7 @@ private fun HojaDenuncia(
                     Text(
                         "@${d.cabecera.denunciante} → " +
                             (d.cabecera.objetivoUsuario?.let { "@$it" }
-                                ?: d.cabecera.objetivoTitulo ?: "una conversacion"),
+                                ?: d.cabecera.objetivoTitulo ?: "una conversación"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextoPrimario,
                     )
@@ -809,7 +809,7 @@ private fun HojaDenuncia(
                     Accion("Descartar: no tenia fundamento", Slate, trabajando) {
                         resolver(AccionModeracion.DESCARTAR, null)
                     }
-                    Accion("Cerrar sin accion", Slate, trabajando) {
+                    Accion("Cerrar sin acción", Slate, trabajando) {
                         resolver(AccionModeracion.SIN_ACCION, null)
                     }
                     if (d.cabecera.objetivoUsuario != null) {
@@ -817,10 +817,10 @@ private fun HojaDenuncia(
                             resolver(AccionModeracion.ADVERTIR, null)
                         }
                         if (d.cabecera.objetivoConversacion != null) {
-                            Accion("Silenciar 24 h en esa conversacion", Ambar, trabajando) {
+                            Accion("Silenciar 24 h en esa conversación", Ambar, trabajando) {
                                 resolver(AccionModeracion.SILENCIAR, 24)
                             }
-                            Accion("Expulsar de esa conversacion", Coral, trabajando) {
+                            Accion("Expulsar de esa conversación", Coral, trabajando) {
                                 resolver(AccionModeracion.EXPULSAR, null)
                             }
                         }
@@ -1162,7 +1162,7 @@ private fun DialogoRechazarCanal(
                     if (retirar) {
                         // Hay que decirlo: retirar NO borra lo que la gente
                         // ya leyo. Prometer lo contrario seria mentir.
-                        "Sale del directorio y nadie mas se puede suscribir. Sus " +
+                        "Sale del directorio y nadie más se puede suscribir. Sus " +
                             "${canal.suscriptores} suscriptores actuales conservan lo que ya " +
                             "recibieron: eso no se puede deshacer."
                     } else {

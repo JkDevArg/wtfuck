@@ -281,6 +281,6 @@ private fun nombreDeAjuste(ajuste: String): String = when (ajuste) {
     "grupos" -> "Quien me agrega a grupos"
     "llamadas" -> "Quien me puede llamar"
     "busqueda" -> "Quien me encuentra por mi usuario"
-    "ultima_vez" -> "Mi ultima conexion"
+    "ultima_vez" -> "Mi última conexión"
     else -> ajuste
 }

@@ -229,7 +229,7 @@ private fun TextoDeFase(e: EstadoLlamada) {
             "sin_respuesta" -> "Sin respuesta"
             "ocupado" -> "Ocupado"
             "cancelada" -> "Llamada cancelada"
-            "fallo_red" -> "Se corto la conexion"
+            "fallo_red" -> "Se corto la conexión"
             else -> "Llamada terminada"
         }
     }
@@ -325,7 +325,7 @@ private fun BotonesEnCurso(
             if (e.conVideo) {
                 BotonChico(
                     if (e.camaraActiva) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
-                    if (e.camaraActiva) "Apagar camara" else "Encender camara",
+                    if (e.camaraActiva) "Apagar cámara" else "Encender cámara",
                     activo = !e.camaraActiva,
                     onClick = onCamara,
                 )

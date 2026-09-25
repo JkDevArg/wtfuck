@@ -212,7 +212,7 @@ class AccesibilidadTest {
     @Test
     fun `una conversacion vacia lo dice en vez de quedarse muda`() {
         val d = descripcionDeFila(fila(texto = null, mio = null), "joaquin")
-        assertTrue(d, d.contains("sin mensajes todavia"))
+        assertTrue(d, d.contains("sin mensajes todavía"))
     }
 
     // ------------------------------------------------------------------
@@ -262,7 +262,7 @@ class AccesibilidadTest {
 
     @Test
     fun `una sola reaccion no se dice en plural`() {
-        assertTrue(descripcionDeReaccion("👍", 1, mia = false).contains("1 reaccion"))
+        assertTrue(descripcionDeReaccion("👍", 1, mia = false).contains("1 reacción"))
         assertFalse(descripcionDeReaccion("👍", 1, mia = false).contains("reacciones"))
     }
 

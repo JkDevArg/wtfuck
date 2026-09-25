@@ -117,14 +117,14 @@ fun HuellaPantalla(
                     Icon(Icons.Filled.LockOpen, null, tint = Ambar, modifier = Modifier.size(42.dp))
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        "Todavia no hay cifrado con esta conversacion.",
+                        "Todavía no hay cifrado con esta conversación.",
                         color = TextoPrimario,
                         fontSize = 16.sp,
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "La sesion cifrada se establece al enviar el primer mensaje: " +
+                        "La sesión cifrada se establece al enviar el primer mensaje: " +
                             "hasta entonces no hay ninguna clave del otro lado que comparar.",
                         color = TextoSecundario,
                         fontSize = 13.sp,
@@ -157,7 +157,7 @@ fun HuellaPantalla(
                             Spacer(Modifier.width(11.dp))
                             Text(
                                 "@${c.username} usa ${c.aparatos.size} aparatos, y cada uno " +
-                                    "tiene su propio codigo. Hay que comparar los " +
+                                    "tiene su propio código. Hay que comparar los " +
                                     "${c.aparatos.size}: verificar uno solo deja al otro sin " +
                                     "comprobar.",
                                 color = TextoSecundario,
@@ -186,9 +186,9 @@ fun HuellaPantalla(
                             )
                             Spacer(Modifier.width(11.dp))
                             Text(
-                                "En un grupo cada persona tiene su propio codigo -y cada " +
+                                "En un grupo cada persona tiene su propio código -y cada " +
                                     "aparato suyo, el suyo-. Se verifica de a uno; no hay " +
-                                    "un numero del grupo entero, porque no existe.",
+                                    "un número del grupo entero, porque no existe.",
                                 color = TextoSecundario,
                                 fontSize = 13.sp,
                             )
@@ -238,11 +238,11 @@ fun HuellaPantalla(
                                     aviso = if (nueva) {
                                         "\"${h.etiqueta}\" queda como verificado."
                                     } else {
-                                        "Se quito la verificacion de \"${h.etiqueta}\"."
+                                        "Se quito la verificación de \"${h.etiqueta}\"."
                                     }
                                 }
                             },
-                            onCopiado = { aviso = "Codigo copiado." },
+                            onCopiado = { aviso = "Código copiado." },
                         )
                     }
 
@@ -259,7 +259,7 @@ fun HuellaPantalla(
                         Text(
                             "Marcar como verificado no cambia el cifrado: los mensajes ya " +
                                 "van cifrados de todas formas. Lo que cambia es que si esa " +
-                                "clave cambia mas adelante, la app te va a avisar.",
+                                "clave cambia más adelante, la app te va a avisar.",
                             color = TextoTerciario,
                             fontSize = 12.sp,
                         )
@@ -393,8 +393,8 @@ private fun TarjetaAparato(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Suele pasar porque @${h.username} reinstalo la app o cambio de " +
-                            "telefono. Pero tambien es lo que se veria si alguien se " +
-                            "estuviera poniendo en medio. Si te importa esta conversacion, " +
+                            "teléfono. Pero también es lo que se veria si alguien se " +
+                            "estuviera poniendo en medio. Si te importa esta conversación, " +
                             "verificala.",
                         color = TextoSecundario,
                         fontSize = 13.sp,
@@ -413,8 +413,8 @@ private fun TarjetaAparato(
                 Icon(Icons.Filled.LockOpen, null, tint = Ambar, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "Todavia no hay sesion cifrada con este aparato, asi que no hay " +
-                        "codigo que comparar. Aparece en cuanto se le entregue un mensaje.",
+                    "Todavía no hay sesión cifrada con este aparato, así que no hay " +
+                        "código que comparar. Aparece en cuanto se le entregue un mensaje.",
                     color = TextoSecundario,
                     fontSize = 13.sp,
                 )
@@ -426,7 +426,7 @@ private fun TarjetaAparato(
 
         Spacer(Modifier.height(18.dp))
         Text(
-            "Codigo de seguridad",
+            "Código de seguridad",
             color = TextoTerciario,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
@@ -457,7 +457,7 @@ private fun TarjetaAparato(
 
         Spacer(Modifier.height(14.dp))
         Text(
-            "Compara estos numeros con @${h.username} por otro medio: una llamada, en " +
+            "Compara estos números con @${h.username} por otro medio: una llamada, en " +
                 "persona. Si coinciden, nadie esta en medio. Si no coinciden, alguien lo esta.",
             color = TextoSecundario,
             fontSize = 13.sp,
@@ -474,7 +474,7 @@ private fun TarjetaAparato(
         ) {
             Icon(Icons.Filled.ContentCopy, null, tint = Cian, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(9.dp))
-            Text("Copiar codigo", color = Cian)
+            Text("Copiar código", color = Cian)
         }
 
         Spacer(Modifier.height(10.dp))
@@ -492,7 +492,7 @@ private fun TarjetaAparato(
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(9.dp))
-            Text(if (h.verificada) "Quitar la verificacion" else "Los numeros coinciden")
+            Text(if (h.verificada) "Quitar la verificación" else "Los números coinciden")
         }
     }
 }
@@ -529,7 +529,7 @@ private fun QrDeHuella(escaneable: String) {
 
     Image(
         bitmap = bitmap.asImageBitmap(),
-        contentDescription = "Codigo QR de la huella",
+        contentDescription = "Código QR de la huella",
         modifier = Modifier
             .size(190.dp)
             .clip(RoundedCornerShape(10.dp))

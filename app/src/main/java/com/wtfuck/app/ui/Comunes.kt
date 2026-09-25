@@ -312,7 +312,7 @@ fun CodigoQr(
 
     androidx.compose.foundation.Image(
         bitmap = bitmap.asImageBitmap(),
-        contentDescription = "Codigo QR",
+        contentDescription = "Código QR",
         modifier = modifier
             .size(tamano)
             .clip(RoundedCornerShape(10.dp))

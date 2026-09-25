@@ -167,7 +167,7 @@ private fun AvisoEntregaTexto(conContexto: Boolean, onContexto: (Boolean) -> Uni
             Spacer(Modifier.height(6.dp))
             Text(
                 "Tus mensajes van cifrados y el servidor no puede leerlos. Para que un " +
-                    "moderador pueda revisar esto, tu telefono le envia el texto de lo que " +
+                    "moderador pueda revisar esto, tu teléfono le envia el texto de lo que " +
                     "denuncias. Solo eso, y se borra cuando se cierra el caso.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextoSecundario,
@@ -210,7 +210,7 @@ private fun AvisoEntregaTexto(conContexto: Boolean, onContexto: (Boolean) -> Uni
                         color = TextoPrimario,
                     )
                     Text(
-                        "Ayuda a entender el contexto. Van los ultimos, no la conversacion.",
+                        "Ayuda a entender el contexto. Van los últimos, no la conversación.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
                     )

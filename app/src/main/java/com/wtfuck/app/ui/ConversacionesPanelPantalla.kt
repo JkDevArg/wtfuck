@@ -135,7 +135,7 @@ fun ConversacionesPanelPantalla(onAtras: () -> Unit) {
                         if (filtro.isBlank() && !soloCerradas) {
                             "Escribe para buscar un grupo o un canal."
                         } else if (soloCerradas) {
-                            "Ninguna conversacion cerrada."
+                            "Ninguna conversación cerrada."
                         } else {
                             "Nada coincide con \"${filtro.trim()}\"."
                         },
@@ -280,9 +280,9 @@ private fun DialogoCerrar(
                 Text(
                     // Las dos mitades de la verdad, juntas. Prometer que se
                     // borra lo que ya se entrego seria imposible de cumplir.
-                    "Nadie va a poder escribir mas, ni sus administradores. Sus " +
+                    "Nadie va a poder escribir más, ni sus administradores. Sus " +
                         "${c.miembros} miembros van a poder seguir leyendo lo que ya esta " +
-                        "en sus telefonos: eso no se puede borrar desde aqui, porque el " +
+                        "en sus teléfonos: eso no se puede borrar desde aquí, porque el " +
                         "servidor no lo tiene.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoTerciario,

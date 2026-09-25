@@ -90,7 +90,7 @@ fun ConsolaWebPantalla(onAtras: () -> Unit) {
             Spacer(Modifier.height(6.dp))
             Text(
                 "Abre ${direccionConsola()} en el navegador y pega el token que se genera " +
-                    "aqui. Dura 8 horas.",
+                    "aquí. Dura 8 horas.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextoSecundario,
             )
@@ -194,8 +194,8 @@ fun ConsolaWebPantalla(onAtras: () -> Unit) {
                         // El mismo motivo que al vincular un dispositivo, y se
                         // dice igual: una sesion robada no deberia poder
                         // abrirse acceso administrativo.
-                        "Pedimos la contrasena porque una consola puede suspender cuentas. " +
-                            "Una sesion robada no deberia poder abrirla.",
+                        "Pedimos la contraseña porque una consola puede suspender cuentas. " +
+                            "Una sesión robada no deberia poder abrirla.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
                     )
@@ -215,7 +215,7 @@ fun ConsolaWebPantalla(onAtras: () -> Unit) {
                     OutlinedTextField(
                         value = clave,
                         onValueChange = { clave = it },
-                        label = { Text("Tu contrasena", color = TextoTerciario) },
+                        label = { Text("Tu contraseña", color = TextoTerciario) },
                         singleLine = true,
                         visualTransformation =
                             androidx.compose.ui.text.input.PasswordVisualTransformation(),
@@ -295,7 +295,7 @@ fun ConsolaWebPantalla(onAtras: () -> Unit) {
                         Text("Copiar", color = Cian)
                     }
                     Text(
-                        "Vive ${t.expiraEnSegundos / 3600} horas. Se puede cerrar desde aqui " +
+                        "Vive ${t.expiraEnSegundos / 3600} horas. Se puede cerrar desde aquí " +
                             "en cualquier momento.",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextoTerciario,

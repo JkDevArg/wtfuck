@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wtfuck.app.WtfuckApp
@@ -97,7 +98,7 @@ fun ContactosPantalla(
                     title = { Text("Contactos", color = TextoPrimario) },
                     actions = {
                         IconButton(onClick = { descubriendo = true }) {
-                            Icon(Icons.Filled.PersonSearch, "Buscar por telefono", tint = Cian)
+                            Icon(Icons.Filled.PersonSearch, "Buscar por teléfono", tint = Cian)
                         }
                         IconButton(onClick = { agregando = true }) {
                             Icon(Icons.Filled.PersonAdd, "Agregar por usuario", tint = Cian)
@@ -132,22 +133,34 @@ fun ContactosPantalla(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                // Icono, como en los otros vacios (canales, comunidades,
+                // stickers). Sin el, este quedaba como el unico vacio de la
+                // app que era solo texto flotando.
+                Icon(
+                    Icons.Filled.PersonSearch, null,
+                    tint = Slate, modifier = Modifier.size(44.dp),
+                )
+                Spacer(Modifier.height(14.dp))
                 Text(
-                    "Todavia no tienes contactos",
+                    "Todavía no tienes contactos",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextoSecundario,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Busca por numero de telefono, o agrega a alguien por su usuario.",
+                    "Busca por número de teléfono, o agrega a alguien por su usuario.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextoTerciario,
+                    // El bloque estaba centrado y el texto NO: con dos lineas,
+                    // la segunda quedaba alineada a la izquierda dentro de un
+                    // bloque centrado y el conjunto se veia torcido.
+                    textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(16.dp))
                 Button(
                     onClick = { descubriendo = true },
                     colors = ButtonDefaults.buttonColors(containerColor = Cian, contentColor = TextoSobreAcento),
-                ) { Text("Buscar por telefono") }
+                ) { Text("Buscar por teléfono") }
             }
 
             visibles.isEmpty() -> Box(Modifier.fillMaxSize().padding(pad), Alignment.Center) {
@@ -336,10 +349,10 @@ private fun HojaDescubrir(onCerrar: () -> Unit, onAgregado: () -> Unit) {
         dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },
     ) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-            Text("Buscar por telefono", style = MaterialTheme.typography.titleMedium, color = TextoPrimario)
+            Text("Buscar por teléfono", style = MaterialTheme.typography.titleMedium, color = TextoPrimario)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Hace falta el numero exacto: no se puede buscar por nombre. " +
+                "Hace falta el número exacto: no se puede buscar por nombre. " +
                     "Es lo que evita que alguien liste a todo el mundo probando.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextoSecundario,
@@ -367,9 +380,9 @@ private fun HojaDescubrir(onCerrar: () -> Unit, onAgregado: () -> Unit) {
                     texto.isBlank() ->
                         "Puedes pegar varios, separados por coma. Sin prefijo se asume " +
                             "+${Telefonos.PAIS_POR_DEFECTO}."
-                    numeros.isEmpty() -> "Todavia no hay un numero completo."
+                    numeros.isEmpty() -> "Todavía no hay un número completo."
                     numeros.size == 1 -> "Se buscara ${numeros.first()}"
-                    else -> "Se buscaran ${numeros.size} numeros"
+                    else -> "Se buscaran ${numeros.size} números"
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = if (texto.isNotBlank() && numeros.isEmpty()) Ambar else TextoTerciario,
@@ -389,8 +402,8 @@ private fun HojaDescubrir(onCerrar: () -> Unit, onAgregado: () -> Unit) {
                 buscado && resultados.isEmpty() -> Text(
                     // Los tres motivos, porque los tres son posibles y el
                     // usuario no puede distinguirlos desde aqui.
-                    "Nadie con ese numero. Puede que no tenga cuenta, que no haya " +
-                        "verificado su telefono, o que no quiera que lo encuentren asi.",
+                    "Nadie con ese número. Puede que no tenga cuenta, que no haya " +
+                        "verificado su teléfono, o que no quiera que lo encuentren así.",
                     color = TextoTerciario,
                     style = MaterialTheme.typography.bodySmall,
                 )

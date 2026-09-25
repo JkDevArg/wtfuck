@@ -5136,3 +5136,80 @@ y su validación por reversión es la que produjo AD.3.
 > La máquina se reinició a mitad del módulo. El entorno se levantó de cero
 > —Docker, los tres contenedores, las dos instancias y los dos AVDs— y quedó
 > anotado que `emulator-5554` y `5556` no vuelven necesariamente al mismo AVD.
+
+---
+
+## Módulo AE · Pulido visual ✅
+
+*"¿Qué más hay para mejorar, estéticamente?"*
+
+Se miraron las cuatro pestañas una por una. Lo que salió no fue cuestión de
+gusto: seis cosas concretas, y una de ellas era un defecto funcional.
+
+### AE.1 · La app entera estaba sin tildes
+
+**266 palabras en 32 archivos**: `Diagnostico`, `todavia`, `telefono`,
+`numero`, `mas`, `contrasena`, `sesion`, `camara`. Y era **inconsistente** —las
+pantallas nuevas sí las tenían—, así que la app parecía medio traducida. Es lo
+que más pesa visualmente y lo que menos se nota al escribir el código.
+
+Se hizo con un script, y **los dos guardias nacieron de fallos reales**:
+
+| Guardia | Por qué |
+|---|---|
+| Sólo texto, nunca un identificador | Hay cadenas que son rutas, claves y tipos: `"canal"`, `"grupo"`, `"mi-cuenta"`. Cambiar una rompe el contrato **en silencio** —compila y falla al comparar—. Regla: se traduce si tiene un espacio o empieza en mayúscula |
+| Las interpolaciones son código | La primera versión produjo cinco `Unresolved reference 'publicación'` desde `"${publicacion.autor}"` |
+
+Los cinco los **cazó el compilador**, que es para lo que sirve. Y dos pruebas
+de accesibilidad fallaron —afirman sobre el texto anunciado—, que es la suite
+haciendo su trabajo.
+
+### AE.2 · El mismo canal dibujado de dos maneras en la misma pantalla
+
+"Mis canales" usaba el icono de **dos personas** y "Descubrir" el **megáfono**.
+`FilaMiCanal` pasaba `esGrupo = true` a un canal; `Avatar` ya tenía `esCanal`.
+
+### AE.3 · Dos maquetaciones, una encima de la otra
+
+Las filas de "Descubrir" dibujaban **su propio círculo a mano** —46 dp, siempre
+cian— mientras "Mis canales" usaba el `Avatar` compartido —44 dp, color por
+nombre—. Dos implementaciones de lo mismo en la misma pantalla: se leía como
+dos listas de dos aplicaciones distintas. Y los encabezados de sección eran de
+colores distintos, sugiriendo una jerarquía que no existe.
+
+### AE.4 · El vacío de Contactos estaba torcido
+
+El `Column` estaba centrado y al texto le faltaba `textAlign = Center`: con dos
+líneas, la segunda se iba a la izquierda dentro de un bloque centrado. Y era el
+**único vacío de la app sin icono**.
+
+### AE.5 · El botón flotante tapaba la última conversación
+
+`LazyColumn(Modifier.fillMaxSize())` sin `contentPadding`. Con pocos chats no
+se nota porque la lista no llega abajo; con la lista llena, **la última
+conversación queda debajo del botón y no se puede abrir**.
+
+### AE.6 · "24 h" estaba en la columna de las horas
+
+La fila de historias lo ponía alineado a la derecha, que es donde las filas de
+abajo ponen `Ayer` y `Martes`: se leía como una marca de tiempo. Ahora dice
+**"dura 24 h"** — una palabra que sobra en cualquier otro sitio y aquí es la
+que desambigua.
+
+### AE.7 · Y uno que no era estético
+
+**El canal de anuncios de una comunidad abría en la pantalla de chat.** La
+pantalla de comunidades navegaba a `chat/$id` para todo, y un canal abierto ahí
+no tiene muro, ni reacciones, ni comentarios: justo lo que hace que un canal
+sea un canal.
+
+> Un solo callback para dos destinos distintos compila, navega, y lleva al
+> sitio equivocado. Ahora son dos: `onAbrirCanal` y `onAbrirChat`.
+
+### Evidencias
+
+Seis capturas, antes y después, en
+[`docs/evidencias/pulido-visual/`](evidencias/pulido-visual/).
+
+**1707 pruebas en verde**, sin cambio de conteo: dos de accesibilidad
+cambiaron de expectativa, ninguna se agregó ni se quitó.

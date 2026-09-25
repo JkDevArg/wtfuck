@@ -76,8 +76,8 @@ fun AuthPantalla(onListo: () -> Unit) {
         error = null
 
         if (u.length < 3) { error = "El usuario necesita al menos 3 caracteres."; return }
-        if (!Regex("^[a-z0-9_]+$").matches(u)) { error = "Solo letras, numeros y guion bajo."; return }
-        if (clave.length < 8) { error = "La contrasena necesita al menos 8 caracteres."; return }
+        if (!Regex("^[a-z0-9_]+$").matches(u)) { error = "Solo letras, números y guion bajo."; return }
+        if (clave.length < 8) { error = "La contraseña necesita al menos 8 caracteres."; return }
 
         cargando = true
         ambito.launch {
@@ -115,7 +115,7 @@ fun AuthPantalla(onListo: () -> Unit) {
         Text("wtfuck", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Cian)
         Spacer(Modifier.height(6.dp))
         Text(
-            "Sin numero de telefono. Solo tu usuario.",
+            "Sin número de teléfono. Solo tu usuario.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextoSecundario,
         )
@@ -129,7 +129,7 @@ fun AuthPantalla(onListo: () -> Unit) {
             ) {
                 Column(Modifier.padding(14.dp)) {
                     Text(
-                        "Sesion cerrada",
+                        "Sesión cerrada",
                         style = MaterialTheme.typography.labelLarge,
                         color = Ambar,
                     )
@@ -141,7 +141,7 @@ fun AuthPantalla(onListo: () -> Unit) {
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Tus chats de este aparato siguen aqui. Vuelve a entrar.",
+                        "Tus chats de este aparato siguen aquí. Vuelve a entrar.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
                     )
@@ -169,7 +169,7 @@ fun AuthPantalla(onListo: () -> Unit) {
         OutlinedTextField(
             value = clave,
             onValueChange = { clave = it },
-            label = { Text("Contrasena") },
+            label = { Text("Contraseña") },
             singleLine = true,
             enabled = !cargando,
             isError = error != null,
@@ -183,10 +183,10 @@ fun AuthPantalla(onListo: () -> Unit) {
             OutlinedTextField(
                 value = totp,
                 onValueChange = { totp = it },
-                label = { Text("Codigo de dos pasos") },
+                label = { Text("Código de dos pasos") },
                 supportingText = {
                     Text(
-                        "De tu app de autenticacion, o uno de respaldo.",
+                        "De tu app de autenticación, o uno de respaldo.",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextoTerciario,
                     )
@@ -249,7 +249,7 @@ fun AuthPantalla(onListo: () -> Unit) {
         // Solo al ingresar: en el registro no hay nada que recuperar todavia.
         if (!esRegistro) {
             TextButton(onClick = { recuperando = true; error = null }, enabled = !cargando) {
-                Text("Olvide mi contrasena", color = TextoSecundario)
+                Text("Olvide mi contraseña", color = TextoSecundario)
             }
         }
 
@@ -317,7 +317,7 @@ fun AuthPantalla(onListo: () -> Unit) {
                 // Se limpia el error y se deja el usuario puesto: lo que sigue
                 // es entrar con la contrasena nueva, y hacerle volver a
                 // escribir el usuario seria friccion sin motivo.
-                exito = "Contrasena cambiada. Ya puedes entrar."
+                exito = "Contraseña cambiada. Ya puedes entrar."
                 error = null
             },
         )
@@ -330,7 +330,7 @@ private fun nivelColor(nivel: String) = when (nivel) {
 }
 
 private fun nivelTexto(nivel: String) = when (nivel) {
-    "STRONGBOX" -> "Tu clave vive en un chip de seguridad dedicado. Es el nivel mas alto."
+    "STRONGBOX" -> "Tu clave vive en un chip de seguridad dedicado. Es el nivel más alto."
     "TEE" -> "Tu clave vive en el enclave seguro del procesador y no puede salir de ahi."
     else -> "Este dispositivo no tiene enclave seguro (es un emulador o build de prueba). " +
         "Se permite solo en desarrollo."
@@ -380,8 +380,8 @@ private fun DialogoRecuperar(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    "Te enviamos un codigo por SMS al numero que verificaste, y con el " +
-                        "cambias la contrasena.",
+                    "Te enviamos un código por SMS al número que verificaste, y con el " +
+                        "cambias la contraseña.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoSecundario,
                 )
@@ -392,7 +392,7 @@ private fun DialogoRecuperar(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        "Esto NO sirve si cambiaste de telefono: la cuenta sigue atada al " +
+                        "Esto NO sirve si cambiaste de teléfono: la cuenta sigue atada al " +
                             "dispositivo donde se creo.",
                         style = MaterialTheme.typography.labelSmall,
                         color = Ambar,
@@ -414,14 +414,14 @@ private fun DialogoRecuperar(
                 OutlinedTextField(
                     value = telefono,
                     onValueChange = { telefono = it },
-                    label = { Text("El numero que verificaste") },
+                    label = { Text("El número que verificaste") },
                     placeholder = { Text("+51 987 654 321", color = TextoTerciario) },
                     enabled = !pedido,
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     supportingText = {
                         Text(
-                            "Guardamos solo una huella, no el numero. Por eso hay que escribirlo.",
+                            "Guardamos solo una huella, no el número. Por eso hay que escribirlo.",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextoTerciario,
                         )
@@ -434,14 +434,14 @@ private fun DialogoRecuperar(
                     OutlinedTextField(
                         value = codigo,
                         onValueChange = { if (it.length <= 6) codigo = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("Codigo de 6 digitos") },
+                        label = { Text("Código de 6 digitos") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     deprueba?.let {
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Servidor sin pasarela de SMS. Codigo: $it",
+                            "Servidor sin pasarela de SMS. Código: $it",
                             style = MaterialTheme.typography.labelSmall,
                             color = Ambar,
                         )
@@ -450,7 +450,7 @@ private fun DialogoRecuperar(
                     OutlinedTextField(
                         value = claveNueva,
                         onValueChange = { claveNueva = it },
-                        label = { Text("Contrasena nueva") },
+                        label = { Text("Contraseña nueva") },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         supportingText = {
@@ -487,7 +487,7 @@ private fun DialogoRecuperar(
                                     // usar esta pantalla para averiguar de quien
                                     // es un numero.
                                     if (it.codigoDePrueba == null) {
-                                        error = "Si los datos son correctos, el codigo ya va en camino."
+                                        error = "Si los datos son correctos, el código ya va en camino."
                                     }
                                 }
                                 .onFailure { error = it.message }
@@ -501,7 +501,7 @@ private fun DialogoRecuperar(
                         trabajando = false
                     }
                 },
-            ) { Text(if (pedido) "Cambiar la contrasena" else "Enviarme el codigo", color = Cian) }
+            ) { Text(if (pedido) "Cambiar la contraseña" else "Enviarme el código", color = Cian) }
         },
         dismissButton = {
             TextButton(enabled = !trabajando, onClick = onCerrar) {
@@ -587,7 +587,7 @@ private fun DialogoVincular(
                     }
                 } else {
                     Text(
-                        "Genera un codigo en el dispositivo donde ya tienes la cuenta, en " +
+                        "Genera un código en el dispositivo donde ya tienes la cuenta, en " +
                             "Perfil → Cuenta y seguridad → Mis dispositivos.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoSecundario,
@@ -622,7 +622,7 @@ private fun DialogoVincular(
                     OutlinedTextField(
                         value = codigo,
                         onValueChange = { if (it.length <= 9) codigo = it.uppercase() },
-                        label = { Text("Codigo de vinculacion") },
+                        label = { Text("Código de vinculacion") },
                         placeholder = { Text("XXXX-XXXX", color = TextoTerciario) },
                         singleLine = true,
                         enabled = !trabajando,
@@ -634,7 +634,7 @@ private fun DialogoVincular(
                             IconButton(onClick = { escaneando = true }, enabled = !trabajando) {
                                 Icon(
                                     Icons.Filled.QrCodeScanner,
-                                    "Escanear el codigo",
+                                    "Escanear el código",
                                     tint = Cian,
                                 )
                             }
@@ -682,8 +682,8 @@ private fun DialogoVincular(
                                     sincronizando = false
                                     if (h?.hayQuienResponda == false) {
                                         resultado = "Este es el dispositivo ${r.dispositivos} de tu " +
-                                            "cuenta. Tu otro dispositivo no esta conectado, asi que " +
-                                            "no hay de donde traer el historial: empiezas desde aqui."
+                                            "cuenta. Tu otro dispositivo no esta conectado, así que " +
+                                            "no hay de donde traer el historial: empiezas desde aquí."
                                     }
                                     trabajando = false
                                 }

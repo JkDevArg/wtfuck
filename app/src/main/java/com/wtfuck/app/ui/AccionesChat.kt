@@ -71,7 +71,7 @@ fun HojaAccionesChat(
                         color = TextoPrimario,
                     )
                     Text(
-                        if (chat.tipo == "grupo") "Grupo" else "Conversacion directa",
+                        if (chat.tipo == "grupo") "Grupo" else "Conversación directa",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextoTerciario,
                     )
@@ -165,11 +165,11 @@ fun HojaAccionesChat(
             text = {
                 Text(
                     if (esBloqueo)
-                        "No podran escribirte ni llamarte, y no veran tu foto ni tu estado. " +
+                        "No podran escribirte ni llamarte, y no verán tu foto ni tu estado. " +
                             "Puedes revertirlo cuando quieras."
                     else
-                        "Se borra el historial de este dispositivo y sales de la conversacion. " +
-                            "Esto NO borra el chat en el telefono de la otra persona.",
+                        "Se borra el historial de este dispositivo y sales de la conversación. " +
+                            "Esto NO borra el chat en el teléfono de la otra persona.",
                     color = TextoSecundario,
                 )
             },

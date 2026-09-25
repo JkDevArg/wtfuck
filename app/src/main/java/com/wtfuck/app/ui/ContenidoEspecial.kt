@@ -198,7 +198,7 @@ fun BurbujaContacto(v: ContactoSeguro, onAbrir: (String) -> Unit) {
         ) {
             Icon(Icons.Filled.Chat, null, tint = Cian, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Abrir conversacion", color = Cian, fontSize = 13.sp)
+            Text("Abrir conversación", color = Cian, fontSize = 13.sp)
         }
     }
 }
@@ -240,7 +240,7 @@ fun BurbujaEncuesta(
         Text(v.pregunta, color = TextoPrimario, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         if (v.preguntaRecortada) {
             Text(
-                "La pregunta es mas larga de lo que se puede mostrar.",
+                "La pregunta es más larga de lo que se puede mostrar.",
                 style = MaterialTheme.typography.labelSmall,
                 color = Ambar,
             )
@@ -278,7 +278,7 @@ fun BurbujaEncuesta(
             // las que le mandaron, tiene que saber que falta algo y no creer
             // que la encuesta era asi.
             Text(
-                "Esta encuesta trae mas opciones de las que se pueden mostrar.",
+                "Esta encuesta trae más opciones de las que se pueden mostrar.",
                 style = MaterialTheme.typography.labelSmall,
                 color = Ambar,
             )
@@ -286,7 +286,7 @@ fun BurbujaEncuesta(
         }
         Text(
             when (votantes) {
-                0 -> "Todavia no voto nadie"
+                0 -> "Todavía no voto nadie"
                 1 -> "1 voto"
                 else -> "$votantes votos"
             },
@@ -584,7 +584,7 @@ fun HojaEncuesta(
                 Column(Modifier.weight(1f)) {
                     Text("Varias respuestas", color = TextoPrimario, fontSize = 14.sp)
                     Text(
-                        "Cada persona puede marcar mas de una",
+                        "Cada persona puede marcar más de una",
                         color = TextoTerciario,
                         fontSize = 11.sp,
                     )
@@ -606,8 +606,8 @@ fun HojaEncuesta(
             // son los que cuentan- ven quien voto que. Ofrecer "anonima"
             // seria una etiqueta falsa.
             Text(
-                "Los votos no son anonimos: los cuentan los telefonos, no el servidor, " +
-                    "asi que cada participante ve quien voto que.",
+                "Los votos no son anonimos: los cuentan los teléfonos, no el servidor, " +
+                    "así que cada participante ve quien voto que.",
                 color = TextoTerciario,
                 fontSize = 11.sp,
             )
@@ -835,7 +835,7 @@ fun ContenidoEspecialBurbuja(
         // Una clase que este cliente no conoce: se dice, en vez de dibujar una
         // burbuja vacia que parece un error de la otra persona.
         else -> Text(
-            "Este mensaje necesita una version mas nueva de la app.",
+            "Este mensaje necesita una version más nueva de la app.",
             color = TextoTerciario,
             fontSize = 13.sp,
         )

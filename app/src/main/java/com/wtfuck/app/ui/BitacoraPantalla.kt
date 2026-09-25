@@ -70,7 +70,7 @@ fun BitacoraPantalla(onAtras: () -> Unit) {
             OutlinedTextField(
                 value = filtro,
                 onValueChange = { filtro = it },
-                placeholder = { Text("Filtrar por accion o persona", color = TextoTerciario) },
+                placeholder = { Text("Filtrar por acción o persona", color = TextoTerciario) },
                 leadingIcon = { Icon(Icons.Filled.Search, null, tint = TextoSecundario) },
                 singleLine = true,
                 shape = RoundedCornerShape(22.dp),
@@ -97,7 +97,7 @@ fun BitacoraPantalla(onAtras: () -> Unit) {
                     Icon(Icons.Filled.History, null, tint = Slate, modifier = Modifier.size(36.dp))
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        if (filtro.isBlank()) "Todavia no hay nada anotado"
+                        if (filtro.isBlank()) "Todavía no hay nada anotado"
                         else "Nada coincide con \"${filtro.trim()}\"",
                         color = TextoSecundario,
                     )

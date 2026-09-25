@@ -95,7 +95,7 @@ fun AlmacenamientoPantalla(onAtras: () -> Unit) {
             Tarjeta {
                 FilaOcupacion(
                     icono = Icons.Filled.PhoneAndroid,
-                    titulo = "En este telefono",
+                    titulo = "En este teléfono",
                     valor = Media.tamanoLegible(bytesLocales).ifBlank { "0 B" },
                     detalle = if (archivos == 1) "1 archivo descargado" else "$archivos archivos descargados",
                     color = Cian,
@@ -106,7 +106,7 @@ fun AlmacenamientoPantalla(onAtras: () -> Unit) {
                     icono = Icons.Filled.CloudQueue,
                     titulo = "En el servidor",
                     valor = if (u == null) "—" else Media.tamanoLegible(u.bytes).ifBlank { "0 B" },
-                    detalle = if (u == null) "sin conexion" else
+                    detalle = if (u == null) "sin conexión" else
                         "de ${Media.tamanoLegible(u.cuotaBytes)} de cuota · ${u.archivos} enviados",
                     color = Ambar,
                 )
@@ -142,7 +142,7 @@ fun AlmacenamientoPantalla(onAtras: () -> Unit) {
                 Spacer(Modifier.width(13.dp))
                 Column {
                     Text(
-                        "Liberar espacio en el telefono",
+                        "Liberar espacio en el teléfono",
                         color = if (archivos > 0) TextoPrimario else TextoTerciario,
                         fontSize = 15.sp,
                     )
@@ -200,7 +200,7 @@ fun AlmacenamientoPantalla(onAtras: () -> Unit) {
                 }
             }
             Text(
-                "Una foto de camara pesa varios MB y en pantalla de telefono no se " +
+                "Una foto de cámara pesa varios MB y en pantalla de teléfono no se " +
                     "distingue de la misma reducida. Bajarla antes de cifrar ahorra datos " +
                     "de quien envia, de quien recibe y cuota, a la vez.",
                 color = TextoTerciario,
@@ -261,7 +261,7 @@ fun AlmacenamientoPantalla(onAtras: () -> Unit) {
             title = { Text("Liberar espacio", color = TextoPrimario) },
             text = {
                 Text(
-                    "Se van a borrar $archivos archivos de este telefono " +
+                    "Se van a borrar $archivos archivos de este teléfono " +
                         "(${Media.tamanoLegible(bytesLocales)}).\n\n" +
                         "Los mensajes quedan. Lo que siga disponible en el servidor se " +
                         "vuelve a descargar cuando lo abras.",

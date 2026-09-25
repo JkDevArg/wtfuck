@@ -342,7 +342,7 @@ fun BandejaStickers(
     renombrando?.let { p ->
         DialogoNombre(
             titulo = "Renombrar el pack",
-            detalle = "Los stickers se quedan donde estan.",
+            detalle = "Los stickers se quedan donde están.",
             inicial = p.nombre,
             onCerrar = { renombrando = null },
             onListo = { n ->

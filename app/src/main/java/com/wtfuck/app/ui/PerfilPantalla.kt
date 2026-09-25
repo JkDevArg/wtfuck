@@ -282,7 +282,7 @@ fun PerfilPantalla(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        perfil?.estadoTexto?.ifBlank { null } ?: "Sin estado todavia",
+                        perfil?.estadoTexto?.ifBlank { null } ?: "Sin estado todavía",
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (perfil?.estadoTexto.isNullOrBlank()) TextoTerciario else TextoSecundario,
                     )
@@ -389,7 +389,7 @@ fun PerfilPantalla(
                 if (cuenta.esDesarrollador) {
                     FilaAjuste(
                         icono = Icons.Filled.DeveloperMode,
-                        titulo = "Diagnostico",
+                        titulo = "Diagnóstico",
                         detalle = "Estado de este aparato, cola y almacenamiento",
                         onClick = onDiagnostico,
                     )
@@ -398,9 +398,9 @@ fun PerfilPantalla(
                     icono = Icons.Filled.Key,
                     titulo = "Cuenta y seguridad",
                     detalle = if (sinRecuperacion) {
-                        "Sin telefono verificado no se puede recuperar"
+                        "Sin teléfono verificado no se puede recuperar"
                     } else {
-                        "Telefono, dos pasos, sesiones abiertas"
+                        "Teléfono, dos pasos, sesiones abiertas"
                     },
                     tinte = if (sinRecuperacion) Ambar else Cian,
                     onClick = onSeguridad,
@@ -473,7 +473,7 @@ fun PerfilPantalla(
             SeccionAjustes {
                 FilaAjuste(
                     icono = Icons.AutoMirrored.Filled.Logout,
-                    titulo = "Cerrar sesion",
+                    titulo = "Cerrar sesión",
                     detalle = "@$usuario",
                     tinte = Coral,
                     conDivisor = false,
@@ -534,7 +534,7 @@ fun PerfilPantalla(
         AlertDialog(
             onDismissRequest = { confirmandoSalida = false },
             containerColor = BgElev,
-            title = { Text("Cerrar sesion", color = TextoPrimario) },
+            title = { Text("Cerrar sesión", color = TextoPrimario) },
             text = {
                 Text(
                     // Lo que la gente teme al cerrar sesion es perder las
@@ -543,8 +543,8 @@ fun PerfilPantalla(
                     // Lo que SI hay que decir es lo otro: entrar con otra cuenta
                     // en este aparato si lo borra, porque no puede quedar el
                     // historial de una persona a la vista de la siguiente.
-                    "Tus conversaciones quedan guardadas y cifradas en este telefono. " +
-                        "Vuelve a entrar con @$usuario y siguen aca.\n\n" +
+                    "Tus conversaciones quedan guardadas y cifradas en este teléfono. " +
+                        "Vuelve a entrar con @$usuario y siguen acá.\n\n" +
                         "Si en cambio entras con OTRA cuenta en este aparato, el historial " +
                         "local se borra.",
                     color = TextoSecundario,
@@ -564,7 +564,7 @@ fun PerfilPantalla(
                         app.repo.cerrarSesion()
                         onCerrarSesion()
                     }
-                }) { Text("Cerrar sesion", color = Coral) }
+                }) { Text("Cerrar sesión", color = Coral) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmandoSalida = false }) {

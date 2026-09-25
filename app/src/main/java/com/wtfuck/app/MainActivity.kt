@@ -374,10 +374,11 @@ private fun Raiz() {
         composable("comunidades") {
             ComunidadesPantalla(
                 onAtras = { nav.popBackStack() },
-                // El canal de anuncios y los grupos se abren con las pantallas
-                // que ya existen: una comunidad no tiene conversaciones
-                // propias, agrupa las que ya hay.
-                onAbrirConversacion = { id -> nav.navigate("chat/$id") },
+                // Cada cosa a su pantalla: una comunidad no tiene
+                // conversaciones propias, agrupa las que ya hay, pero el canal
+                // de anuncios es un CANAL y la pantalla de chat no tiene muro.
+                onAbrirCanal = { id -> nav.navigate("canal/$id") },
+                onAbrirChat = { id -> nav.navigate("chat/$id") },
             )
         }
 

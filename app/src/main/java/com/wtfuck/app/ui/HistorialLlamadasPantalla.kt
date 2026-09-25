@@ -71,13 +71,13 @@ fun HistorialLlamadasPantalla(onAtras: () -> Unit, onAbrirChat: (String) -> Unit
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    "Todavia no hay llamadas",
+                    "Todavía no hay llamadas",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextoSecundario,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Llama desde un chat con el icono del telefono.",
+                    "Llama desde un chat con el icono del teléfono.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextoTerciario,
                 )

@@ -200,7 +200,7 @@ fun DescubrirCanales(
                         Icon(Icons.Filled.Campaign, null, tint = Slate, modifier = Modifier.size(42.dp))
                         Spacer(Modifier.height(14.dp))
                         Text(
-                            "Todavia no hay canales publicos.",
+                            "Todavía no hay canales publicos.",
                             color = TextoSecundario,
                             fontSize = 14.sp,
                             textAlign = TextAlign.Center,
@@ -209,7 +209,7 @@ fun DescubrirCanales(
                         Text(
                             "Los canales los aprueba el dueno de la plataforma: el que " +
                                 "crees aparece en esta lista cuando lo revise. A un canal " +
-                                "privado se entra por invitacion y no se lista aqui.",
+                                "privado se entra por invitacion y no se lista aquí.",
                             color = TextoTerciario,
                             fontSize = 12.sp,
                             textAlign = TextAlign.Center,
@@ -222,7 +222,11 @@ fun DescubrirCanales(
                         item {
                             Text(
                                 "Mis canales",
-                                color = Cian,
+                                // Del mismo color que "Descubrir mas canales":
+                                // son dos encabezados del mismo rango, y
+                                // pintarlos distinto sugiere una jerarquia que
+                                // no existe.
+                                color = TextoTerciario,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(
                                     start = 18.dp, top = 2.dp, bottom = 6.dp,
@@ -242,7 +246,7 @@ fun DescubrirCanales(
                             // una lista propia encima, se lee como si fueran
                             // dos veces lo mismo.
                             if (mios.isEmpty()) "Canales de la plataforma"
-                            else "Descubrir mas canales",
+                            else "Descubrir más canales",
                             color = TextoTerciario,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(start = 18.dp, top = 2.dp, bottom = 6.dp),
@@ -261,7 +265,7 @@ fun DescubrirCanales(
                     Modifier.fillMaxSize(), contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "Ningun canal aprobado coincide con \"${consulta.trim()}\".",
+                        "Ningún canal aprobado coincide con \"${consulta.trim()}\".",
                         color = TextoSecundario,
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center,
@@ -310,13 +314,21 @@ private fun FilaCanal(k: CanalEnBusqueda, onAbrir: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier.size(46.dp).clip(CircleShape).background(Cian.copy(alpha = 0.16f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Filled.Campaign, null, tint = Cian, modifier = Modifier.size(23.dp))
-        }
-        Spacer(Modifier.width(14.dp))
+        // El MISMO `Avatar` que la seccion de arriba, y no un circulo hecho a
+        // mano aqui.
+        //
+        // Esta fila se dibujaba con un Box propio, de 46 dp y **siempre cian**,
+        // mientras "Mis canales" usaba el `Avatar` compartido de 44 dp con el
+        // color derivado del nombre. Dos implementaciones de lo mismo, una
+        // encima de la otra en la misma pantalla: se leia como dos listas de
+        // dos aplicaciones distintas.
+        Avatar(
+            nombre = k.nombre.ifBlank { k.alias },
+            url = null,
+            tamano = 44.dp,
+            esCanal = true,
+        )
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 k.nombre.ifBlank { "@${k.alias}" },
@@ -418,10 +430,10 @@ private fun DialogoCrearCanal(onCerrar: () -> Unit, onCrear: (CrearCanalReq) -> 
                 Text(
                     if (publico) {
                         "Cualquiera lo encuentra y se suscribe. El historial se guarda en el " +
-                            "servidor, asi que el contenido NO va cifrado de extremo a extremo."
+                            "servidor, así que el contenido NO va cifrado de extremo a extremo."
                     } else {
                         "Solo por invitacion. El contenido va cifrado de extremo a extremo, y " +
-                            "por eso quien entre despues no vera lo publicado antes."
+                            "por eso quien entre después no verá lo publicado antes."
                     },
                     color = if (publico) Ambar else Cian,
                     fontSize = 12.sp,
@@ -482,7 +494,13 @@ private fun FilaMiCanal(c: ChatFila, onAbrir: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(nombre = c.nombre, url = null, tamano = 44.dp, esGrupo = true)
+        // `esCanal` y no `esGrupo`: esto ES un canal.
+        //
+        // Con `esGrupo` salia el icono de dos personas, o sea el MISMO canal
+        // dibujado de dos maneras distintas en la misma pantalla -megafono
+        // abajo en "Descubrir", grupo arriba en "Mis canales"-. `Avatar` ya
+        // tenia la bandera; esta fila pasaba la otra.
+        Avatar(nombre = c.nombre, url = null, tamano = 44.dp, esCanal = true)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -493,7 +511,7 @@ private fun FilaMiCanal(c: ChatFila, onAbrir: () -> Unit) {
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                c.ultimoTexto?.takeIf { it.isNotBlank() } ?: "Sin publicaciones todavia",
+                c.ultimoTexto?.takeIf { it.isNotBlank() } ?: "Sin publicaciones todavía",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextoTerciario,
                 maxLines = 1,

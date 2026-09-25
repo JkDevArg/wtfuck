@@ -119,8 +119,8 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             Text(
-                "Cada dispositivo es una copia mas de tus mensajes. Si ves uno que no " +
-                    "reconoces, revocalo y cambia tu contrasena.",
+                "Cada dispositivo es una copia más de tus mensajes. Si ves uno que no " +
+                    "reconoces, revocalo y cambia tu contraseña.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextoSecundario,
             )
@@ -159,7 +159,7 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "El servidor no guarda tus mensajes, asi que el historial solo puede " +
+                    "El servidor no guarda tus mensajes, así que el historial solo puede " +
                         "llegar desde otro de tus dispositivos, y solo si esta encendido.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoSecundario,
@@ -196,7 +196,7 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Se genera un codigo aqui y lo escribes en el aparato nuevo. Vive cinco " +
+                    "Se genera un código aquí y lo escribes en el aparato nuevo. Vive cinco " +
                         "minutos y sirve una sola vez.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoSecundario,
@@ -208,7 +208,7 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
                 ) {
                     Icon(Icons.Filled.AddLink, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Generar codigo")
+                    Text("Generar código")
                 }
             } else {
                 Surface(
@@ -222,7 +222,7 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
                         Text(
                             // Se dice por que, no solo que no se puede.
                             "Solo el dispositivo principal puede agregar o revocar otros. Es lo " +
-                                "que impide que robar este aparato alcance para meter mas.",
+                                "que impide que robar este aparato alcance para meter más.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextoSecundario,
                         )
@@ -240,10 +240,10 @@ fun DispositivosPantalla(onAtras: () -> Unit) {
 
     pidiendoClave?.let { que ->
         DialogoClaveDispositivo(
-            titulo = if (que == "codigo") "Generar codigo" else "Hacer principal",
+            titulo = if (que == "codigo") "Generar código" else "Hacer principal",
             explicacion = if (que == "codigo") {
-                "Pedimos la contrasena porque vincular un dispositivo da acceso a todo lo " +
-                    "que llegue desde ahora. Una sesion robada no deberia poder hacerlo."
+                "Pedimos la contraseña porque vincular un dispositivo da acceso a todo lo " +
+                    "que llegue desde ahora. Una sesión robada no deberia poder hacerlo."
             } else {
                 "El principal es el unico que autoriza dispositivos nuevos. Cambiarlo es una " +
                     "decision de la cuenta, no de este aparato."
@@ -340,7 +340,7 @@ private fun FilaDispositivo(
                     Text(
                         // Explica un estado que si no se ve parece un fallo:
                         // un aparato vinculado que no recibe mensajes.
-                        "Todavia no publico sus claves: no puede recibir mensajes.",
+                        "Todavía no publico sus claves: no puede recibir mensajes.",
                         style = MaterialTheme.typography.labelSmall,
                         color = Ambar,
                     )
@@ -388,12 +388,12 @@ private fun DialogoCodigo(c: CodigoVinculacion, onCerrar: () -> Unit) {
     AlertDialog(
         onDismissRequest = onCerrar,
         containerColor = BgElev,
-        title = { Text("Codigo de vinculacion", color = TextoPrimario, fontSize = 18.sp) },
+        title = { Text("Código de vinculacion", color = TextoPrimario, fontSize = 18.sp) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text(
                     "Escanealo desde el aparato nuevo, en \"Vincular a una cuenta\". " +
-                        "Tambien se puede escribir.",
+                        "También se puede escribir.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoSecundario,
                 )
@@ -455,7 +455,7 @@ private fun DialogoClaveDispositivo(
                 OutlinedTextField(
                     value = clave,
                     onValueChange = { clave = it },
-                    label = { Text("Tu contrasena") },
+                    label = { Text("Tu contraseña") },
                     singleLine = true,
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     shape = RoundedCornerShape(10.dp),

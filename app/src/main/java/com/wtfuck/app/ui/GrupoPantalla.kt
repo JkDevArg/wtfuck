@@ -174,7 +174,7 @@ fun GrupoPantalla(
                 if (puedoAdministrar) {
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(onClick = { editandoInfo = true }) {
-                        Text("Editar informacion", color = Cian)
+                        Text("Editar información", color = Cian)
                     }
                 }
             }
@@ -215,7 +215,7 @@ fun GrupoPantalla(
             // --- configuracion --------------------------------------------
             if (puedoAdministrar) {
                 cfg?.let { c ->
-                    Seccion("Configuracion")
+                    Seccion("Configuración")
                     Interruptor("Grupo publico", "Cualquiera con el enlace puede entrar", c.publico) { v ->
                         guardar(app, ambito, conversacionId, c.copy(publico = v), { cfg = it }, { aviso = it })
                     }
@@ -395,7 +395,7 @@ fun GrupoPantalla(
             AlertDialog(
                 onDismissRequest = { editandoInfo = false },
                 containerColor = BgElev,
-                title = { Text("Editar informacion", color = TextoPrimario) },
+                title = { Text("Editar información", color = TextoPrimario) },
                 text = {
                     Column {
                         OutlinedTextField(
@@ -406,7 +406,7 @@ fun GrupoPantalla(
                         Spacer(Modifier.height(10.dp))
                         OutlinedTextField(
                             value = desc, onValueChange = { if (it.length <= 500) desc = it },
-                            label = { Text("Descripcion") },
+                            label = { Text("Descripción") },
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(10.dp))
@@ -684,9 +684,9 @@ private fun HojaMiembro(
             text = {
                 Text(
                     if (vetar)
-                        "@${miembro.usuario.username} sale del grupo y no podra volver, ni siquiera con un enlace valido."
+                        "@${miembro.usuario.username} sale del grupo y no podrá volver, ni siquiera con un enlace valido."
                     else
-                        "@${miembro.usuario.username} sale del grupo, pero podra volver a entrar con un enlace.",
+                        "@${miembro.usuario.username} sale del grupo, pero podrá volver a entrar con un enlace.",
                     color = TextoSecundario,
                 )
             },

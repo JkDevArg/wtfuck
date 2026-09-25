@@ -93,7 +93,7 @@ fun EscanerQr(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.QrCodeScanner, null, tint = Cian, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("Escanear el codigo", color = TextoPrimario)
+                Text("Escanear el código", color = TextoPrimario)
             }
         },
         text = {
@@ -118,7 +118,7 @@ fun EscanerQr(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            "Hace falta permiso de camara.",
+                            "Hace falta permiso de cámara.",
                             color = TextoSecundario,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -126,7 +126,7 @@ fun EscanerQr(
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Si no funciona, el codigo tambien se puede escribir a mano.",
+                    "Si no funciona, el código también se puede escribir a mano.",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextoTerciario,
                 )

@@ -175,9 +175,13 @@ fun FilaHistorias(
             )
             Spacer(Modifier.weight(1f))
             Text(
-                // Se dice cuanto dura, que es la unica cosa que alguien
-                // necesita saber antes de publicar una y no despues.
-                "24 h",
+                // "dura 24 h" y no "24 h" a secas.
+                //
+                // Esta alineado a la derecha, que en las filas de abajo es la
+                // columna de la HORA del ultimo mensaje -"Ayer", "Martes"-.
+                // Un "24 h" ahi se lee como una marca de tiempo. La palabra
+                // sobra en cualquier otro sitio y aqui es la que desambigua.
+                "dura 24 h",
                 color = TextoTerciario,
                 fontSize = 12.sp,
             )
@@ -518,7 +522,7 @@ fun VisorHistorias(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             when (actual.vistas) {
-                                0 -> "Todavia no la vio nadie"
+                                0 -> "Todavía no la vio nadie"
                                 1 -> "La vio 1 persona"
                                 else -> "La vieron ${actual.vistas} personas"
                             },
@@ -1029,7 +1033,7 @@ fun HojaPublicarHistoria(
                             // Se dice que no hay que rehacer nada: es la
                             // duda inmediata al ver un error despues de
                             // elegir una foto y escribir un pie.
-                            "Tu foto y tu texto siguen aqui. Tocá Publicar otra vez.",
+                            "Tu foto y tu texto siguen aquí. Tocá Publicar otra vez.",
                             color = TextoTerciario,
                             fontSize = 11.5.sp,
                         )

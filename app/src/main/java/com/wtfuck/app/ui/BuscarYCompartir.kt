@@ -78,7 +78,7 @@ fun BarraBusquedaChat(
             TextField(
                 value = consulta,
                 onValueChange = onConsulta,
-                placeholder = { Text("Buscar en esta conversacion", color = TextoTerciario) },
+                placeholder = { Text("Buscar en esta conversación", color = TextoTerciario) },
                 singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     imeAction = ImeAction.Search,
@@ -265,7 +265,7 @@ fun HojaUbicacion(
                 value = etiqueta,
                 onValueChange = { if (it.length <= 80) etiqueta = it },
                 label = { Text("Nota (opcional)", color = TextoTerciario) },
-                placeholder = { Text("Estoy aca", color = TextoTerciario) },
+                placeholder = { Text("Estoy acá", color = TextoTerciario) },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Cian, unfocusedBorderColor = Slate,
@@ -329,7 +329,7 @@ private suspend fun posicionActual(ctx: Context): Location? {
 
     val proveedores = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
         .filter { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
-    if (proveedores.isEmpty()) error("La ubicacion del telefono esta apagada.")
+    if (proveedores.isEmpty()) error("La ubicacion del teléfono esta apagada.")
 
     val ahora = System.currentTimeMillis()
     val reciente = proveedores
@@ -419,7 +419,7 @@ fun HojaContacto(
             Text("Compartir contacto", style = MaterialTheme.typography.titleMedium, color = TextoPrimario)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Solo se comparte el usuario de esta app, nunca un telefono.",
+                "Solo se comparte el usuario de esta app, nunca un teléfono.",
                 color = TextoTerciario,
                 fontSize = 11.sp,
             )
@@ -464,7 +464,7 @@ fun HojaContacto(
                 ) { CircularProgressIndicator(color = Cian) }
 
                 lista!!.isEmpty() -> Text(
-                    "Todavia no tienes contactos guardados. Se agregan desde la " +
+                    "Todavía no tienes contactos guardados. Se agregan desde la " +
                         "pestana Contactos.",
                     color = TextoSecundario,
                     style = MaterialTheme.typography.bodyMedium,

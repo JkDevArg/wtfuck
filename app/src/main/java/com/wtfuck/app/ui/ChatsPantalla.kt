@@ -282,7 +282,7 @@ fun ChatsPantalla(
                         // Menu de tres puntos. Cerrar sesion NO esta aqui: vive
                         // dentro del perfil, para que no se toque por accidente.
                         IconButton(onClick = { menuAbierto = true }) {
-                            Icon(Icons.Filled.MoreVert, "Mas opciones", tint = TextoSecundario)
+                            Icon(Icons.Filled.MoreVert, "Más opciones", tint = TextoSecundario)
                         }
                         DropdownMenu(
                             expanded = menuAbierto,
@@ -375,7 +375,7 @@ fun ChatsPantalla(
 
         when {
             chats.isEmpty() -> Vacio(
-                "Todavia no tienes conversaciones",
+                "Todavía no tienes conversaciones",
                 "Toca Nuevo, abajo, y escribe el usuario de alguien.",
             )
             busqueda.isNotBlank() && visibles.isEmpty() -> Vacio(
@@ -387,8 +387,8 @@ fun ChatsPantalla(
             visibles.isEmpty() -> Vacio(
                 when (filtro) {
                     Filtro.SIN_LEER -> "Todo leido"
-                    Filtro.GRUPOS -> "Ningun grupo"
-                    Filtro.TODOS -> "Nada por aqui"
+                    Filtro.GRUPOS -> "Ningún grupo"
+                    Filtro.TODOS -> "Nada por aquí"
                 },
                 when (filtro) {
                     Filtro.SIN_LEER -> "No te queda nada pendiente."
@@ -396,7 +396,16 @@ fun ChatsPantalla(
                     Filtro.TODOS -> "Toca Nuevo para empezar."
                 },
             )
-            else -> LazyColumn(Modifier.fillMaxSize()) {
+            else -> LazyColumn(
+                Modifier.fillMaxSize(),
+                // Hueco al final para el boton flotante.
+                //
+                // Sin esto la ultima conversacion queda DEBAJO del boton
+                // "Nuevo" y no se puede abrir: la lista termina justo donde el
+                // boton empieza. Con pocos chats no se nota porque la lista no
+                // llega hasta abajo.
+                contentPadding = PaddingValues(bottom = 88.dp),
+            ) {
                 if (!verArchivados && nArchivados > 0) {
                     item {
                         Row(
@@ -601,7 +610,7 @@ fun ChatsPantalla(
             text = {
                 Text(
                     "Un moderador la va a revisar. No vas a recibir aviso del resultado: " +
-                        "lo que se decida sobre otra cuenta no es informacion tuya.",
+                        "lo que se decida sobre otra cuenta no es información tuya.",
                     color = TextoSecundario,
                 )
             },
@@ -645,7 +654,7 @@ fun ChatsPantalla(
             containerColor = BgElev,
             title = {
                 Text(
-                    if (cuantos == 1) "Eliminar la conversacion" else "Eliminar $cuantos conversaciones",
+                    if (cuantos == 1) "Eliminar la conversación" else "Eliminar $cuantos conversaciones",
                     color = TextoPrimario,
                 )
             },
@@ -655,11 +664,11 @@ fun ChatsPantalla(
                     // app es verdad y cambia la decision: no hay copia en un
                     // servidor de la que recuperarlo despues.
                     if (cuantos == 1) {
-                        "Se borra de este aparato. El historial no esta en ningun servidor, " +
-                            "asi que no se puede recuperar."
+                        "Se borra de este aparato. El historial no esta en ningún servidor, " +
+                            "así que no se puede recuperar."
                     } else {
                         "Se borran de este aparato las $cuantos. El historial no esta en " +
-                            "ningun servidor, asi que no se puede recuperar."
+                            "ningún servidor, así que no se puede recuperar."
                     },
                     color = TextoSecundario,
                 )
@@ -857,12 +866,12 @@ private fun BarraEstado(conexion: EstadoConexion, enCola: Int, fallidos: Int) {
         fallidos > 0 && enCola == 0 ->
             Coral to "$fallidos ${if (fallidos == 1) "mensaje no se envio" else "mensajes no se enviaron"}"
         enCola > 0 && conexion != EstadoConexion.CONECTADO ->
-            Ambar to "Sin conexion - $enCola ${if (enCola == 1) "mensaje" else "mensajes"} en cola"
+            Ambar to "Sin conexión - $enCola ${if (enCola == 1) "mensaje" else "mensajes"} en cola"
         conexion == EstadoConexion.CONECTADO && enCola > 0 ->
             Ambar to "Enviando $enCola ${if (enCola == 1) "pendiente" else "pendientes"}..."
         conexion == EstadoConexion.CONECTADO -> Cian to "Conectado"
         conexion == EstadoConexion.CONECTANDO -> Ambar to "Conectando..."
-        else -> Coral to "Sin conexion"
+        else -> Coral to "Sin conexión"
     }
     Surface(color = BgElev, modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -1069,7 +1078,7 @@ private fun DialogoNueva(
     AlertDialog(
         onDismissRequest = onCerrar,
         containerColor = BgElev,
-        title = { Text(if (esGrupo) "Nuevo grupo" else "Nueva conversacion", color = TextoPrimario) },
+        title = { Text(if (esGrupo) "Nuevo grupo" else "Nueva conversación", color = TextoPrimario) },
         text = {
             Column {
                 if (esGrupo) {
@@ -1092,7 +1101,7 @@ private fun DialogoNueva(
                 )
                 Spacer(Modifier.height(8.dp))
                 TextButton(onClick = { esGrupo = !esGrupo }) {
-                    Text(if (esGrupo) "Mejor una conversacion directa" else "Crear un grupo", color = Cian)
+                    Text(if (esGrupo) "Mejor una conversación directa" else "Crear un grupo", color = Cian)
                 }
             }
         },
@@ -1129,7 +1138,7 @@ private fun DialogoNueva(
  */
 private fun previaDe(c: ChatFila): String {
     val clase = c.ultimoAdjuntoClase.orEmpty()
-    if (clase.isBlank()) return c.ultimoTexto ?: "Sin mensajes todavia"
+    if (clase.isBlank()) return c.ultimoTexto ?: "Sin mensajes todavía"
     return Media.resumen(clase, c.ultimoTexto.orEmpty(), c.ultimoAdjuntoNombre.orEmpty())
 }
 
@@ -1229,7 +1238,7 @@ private fun MenuDeCreacion(
         if (abierto) {
             OpcionDeCreacion("Canal", Icons.Filled.Campaign) { onAbrir(false); onCanal() }
             OpcionDeCreacion("Grupo", Icons.Filled.Group) { onAbrir(false); onGrupo() }
-            OpcionDeCreacion("Conversacion", Icons.Filled.PersonAdd) { onAbrir(false); onConversacion() }
+            OpcionDeCreacion("Conversación", Icons.Filled.PersonAdd) { onAbrir(false); onConversacion() }
             Spacer(Modifier.height(6.dp))
         }
         ExtendedFloatingActionButton(
@@ -1372,7 +1381,7 @@ private fun BarraSeleccion(
             // Solo con uno marcado: lo de dentro no tiene version en lote.
             unoSolo?.let { c ->
                 IconButton(onClick = { onMas(c) }) {
-                    Icon(Icons.Filled.MoreVert, "Mas acciones de este chat", tint = TextoSecundario)
+                    Icon(Icons.Filled.MoreVert, "Más acciones de este chat", tint = TextoSecundario)
                 }
             }
         },

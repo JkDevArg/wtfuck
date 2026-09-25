@@ -117,7 +117,7 @@ fun NotificacionesPantalla(onAtras: () -> Unit) {
             FilaAviso(
                 icono = Icons.Filled.Visibility,
                 titulo = "Mostrar quien escribe",
-                detalle = "Con esto apagado, la notificacion solo dice que hay algo nuevo",
+                detalle = "Con esto apagado, la notificación solo dice que hay algo nuevo",
                 marcado = mostrarQuien,
             ) { mostrarQuien = it; ajustes.mostrarQuien = it }
 
@@ -126,7 +126,7 @@ fun NotificacionesPantalla(onAtras: () -> Unit) {
                 // Esto no es un ajuste: es la promesa que la app cumple
                 // siempre, y conviene que se lea aqui, donde alguien podria
                 // esperar lo contrario.
-                "El texto de los mensajes NUNCA aparece en una notificacion. Va cifrado " +
+                "El texto de los mensajes NUNCA aparece en una notificación. Va cifrado " +
                     "de extremo a extremo, y copiarlo a la pantalla de bloqueo lo dejaria " +
                     "legible justo donde cualquiera lo ve sin desbloquear nada.",
                 style = MaterialTheme.typography.bodySmall,
@@ -191,7 +191,7 @@ fun NotificacionesPantalla(onAtras: () -> Unit) {
                     // emboscada.
                     "Las advertencias y sanciones de moderacion no se pueden apagar: una " +
                         "advertencia que no llega no cumple su unica funcion, que es dar " +
-                        "la oportunidad de corregir antes de la sancion.",
+                        "la oportunidad de corregir antes de la sanción.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoTerciario,
                 )
