@@ -1,0 +1,54 @@
+# TLS automatico. Caddy saca y renueva el certificado solo.
+#
+# Los dominios salen del entorno (ver docker-compose.produccion.yml).
+
+{$DOMINIO_API} {
+	# El WebSocket no necesita nada especial aqui: Caddy pasa el `Upgrade`
+	# por defecto, que es la mitad de la configuracion de nginx que esto
+	# reemplaza.
+	reverse_proxy servidor:8300 {
+		# Sin esto, TODAS las sesiones y eventos de seguridad quedan
+		# registrados con la IP del proxy, que es el propio contenedor.
+		# El limite de intentos fallidos por IP (modulo AP) contaria a
+		# todo el mundo como una sola persona.
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	# El servidor manda ping cada 20 s y el cliente corta a los 40. Un
+	# timeout de lectura mas corto que eso rompe sockets sanos.
+	timeouts {
+		read_body 30s
+	}
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		# La API no se dibuja en ningun sitio.
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}
+
+{$DOMINIO_MEDIA} {
+	# El almacen de objetos, en su propio dominio.
+	#
+	# Aparte y no en una ruta de la API por una razon de seguridad y no de
+	# orden: lo que se sirve son archivos subidos por gente. En el mismo
+	# origen que la API, un archivo servido con el tipo equivocado se
+	# ejecuta con los permisos de ese origen. En otro dominio, no.
+	#
+	# Los archivos van cifrados de extremo a extremo: MinIO devuelve bytes
+	# que ni el ni este proxy pueden leer.
+	reverse_proxy minio:9000
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		# Que nada de aqui se interprete como pagina, pase lo que pase.
+		Content-Security-Policy "default-src 'none'; sandbox"
+		-Server
+	}
+}

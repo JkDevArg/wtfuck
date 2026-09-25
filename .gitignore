@@ -13,6 +13,11 @@ local.properties
 # Secretos y entorno local
 *.pem
 .env
+# El de produccion lleva secretos de verdad. `.env` a secas NO lo tapa: un
+# patron sin comodin coincide con ese nombre exacto y con ningun otro.
+.env.produccion
+# Los volcados de la base. Son el historial de todo el mundo en claro.
+/copias/
 
 # Salidas de pruebas
 app/build/

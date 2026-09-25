@@ -123,6 +123,92 @@ teléfono.
 
 ---
 
+## Dónde montarlo
+
+### En una máquina, con Docker
+
+```bash
+cp .env.produccion.ejemplo .env.produccion   # y rellenarlo
+docker compose -f docker-compose.produccion.yml up -d
+```
+
+Eso levanta el servidor, Postgres, Redis, MinIO, coturn, Caddy con TLS
+automático y un `pg_dump` diario. **Sólo Caddy y coturn tocan internet**: la
+base, Redis y el almacén no publican ni un puerto.
+
+> El compose de desarrollo saca Postgres en el 5433 y MinIO en el 9000 porque
+> ahí es cómodo. Copiar eso a un servidor público es como se regalan las bases
+> de datos: un Postgres escuchando en `0.0.0.0` lo encuentra un escáner en
+> horas, no en meses.
+
+### Qué tipo de sitio sirve, y cuál no
+
+**coturn es lo que manda**, y se pasa por alto siempre. Necesita una IP
+pública propia y un rango de **puertos UDP** para los relevos. Eso descarta de
+entrada la mayoría de las plataformas de aplicaciones —App Service, Heroku,
+Cloud Run, App Runner— que sólo enrutan HTTP.
+
+Se puede partir: la API en una plataforma gestionada y coturn en una máquina
+aparte. Pero entonces son dos sitios que mantener, dos facturas y dos formas
+de fallar, para una app cuyo cuello de botella no es el cómputo. **Una VPS con
+todo junto es la respuesta correcta para empezar**, y sigue siéndolo bastante
+más arriba de lo que parece.
+
+### Qué tamaño
+
+Como punto de partida para las primeras centenas de personas: **4 vCPU, 8 GB
+de RAM y 80 GB de disco**. El reparto real:
+
+- El **servidor** es ligero: mueve sobres opacos y no los abre. Un JVM con
+  1–2 GB va sobrado.
+- **Postgres** es donde crece la cosa, pero menos de lo que se teme: el
+  historial vive en los teléfonos, no aquí. La base guarda cuentas, grupos,
+  metadatos y la cola de sobres pendientes, que se **borra al entregar**.
+- **MinIO** es lo que come disco de verdad. Los adjuntos van cifrados y con
+  vencimiento; el disco se dimensiona por lo que se retenga, no por usuarios.
+- **coturn** es lo que come **tráfico**: una videollamada relevada son unos
+  2 Mbit/s en cada sentido, y no todas se relevan —sólo las que ICE no puede
+  conectar directo, típicamente entre un 10 % y un 20 % en redes móviles—.
+  Ese es el número que hay que mirar al elegir proveedor, no la CPU.
+
+**Y ahí está la trampa de costos.** Varios proveedores venden la máquina
+barata y cobran el tráfico aparte, caro. Para esta app eso invierte el
+cálculo: lo que se paga no es el servidor, son los relevos. Conviene mirar
+cuánto tráfico incluye el plan **antes** que los vCPU.
+
+### Dónde, geográficamente
+
+Para usuarios en Perú, **la latencia de la señalización no importa mucho y la
+del relevo sí**. Un mensaje tolera 200 ms sin que nadie lo note; una llamada
+relevada por un TURN en Europa suma ida y vuelta al otro lado del Atlántico y
+se nota entero.
+
+Así que el orden es: **São Paulo o Miami** antes que Europa, y Europa antes
+que Asia. Si el proveedor sólo tiene Europa, la API aguanta; lo que hay que
+acercar es coturn.
+
+### Lo que hace falta además de la máquina
+
+1. **Un dominio**, con dos nombres apuntando a la IP: `api.` y `media.`.
+   Caddy saca los certificados solo la primera vez que arranca.
+2. **El cortafuegos abierto** en 80, 443 (TCP y UDP), 3478 y el rango
+   `49160-49200` en **UDP**. Ese rango es lo que se olvida, y el síntoma es
+   una llamada que se queda conectando para siempre sin ningún error.
+3. **Firma del APK** y dónde distribuirlo. Google Play exige política de
+   privacidad y un formulario de seguridad de datos; para una app cerrada, un
+   APK firmado servido desde el propio dominio evita esa cola — a cambio de no
+   tener actualizaciones automáticas.
+4. **FCM**, si se quiere que suene con la app cerrada. Ver "Push: encenderlo".
+
+### Lo que NO se puede escalar a lo bruto
+
+Más instancias del servidor funcionan —para eso está Redis y el módulo N.4—
+pero **Postgres y MinIO son uno solo**. Antes de necesitar réplicas de base
+hacen falta muchos más usuarios de los que este proyecto va a ver, y la
+respuesta entonces no es más instancias: es un Postgres gestionado.
+
+---
+
 ## En un servidor de verdad
 
 ### Lo que cambia, y no es opcional
@@ -145,12 +231,19 @@ Y **no se puede rotar sin más**: cambiarlo invalida todos los hashes guardados,
 o sea que nadie se encuentra por teléfono y nadie recupera su cuenta. Rotarlo es
 una migración, no un cambio de variable.
 
-**3. HTTPS por delante, y `usesCleartextTraffic` fuera.**
+**3. HTTPS por delante.**
 
-El servidor habla HTTP en claro; el TLS lo termina un proxy (nginx, Caddy,
-Traefik). El manifiesto de la app tiene `usesCleartextTraffic="true"` **para el
-emulador** y eso hay que quitarlo en la variante de release, junto con apuntar
-`BuildConfig.SERVIDOR` al dominio real.
+El servidor habla HTTP en claro; el TLS lo termina un proxy (Caddy, nginx,
+Traefik).
+
+> Esto **ya no hay que tocarlo en el manifiesto**. Hasta el módulo AP la app
+> llevaba `usesCleartextTraffic="true"`, global y también en release, y aquí
+> decía que había que quitarlo a mano en la variante de release — o sea, un
+> paso manual que protegía a todo el mundo y que bastaba con olvidar una vez.
+> Ahora lo declara `res/xml/seguridad_de_red.xml`: claro prohibido salvo en el
+> propio aparato y el emulador, y sólo anclas de confianza del sistema.
+> Lo único que queda por hacer es apuntar `BuildConfig.SERVIDOR` al dominio
+> real, que ya está en `app/build.gradle.kts`.
 
 El WebSocket necesita que el proxy pase el `Upgrade`:
 

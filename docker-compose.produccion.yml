@@ -1,0 +1,179 @@
+# Todo lo que hace falta para que esto salga a internet, en una maquina.
+#
+#   docker compose -f docker-compose.produccion.yml up -d
+#
+# Antes: copiar `.env.produccion.ejemplo` a `.env.produccion` y rellenarlo.
+# Ver docs/09-DESPLIEGUE.md.
+#
+# ## La regla que ordena este archivo
+#
+# **Solo Caddy y coturn tocan internet.** Postgres, Redis, MinIO y el propio
+# servidor no publican ni un puerto: se hablan por la red interna de Docker y
+# no existen desde fuera.
+#
+# En el compose de desarrollo Postgres sale en el 5433 y MinIO en el 9000
+# porque ahi es comodo. Copiar eso a un servidor publico es como se regalan las
+# bases de datos: un Postgres con contrasena escuchando en 0.0.0.0 lo encuentra
+# un escaner en horas, no en meses.
+#
+# Redis importa mas de lo que parece desde el modulo AP: ahi viven los
+# contadores de intentos fallidos de ingreso. Quien pueda escribirle borra el
+# limite de fuerza bruta. Por eso lleva contrasena Y se queda sin publicar.
+
+name: wtfuck
+
+services:
+
+  # ----------------------------------------------------------------- TLS
+  #
+  # Caddy y no nginx por una razon concreta: saca y renueva el certificado de
+  # Let's Encrypt solo, sin cron, sin certbot y sin que nadie se acuerde de
+  # renovar en 89 dias. El `Caddyfile` son ocho lineas.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./despliegue/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_datos:/data      # los certificados viven aqui: NO borrar
+      - caddy_config:/config
+    environment:
+      DOMINIO_API: ${DOMINIO_API}
+      DOMINIO_MEDIA: ${DOMINIO_MEDIA}
+    depends_on:
+      - servidor
+
+  # -------------------------------------------------------------- el servidor
+  servidor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env.produccion
+    environment:
+      WTFUCK_PUERTO: 8300
+      WTFUCK_DB_URL: jdbc:postgresql://db:5432/wtfuck
+      WTFUCK_REDIS_URL: redis://:${REDIS_PASS}@redis:6379
+      # El interruptor mas importante de todo el despliegue.
+      #
+      # En `true` se aceptan aparatos sin enclave seguro, o sea emuladores, y
+      # el vinculo de hardware —"una cuenta por dispositivo"— se salta con un
+      # emulador y cinco minutos. Va explicito aqui y no por defecto para que
+      # se vea al leer el archivo.
+      WTFUCK_PERMITIR_SOFTWARE_DEV: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    # Sin `ports`. Caddy lo alcanza por la red interna.
+
+  # ------------------------------------------------------------------ base
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wtfuck
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: wtfuck
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Las copias caen aqui; ver el servicio `copias`.
+      - ./copias:/copias
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wtfuck -d wtfuck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ----------------------------------------------------------------- redis
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # Sin persistencia, igual que en desarrollo: lo que pasa por aqui son
+    # avisos en vuelo y marcas de presencia que vencen en 90 segundos.
+    #
+    # Los contadores de intentos fallidos tambien viven aqui y tambien es
+    # correcto que se pierdan en un reinicio del CONTENEDOR: lo que el modulo
+    # AP vino a arreglar era que se perdieran al reiniciar el SERVIDOR, que es
+    # lo que pasa en cada despliegue. Redis se reinicia casi nunca.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${REDIS_PASS}"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASS}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ----------------------------------------------------------------- media
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS}
+    volumes:
+      - minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ------------------------------------------------------------------ TURN
+  #
+  # `network_mode: host` y no puertos publicados, a proposito.
+  #
+  # coturn necesita un rango de miles de puertos UDP para los relevos.
+  # Publicarlos uno a uno hace que Docker levante un proxy por puerto y la
+  # maquina se cae sola al arrancar. Con red de anfitrion, coturn ve las
+  # direcciones reales, que ademas es lo que ICE necesita para funcionar.
+  #
+  # Es el unico servicio con red de anfitrion, y por eso su configuracion es
+  # la unica que tiene que traer sus propias reglas.
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./despliegue/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
+  # ---------------------------------------------------------------- copias
+  #
+  # Un `pg_dump` diario comprimido, con 14 dias de retencion.
+  #
+  # Va en el compose y no en un cron del anfitrion porque un respaldo que
+  # depende de que alguien se acuerde de configurarlo aparte es un respaldo que
+  # no existe. Que **restaurarlo** funcione es otra cosa y no se puede
+  # automatizar: hay que probarlo a mano una vez, y anotar cuando.
+  copias:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${DB_PASS}
+    volumes:
+      - ./copias:/copias
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          f=/copias/wtfuck-$$(date +%Y%m%d-%H%M).sql.gz
+          pg_dump -h db -U wtfuck wtfuck | gzip > "$$f" && echo "copia: $$f"
+          find /copias -name 'wtfuck-*.sql.gz' -mtime +14 -delete
+          sleep 86400
+        done
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  minio:
+  caddy_datos:
+  caddy_config:
