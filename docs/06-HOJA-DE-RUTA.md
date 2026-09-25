@@ -5969,7 +5969,7 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
+**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6077,7 +6077,7 @@ si fuera de ahora. Ahora se valida primero.
 [`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
 dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
 
-**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
+**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6145,7 +6145,7 @@ contestan "quién es esta persona" son dos respuestas que se separan.
 [`docs/evidencias/perfil-de-una-persona/`](evidencias/perfil-de-una-persona/)
 — la ficha, la galería y el salto al mensaje.
 
-**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
+**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6221,7 +6221,7 @@ siendo ilegible.
 — los cinco hallazgos, lo que se miró y estaba bien, y lo que se decidió no
 hacer.
 
-**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
+**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6295,5 +6295,78 @@ cubos, y obligó a bajar el máximo de 128 KiB a 60 KiB.
 [`docs/evidencias/relleno-del-sobre/`](evidencias/relleno-del-sobre/) — los
 tamaños antes y después, medidos en Postgres.
 
-**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
+**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
+y 75 de servidor.
+
+---
+
+## Módulo AS · Un sobre lo escribió otra persona ✅
+
+El servidor no puede abrir un sobre, así que **no valida nada de lo de
+dentro**. El único filtro es quién puede escribir en esa conversación, y eso no
+protege de un participante hostil.
+
+### AS.1 · Una excepción mataba el canal de entrada
+
+```kotlin
+launch { socket.entrantes.collect { manejar(it) } }
+```
+
+Sin `try`. Una excepción terminaba el `collect` y con él **todo el canal**: ni
+un mensaje más, ni una llamada, ni un acuse, hasta reiniciar la app. Y el
+síntoma es **silencio** — la persona cree que nadie le escribe.
+
+Con el bucle desprotegido, un solo sobre bien elegido es una negación de
+servicio contra alguien concreto.
+
+### AS.2 · Y no era el único
+
+El mismo patrón aparecía dos veces más, y el segundo es **más probable que el
+hostil**: `socket.conectado.collect { cargarMiPerfil(); sincronizar();
+despachar() }`. Las tres salen a la red, y un 500 pasajero mataba el bucle —
+la app no volvía a sincronizar ni a vaciar su cola en lo que durara el
+proceso. Los mensajes escritos sin red se quedaban sin salir para siempre, que
+es justo lo que el modo offline vino a evitar. Sin ningún atacante.
+
+Los tres con `runCatching`, **y no `catch (e: Exception)`**: un JSON muy
+anidado tira `StackOverflowError`, que es un `Error`. Hay una prueba que lo
+fija, porque escribir `catch (e: Exception)` es lo natural y dejaría el caso
+fuera.
+
+### AS.3 · El fuzzer
+
+Mil cargas hostiles —sustitutos UTF-16 sueltos, overrides de dirección,
+cadenas de 200.000 caracteres, `Long.MIN_VALUE`, dobles extremos— por el viaje
+completo: serializar, rellenar, quitar relleno, parsear, sanear. Más JSON roto
+y 2.000 corchetes anidados.
+
+Semilla fija: un fuzzer que sortea entradas distintas falla una vez de cada
+cien en el ordenador de otra persona y nadie lo reproduce.
+
+---
+
+## Dos hallazgos, y ninguno era el esperado
+
+**Una defensa que ya estaba y nadie sabía.** El fuzzer falló *construyendo* el
+caso: `jsonApp` no admite `NaN`, así que una posición con NaN no se puede ni
+serializar — no puede viajar ni guardarse. Estaba ahí por defecto, sin que
+ninguna decisión lo dijera. Ahora hay una prueba, porque se pierde con una
+línea: basta `allowSpecialFloatingPointValues = true`, lo natural de poner
+cuando algo "no serializa".
+
+**Una suposición mía equivocada.** El fuzzer daba la cadena vacía por clase
+inválida. No lo es: `ClaseContenido.TEXTO` **es** `""`.
+
+### Lo que sigue sin cubrirse
+
+El SDP de una llamada: llega dentro de un sobre y lo parsea WebRTC, que es
+código nativo. Es la superficie más interesante que queda, y hace falta un
+emulador para tocarla.
+
+### Evidencias
+
+[`docs/evidencias/sobre-hostil/`](evidencias/sobre-hostil/) — el defecto del
+bucle, el fuzzer y lo que encontró.
+
+**1922 pruebas en verde**: 1523 de integración en 36 suites, 324 JUnit de app
 y 75 de servidor.

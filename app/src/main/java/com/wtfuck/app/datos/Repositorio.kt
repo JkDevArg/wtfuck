@@ -376,7 +376,7 @@ class Repositorio(
         // dentro, detener() se cancelaria a si mismo a media ejecucion.
         if (vigilante?.isActive != true) {
             vigilante = ambito.launch {
-                sesion.viva.collect { viva -> if (!viva) detener() }
+                sesion.viva.collect { viva -> if (!viva) runCatching { detener() } }
             }
         }
 
@@ -398,13 +398,46 @@ class Repositorio(
             // arregle nada.
             launch { runCatching { llamadas.recuperar() } }
             launch { runCatching { reanudarUbicacionEnVivo() } }
-            launch { socket.entrantes.collect { manejar(it) } }
+            // Cada sobre se maneja dentro de su propio `runCatching`.
+            //
+            // Sin esto, UNA excepcion mata el `collect` y con el todo el canal
+            // de entrada: no llega ni un mensaje mas, ni una llamada, ni un
+            // acuse, hasta que alguien reinicie la app. Y el sintoma es
+            // silencio, que es el peor de todos — no hay error, no hay aviso,
+            // simplemente deja de llegar.
+            //
+            // Importa aqui mas que en otros sitios porque lo que viene dentro
+            // de un sobre LO ESCRIBIO otra persona. El servidor no puede
+            // abrirlo, asi que no valida nada de lo de dentro: un participante
+            // con un cliente modificado elige exactamente los bytes que manda.
+            // Con el bucle desprotegido, eso es una negacion de servicio
+            // contra alguien concreto, y barata.
+            //
+            // `runCatching` y no `catch (e: Exception)`: un JSON muy anidado
+            // tira `StackOverflowError`, que es un `Error` y no una
+            // `Exception`. Ver `FuzzSobreTest`.
+            launch {
+                socket.entrantes.collect { entrante ->
+                    runCatching { manejar(entrante) }
+                        .onFailure { Log.e(TAG, "Sobre que no se pudo manejar: ${it.message}", it) }
+                }
+            }
             // Cada reconexion vacia la cola. Es el corazon del comportamiento offline.
+            //
+            // Protegido por el mismo motivo que el bucle de arriba, y aqui el
+            // riesgo es MAS probable que el hostil: las tres llamadas salen a
+            // la red. Un 500 pasajero del servidor, o un cuerpo que no parsea,
+            // mataba el `collect` — y entonces la app no volvia a sincronizar
+            // ni a vaciar su cola de salida en lo que durara el proceso. Los
+            // mensajes escritos sin red se quedaban sin salir para siempre,
+            // que es justo lo que el modo offline vino a evitar.
             launch {
                 socket.conectado.collect {
-                    cargarMiPerfil()
-                    sincronizar()
-                    despachar()
+                    runCatching {
+                        cargarMiPerfil()
+                        sincronizar()
+                        despachar()
+                    }.onFailure { Log.w(TAG, "Fallo al reconectar: ${it.message}") }
                 }
             }
         }

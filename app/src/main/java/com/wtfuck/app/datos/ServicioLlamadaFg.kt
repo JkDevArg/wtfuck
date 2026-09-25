@@ -136,11 +136,18 @@ class ServicioLlamadaFg : Service() {
             // el primer instante y Android mataba la app.
             var huboLlamada = false
             app.repo.llamadas.estado.collect { e ->
-                if (e != null) {
-                    huboLlamada = true
-                    alPrimerPlano(e)
-                } else if (huboLlamada) {
-                    apagar()
+                // Protegido: si `alPrimerPlano` lanza —una notificacion puede
+                // fallar por permisos o por un canal que no existe— el
+                // `collect` moria y el servicio no se enteraba nunca de que la
+                // llamada habia terminado. Queda una notificacion de "Llamada"
+                // puesta para siempre, sin llamada.
+                runCatching {
+                    if (e != null) {
+                        huboLlamada = true
+                        alPrimerPlano(e)
+                    } else if (huboLlamada) {
+                        apagar()
+                    }
                 }
             }
         }
