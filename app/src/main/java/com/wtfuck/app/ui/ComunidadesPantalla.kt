@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -209,9 +210,18 @@ private fun FilaComunidad(k: ComunidadResumen, onClick: () -> Unit) {
  *
  * Se eligen al crear y no después porque una comunidad vacía no le sirve a
  * nadie, y obligar a crearla y volver a entrar es un paso de más para el caso
- * normal. Sólo se ofrecen los grupos que administro: los demás los rechazaría
- * el servidor, y ofrecer una casilla que va a dar error es peor que no
- * ofrecerla.
+ * normal.
+ *
+ * ## Se ofrecen TODOS mis grupos, no sólo los que administro
+ *
+ * Tentaba filtrarlos aquí para no ofrecer casillas que van a fallar. Pero lo
+ * que hace falta es el permiso `grupo.editar_info`, y el teléfono no lo sabe:
+ * lo más parecido que tiene es una jerarquía, que es un **proxy**. Filtrar por
+ * un proxy esconde grupos que sí se podían agregar, y eso es peor que ofrecer
+ * uno que el servidor rechaza explicando por qué.
+ *
+ * Es la misma regla de siempre en este proyecto: **los permisos los resuelve
+ * el servidor en cada petición**, y la pantalla no los adivina.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -382,6 +392,11 @@ private fun HojaComunidad(
     var detalle by remember { mutableStateOf<ComunidadDetalle?>(null) }
     var cargando by remember { mutableStateOf(true) }
     var aviso by remember { mutableStateOf<String?>(null) }
+    /** El selector de grupos, cuando se está agregando. */
+    var agregando by remember { mutableStateOf(false) }
+    var editando by remember { mutableStateOf(false) }
+
+    val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
 
     suspend fun recargar() {
         detalle = app.repo.comunidad(comunidadId)
@@ -409,13 +424,26 @@ private fun HojaComunidad(
                 )
 
                 else -> {
-                    Text(
-                        d.comunidad.nombre,
-                        color = TextoPrimario, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
-                    )
-                    if (d.comunidad.descripcion.isNotBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(d.comunidad.descripcion, color = TextoSecundario, fontSize = 13.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                d.comunidad.nombre,
+                                color = TextoPrimario, fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            if (d.comunidad.descripcion.isNotBlank()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(d.comunidad.descripcion, color = TextoSecundario, fontSize = 13.sp)
+                            }
+                        }
+                        // Editar estaba construido y probado en el servidor y
+                        // la pantalla no lo ofrecia. Mismo caso que agregar
+                        // grupos: la capacidad existia y no habia por donde.
+                        if (d.comunidad.soyAdmin) {
+                            IconButton(onClick = { editando = true }) {
+                                Icon(Icons.Filled.Edit, "Editar la comunidad", tint = TextoSecundario)
+                            }
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
 
@@ -442,11 +470,38 @@ private fun HojaComunidad(
                     }
 
                     Spacer(Modifier.height(18.dp))
-                    Text(
-                        if (d.grupos.size == 1) "1 grupo" else "${d.grupos.size} grupos",
-                        color = TextoPrimario, fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (d.grupos.size == 1) "1 grupo" else "${d.grupos.size} grupos",
+                            color = TextoPrimario, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (d.comunidad.soyAdmin) {
+                            TextButton(onClick = { agregando = true }) {
+                                Icon(Icons.Filled.Add, null, tint = Cian, modifier = Modifier.size(17.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("Agregar", color = Cian, fontSize = 13.sp)
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(6.dp))
+
+                    // Una comunidad sin grupos no le sirve a nadie, y sin esto
+                    // la hoja terminaba en "0 grupos" y nada mas: un callejon
+                    // sin salida con el boton de arreglarlo sin construir.
+                    if (d.grupos.isEmpty()) {
+                        Text(
+                            if (d.comunidad.soyAdmin) {
+                                "Todavía no tiene grupos. Agregá los que administres " +
+                                    "y su gente entrará al canal de anuncios."
+                            } else {
+                                "Todavía no tiene grupos."
+                            },
+                            color = TextoTerciario,
+                            fontSize = 12.5.sp,
+                            modifier = Modifier.padding(vertical = 10.dp),
+                        )
+                    }
 
                     LazyColumn(Modifier.heightIn(max = 320.dp)) {
                         items(d.grupos, key = { it.conversacionId }) { g ->
@@ -514,6 +569,48 @@ private fun HojaComunidad(
         }
     }
 
+    if (agregando) {
+        val yaEstan = detalle?.grupos?.map { it.conversacionId }?.toSet().orEmpty()
+        HojaElegirGrupos(
+            // Los que ya están no se vuelven a ofrecer: el servidor los
+            // rechazaría con "ya esta en esta comunidad", y una casilla que
+            // sólo sirve para producir un error no es una opción.
+            grupos = chats.filter { it.tipo == "grupo" && it.id !in yaEstan },
+            onCerrar = { agregando = false },
+            onElegidos = { ids ->
+                agregando = false
+                ambito.launch {
+                    app.repo.agregarGruposAComunidad(comunidadId, ids)
+                        .onSuccess { d ->
+                            if (d.rechazados.isNotEmpty()) {
+                                aviso = d.rechazados.joinToString("\n") { it.motivo }
+                            }
+                            cargando = true
+                            recargar()
+                        }
+                        .onFailure { aviso = it.message }
+                }
+            },
+        )
+    }
+
+    if (editando) {
+        val d = detalle
+        HojaEditarComunidad(
+            nombreInicial = d?.comunidad?.nombre.orEmpty(),
+            descripcionInicial = d?.comunidad?.descripcion.orEmpty(),
+            onCerrar = { editando = false },
+            onGuardar = { n, desc ->
+                editando = false
+                ambito.launch {
+                    app.repo.editarComunidad(comunidadId, n, desc)
+                        .onSuccess { cargando = true; recargar() }
+                        .onFailure { aviso = it.message }
+                }
+            },
+        )
+    }
+
     aviso?.let { msg ->
         AlertDialog(
             onDismissRequest = { aviso = null },
@@ -523,5 +620,151 @@ private fun HojaComunidad(
                 TextButton(onClick = { aviso = null }) { Text("Entendido", color = Cian) }
             },
         )
+    }
+}
+
+/**
+ * Elegir grupos para agregar a una comunidad.
+ *
+ * Se reusa la misma forma que al crear: casillas sobre la lista de mis grupos.
+ * Lo que cambia es que aquí se filtran los que ya están.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HojaElegirGrupos(
+    grupos: List<com.wtfuck.app.datos.ChatFila>,
+    onCerrar: () -> Unit,
+    onElegidos: (List<String>) -> Unit,
+) {
+    var elegidos by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    ModalBottomSheet(
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        onDismissRequest = onCerrar,
+        containerColor = BgSurface,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },
+    ) {
+        Column(
+            Modifier
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text("Agregar grupos", color = TextoPrimario, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Su gente entra al canal de anuncios de la comunidad.",
+                color = TextoTerciario, fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(14.dp))
+
+            if (grupos.isEmpty()) {
+                Text(
+                    "No te queda ningún grupo por agregar.",
+                    color = TextoTerciario, fontSize = 13.sp,
+                    modifier = Modifier.padding(vertical = 14.dp),
+                )
+            } else {
+                grupos.forEach { g ->
+                    val marcado = g.id in elegidos
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                elegidos = if (marcado) elegidos - g.id else elegidos + g.id
+                            }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = marcado,
+                            onCheckedChange = null,
+                            colors = CheckboxDefaults.colors(checkedColor = Cian),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Icon(Icons.Filled.Group, null, tint = TextoTerciario, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(g.titulo, color = TextoPrimario, fontSize = 14.sp)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = { onElegidos(elegidos.toList()) },
+                enabled = elegidos.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Cian, contentColor = TextoSobreAcento,
+                    disabledContainerColor = Slate.copy(alpha = 0.4f),
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Agregar") }
+            Spacer(Modifier.navigationBarsPadding())
+        }
+    }
+}
+
+/** Cambiar el nombre y la descripción. El canal de anuncios se renombra con ella. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HojaEditarComunidad(
+    nombreInicial: String,
+    descripcionInicial: String,
+    onCerrar: () -> Unit,
+    onGuardar: (String, String) -> Unit,
+) {
+    var nombre by remember { mutableStateOf(nombreInicial) }
+    var descripcion by remember { mutableStateOf(descripcionInicial) }
+
+    ModalBottomSheet(
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        onDismissRequest = onCerrar,
+        containerColor = BgSurface,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },
+    ) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            Text("Editar", color = TextoPrimario, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "El canal de anuncios lleva el mismo nombre.",
+                color = TextoTerciario, fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(14.dp))
+            OutlinedTextField(
+                value = nombre,
+                onValueChange = { nombre = it.take(64) },
+                label = { Text("Nombre", color = TextoTerciario) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Cian, unfocusedBorderColor = Slate,
+                    focusedTextColor = TextoPrimario, unfocusedTextColor = TextoPrimario,
+                ),
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = descripcion,
+                onValueChange = { descripcion = it.take(512) },
+                label = { Text("De qué se trata", color = TextoTerciario) },
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 3,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Cian, unfocusedBorderColor = Slate,
+                    focusedTextColor = TextoPrimario, unfocusedTextColor = TextoPrimario,
+                ),
+            )
+            Spacer(Modifier.height(18.dp))
+            Button(
+                onClick = { onGuardar(nombre.trim(), descripcion.trim()) },
+                enabled = nombre.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Cian, contentColor = TextoSobreAcento,
+                    disabledContainerColor = Slate.copy(alpha = 0.4f),
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Guardar") }
+            Spacer(Modifier.navigationBarsPadding())
+        }
     }
 }

@@ -5099,10 +5099,35 @@ el número de la lista dice la verdad en vez de fingir que entró.
 No es un olvido: la pertenencia se deriva. Una ruta para unirse crearía una
 segunda forma de pertenecer, y volveríamos a las dos listas que se separan.
 
+### AD.7 · Una capacidad probada que la pantalla no ofrecia
+
+Al mirarlo en el emulador: la hoja de una comunidad terminaba en **"0 grupos"**
+y nada mas. **Una comunidad podia quedar en cero grupos sin forma de
+arreglarlo**, porque los grupos solo se podian elegir al crearla.
+
+Y lo peor: `agregarGrupos` y `editar` estaban **construidos y probados en el
+servidor** —con sus pruebas en verde— y la pantalla no los llamaba.
+
+> **Una capacidad probada que la interfaz no ofrece es una capacidad que no
+> existe.** La suite decia que si y la pantalla decia que no. Las 43 pruebas
+> pasaban porque prueban la API, y la API estaba bien.
+
+Ya estan: lapiz para editar, "+ Agregar" con su selector, y un vacio que dice
+que hacer en vez de dejar un callejon sin salida.
+
+**Y un comentario que habia empezado a mentir.** La hoja de crear decia "solo
+se ofrecen los grupos que administro" y el codigo ofrecia todos. Se corrigio
+**el comentario y no el codigo**: hace falta `grupo.editar_info` y el telefono
+no lo sabe —lo mas parecido que tiene es una jerarquia, que es un proxy—.
+Filtrar por un proxy esconderia grupos que si se podian agregar, que es peor
+que ofrecer uno y explicar el rechazo. Los permisos los resuelve el servidor en
+cada peticion; la pantalla no los adivina.
+
 ### Evidencias
 
-Cinco capturas en
-[`docs/evidencias/comunidades/`](evidencias/comunidades/).
+Ocho capturas en
+[`docs/evidencias/comunidades/`](evidencias/comunidades/), incluidas las del
+callejon sin salida antes y despues.
 
 **1707 pruebas en verde**: 1411 de integración en **36 suites**, 75 de JUnit en
 el servidor y 221 en la app. Las 43 nuevas están en `pruebas/comunidades.mjs`,

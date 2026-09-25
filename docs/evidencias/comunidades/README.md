@@ -90,6 +90,32 @@ La penúltima es la que importa: **`nadie` no te saca del grupo.** Un ajuste de
 privacidad que te expulsa de algo no es un ajuste de privacidad, es una
 sanción.
 
+## Lo que se vio al mirarlo, y era un agujero
+
+El usuario dijo que "no se ve bien". Tenía razón, y no era estético.
+
+| | Qué muestra |
+|---|---|
+| `06-antes-callejon-sin-salida.png` | La hoja terminaba en **"0 grupos"** y nada más. |
+| `07-con-agregar-y-editar.png` | Ahora: lápiz para editar, **"+ Agregar"** y un vacío que dice qué hacer. |
+| `08-elegir-grupos.png` | El selector de grupos. |
+
+**Una comunidad podía quedar en cero grupos sin forma de arreglarlo.** Y lo
+peor: `agregarGrupos` y `editar` estaban **construidos y probados en el
+servidor** —cuarenta y tres pruebas verdes— y la pantalla no los llamaba. Los
+grupos sólo se podían elegir al crear.
+
+> Una capacidad probada que la interfaz no ofrece es una capacidad que no
+> existe. La suite decía que sí y la pantalla decía que no.
+
+Y de paso salió un comentario que había empezado a mentir: la hoja de crear
+decía *"sólo se ofrecen los grupos que administro"* y el código ofrecía todos.
+Se corrigió **el comentario, no el código**: lo que hace falta es el permiso
+`grupo.editar_info` y el teléfono no lo sabe —lo más parecido que tiene es una
+jerarquía, que es un proxy—. Filtrar por un proxy escondería grupos que sí se
+podían agregar, que es peor que ofrecer uno y explicar el rechazo. Los permisos
+los resuelve el servidor en cada petición; la pantalla no los adivina.
+
 ## Cómo se tomaron
 
 ```
