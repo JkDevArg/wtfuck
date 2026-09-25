@@ -5969,7 +5969,7 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1900 pruebas en verde**: 1520 de integración en 36 suites, 305 JUnit de app
+**1903 pruebas en verde**: 1523 de integración en 36 suites, 305 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6077,7 +6077,7 @@ si fuera de ahora. Ahora se valida primero.
 [`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
 dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
 
-**1900 pruebas en verde**: 1520 de integración en 36 suites, 305 JUnit de app
+**1903 pruebas en verde**: 1523 de integración en 36 suites, 305 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6145,5 +6145,81 @@ contestan "quién es esta persona" son dos respuestas que se separan.
 [`docs/evidencias/perfil-de-una-persona/`](evidencias/perfil-de-una-persona/)
 — la ficha, la galería y el salto al mensaje.
 
-**1900 pruebas en verde**: 1520 de integración en 36 suites, 305 JUnit de app
+**1903 pruebas en verde**: 1523 de integración en 36 suites, 305 JUnit de app
+y 75 de servidor.
+
+---
+
+## Módulo AP · Auditoría de seguridad ✅
+
+Un barrido adversarial del cliente y del servidor. Lo grande estaba bien
+—Argon2id con parámetros OWASP, comparaciones en tiempo constante, tokens
+hasheados en reposo, sin superficie de intents, el bus firmado que verifica
+antes de parsear— así que los cinco hallazgos están en los bordes.
+
+### AP.1 · El límite de intentos vivía en la memoria de un proceso
+
+`Limitador` guardaba sus marcas en un mapa del proceso, y el archivo
+argumentaba que *"reiniciar perdona la ráfaga en curso, y eso está bien"*.
+Para mensajes es cierto; para probar contraseñas no: **se multiplicaba por
+instancia** —esta arquitectura usa Redis justamente para escalar horizontal—
+y **un despliegue lo perdonaba entero**.
+
+Ahora los límites de fallo van por Redis, con conjunto ordenado por marca de
+tiempo para que la ventana sea deslizante igual que en memoria: un límite que
+se comporta distinto en desarrollo y en producción es un límite sobre el que
+nadie puede razonar.
+
+### AP.2 · Y eso destapó que el límite por IP era inservible
+
+Con el contador compartido, la suite entera empezó a dar `429`: la clave de
+Redis marcaba exactamente 50, que era `FALLOS_POR_IP`. El comentario decía que
+esa regla *"es holgada a propósito: tiene que tolerar el NAT"*, y 50 cada 15
+minutos no tolera ningún NAT — basta con que una de cada mil personas detrás
+de una salida se equivoque de contraseña para dejar fuera a las demás.
+
+No se veía porque el contador moría en cada reinicio. El arreglo no lo causó,
+lo destapó. Ahora son 300, y queda escrito que la regla por IP **no es** la
+que protege una cuenta: eso lo hacen los 8 por usuario, que no se tocan.
+
+### AP.3 · Tráfico en claro permitido en todas partes
+
+`usesCleartextTraffic="true"` valía para todos los destinos y también en
+producción. Que no se usara no lo hacía inofensivo: dejaba que quien torciera
+el DNS consiguiera HTTP sin un solo aviso, y por ahí van el token, los
+metadatos, los canales públicos —en claro a propósito— y las prekeys.
+
+Ahora hay una configuración de seguridad de red: claro prohibido salvo en el
+propio aparato y el emulador, y **sólo anclas de confianza del sistema**, que
+deja fuera los certificados de usuario con los que funciona cualquier proxy de
+interceptación. Falta el fijado de certificado, que necesita el certificado
+real y queda declarado.
+
+### AP.4 · El token de sesión, en texto plano
+
+Una credencial portadora en el XML de preferencias, mientras la frase de
+SQLCipher —en la carpeta de al lado— ya iba envuelta con una clave no
+exportable del Keystore. *Las diferencias de protección sin motivo declarado
+son accidentes, no decisiones.*
+
+Ahora va envuelto, con migración para no cerrarle la sesión a nadie. Y **no**
+lleva `setUnlockedDeviceRequired`: rompería el push, las llamadas entrantes y
+la ubicación en vivo con la pantalla bloqueada. Endurecer hasta romper la
+función no es endurecer.
+
+### AP.5 · Una clave invalidada dejaba la app sin arrancar
+
+`ClaveBase` descifraba sin red de seguridad, y una clave del Keystore se puede
+invalidar. El resultado era una excepción en cada arranque sin más salida que
+desinstalar. Ahora se tira y se empieza de nuevo: se pierde el historial local
+—que sólo vivía ahí— y no es una puerta trasera, porque el `.db` viejo sigue
+siendo ilegible.
+
+### Evidencias
+
+[`docs/evidencias/auditoria-de-seguridad/`](evidencias/auditoria-de-seguridad/)
+— los cinco hallazgos, lo que se miró y estaba bien, y lo que se decidió no
+hacer.
+
+**1903 pruebas en verde**: 1523 de integración en 36 suites, 305 JUnit de app
 y 75 de servidor.

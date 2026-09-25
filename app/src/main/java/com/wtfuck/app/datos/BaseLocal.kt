@@ -1,21 +1,13 @@
 package com.wtfuck.app.datos
 
 import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
 import androidx.room.Index
 import androidx.room.*
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
-import java.security.KeyStore
 import java.security.SecureRandom
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 
 // ============================================================
 //  Entidades
@@ -1375,49 +1367,43 @@ abstract class BaseLocal : RoomDatabase() {
  */
 private object ClaveBase {
 
-    private const val ALIAS = "wtfuck_db_v1"
     private const val PREFS = "wtfuck_seguro"
     private const val CAMPO = "frase"
 
+    private val caja = CajaFuerte("wtfuck_db_v1")
+
+    /**
+     * La frase, creandola la primera vez.
+     *
+     * ## Que pasa si la clave del Keystore ya no abre
+     *
+     * Antes: una excepcion, en cada arranque, para siempre. La version
+     * anterior descifraba sin red de seguridad, y una clave del Keystore SE
+     * PUEDE invalidar —cambio de credenciales del aparato en algunos
+     * fabricantes, una restauracion, una actualizacion que rota el almacen—.
+     * Entonces lo guardado es ruido y la app no abre la base, que es lo
+     * primero que hace: un fallo en cada arranque sin ninguna salida salvo
+     * desinstalar.
+     *
+     * Ahora se empieza de nuevo: se tira la clave rota, se genera otra frase y
+     * la base vieja queda ilegible — porque lo es de verdad, no porque se
+     * decida ignorarla.
+     *
+     * **Se pierde el historial local, y eso es lo correcto.** El historial
+     * solo vive aqui, asi que no hay de donde recuperarlo; lo unico que estaba
+     * en juego era si la app vuelve a arrancar. Y no es una puerta trasera:
+     * quien tenga el archivo `.db` sigue sin poder leerlo, porque la frase que
+     * lo abria se fue con la clave.
+     */
     fun obtener(ctx: Context): ByteArray {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefs.getString(CAMPO, null)?.let { return descifrar(it) }
-
-        val frase = ByteArray(32).also { SecureRandom().nextBytes(it) }
-        prefs.edit().putString(CAMPO, cifrar(frase)).apply()
-        return frase
-    }
-
-    private fun clave(): SecretKey {
-        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (ks.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
-
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
-            init(
-                KeyGenParameterSpec.Builder(
-                    ALIAS,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-                )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .build()
-            )
-        }.generateKey()
-    }
-
-    private fun cifrar(datos: ByteArray): String {
-        val c = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, clave()) }
-        val ct = c.doFinal(datos)
-        return Base64.encodeToString(c.iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(ct, Base64.NO_WRAP)
-    }
-
-    private fun descifrar(guardado: String): ByteArray {
-        val (ivB64, ctB64) = guardado.split(":", limit = 2)
-        val iv = Base64.decode(ivB64, Base64.NO_WRAP)
-        val ct = Base64.decode(ctB64, Base64.NO_WRAP)
-        val c = Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(Cipher.DECRYPT_MODE, clave(), GCMParameterSpec(128, iv))
+        prefs.getString(CAMPO, null)?.let { guardado ->
+            runCatching { caja.abrir(guardado) }.getOrNull()?.let { return it }
+            // No abre: la clave ya no sirve. Se tira para poder crear otra.
+            caja.tirar()
         }
-        return c.doFinal(ct)
+        val frase = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        prefs.edit().putString(CAMPO, caja.cerrar(frase)).apply()
+        return frase
     }
 }

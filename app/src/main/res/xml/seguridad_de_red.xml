@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Modulo AP · Que conexiones acepta esta app.
+
+    Antes habia `android:usesCleartextTraffic="true"` en el manifiesto, que es
+    un interruptor global: valia para TODOS los destinos y tambien en la
+    compilacion de produccion, donde el servidor es `https://`.
+
+    Que no se use hoy no lo hace inofensivo. Deja la puerta: quien pueda torcer
+    el DNS o poner un proxy en la red consigue que la app hable HTTP sin un
+    solo aviso, y por ahi van el token de sesion, los metadatos de quien habla
+    con quien, el contenido de los canales publicos —que va en claro a
+    proposito— y, lo mas serio, las claves publicas de identidad y las prekeys.
+    Con eso ultimo un intermediario puede entregar una identidad falsa en el
+    PRIMER contacto, que es el unico momento en que el aviso de "la clave
+    cambio" no puede saltar, porque no hay clave anterior con que comparar.
+
+    Ahora el claro esta PROHIBIDO por defecto y permitido solo en los tres
+    destinos que son el propio aparato o la maquina que lo emula. Ahi no hay
+    red que interceptar: o es el mismo telefono, o es el tunel de `adb`.
+-->
+<network-security-config>
+
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!--
+                Solo las autoridades del sistema.
+
+                `user` queda FUERA a proposito: con los certificados de usuario
+                aceptados, cualquiera que consiga instalar uno —o un aparato ya
+                comprometido— puede leer todo el TLS de la app. Es lo que hace
+                que un proxy de interceptacion funcione sin mas, y es
+                exactamente lo que aqui no tiene que funcionar.
+
+                Tiene un costo y se asume: depurar la red con un proxy exige
+                una compilacion con esto cambiado. Es el orden correcto —
+                molestar a quien depura antes que abrirle la puerta a quien
+                ataca.
+            -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+        El servidor de desarrollo.
+
+        `127.0.0.1` es el propio aparato (llega por `adb reverse`) y `10.0.2.2`
+        es la maquina anfitriona vista desde el emulador. En un telefono de
+        verdad no hay nada escuchando ahi, asi que dejar esto puesto en la
+        compilacion de produccion no agrega superficie: no existe el camino.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+
+</network-security-config>

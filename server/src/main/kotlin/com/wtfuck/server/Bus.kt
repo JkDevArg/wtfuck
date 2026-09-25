@@ -131,6 +131,77 @@ object Bus {
      */
     private fun clavePersona(usuario: UUID) = "wtfuck:vivos_u:$usuario"
 
+    // ============================================================
+    //  Ventana deslizante compartida (modulo AP)
+    // ============================================================
+
+    /**
+     * Cuenta marcas en una ventana de tiempo, **entre todas las instancias**.
+     *
+     * ## Por que no alcanzaba la de memoria
+     *
+     * [Limitador] guarda sus marcas en un mapa del proceso, y eso esta bien
+     * para lo que fue pensado: una rafaga de mensajes. El propio archivo lo
+     * argumenta —"reiniciar perdona la rafaga en curso, y eso esta bien: el
+     * castigo dura segundos"—, y para mensajes es cierto.
+     *
+     * Para PROBAR CONTRASENAS no lo es, por dos motivos que no se parecen:
+     *
+     *  1. **Se multiplica por instancia.** Esta arquitectura guarda las
+     *     sesiones en Redis justamente para poder correr varias copias detras
+     *     de un balanceador. Con cuatro copias, "8 fallos cada 15 minutos" son
+     *     32, y nada en el codigo lo dice: el numero del limite deja de ser el
+     *     limite.
+     *  2. **Un reinicio perdona la ventana entera.** Para tres mensajes de mas
+     *     da igual; para un ataque de diccionario, un despliegue es un indulto.
+     *
+     * El propio `Limites.kt` dice que la division es por la DURACION del
+     * limite y no por su importancia. Este es el caso donde la importancia
+     * manda: la ventana es corta, pero lo que protege no.
+     *
+     * ## Por que un conjunto ordenado y no un INCR
+     *
+     * Porque `INCR` + `EXPIRE` es una ventana FIJA, y la de memoria es
+     * deslizante. Un limite que se comporta distinto en desarrollo y en
+     * produccion es un limite sobre el que nadie puede razonar. Con marcas de
+     * tiempo como puntaje, la semantica es exactamente la misma en los dos
+     * lados; son tres comandos en vez de uno, sobre unas pocas decenas de
+     * elementos.
+     *
+     * @param contar `false` mira sin consumir — hace falta para los limites de
+     *   fallos, donde primero se comprueba y solo se anota si sale mal.
+     * @return cuantas marcas hay dentro de la ventana, o `null` si no hay
+     *   Redis: entonces quien llama usa el limitador de memoria, que en una
+     *   sola instancia es exacto.
+     */
+    fun marcasEnVentana(clave: String, ventanaMs: Long, contar: Boolean): Long? {
+        val m = mandos ?: return null
+        val k = "wtfuck:lim:$clave"
+        val ahora = System.currentTimeMillis()
+        return runCatching {
+            val c = m.sync()
+            // Primero se tira lo viejo. Si no, el conjunto crece para siempre
+            // y el recuento cuenta intentos de anteayer.
+            c.zremrangebyscore(
+                k,
+                io.lettuce.core.Range.create(
+                    Double.NEGATIVE_INFINITY, (ahora - ventanaMs).toDouble(),
+                ),
+            )
+            if (contar) {
+                // El miembro lleva un azar ademas del instante: dos fallos en
+                // el mismo milisegundo son DOS, y con solo el instante de
+                // miembro el segundo pisaria al primero sin contarse.
+                c.zadd(k, ahora.toDouble(), "$ahora:${UUID.randomUUID()}")
+            }
+            // El vencimiento se renueva siempre, tambien al solo mirar: una
+            // clave sin TTL que nadie vuelve a tocar se queda en Redis para
+            // siempre.
+            c.pexpire(k, ventanaMs)
+            c.zcard(k)
+        }.getOrNull()
+    }
+
     /**
      * Arranca si hay URL. Si no hay, se dice una vez y se sigue.
      *

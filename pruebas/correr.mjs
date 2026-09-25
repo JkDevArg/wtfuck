@@ -20,13 +20,38 @@
 // El servidor tiene que estar escuchando en localhost:8300 con una base de
 // datos accesible. Ver `arrancar-servidor.ps1` y docs/09-DESPLIEGUE.md.
 
+
 import { readdirSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.WTFUCK_BASE ?? 'http://localhost:8300';
+
+// Los limites de ritmo se borran antes de empezar.
+//
+// Desde que los limites de FALLO viven en Redis (modulo AP) sobreviven al
+// reinicio del servidor — que es justamente el punto— y tambien entre una
+// corrida de las pruebas y la siguiente. Varias suites fallan ingresos a
+// proposito, todas desde la misma IP, y sin esto la segunda corrida dentro de
+// la misma ventana empieza con el cupo gastado y falla por el motivo
+// equivocado.
+//
+// Se borra solo `wtfuck:lim:*`. Las sesiones y la presencia no se tocan.
+function limpiarLimites() {
+  try {
+    execSync(
+      'docker exec wtfuck_redis sh -c "redis-cli --scan --pattern \'wtfuck:lim:*\' | ' +
+      'xargs -r redis-cli del"',
+      { stdio: 'ignore' },
+    );
+  } catch {
+    // Sin Redis no hay nada que limpiar: el limitador vive en el proceso y el
+    // servidor se reinicia entre corridas.
+  }
+}
+limpiarLimites();
 
 const pedidas = process.argv.slice(2).map((s) => s.replace(/\.mjs$/, ''));
 // `correr.mjs` es este archivo y los `stub-*` son ayudantes que se levantan a

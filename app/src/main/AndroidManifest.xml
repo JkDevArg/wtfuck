@@ -56,7 +56,7 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Wtfuck"
-        android:usesCleartextTraffic="true">
+        android:networkSecurityConfig="@xml/seguridad_de_red">
 
         <!--
             `exported=false`: lo arranca solo esta app. Y NO es "stopWithTask"

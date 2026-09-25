@@ -186,5 +186,52 @@ ck('B ya no la ve en linea', r.b?.enLinea === false, `enLinea=${r.b?.enLinea}`);
 
 sBeto.cerrar();
 
+console.log('\n=== el limite de fallos de ingreso es COMPARTIDO ===');
+// Es la unica suite que puede ver este defecto, por lo mismo que el resto: es
+// la unica que habla con DOS instancias.
+//
+// El limitador guardaba sus marcas en un mapa del proceso. Con una sola
+// instancia el numero era exacto; con dos detras de un balanceador, "8 fallos
+// cada 15 minutos" eran 16 sin que nada en el codigo lo dijera, y con cuatro
+// copias 32. El limite dejaba de ser el limite justo en el despliegue para el
+// que esta arquitectura fue pensada.
+//
+// La prueba es directa: se gastan los fallos contra A y se comprueba que B ya
+// los da por gastados. Antes del arreglo, B empezaba de cero.
+const victima = await reg(A, 'victima');
+const FALLOS = 8;  // Limitador.FALLOS_POR_USUARIO
+
+const intentar = (base) => fetch(base + '/v1/sesion', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    username: victima.user, password: 'clave-que-no-es', etiquetaDispositivo: 't',
+    identidadPub: b64('k'), hardwareHash: b64('HW-X'), hardwareNivel: 'SOFTWARE_DEV',
+  }),
+}).then((r) => r.status);
+
+const codigos = [];
+for (let i = 0; i < FALLOS; i++) codigos.push(await intentar(A));
+
+// Los primeros tienen que ser 401 y no 429: si ya cortara antes de agotar el
+// presupuesto, la prueba de abajo pasaria por el motivo equivocado.
+ck('los fallos contra A se rechazan por clave, no por limite',
+   codigos.every((c) => c === 401), JSON.stringify(codigos));
+
+const enB = await intentar(B);
+ck('B ya sabe que se agotaron los intentos (429, no 401)', enB === 429, `status=${enB}`);
+
+// Y el corte es POR CUENTA: otra persona desde la misma IP tiene que poder
+// entrar igual. Un limite que se lleva por delante a quien no hizo nada se
+// acaba subiendo hasta que deja de servir.
+const ajeno = await reg(A, 'ajeno');
+const suyo = await fetch(B + '/v1/sesion', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    username: ajeno.user, password: 'clave-que-no-es', etiquetaDispositivo: 't',
+    identidadPub: b64('k'), hardwareHash: b64('HW-Y'), hardwareNivel: 'SOFTWARE_DEV',
+  }),
+}).then((r) => r.status);
+ck('a otra cuenta desde la misma IP no la corta el limite ajeno', suyo === 401, `status=${suyo}`);
+
 console.log(`\n=== ${ok} pasan, ${fail} fallan ===`);
 process.exit(fail === 0 ? 0 : 1);

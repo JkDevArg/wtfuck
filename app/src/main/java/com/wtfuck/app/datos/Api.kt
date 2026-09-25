@@ -28,6 +28,53 @@ class Sesion(ctx: Context) {
     private val p = ctx.getSharedPreferences("wtfuck_sesion", Context.MODE_PRIVATE)
 
     /**
+     * El token va ENVUELTO, no en claro.
+     *
+     * Este token es una credencial portadora: quien lo tenga es la cuenta ante
+     * el servidor. Estaba guardado como texto plano en el XML de preferencias,
+     * mientras que la frase de paso de SQLCipher —en la carpeta de al lado— ya
+     * se guardaba envuelta con una clave no exportable del Keystore. Dos
+     * secretos, el mismo sitio, dos niveles de proteccion y ninguna razon
+     * escrita para la diferencia.
+     *
+     * El recinto de Android y `allowBackup="false"` ya cubren lo comun. Esto
+     * cubre lo que queda: un aparato con root, una imagen forense, un volcado
+     * del almacenamiento. Ver [CajaFuerte].
+     *
+     * No protege del proceso vivo, y no puede: con la app corriendo, cualquier
+     * codigo dentro de ella puede pedirle al Keystore que abra.
+     */
+    private val caja = CajaFuerte("wtfuck_sesion_v1")
+
+    /** Clave nueva. La vieja, `token`, solo se lee para migrar. */
+    private val CAMPO = "token_c"
+
+    /**
+     * Lee el token, migrando el que quedo en claro de una version anterior.
+     *
+     * Sin esta migracion, actualizar la app habria cerrado la sesion de todo
+     * el mundo: el campo nuevo esta vacio y el viejo se ignoraria. Cerrar la
+     * sesion de todos para mejorar como se guarda el token es pagar el arreglo
+     * con la molestia de quien no hizo nada.
+     */
+    private fun leerToken(): String? {
+        p.getString(CAMPO, null)?.let { return caja.abrirTexto(it) }
+        val viejo = p.getString("token", null) ?: return null
+        runCatching { p.edit().putString(CAMPO, caja.cerrarTexto(viejo)).remove("token").apply() }
+        return viejo
+    }
+
+    private fun escribirToken(v: String?) {
+        val e = p.edit()
+        // El campo viejo se borra SIEMPRE, tambien al guardar uno nuevo: si
+        // quedara, una sesion vieja en claro sobreviviria a la migracion y
+        // seguiria ahi para que alguien la encuentre.
+        e.remove("token")
+        if (v == null) e.remove(CAMPO) else e.putString(CAMPO, caja.cerrarTexto(v))
+        e.apply()
+    }
+
+    /**
      * Si el token de este aparato sigue sirviendo.
      *
      * Existe porque el modulo I.5 dejo el cierre remoto a medias: el servidor
@@ -38,7 +85,9 @@ class Sesion(ctx: Context) {
      * el WebSocket reintentaba con backoff para siempre. Cerrar sesion a
      * distancia no sirve de nada si el aparato cerrado no se da por enterado.
      */
-    private val _viva = MutableStateFlow(p.getString("token", null) != null)
+    private val _viva = MutableStateFlow(
+        p.getString(CAMPO, null) != null || p.getString("token", null) != null,
+    )
     val viva: StateFlow<Boolean> = _viva.asStateFlow()
 
     /**
@@ -56,8 +105,8 @@ class Sesion(ctx: Context) {
     val motivoCierre: String? get() = p.getString("cierre", null)
 
     var token: String?
-        get() = p.getString("token", null)
-        private set(v) { p.edit().putString("token", v).apply() }
+        get() = leerToken()
+        private set(v) { escribirToken(v) }
 
     val usuarioId: String? get() = p.getString("usuarioId", null)
     val dispositivoId: String? get() = p.getString("dispositivoId", null)
@@ -66,9 +115,9 @@ class Sesion(ctx: Context) {
 
     fun guardar(r: SesionResp) {
         _viva.value = true
+        escribirToken(r.token)
         p.edit()
             .remove("cierre")
-            .putString("token", r.token)
             .putString("usuarioId", r.usuarioId)
             .putString("dispositivoId", r.dispositivoId)
             .putString("username", r.username)

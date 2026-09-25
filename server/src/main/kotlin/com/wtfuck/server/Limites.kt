@@ -12,10 +12,15 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Hay dos limitadores y no uno, porque hay dos problemas distintos:
  *
- *  - [Limitador]: en memoria, ventana deslizante. Para rafagas. Reiniciar el
- *    servidor perdona la rafaga en curso, y eso esta bien: el castigo dura
- *    segundos, y quien espera un reinicio para mandar tres mensajes mas no es
- *    un problema.
+ *  - [Limitador]: ventana deslizante. Para rafagas. Reiniciar el servidor
+ *    perdona la rafaga en curso, y eso esta bien: el castigo dura segundos, y
+ *    quien espera un reinicio para mandar tres mensajes mas no es un problema.
+ *
+ *    **Con una excepcion, y es importante**: los limites de FALLO —los del
+ *    ingreso— van por Redis cuando lo hay. La razon de arriba vale para tres
+ *    mensajes de mas y no para probar contrasenas: en memoria, el limite se
+ *    multiplica por cada instancia que haya detras del balanceador, y un
+ *    despliegue lo perdona entero. Ver `Bus.marcasEnVentana`.
  *
  *  - [Cupos]: en la base, ventanas redondeadas. Para lo que se cuenta por hora
  *    o por dia. Aqui reiniciar NO debe perdonar: si el limite de denuncias
@@ -23,7 +28,9 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Meter todo en la base seria una escritura extra en cada mensaje enviado.
  * Meter todo en memoria regalaria los limites largos en cada reinicio. La
- * division es por la duracion del limite, no por su importancia.
+ * division es por la duracion del limite **y por lo que protege**: la frase
+ * original decia "no por su importancia", y el ingreso es justo el caso donde
+ * la importancia manda.
  */
 
 // ============================================================
@@ -125,9 +132,32 @@ object Limitador {
      *    contrasena en quince minutos.
      *  - [FALLOS_POR_IP] atrapa al que rocia muchos usuarios desde un sitio.
      *    Es holgada a proposito: tiene que tolerar el NAT.
+     *
+     * ## Por que 300 y no 50
+     *
+     * Eran 50, y 50 no tolera el NAT que este mismo comentario dice tolerar.
+     * La cuenta es facil de hacer y nadie la habia hecho: detras de una sola
+     * salida a internet puede haber decenas de miles de personas, y basta con
+     * que una de cada mil se equivoque de contrasena en un cuarto de hora para
+     * dejar fuera a TODAS las demas. En una institucion con cuarenta mil
+     * cuentas eso no es un caso raro, es la hora punta de un lunes.
+     *
+     * Se vio al hacer compartido el contador: con las marcas en la memoria de
+     * cada proceso, el limite se repartia entre instancias y se borraba en
+     * cada reinicio, asi que nunca llegaba a 50 y el problema no existia
+     * todavia. El arreglo no lo causo — lo destapo.
+     *
+     * Subirlo no afloja la proteccion de una cuenta, porque **no es la que
+     * protege una cuenta**: eso lo hace [FALLOS_POR_USUARIO], que son 8 y no
+     * se tocan. Esta regla es un tope grueso contra el que rocia contrasenas
+     * desde un sitio, y contra eso 300 sigue siendo un tope: quien ataque en
+     * serio usa muchas direcciones y ninguna regla por IP lo va a parar.
+     *
+     * Un limite que deja fuera a gente que no hizo nada se acaba subiendo
+     * hasta que deja de servir, o peor, se apaga entero.
      */
     val FALLOS_POR_USUARIO get() = efectiva("fallos_por_usuario", Regla(8, Duration.ofMinutes(15)))
-    val FALLOS_POR_IP get() = efectiva("fallos_por_ip", Regla(50, Duration.ofMinutes(15)))
+    val FALLOS_POR_IP get() = efectiva("fallos_por_ip", Regla(300, Duration.ofMinutes(15)))
 
     /**
      * Pedir un codigo por SMS. Dos reglas, y la division importa.
@@ -455,9 +485,7 @@ object Limitador {
      * que saber si esta bloqueado, pero el intento solo cuenta si sale mal.
      */
     fun exigirSinContar(clave: String, accion: String, r: Regla) {
-        val cola = marcas["$accion:$clave"] ?: return
-        val desde = System.currentTimeMillis() - r.ventana.toMillis()
-        val vivos = synchronized(cola) { cola.count { it >= desde } }
+        val vivos = compartido(clave, accion, r, contar = false) ?: enMemoria(clave, accion, r)
         if (vivos >= r.cuantas) {
             throw ErrorNegocio(429, "Demasiados intentos fallidos. Espera unos minutos.")
         }
@@ -465,7 +493,31 @@ object Limitador {
 
     /** Anota un fallo. No lanza: el error que lo provoco ya se esta lanzando. */
     fun anotarFallo(clave: String, accion: String, r: Regla) {
+        // Se anota en LOS DOS sitios cuando hay Redis.
+        //
+        // No es redundancia: si Redis se cae a mitad de un ataque, el limite
+        // no puede quedarse en cero. Con la marca puesta tambien en memoria,
+        // la instancia que atiende sigue frenando por su cuenta — mas flojo
+        // que antes, pero no abierto de par en par, que es lo que pasaria si
+        // el unico contador fuera el que acaba de desaparecer.
+        compartido(clave, accion, r, contar = true)
         intentar(clave, accion, r)
+    }
+
+    /**
+     * El recuento compartido, o `null` si no hay con quien compartirlo.
+     *
+     * Solo para los limites de FALLO. Ver `Bus.marcasEnVentana` para por que
+     * estos no pueden vivir en la memoria de un proceso.
+     */
+    private fun compartido(clave: String, accion: String, r: Regla, contar: Boolean): Int? =
+        Bus.marcasEnVentana("$accion:$clave", r.ventana.toMillis(), contar)?.toInt()
+
+    /** Lo que hay en la memoria de ESTE proceso, sin tocarlo. */
+    private fun enMemoria(clave: String, accion: String, r: Regla): Int {
+        val cola = marcas["$accion:$clave"] ?: return 0
+        val desde = System.currentTimeMillis() - r.ventana.toMillis()
+        return synchronized(cola) { cola.count { it >= desde } }
     }
 
     /** Solo para las pruebas: vuelve a cero. */
