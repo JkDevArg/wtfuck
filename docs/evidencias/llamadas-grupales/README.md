@@ -195,6 +195,37 @@ quien aún podía contestar.
 
 ---
 
+## 9 y 10 · Se cae una conexión y la pantalla no miente
+
+![Conectada con tres](9-conectada-tres.png)
+![Uno se desconecta](10-uno-se-desconecta.png)
+
+Se mató la app del otro lado **sin colgar**, con la tercera todavía sonando. El
+cronómetro se detiene, la pantalla vuelve a *"Conectando…"* y el pie dice
+`llamando a rocio · joaquin se desconectó`. La llamada **no** se corta: rocío
+todavía puede entrar.
+
+Dos cosas estaban mal antes de esto, y ninguna se ve leyendo el código:
+
+**La regla era `if (motores.isEmpty()) colgar()`.** En una llamada de dos está
+bien. En una de grupo hay motores que **nunca conectaron** —uno por cada
+persona que todavía suena, creados al cerrar la malla—, así que el mapa no se
+vaciaba nunca. Un motor que existe no es una conversación.
+
+**Y WebRTC avisaba `DISCONNECTED` y no lo escuchaba nadie.** El motor sólo
+reportaba `CONNECTED` y `FAILED`; faltaba la tercera combinación
+—`conectado = false, terminado = false`, «ahora no se oye pero puede volver»—.
+Sin ella la pantalla marcaba **0:54** y decía "con joaquin" contra un teléfono
+muerto.
+
+El comentario del módulo K ya advertía por qué `DISCONNECTED` no puede colgar:
+se recupera solo cuando el teléfono cambia de red, y colgar ahí cortaría la
+llamada cada vez que se pasa de wifi a datos. Eso sigue igual. Lo que cambió es
+que **dejar de afirmar que hay conversación no es lo mismo que darla por
+terminada**, y antes las dos cosas eran la misma.
+
+---
+
 ## Lo que NO se probó
 
 - **Tres aparatos a la vez.** Hay dos emuladores, así que la malla se probó con

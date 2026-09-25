@@ -99,6 +99,23 @@ data class EstadoLlamada(
  * -no una linea- porque arrastra el ciclo de vida de toda la llamada fuera de
  * la Activity.
  */
+/**
+ * Los estados de una persona dentro de una llamada.
+ *
+ * Constantes y no cadenas sueltas porque las usan el servicio, la pantalla y
+ * las pruebas, y una cadena mal escrita en cualquiera de los tres no la caza
+ * el compilador: la fila simplemente deja de coincidir y la persona
+ * desaparece de la lista sin que nada falle.
+ *
+ * Los tres primeros los manda el servidor. `cayo` es **solo del cliente**: el
+ * servidor no sabe que se cayo una conexion WebRTC, porque la señalizacion va
+ * cifrada y el medio no pasa por el.
+ */
+const val ESTADO_SONANDO = "sonando"
+const val ESTADO_DENTRO = "dentro"
+const val ESTADO_RECHAZO = "rechazo"
+const val ESTADO_CAIDO = "cayo"
+
 class ServicioLlamadas(
     private val ctx: Context,
     private val api: ApiCliente,
@@ -134,6 +151,17 @@ class ServicioLlamadas(
      * La clave es el dispositivo porque es la unidad de la malla: un motor,
      * una pista, un recuadro.
      */
+    /**
+     * Los dispositivos cuya conexion esta viva AHORA.
+     *
+     * No alcanza con `motores`: en una llamada de grupo hay un motor por cada
+     * persona que todavia suena, creado al cerrar la malla, y esos no
+     * conectaron nunca. Un motor que existe no es una conversacion.
+     */
+    private val conectados = java.util.Collections.newSetFromMap(
+        ConcurrentHashMap<String, Boolean>(),
+    )
+
     private val _videosRemotos = MutableStateFlow<Map<String, VideoTrack>>(emptyMap())
     val videosRemotos: StateFlow<Map<String, VideoTrack>> = _videosRemotos.asStateFlow()
 
@@ -533,27 +561,74 @@ class ServicioLlamadas(
 
                 override fun onEstado(conectado: Boolean, terminado: Boolean) {
                     val e = _estado.value ?: return
+                    val quien = e.participantes[dispositivoId]
                     when {
-                        conectado && e.fase != EstadoLlamada.Fase.EN_CURSO ->
+                        conectado -> {
+                            conectados += dispositivoId
                             _estado.value = e.copy(
                                 fase = EstadoLlamada.Fase.EN_CURSO,
-                                conectadaEn = System.currentTimeMillis(),
+                                // Si ya estaba en curso se conserva el reloj:
+                                // volver de una caida no reinicia la llamada.
+                                conectadaEn = if (e.fase == EstadoLlamada.Fase.EN_CURSO) {
+                                    e.conectadaEn
+                                } else {
+                                    System.currentTimeMillis()
+                                },
+                                estadoDe = if (quien == null) {
+                                    e.estadoDe
+                                } else {
+                                    e.estadoDe + (quien to ESTADO_DENTRO)
+                                },
+                            )
+                        }
+
+                        // Se cayo, definitivamente o no. Las dos ramas hacen
+                        // casi lo mismo y la diferencia esta declarada en
+                        // [Malla.trasCaida]: la transitoria nunca cuelga.
+                        else -> {
+                            conectados -= dispositivoId
+                            if (terminado) {
+                                motores.remove(dispositivoId)?.colgar()
+                                // Y se quita su recuadro: dejarlo deja un
+                                // video congelado de alguien que ya no esta,
+                                // que es peor que no mostrar nada.
+                                _videosRemotos.value = _videosRemotos.value - dispositivoId
+                            }
+
+                            _estado.value = e.copy(
+                                participantes = if (terminado) {
+                                    e.participantes - dispositivoId
+                                } else {
+                                    e.participantes
+                                },
+                                // Se marca CAIDO, no se saca de la lista: para
+                                // el servidor esa persona sigue en la llamada
+                                // —no colgo— y decir "no entro" seria mentir.
+                                // Lo que pasa es que ahora no se la oye.
+                                estadoDe = if (quien == null) {
+                                    e.estadoDe
+                                } else {
+                                    e.estadoDe + (quien to ESTADO_CAIDO)
+                                },
                             )
 
-                        // Solo se cuelga cuando NO queda ningun motor vivo: en
-                        // una llamada de grupo, que se caiga una conexion no
-                        // debe cortar las otras.
-                        terminado -> {
-                            motores.remove(dispositivoId)?.colgar()
-                            // Y se quita su recuadro: dejarlo deja un video
-                            // congelado de alguien que ya no esta, que es peor
-                            // que no mostrar nada.
-                            _videosRemotos.value = _videosRemotos.value - dispositivoId
-                            _estado.value = _estado.value?.let {
-                                it.copy(participantes = it.participantes - dispositivoId)
-                            }
-                            if (motores.isEmpty()) {
-                                ambito.launch { colgar(FinLlamada.FALLO_RED) }
+                            // La decision vive en [Malla.trasCaida] porque
+                            // antes era `if (motores.isEmpty())` y eso no se
+                            // cumplia nunca en una llamada de grupo: hay un
+                            // motor por cada persona que todavia suena, y
+                            // ninguno conecto. La llamada seguia con el
+                            // cronometro andando sin nadie al otro lado.
+                            val ahora = _estado.value
+                            val sonando = ahora?.estadoDe
+                                ?.count { it.value == ESTADO_SONANDO } ?: 0
+                            when (Malla.trasCaida(conectados.size, sonando, terminado)) {
+                                TrasCaida.SEGUIR -> Unit
+                                TrasCaida.ESPERAR -> _estado.value = ahora?.copy(
+                                    fase = EstadoLlamada.Fase.CONECTANDO,
+                                    conectadaEn = 0L,
+                                )
+                                TrasCaida.COLGAR ->
+                                    ambito.launch { colgar(FinLlamada.FALLO_RED) }
                             }
                         }
                     }
@@ -575,6 +650,7 @@ class ServicioLlamadas(
 
     private fun limpiar(motivo: String?) {
         motores.values.forEach { runCatching { it.colgar() } }
+        conectados.clear()
         _videosRemotos.value = emptyMap()
         motores.clear()
         ofertasPendientes.clear()

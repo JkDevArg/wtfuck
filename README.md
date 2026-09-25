@@ -17,9 +17,9 @@ docs/       decisiones de arquitectura, hoja de ruta, API, despliegue
 ## Estado
 
 Servidor y app funcionando, verificados en dos emuladores.
-**1815 pruebas en verde** con todo levantado (1502 de integración en 36 suites,
-75 de JUnit en el servidor, 238 en la app). En la configuración mínima —una
-instancia, sin Redis— son **1795**: dos suites se omiten cuando les falta el
+**1823 pruebas en verde** con todo levantado (1502 de integración en 36 suites,
+75 de JUnit en el servidor, 246 en la app). En la configuración mínima —una
+instancia, sin Redis— son **1803**: dos suites se omiten cuando les falta el
 entorno, y el runner las marca `OMIT` en vez de `OK`.
 
 Tres de ellas **hacen ataques de verdad**:

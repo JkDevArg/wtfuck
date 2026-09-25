@@ -78,7 +78,19 @@ interface OyenteLlamada {
     /** Un candidato ICE local, listo para mandar cifrado (trickle). */
     fun onCandidato(candidato: String, sdpMid: String?, indice: Int)
 
-    /** Cambio de estado de la conexion. `conectado` es cuando ya se oye. */
+    /**
+     * Cambio de estado de la conexion. Son **tres** combinaciones, no dos:
+     *
+     * | `conectado` | `terminado` | Que paso |
+     * |---|---|---|
+     * | `true` | `false` | Ya se oye |
+     * | `false` | `false` | Se corto y puede volver -cambio de red- |
+     * | `false` | `true` | Se cayo de verdad y no vuelve |
+     *
+     * La del medio es la que faltaba. Sin ella, una conexion caida se veia
+     * igual que una viva: la pantalla decia "con joaquin" y el cronometro
+     * seguia corriendo contra un telefono muerto.
+     */
     fun onEstado(conectado: Boolean, terminado: Boolean)
 
     /** Llego una pista remota. El servicio decide si la pinta o solo la oye. */
@@ -234,6 +246,17 @@ class MotorWebRtc(
                     // DISCONNECTED no es el final: puede recuperarse solo
                     // cuando cambia la red. Tratarlo como fin cortaria la
                     // llamada cada vez que el telefono pasa de wifi a datos.
+                    //
+                    // Pero **si hay que avisarlo**, y antes no se avisaba: es
+                    // la tercera combinacion, `conectado = false` y
+                    // `terminado = false`, o sea "ahora mismo no se oye, pero
+                    // puede volver". Sin ella la pantalla seguia diciendo "con
+                    // joaquin" y el cronometro corriendo con el otro telefono
+                    // muerto; se vio en un emulador, 0:54 contra una conexion
+                    // que llevaba medio minuto caida.
+                    PeerConnection.IceConnectionState.DISCONNECTED,
+                    -> oyente.onEstado(conectado = false, terminado = false)
+
                     else -> Unit
                 }
             }

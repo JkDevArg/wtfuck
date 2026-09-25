@@ -47,6 +47,43 @@ object Malla {
      * Se excluyen los que **ya tienen conexión**: con ésos la negociación ya
      * pasó, y ofrecerles de nuevo la tiraría abajo para rehacerla.
      */
+    /**
+     * Que hacer cuando se cae una conexion.
+     *
+     * ## El defecto que esto tapa
+     *
+     * La regla era `if (motores.isEmpty()) colgar()`. En una llamada de dos
+     * esta bien: si el unico motor muere, no hay llamada. En una de grupo hay
+     * motores que **nunca conectaron** —uno por cada persona que todavia suena,
+     * creados al cerrar la malla—, asi que el mapa no se vaciaba nunca y la
+     * llamada seguia con el cronometro corriendo sin nadie al otro lado. Se
+     * vio en un emulador: `ICE: CONNECTED` y treinta segundos despues
+     * `DISCONNECTED`, `CLOSED`, y la pantalla marcando 0:43.
+     *
+     * Un motor que existe no es una conversacion. Lo que cuenta es quien esta
+     * CONECTADO, y aparte, quien todavia puede contestar.
+     *
+     * @param conectados cuantas conexiones estan vivas ahora mismo.
+     * @param sonando a cuantas personas les sigue sonando el telefono.
+     * @param definitiva si la conexion se cayo para no volver -`FAILED`- o si
+     *   solo se corto y puede recuperarse -`DISCONNECTED`-. Una transitoria
+     *   nunca cuelga.
+     */
+    fun trasCaida(conectados: Int, sonando: Int, definitiva: Boolean): TrasCaida = when {
+        // Queda alguien hablando: que se caiga uno no corta a los demas.
+        conectados > 0 -> TrasCaida.SEGUIR
+        // Una caida TRANSITORIA nunca cuelga. ICE se recupera solo cuando el
+        // telefono cambia de red, y colgar aqui cortaria la llamada cada vez
+        // que se pasa de wifi a datos. Se deja de afirmar que hay
+        // conversacion, que es distinto de darla por terminada.
+        !definitiva -> TrasCaida.ESPERAR
+        // Nadie conectado, pero alguien puede contestar todavia: no se cuelga,
+        // seria colgarle a quien esta por entrar.
+        sonando > 0 -> TrasCaida.ESPERAR
+        // Ni conectados, ni sonando, y la caida fue definitiva.
+        else -> TrasCaida.COLGAR
+    }
+
     fun aQuienesOfrecer(
         mio: String,
         candidatos: List<String>,
@@ -56,4 +93,21 @@ object Malla {
             .filter { it !in yaConectados }
             .filter { meTocaOfrecer(mio, it) }
             .distinct()
+}
+
+/** Lo que hay que hacer cuando muere una conexion. Ver [Malla.trasCaida]. */
+enum class TrasCaida {
+    /** Queda alguien hablando: no se toca nada. */
+    SEGUIR,
+
+    /**
+     * Nadie conectado y alguien todavia suena: se vuelve a "conectando".
+     *
+     * No es colgar ni seguir. Dejarla "en curso" con el cronometro andando
+     * seria afirmar que hay una conversacion donde no hay nadie.
+     */
+    ESPERAR,
+
+    /** No queda nadie ni puede llegar nadie. */
+    COLGAR,
 }

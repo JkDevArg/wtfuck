@@ -5621,3 +5621,70 @@ una llamada de grupo sin saber con quién es raro. Quien contesta ve
 
 **1815 pruebas en verde**: 1502 de integración en 36 suites, 238 JUnit de app
 y 75 de servidor.
+
+---
+
+## Módulo AI · Una conexión que se cae, contada como es ✅
+
+Se mató la app del otro lado **sin colgar**, con una tercera persona todavía
+sonando. La pantalla siguió marcando **0:54** y diciendo "con joaquin" contra
+un teléfono muerto.
+
+Dos cosas estaban mal, y las dos venían de antes.
+
+### AI.1 · La regla mira los motores, y en grupo eso no significa nada
+
+Era `if (motores.isEmpty()) colgar()`. En una llamada de dos está bien: si el
+único motor muere, no hay llamada. En una de grupo hay motores que **nunca
+conectaron** —uno por cada persona que todavía suena, creados al cerrar la
+malla del módulo AF—, así que el mapa no se vaciaba nunca.
+
+> Un motor que existe no es una conversación.
+
+Ahora se cuenta quién está **conectado** y, aparte, a quién le sigue sonando el
+teléfono. La decisión vive en [`Malla.trasCaida`](../app/src/main/java/com/wtfuck/app/datos/Malla.kt).
+
+### AI.2 · WebRTC avisaba y no lo escuchaba nadie
+
+`MotorLlamada` sólo reportaba `CONNECTED` y `FAILED`. Faltaba la tercera
+combinación —`conectado = false, terminado = false`: *"ahora no se oye pero
+puede volver"*— y sin ella una conexión caída se veía **igual que una viva**.
+
+El comentario del módulo K ya explicaba por qué `DISCONNECTED` no puede tratarse
+como el final: se recupera solo cuando el teléfono cambia de red, y colgar ahí
+cortaría la llamada cada vez que se pasa de wifi a datos. Eso sigue igual.
+
+Lo que cambió es la distinción que faltaba:
+
+> **Dejar de afirmar que hay conversación no es lo mismo que darla por
+> terminada.** Antes las dos cosas eran la misma, así que para no hacer lo
+> segundo tampoco se hacía lo primero.
+
+`trasCaida` lleva ahora un `definitiva`, y con los **mismos números** una caída
+transitoria espera y una definitiva cuelga. Hay una prueba que fija justo eso,
+porque es toda la diferencia entre un corte de red y una llamada terminada.
+
+### AI.3 · Y la pantalla lo dice
+
+`cayo` es un estado **sólo del cliente**: el servidor no sabe que se cayó una
+conexión WebRTC, porque la señalización va cifrada y el medio no pasa por él.
+Para el servidor esa persona sigue en la llamada —no colgó—, así que decir "no
+entró" sería mentir en la otra dirección.
+
+La línea queda `llamando a rocio · joaquin se desconectó`, el cronómetro se
+detiene y la llamada no se corta.
+
+De paso, los estados dejaron de ser cadenas sueltas repartidas entre el
+servicio, la pantalla y las pruebas: `ESTADO_SONANDO`, `ESTADO_DENTRO`,
+`ESTADO_RECHAZO`, `ESTADO_CAIDO`. Una cadena mal escrita ahí no la caza el
+compilador —la fila deja de coincidir y la persona desaparece de la lista sin
+que nada falle—, que es el peor tipo de error que puede tener una lista.
+
+### Evidencias
+
+Dos capturas en
+[`docs/evidencias/llamadas-grupales/`](evidencias/llamadas-grupales/): la
+llamada conectada y el momento en que uno se cae.
+
+**1823 pruebas en verde**: 1502 de integración en 36 suites, 246 JUnit de app
+y 75 de servidor.

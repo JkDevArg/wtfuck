@@ -84,6 +84,29 @@ class PieDeParticipantesTest {
         assertEquals("con ana, rocio · llamando a beto", a)
     }
 
+    /**
+     * Quien se cayó no es quien no entró.
+     *
+     * Para el servidor esa persona **sigue en la llamada** —no colgó— y puede
+     * volver cuando su red vuelva. Antes no se decía nada y la pantalla
+     * afirmaba "con joaquin" con su teléfono muerto medio minuto.
+     */
+    @Test
+    fun `una conexion caida se cuenta aparte de quien no entro`() {
+        val pie = pieDeParticipantes(
+            mapOf("ana" to "dentro", "beto" to "cayo", "ceci" to "rechazo"),
+        )
+        assertEquals("con ana · beto se desconectó · ceci no entró", pie)
+    }
+
+    /** Y deja de contarse como presente, que era la mentira. */
+    @Test
+    fun `quien se cayo deja de estar en el con`() {
+        val pie = pieDeParticipantes(mapOf("joaquin" to "cayo", "rocio" to "sonando"))
+        assertFalse("seguia diciendo que estaba", pie.contains("con joaquin"))
+        assertEquals("llamando a rocio · joaquin se desconectó", pie)
+    }
+
     /** Sin nadie, nada: una línea vacía no se dibuja. */
     @Test
     fun `sin participantes no dice nada`() {
