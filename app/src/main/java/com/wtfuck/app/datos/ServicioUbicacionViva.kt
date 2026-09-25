@@ -153,6 +153,33 @@ class ServicioUbicacionViva : Service() {
 
         val convNuevo = intent?.getStringExtra(EXTRA_CONV).orEmpty()
         val msgNuevo = intent?.getStringExtra(EXTRA_MSG).orEmpty()
+        val hastaNuevo = intent?.getLongExtra(EXTRA_HASTA, 0L) ?: 0L
+
+        // Se VALIDA antes de tocar nada.
+        //
+        // Antes el orden era al reves: se escribian los campos y recien
+        // despues se miraba si servian. Un arranque sin extras —un intent
+        // vacio, una redeliver rara— borraba la conversacion, el id y la
+        // fecha de un compartido que estaba andando bien, y lo dejaba sin
+        // seguimiento con la fila todavia "viva" en la base: del otro lado,
+        // un punto congelado presentado como si fuera de ahora. Es el unico
+        // modo en que esta funcion puede mentir de verdad.
+        //
+        // Ahora un arranque inutil no se lleva puesto al que funciona: si ya
+        // hay uno en curso se lo deja en paz, y sino se apaga como antes.
+        if (convNuevo.isBlank() || msgNuevo.isBlank() ||
+            hastaNuevo <= System.currentTimeMillis()
+        ) {
+            if (mensajeId.isNotBlank() && hasta > System.currentTimeMillis()) {
+                Log.w(TAG, "Arranque sin datos utiles: se ignora, hay uno en curso")
+                alPrimerPlano()
+                return START_REDELIVER_INTENT
+            }
+            Log.w(TAG, "Arranque sin datos utiles: se apaga")
+            alPrimerPlano()
+            apagar()
+            return START_NOT_STICKY
+        }
 
         // UN compartido a la vez, y el anterior se cierra de verdad.
         //
@@ -181,19 +208,13 @@ class ServicioUbicacionViva : Service() {
 
         conversacionId = convNuevo
         mensajeId = msgNuevo
-        hasta = intent?.getLongExtra(EXTRA_HASTA, 0L) ?: 0L
+        hasta = hastaNuevo
 
         // Primero el primer plano, pase lo que pase. Quien llama a
         // `startForegroundService` DEBE llamar a `startForeground` en unos
         // segundos o el sistema mata la app entera; comprobar los datos antes
         // de eso sería ordenarlo al revés.
         alPrimerPlano()
-
-        if (conversacionId.isBlank() || mensajeId.isBlank() || hasta <= System.currentTimeMillis()) {
-            Log.w(TAG, "Arranque sin datos utiles: se apaga")
-            apagar()
-            return START_NOT_STICKY
-        }
 
         engancharUbicacion()
         vigilarElFinal()

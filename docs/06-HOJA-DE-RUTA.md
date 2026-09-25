@@ -5969,5 +5969,103 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1865 pruebas en verde**: 1520 de integración en 36 suites, 270 JUnit de app
+**1888 pruebas en verde**: 1520 de integración en 36 suites, 293 JUnit de app
+y 75 de servidor.
+
+---
+
+## Módulo AN · El mapa, y quién decide pagarlo ✅
+
+Hay mapa. Y hay **modo oculto**, que dibuja el mismo recorrido sin pedirle una
+imagen a nadie.
+
+Hasta AM esta app no le había pedido nada a ningún servidor que no fuera el
+propio, y la respuesta a "¿se puede poner un mapa?" era que no: para pintar
+las calles hay que pedirle las baldosas de esa zona a un tercero, y pedir la
+baldosa de un lugar le cuenta a ese tercero que alguien está mirando ese
+lugar. Con un compartido en vivo eso no es un momento, son hasta 24 horas de
+recorrido.
+
+Así que no se agregó el mapa y ya. Se agregó con la pregunta de **quién paga
+ese costo** — que resultó ser dos preguntas.
+
+### AN.1 · Dos permisos, de dos personas distintas
+
+**Quien comparte** decide si su POSICIÓN puede llegar a un tercero. Viaja
+dentro de la carga cifrada (`conMapa`), y del otro lado no hay forma de
+saltearlo: en modo oculto no se dibuja mapa aunque el que mira lo quiera.
+
+**Quien mira** decide si expone SU dirección IP, porque la petición la hace su
+teléfono: queda su IP del otro lado junto con "está mirando este lugar a esta
+hora". Arranca apagado, se ofrece una sola vez en la burbuja con el costo
+escrito, y se apaga desde *Privacidad → Este aparato*. Un permiso que sólo se
+puede encender no es un permiso.
+
+Elegir "con mapa" al compartir enciende los dos: es la misma decisión, tomada
+donde el costo está escrito.
+
+### AN.2 · El modo oculto es la misma vista sin el fondo
+
+No una versión pobre. El rastro, el marcador, el encuadre y la barra de escala
+son los mismos, así que lo que se pierde es el decorado de las calles y no la
+información. **Un solo composable**, que es lo que evita que se separen al
+primer arreglo.
+
+La barra de escala no es adorno: sin ella un paseo de cinco metros y un viaje
+de cinco kilómetros se dibujan idénticos, porque el trazo siempre se estira
+para llenar la caja.
+
+### AN.3 · El rastro no viaja
+
+Cada teléfono arma el suyo con lo que le fue llegando. Mandarlo serían hasta
+60 puntos en **cada** actualización —una cada medio minuto, hasta 24 horas—
+repitiendo toda la historia dentro de cada sobre para redibujar algo que del
+otro lado ya está.
+
+Consecuencia honesta: quien entra tarde ve un rastro más corto. Es lo
+correcto — el rastro dice *"esto vi moverse"*.
+
+### AN.4 · Las cuentas se prueban en la JVM
+
+`Geo` es puro: proyección, distancias, recorte del rastro, encuadre y escala.
+La parte que dibuja no calcula nada.
+
+No es estético. El error clásico de Mercator —tratar los grados de latitud
+como una distancia constante— **en Lima se nota poco y en Oslo parte el mapa a
+la mitad**. Un teléfono en un escritorio de Lima nunca lo iba a mostrar.
+
+### AN.5 · El token no puede llegar a OpenStreetMap
+
+El `ImageLoader` de la app agrega `Authorization` sólo a nuestro host. Esa
+regla estaba desde el módulo D y era **teórica**, porque no había ningún otro
+host; ahora es de carga, y tiene prueba.
+
+Las baldosas igual usan un cargador aparte, sin el interceptor: no es que no
+mande el token, es que no lo conoce. La diferencia importa cuando alguien
+toque el otro archivo dentro de un año.
+
+---
+
+## Dos defectos que no aparecieron probando
+
+**Uno leyendo.** `recibidaEn` estaba documentado desde AM como "no viaja: sale
+siempre en 0", y viajaba: las actualizaciones no se arman de cero, se arman
+copiando la carga guardada, que ya tiene el campo escrito. Era invisible
+porque del otro lado se pisa al guardar. Con el rastro habría dejado de serlo:
+de un `Long` de sobra a 60 puntos por sobre. *Un invariante que se cumple
+porque nadie lo rompió todavía no es un invariante* — la regla se mudó al
+contrato, al lado de los campos que recorta.
+
+**Uno latente en el servicio.** `onStartCommand` escribía la conversación, el
+id y la fecha y recién después miraba si servían. Un arranque sin extras
+borraba el estado de un compartido que andaba bien y lo dejaba sin seguimiento
+con la fila todavía "viva": del otro lado, un punto congelado presentado como
+si fuera de ahora. Ahora se valida primero.
+
+### Evidencias
+
+[`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
+dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
+
+**1888 pruebas en verde**: 1520 de integración en 36 suites, 293 JUnit de app
 y 75 de servidor.

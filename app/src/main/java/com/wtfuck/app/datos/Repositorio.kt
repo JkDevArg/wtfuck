@@ -1136,6 +1136,8 @@ class Repositorio(
         lon: Double,
         precisionM: Int,
         hasta: Long,
+        /** Ver [Carga.UbicacionEnVivo.conMapa]: lo decide quien comparte. */
+        conMapa: Boolean = false,
     ): String {
         // Primero se cierran los MIOS que sigan vivos, en cualquier chat.
         //
@@ -1156,6 +1158,7 @@ class Repositorio(
         val carga = Carga.UbicacionEnVivo(
             mensajeId = id, lat = lat, lon = lon,
             precisionM = precisionM, hasta = hasta, secuencia = 0,
+            conMapa = conMapa,
         )
         val ahora = System.currentTimeMillis()
         dao.guardarMensaje(
@@ -1170,7 +1173,10 @@ class Repositorio(
                 especial = ClaseContenido.UBICACION_VIVA,
                 especialJson = jsonApp.encodeToString(
                     Carga.serializer(),
-                    carga.copy(recibidaEn = ahora),
+                    carga.copy(
+                        recibidaEn = ahora,
+                        estela = Geo.conPunto(emptyList(), lat, lon, ahora),
+                    ),
                 ),
             )
         )
@@ -1200,23 +1206,24 @@ class Repositorio(
         val actual = vivaGuardada(mensajeId) ?: return
         if (actual.hasta <= 0L) return  // ya se termino a mano
 
+        val ahora = System.currentTimeMillis()
         val carga = actual.copy(
             lat = lat, lon = lon, precisionM = precisionM, secuencia = secuencia,
         )
         // Primero la fila propia: quien comparte tiene que ver su posicion
         // moverse aunque la red este caida.
-        //
-        // Lo que se GUARDA lleva la hora y lo que se MANDA no: `recibidaEn`
-        // es del reloj de quien lo lee, no de quien lo escribe.
         dao.actualizarEspecial(
             mensajeId,
             ClaseContenido.UBICACION_VIVA,
             jsonApp.encodeToString(
                 Carga.serializer(),
-                carga.copy(recibidaEn = System.currentTimeMillis()),
+                carga.copy(
+                    recibidaEn = ahora,
+                    estela = Geo.conPunto(actual.estela, lat, lon, ahora),
+                ),
             ),
         )
-        encolarEspecial(convId, ClaseContenido.UBICACION_VIVA, carga, oculto = true)
+        encolarEspecial(convId, ClaseContenido.UBICACION_VIVA, carga.paraLaRed(), oculto = true)
     }
 
     /**
@@ -1327,15 +1334,24 @@ class Repositorio(
         val actual = vivaGuardada(carga.mensajeId) ?: return
         if (actual.hasta <= 0L) return
         if (carga.secuencia <= actual.secuencia) return
+        val ahora = System.currentTimeMillis()
         dao.actualizarEspecial(
             carga.mensajeId,
             ClaseContenido.UBICACION_VIVA,
             jsonApp.encodeToString(
                 Carga.serializer(),
-                carga.copy(recibidaEn = System.currentTimeMillis()),
+                // La estela sale de LA FILA y no de lo que llego: lo que llega
+                // la trae vacia siempre (ver `soloDeLaRed`), asi que copiar la
+                // carga entrante tal cual borraria el recorrido en cada
+                // actualizacion y la estela no pasaria nunca de un punto.
+                carga.copy(
+                    recibidaEn = ahora,
+                    estela = Geo.conPunto(actual.estela, carga.lat, carga.lon, ahora),
+                ),
             ),
         )
     }
+
 
     suspend fun enviarContacto(convId: String, username: String, nombre: String) =
         encolarEspecial(

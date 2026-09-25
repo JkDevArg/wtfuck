@@ -412,6 +412,47 @@ sealed interface Carga {
          * desplazado unos minutos no se nota, y "hace cuanto" se nota entero.
          */
         val recibidaEn: Long = 0,
+        /**
+         * Si quien comparte acepta que se dibuje un MAPA de verdad.
+         *
+         * ## Por que lo decide quien comparte
+         *
+         * Un mapa incrustado se arma pidiendole las baldosas a un tercero, y
+         * pedir la baldosa de un lugar le cuenta a ese tercero que alguien
+         * esta mirando ESE lugar. La posicion que se filtra no es la de quien
+         * mira: es la de quien comparte. Por eso el permiso es suyo, viaja en
+         * la carga, y del otro lado no hay forma de saltearlo.
+         *
+         * En `false` la burbuja dibuja la estela sin fondo: un recorrido sin
+         * mapa no le pide nada a nadie. Ver [ModoUbicacion].
+         *
+         * ## Por que un booleano y no un enum
+         *
+         * Porque los dos lados pueden tener versiones distintas de la app, y
+         * kotlinx falla al decodificar un valor de enum que no conoce. Un
+         * booleano no tiene valores desconocidos, y el default `false` hace
+         * que una carga vieja —o de una version que no sabe de esto— caiga
+         * sola en el modo que no filtra nada.
+         */
+        val conMapa: Boolean = false,
+        /**
+         * Por donde paso, **con lo que vio este telefono**.
+         *
+         * ## No viaja
+         *
+         * Igual que [recibidaEn], y por una razon mas: son hasta
+         * [ESTELA_MAX] puntos, y mandarlos en CADA actualizacion —una cada
+         * medio minuto, durante hasta 24 horas— seria repetir toda la
+         * historia dentro de cada sobre para redibujar algo que del otro lado
+         * ya esta. Cada aparato la arma de lo que le fue llegando.
+         *
+         * Eso tiene una consecuencia honesta: quien entra tarde, o a quien le
+         * mataron la app un rato, ve una estela mas corta. Es lo correcto —
+         * la estela dice "esto vi moverse", y afirmar mas seria inventar.
+         *
+         * El ultimo punto es el mas nuevo, y se recorta por el principio.
+         */
+        val estela: List<PuntoEstela> = emptyList(),
     ) : Carga
 
     /**
@@ -736,6 +777,70 @@ interface Transporte {
  * "comparti mientras llego" y pasa a ser seguimiento, que es otra cosa y no
  * la que se quiso construir.
  */
+/**
+ * Un punto por el que paso una ubicacion en vivo.
+ *
+ * Los nombres son cortos a proposito: esto se guarda hasta
+ * [ESTELA_MAX] veces dentro de `especialJson`, y `lat`/`lon`/`en` contra
+ * `latitud`/`longitud`/`cuando` son unos 900 bytes menos por compartido.
+ */
+@Serializable
+data class PuntoEstela(
+    val lat: Double,
+    val lon: Double,
+    /** Cuando se supo, con el reloj de quien lo guarda. Igual que `recibidaEn`. */
+    val en: Long,
+)
+
+/** Cuantos puntos de estela se guardan. Ver [Carga.UbicacionEnVivo.estela]. */
+const val ESTELA_MAX = 60
+
+/**
+ * La misma carga, sin los campos que son de UN telefono.
+ *
+ * `recibidaEn` y `estela` estan documentados como "no viajan", y hasta el
+ * modulo AN eso se cumplia por accidente: las cargas se armaban de cero, asi
+ * que salian en su valor por defecto. Las ACTUALIZACIONES no, porque se arman
+ * copiando lo guardado —que ya tiene los dos campos escritos—. `recibidaEn`
+ * viajaba, y lo tapaba que del otro lado se pisa al guardar.
+ *
+ * Con la estela eso dejaria de ser inofensivo: hasta [ESTELA_MAX] puntos en
+ * cada sobre, uno cada medio minuto durante hasta 24 horas, repitiendo una
+ * historia que del otro lado ya esta.
+ *
+ * Vive en el contrato y no en el repositorio a proposito: un invariante que
+ * se cumple porque nadie lo rompio todavia no es un invariante, y este tiene
+ * que estar al lado de los campos que recorta para que quien agregue el
+ * tercero lo vea.
+ */
+fun Carga.UbicacionEnVivo.paraLaRed(): Carga.UbicacionEnVivo =
+    copy(recibidaEn = 0L, estela = emptyList())
+
+/**
+ * Los dos modos con los que se puede compartir la posicion.
+ *
+ * No es un campo del protocolo —en la carga viaja el booleano
+ * [Carga.UbicacionEnVivo.conMapa], ver alli por que— sino el nombre de la
+ * decision, para que la pantalla y las pruebas hablen igual.
+ */
+enum class ModoUbicacion(val conMapa: Boolean) {
+    /**
+     * Solo el rastro. No se le pide una imagen a nadie.
+     *
+     * Se ve por donde paso, cuanto camino y hacia donde va, sin que ningun
+     * servidor de mapas se entere de que existe.
+     */
+    OCULTO(false),
+
+    /** Con el mapa. Le cuesta contarle la posicion al servidor de baldosas. */
+    VISIBLE(true),
+    ;
+
+    companion object {
+        fun de(conMapa: Boolean): ModoUbicacion = if (conMapa) VISIBLE else OCULTO
+    }
+}
+
 object DuracionUbicacion {
     const val MIN_15 = 15 * 60 * 1000L
     const val MIN_30 = 30 * 60 * 1000L

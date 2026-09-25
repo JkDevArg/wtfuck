@@ -37,6 +37,8 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 
 /**
  * Modulo M · Las burbujas del contenido con estructura.
@@ -255,6 +257,62 @@ fun BurbujaUbicacionViva(
         }
 
         Spacer(Modifier.height(8.dp))
+
+        // El recorrido. Está aunque no haya mapa: la estela, el marcador y la
+        // barra de escala no le piden nada a nadie, y son la información —por
+        // dónde pasó y hacia dónde va—. Lo que agrega el mapa son las calles.
+        if (v.coordenadas != null) {
+            // EL de la app y no uno nuevo: `mapaDeTerceros` es estado de
+            // Compose, y dos instancias de [Ajustes] leen el mismo disco pero
+            // tienen estados distintos — tocar "Mostrar el mapa" en una
+            // burbuja no repintaría ninguna otra.
+            val ajustes = (ctx.applicationContext as com.wtfuck.app.WtfuckApp).ajustes
+            // El **Y** de los dos permisos, que los dan personas distintas:
+            // quien comparte decide si su posición puede llegar a un tercero,
+            // y este aparato decide si expone su propia IP al pedirla.
+            val conBaldosas = carga.conMapa && ajustes.mapaDeTerceros
+            MapaDeUbicacion(
+                estela = carga.estela,
+                lat = carga.lat,
+                lon = carga.lon,
+                autor = autor,
+                fotoAutor = fotoAutor,
+                enVivo = v.enVivo,
+                conBaldosas = conBaldosas,
+                precisionM = carga.precisionM,
+                modifier = Modifier.fillMaxWidth().height(150.dp),
+            )
+
+            if (carga.conMapa && !ajustes.mapaDeTerceros && TeselaCliente.hay) {
+                // Se ofrece UNA vez y queda tomada la decisión. Un aviso que
+                // volviera a aparecer en cada burbuja enseñaría a tocarlo sin
+                // leerlo, que es lo contrario de un permiso.
+                TextButton(
+                    onClick = { ajustes.fijarMapaDeTerceros(true) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Icon(Icons.Filled.Map, null, tint = Cian, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Mostrar el mapa", color = Cian, fontSize = 12.sp)
+                }
+                Text(
+                    "Las imágenes del mapa las da OpenStreetMap: pedirlas le " +
+                        "cuenta a ese servidor qué lugar estás mirando.",
+                    color = TextoTerciario,
+                    fontSize = 10.sp,
+                )
+            } else if (!carga.conMapa) {
+                // Que quien recibe sepa que la falta de mapa es una decisión y
+                // no una falla: sin esta línea, la lectura obvia es "se rompió".
+                Text(
+                    "Compartido en modo oculto: sólo el rastro.",
+                    color = TextoTerciario,
+                    fontSize = 10.sp,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+
         Text(
             v.coordenadas ?: "Posición no válida",
             color = if (v.coordenadas != null) TextoPrimario else Coral,

@@ -39,10 +39,15 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
+import androidx.compose.material.icons.filled.Map
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
+    // El de la app: `mapaDeTerceros` es estado de Compose y dos instancias
+    // leen el mismo disco con estados distintos.
+    val ajustes = (androidx.compose.ui.platform.LocalContext.current
+        .applicationContext as com.wtfuck.app.WtfuckApp).ajustes
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
     // `null` = todavia no se pudieron leer. Ver la nota de `Repositorio`.
@@ -401,6 +406,65 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                     null,
                     tint = TextoTerciario,
                     modifier = Modifier.size(20.dp),
+                )
+            }
+
+            Spacer(Modifier.height(18.dp))
+
+            // ---------------------------------------------------------------
+            // AN - lo unico de esta pantalla que NO lo aplica el servidor
+            // ---------------------------------------------------------------
+            //
+            // Va al final y con su propio titulo porque todo lo de arriba es
+            // de la CUENTA —viaja, lo hace cumplir el servidor, vale en todos
+            // los aparatos— y esto es de ESTE telefono. Mezclarlo arriba haria
+            // creer que tambien se sincroniza.
+            Text(
+                "Este aparato",
+                style = MaterialTheme.typography.labelLarge,
+                color = TextoSecundario,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            Spacer(Modifier.height(6.dp))
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = ajustes.mapaDeTerceros,
+                        onValueChange = { ajustes.fijarMapaDeTerceros(it) },
+                    )
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.Map,
+                    null,
+                    tint = if (ajustes.mapaDeTerceros) Cian else Slate,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Cargar mapas de OpenStreetMap", color = TextoPrimario)
+                    Text(
+                        "Para dibujar un mapa hay que pedirle las imagenes de esa zona " +
+                            "a OpenStreetMap, y eso le muestra tu direccion IP y que " +
+                            "lugar estas mirando. Apagado se sigue viendo el rastro: " +
+                            "por donde va y cuanto, sin mapa y sin pedirle nada a nadie.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+                Switch(
+                    checked = ajustes.mapaDeTerceros,
+                    onCheckedChange = null,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = TextoSobreAcento,
+                        checkedTrackColor = Cian,
+                        uncheckedThumbColor = TextoTerciario,
+                        uncheckedTrackColor = BgElev,
+                        uncheckedBorderColor = Slate,
+                    ),
                 )
             }
 

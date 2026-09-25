@@ -1008,8 +1008,13 @@ fun ChatPantalla(
                     }.onFailure { aviso = it.message }
                 }
             },
-            onCompartirEnVivo = { lat, lon, precision, duracion ->
+            onCompartirEnVivo = { lat, lon, precision, duracion, modo ->
                 hojaUbicacion = false
+                // Elegir "con mapa" ES el permiso de este aparato para
+                // pedirle baldosas a un tercero: quien lo eligio acaba de
+                // leer el costo en la hoja, y volver a preguntarselo en su
+                // propia burbuja seria preguntar dos veces lo mismo.
+                if (modo.conMapa) app.ajustes.fijarMapaDeTerceros(true)
                 ambito.launch {
                     runCatching {
                         // La fecha se calcula UNA vez, aqui, y viaja dentro de
@@ -1018,6 +1023,7 @@ fun ChatPantalla(
                         val hasta = System.currentTimeMillis() + duracion
                         val id = app.repo.iniciarUbicacionEnVivo(
                             conversacionId, lat, lon, precision, hasta,
+                            conMapa = modo.conMapa,
                         )
                         ServicioUbicacionViva.arrancar(contexto, conversacionId, id, hasta)
                     }.onFailure { aviso = it.message }

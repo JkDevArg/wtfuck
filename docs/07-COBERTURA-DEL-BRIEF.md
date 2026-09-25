@@ -9,7 +9,7 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-25: 1865 pruebas en verde** (1520 de integración + 345 de
+**Estado al 2026-09-25: 1888 pruebas en verde** (1520 de integración + 368 de
 JUnit) con todo levantado; **1845** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
 Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
@@ -45,7 +45,7 @@ AD junto con el ajuste de privacidad número dieciséis.
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada · ninguna pantalla afirma lo que no comprobó (X, Z.5) | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero · el barrido lo mantiene un **auditor que lee `Main.kt`**, no un recuento a mano (AG) | A, N.7, N.8, AG |
-| 17 | Calidad y pruebas | ✅ 1865 con todo levantado · 1845 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1865 con todo levantado · 1868 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -62,6 +62,7 @@ AD junto con el ajuste de privacidad número dieciséis.
 | Llamadas de audio y video | ✅ módulo K, con ventana flotante |
 | Llamadas y videollamadas **de grupo** | ✅ módulo AF · hasta 4, eligiendo a quién; rejilla de vídeos · quien llama ve quién entró y quién dijo que no (AH) |
 | Ubicación **en tiempo real** | ✅ módulo AM · 15 min a 24 h · el servidor no ve ni la posición ni el vencimiento |
+| Mapa incrustado | ✅ módulo AN · OpenStreetMap, o **modo oculto** que dibuja el mismo recorrido sin pedirle una imagen a nadie |
 | Respuestas, reacciones, menciones, reenvíos | ✅ una reacción por persona (V25) · responder deslizando (N.13) · menciones con selector y resaltado (T.2) · emojis, GIFs y stickers en un panel de tres pestañas (Y.3), con recientes, buscador, tonos de piel y stickers sugeridos al escribir un emoji (Z) |
 | Mensajes fijados | ✅ |
 | Búsqueda global y dentro de conversaciones | ✅ las dos (M.3) |
@@ -467,7 +468,7 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1865 pruebas con todo levantado**: 1520 de integración en 36 suites de Node,
+**1888 pruebas con todo levantado**: 1520 de integración en 36 suites de Node,
 75 de JUnit en el servidor (RBAC, seguridad, cuentas, auditoría y el
 intermediario de GIFs) y 230 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el

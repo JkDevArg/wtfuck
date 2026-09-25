@@ -91,6 +91,38 @@ class Ajustes(private val ctx: Context) {
      * y otra vez, que es exactamente la clase de detalle que separa una
      * funcion de una funcion usable.
      */
+    /**
+     * Si este aparato puede pedirle baldosas a un servidor de mapas.
+     *
+     * ## Por que existe, si ya lo decide quien comparte
+     *
+     * Porque son dos costos distintos y los pagan personas distintas.
+     *
+     * Quien comparte decide si su POSICION puede llegar a un tercero
+     * (`Carga.UbicacionEnVivo.conMapa`), y eso viaja en la carga. Pero la
+     * peticion la hace este telefono: es SU direccion IP la que queda del
+     * otro lado, junto con "esta mirando este lugar a esta hora". Esa parte
+     * no la puede consentir nadie mas.
+     *
+     * ## Por que arranca apagado
+     *
+     * Para que la primera peticion a un tercero no ocurra nunca sin que
+     * alguien la haya pedido. Se enciende de dos maneras, las dos explicitas
+     * y las dos donde el costo esta escrito: tocando "Mostrar el mapa" en una
+     * burbuja, o eligiendo el modo visible al compartir.
+     *
+     * Apagado no rompe nada: la burbuja dibuja la estela igual, que es la
+     * informacion —por donde paso y hacia donde va—; lo que falta es el
+     * decorado de las calles.
+     */
+    var mapaDeTerceros by mutableStateOf(p.getBoolean("mapa_terceros", false))
+        private set
+
+    fun fijarMapaDeTerceros(v: Boolean) {
+        mapaDeTerceros = v
+        p.edit().putBoolean("mapa_terceros", v).apply()
+    }
+
     var velocidadAudio: Float
         get() = p.getFloat("velocidad_audio", 1f)
         set(v) = p.edit().putFloat("velocidad_audio", v).apply()

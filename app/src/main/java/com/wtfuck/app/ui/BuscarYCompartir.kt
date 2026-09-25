@@ -38,6 +38,10 @@ import com.wtfuck.protocol.DuracionUbicacion
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
 import kotlin.coroutines.resume
+import com.wtfuck.app.ui.theme.Ambar
+import com.wtfuck.protocol.ModoUbicacion
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Map
 
 // ============================================================
 //  M.3 · Buscar dentro de la conversacion
@@ -155,11 +159,14 @@ fun HojaUbicacion(
      * hoja. Meterlos en la misma función obligaría a quien la llama a mirar un
      * parámetro para saber cuál de las dos cosas hizo.
      */
-    onCompartirEnVivo: (Double, Double, Int, Long) -> Unit,
+    onCompartirEnVivo: (Double, Double, Int, Long, ModoUbicacion) -> Unit,
     onCerrar: () -> Unit,
 ) {
     /** La duración elegida, o `null` mientras no se elija: entonces es un envío normal. */
     var duracion by remember { mutableStateOf<Long?>(null) }
+    // Oculto por defecto: el modo que no le cuenta nada a nadie es el que no
+    // hay que elegir. Quien quiera el mapa lo pide, y al pedirlo lee por qué.
+    var modo by remember { mutableStateOf(ModoUbicacion.OCULTO) }
     val ctx = LocalContext.current
     var lugar by remember { mutableStateOf<Location?>(null) }
     var buscando by remember { mutableStateOf(false) }
@@ -324,6 +331,56 @@ fun HojaUbicacion(
                     )
                 }
             }
+
+            // El modo sólo aparece cuando hay algo que compartir en vivo: sin
+            // duración elegida no hay recorrido, y una opción que no aplica
+            // todavía es ruido que hay que aprender a ignorar.
+            if (duracion != null) {
+                Spacer(Modifier.height(12.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ModoUbicacion.entries.forEach { m ->
+                        FilterChip(
+                            selected = modo == m,
+                            onClick = { modo = m },
+                            leadingIcon = {
+                                Icon(
+                                    if (m == ModoUbicacion.OCULTO) Icons.Filled.VisibilityOff
+                                    else Icons.Filled.Map,
+                                    null,
+                                    Modifier.size(16.dp),
+                                )
+                            },
+                            label = {
+                                Text(
+                                    if (m == ModoUbicacion.OCULTO) "Modo oculto"
+                                    else "Con mapa",
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Cian,
+                                selectedLabelColor = TextoSobreAcento,
+                                selectedLeadingIconColor = TextoSobreAcento,
+                                labelColor = TextoSecundario,
+                            ),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                // El costo, escrito donde se decide y no en un ajuste lejano.
+                // Es la única diferencia real entre los dos modos, y sin ella
+                // "con mapa" parece estrictamente mejor.
+                Text(
+                    if (modo == ModoUbicacion.OCULTO)
+                        "Se ve el rastro —por dónde vas y cuánto— sin mapa. " +
+                            "Ningún servidor de mapas se entera de dónde estás."
+                    else
+                        "Se dibuja sobre OpenStreetMap. Para pintar el mapa hay " +
+                            "que pedirle las imágenes de esa zona, así que ese " +
+                            "servidor sabrá por dónde andás mientras dure.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (modo == ModoUbicacion.OCULTO) TextoTerciario else Ambar,
+                )
+            }
             Spacer(Modifier.height(14.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -346,7 +403,9 @@ fun HojaUbicacion(
                         if (d == null) {
                             onEnviar(l.latitude, l.longitude, l.accuracy.toInt(), etiqueta)
                         } else {
-                            onCompartirEnVivo(l.latitude, l.longitude, l.accuracy.toInt(), d)
+                            onCompartirEnVivo(
+                                l.latitude, l.longitude, l.accuracy.toInt(), d, modo,
+                            )
                         }
                     },
                     enabled = lugar != null,

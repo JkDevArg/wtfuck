@@ -37,6 +37,22 @@ android {
             buildConfigField("String", "SERVIDOR", "\"http://127.0.0.1:8088\"")
             buildConfigField("String", "SERVIDOR_WS", "\"ws://127.0.0.1:8088\"")
             // El emulador no tiene TEE: sin esto no se podria probar nada.
+            // De donde salen las baldosas del mapa.
+            //
+            // Es configuracion y no una constante en la pantalla porque es el
+            // unico tercero al que esta app le habla, y quien la despliegue
+            // tiene que poder cambiarlo por su propio servidor sin tocar
+            // codigo. Vacio apaga el mapa entero: la burbuja se queda con la
+            // estela y no se le pide una imagen a nadie.
+            //
+            // El default es OSM, que es gratis y publico. Su politica de uso
+            // exige un User-Agent que identifique a la app (ver TeselaCliente)
+            // y no sirve para trafico pesado: un despliegue de verdad va con
+            // baldosas propias o pagas.
+            buildConfigField(
+                "String", "MAPA_BALDOSAS",
+                "\"https://tile.openstreetmap.org/{z}/{x}/{y}.png\"",
+            )
             buildConfigField("boolean", "PERMITIR_SOFTWARE_DEV", "true")
         }
         release {
@@ -47,6 +63,10 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "SERVIDOR", "\"https://api.wtfuck.com\"")
             buildConfigField("String", "SERVIDOR_WS", "\"wss://api.wtfuck.com\"")
+            buildConfigField(
+                "String", "MAPA_BALDOSAS",
+                "\"https://tile.openstreetmap.org/{z}/{x}/{y}.png\"",
+            )
             buildConfigField("boolean", "PERMITIR_SOFTWARE_DEV", "false")
         }
     }
