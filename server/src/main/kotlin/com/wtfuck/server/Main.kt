@@ -285,6 +285,15 @@ private fun arrancarTareas() {
     Thread({
         while (true) {
             runCatching {
+                // Las abandonadas van en el MISMO hilo: las dos son "el
+                // servidor cierra lo que el cliente no cerro", y separarlas en
+                // dos hilos seria dos relojes para la misma idea.
+                val (abandonadas, avisosAb) = Llamadas.cerrarLlamadasAbandonadas()
+                avisosAb.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
+                if (abandonadas > 0) {
+                    bitacora.info("Cerradas {} llamadas abandonadas.", abandonadas)
+                }
+
                 val (cerradas, avisos) = Llamadas.cerrarTimbresVencidos()
                 // Los avisos se empujan FUERA de la transaccion, igual que en
                 // el resto del servidor. Sin esto, la pantalla del que llamaba

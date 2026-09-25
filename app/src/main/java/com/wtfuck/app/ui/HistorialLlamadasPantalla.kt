@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.ui.theme.*
@@ -42,6 +43,15 @@ fun HistorialLlamadasPantalla(onAtras: () -> Unit, onAbrirChat: (String) -> Unit
     var aviso by remember { mutableStateOf<String?>(null) }
 
     val llamar = recordarInicioLlamada { aviso = it }
+    /**
+     * A que grupo se le va a devolver la llamada.
+     *
+     * Devolver una llamada de grupo no es redialar: el tope de la malla son
+     * cuatro y hay que elegir a quien, igual que al llamar desde el chat. Con
+     * el boton llamando al grupo entero, en un grupo de ocho el servidor
+     * responde 409 y el boton no servia para nada.
+     */
+    var grupoADevolver by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { llamadas = app.repo.llamadas.historial() }
 
@@ -97,7 +107,13 @@ fun HistorialLlamadasPantalla(onAtras: () -> Unit, onAbrirChat: (String) -> Unit
                         FilaLlamada(
                             l,
                             onAbrir = { onAbrirChat(l.conversacionId) },
-                            onDevolver = { llamar(l.conversacionId, l.titulo, l.conVideo) },
+                            onDevolver = {
+                                if (l.esGrupo) {
+                                    grupoADevolver = l.conversacionId
+                                } else {
+                                    llamar(l.conversacionId, l.titulo, l.conVideo)
+                                }
+                            },
                         )
                         HorizontalDivider(
                             color = Slate.copy(alpha = 0.25f),
@@ -108,10 +124,28 @@ fun HistorialLlamadasPantalla(onAtras: () -> Unit, onAbrirChat: (String) -> Unit
             }
         }
     }
+
+    // Devolver una llamada de grupo abre la MISMA hoja que el chat, en vez de
+    // redialar: el tope de la malla son cuatro y hay que elegir a quien. Con
+    // el boton llamando al grupo entero, en un grupo de ocho el servidor
+    // respondia 409 y el boton no servia para nada.
+    grupoADevolver?.let { conv ->
+        HojaLlamarAlGrupo(
+            conversacionId = conv,
+            onCerrar = { grupoADevolver = null },
+            onLlamar = { invitados, conVideo ->
+                val titulo = llamadas.orEmpty()
+                    .firstOrNull { it.conversacionId == conv }?.titulo.orEmpty()
+                grupoADevolver = null
+                llamar(conv, titulo.ifBlank { "Grupo" }, conVideo, invitados)
+            },
+        )
+    }
 }
 
 @Composable
 private fun FilaLlamada(l: LlamadaEnHistorial, onAbrir: () -> Unit, onDevolver: () -> Unit) {
+    val esGrupo = l.esGrupo
     // Perdida en coral, el resto neutro. Es el unico caso que reclama una
     // accion, y pintar los tres estados de colores distintos convertiria la
     // lista en un semaforo sin significado.
@@ -129,7 +163,10 @@ private fun FilaLlamada(l: LlamadaEnHistorial, onAbrir: () -> Unit, onDevolver: 
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(nombre = l.titulo, url = null, tamano = 40.dp)
+        // `esGrupo` y no adivinarlo: un grupo dibujado con el icono de una
+        // persona es el mismo defecto que el modulo AE encontro en los
+        // canales, y aqui estaba esperando un archivo mas alla.
+        Avatar(nombre = l.titulo, url = null, tamano = 40.dp, esGrupo = esGrupo)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -147,6 +184,16 @@ private fun FilaLlamada(l: LlamadaEnHistorial, onAbrir: () -> Unit, onDevolver: 
                     color = TextoTerciario,
                 )
             }
+            conQuienes(l)?.let {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextoTerciario,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         IconButton(onClick = onDevolver) {
             Icon(
@@ -162,4 +209,23 @@ private fun FilaLlamada(l: LlamadaEnHistorial, onAbrir: () -> Unit, onDevolver: 
 private fun textoDeLlamada(l: LlamadaEnHistorial): String {
     val cuando = fechaLarga(l.iniciadaEn)
     return if (l.duracion > 0) "$cuando · ${duracionHabla(l.duracion)}" else cuando
+}
+
+/**
+ * Con quien fue una llamada de grupo.
+ *
+ * Solo en los grupos: en una directa el titulo YA es la persona y repetirlo
+ * debajo no dice nada. En un grupo es lo unico que cambia entre dos llamadas
+ * al mismo sitio, y era justo lo que no se veia: dos filas identicas de
+ * "Equipo seguridad" sin forma de saber si fueron las mismas personas.
+ */
+internal fun conQuienes(l: LlamadaEnHistorial): String? {
+    if (!l.esGrupo || l.participantes.isEmpty()) return null
+    // Dos nombres y el resto contado. Cuatro nombres no entran en una linea de
+    // lista y cortarlos con puntos suspensivos no dice cuantos faltan.
+    val nombres = l.participantes.sorted()
+    return when {
+        nombres.size <= 2 -> "con " + nombres.joinToString(", ")
+        else -> "con ${nombres[0]}, ${nombres[1]} y ${nombres.size - 2} más"
+    }
 }

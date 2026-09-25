@@ -47,6 +47,32 @@ object Llamadas {
     val TIMBRE: Duration = Duration.ofSeconds(45)
 
     /**
+     * Cuanto puede durar una llamada antes de darla por abandonada.
+     *
+     * ## Por que hace falta un tope
+     *
+     * El barrido de timbres cierra las que SUENAN y su comentario explica por
+     * que: «el timbre no puede depender del cliente». Lo mismo vale para una
+     * llamada en curso, y no estaba: si las dos apps mueren sin mandar el
+     * "fin" —se quedan sin bateria, las mata el sistema, se cierran de golpe—
+     * la fila se queda en `en_curso` **para siempre**.
+     *
+     * No es teorico. En la base de desarrollo habia **121 llamadas** asi, la
+     * mas vieja de seis dias. Y no es solo basura en el historial: `vivaEn`
+     * rechaza una llamada nueva en esa conversacion —«Ya hay una llamada en
+     * curso aqui»— asi que un grupo quedaba sin poder llamar nunca mas.
+     *
+     * ## Por que doce horas y no menos
+     *
+     * Porque una llamada larga de verdad existe: una reunion, una clase. El
+     * tope no esta para cortar llamadas, esta para que una abandonada no viva
+     * eternamente. La recuperacion RAPIDA la hace el cliente al arrancar
+     * -`recuperar()` cierra la llamada en la que estaba-, y esto es la red por
+     * debajo, para cuando esa app no vuelve a abrirse nunca.
+     */
+    val MAX_DURACION: Duration = Duration.ofHours(12)
+
+    /**
      * Tope de personas en una llamada de grupo.
      *
      * El numero vive en el protocolo —`com.wtfuck.protocol.MAX_EN_LLAMADA`—
@@ -518,6 +544,69 @@ object Llamadas {
         }
 
     /**
+     * Cierra las llamadas EN CURSO que nadie cerro.
+     *
+     * El gemelo de [cerrarTimbresVencidos] para el otro estado. Si las dos
+     * apps mueren sin mandar el "fin", la fila se queda en `en_curso` para
+     * siempre y `vivaEn` deja esa conversacion sin poder llamar nunca mas.
+     *
+     * ## La fecha de fin que se escribe, y por que esa
+     *
+     * `contestada_en + MAX_DURACION`, no `now()`. El servidor **no sabe**
+     * cuando termino de verdad —el medio nunca paso por el— y escribir `now()`
+     * inventaria una duracion de seis dias en el historial. El tope es el
+     * maximo que esa llamada pudo haber durado siendo una llamada, que es lo
+     * unico que las pruebas sostienen.
+     *
+     * El motivo es `fallo_red` porque eso es lo que paso: la conexion se
+     * perdio y nadie lo conto.
+     */
+    fun cerrarLlamadasAbandonadas(): Pair<Int, List<Pair<UUID, Bajada.Evento>>> = Db.tx { c ->
+        val viejas = c.prepareStatement(
+            """SELECT id, conversacion_id FROM llamada
+               WHERE estado = 'en_curso'
+                 AND contestada_en < now() - make_interval(secs => ?)"""
+        ).use { st ->
+            st.setDouble(1, MAX_DURACION.seconds.toDouble())
+            st.executeQuery().use { rs ->
+                rs.mapear { it.getObject(1, UUID::class.java) to it.getObject(2, UUID::class.java) }
+            }
+        }
+        if (viejas.isEmpty()) return@tx 0 to emptyList()
+        val ids = viejas.map { it.first }
+        val arr = c.createArrayOf("uuid", ids.toTypedArray())
+
+        c.prepareStatement(
+            """UPDATE llamada
+               SET estado = 'terminada',
+                   terminada_en = contestada_en + make_interval(secs => ?),
+                   fin_motivo = 'fallo_red'
+               WHERE id = ANY(?)"""
+        ).use { st ->
+            st.setDouble(1, MAX_DURACION.seconds.toDouble())
+            st.setArray(2, arr)
+            st.executeUpdate()
+        }
+        c.prepareStatement(
+            """UPDATE llamada_participante
+               SET estado = 'fuera', salido_en = coalesce(salido_en, now())
+               WHERE llamada_id = ANY(?) AND estado IN ('sonando','dentro')"""
+        ).use { st -> st.setArray(1, arr); st.executeUpdate() }
+
+        // Y se avisa, por la misma razon que el barrido de timbres: cerrar la
+        // fila sin decirlo deja las pantallas afirmando una llamada que ya no
+        // existe. Es el defecto que el modulo AF encontro en el otro barrido.
+        val avisos = viejas.flatMap { (id, conv) ->
+            Eventos.emitir(
+                c, participantesDe(c, conv, excepto = null),
+                "llamada_terminada", conv, "",
+                """{"llamada":"$id","motivo":"${FinLlamada.FALLO_RED}"}""",
+            )
+        }
+        ids.size to avisos
+    }
+
+    /**
      * Marca como sin respuesta las llamadas que suenan desde hace demasiado.
      *
      * Existe porque el timbre no puede depender del cliente: si el que llama
@@ -619,7 +708,8 @@ object Llamadas {
                       p.estado,
                       (SELECT string_agg(u.username::text, ',' ORDER BY u.username)
                          FROM llamada_participante pp JOIN usuario u ON u.id = pp.usuario_id
-                        WHERE pp.llamada_id = l.id AND pp.usuario_id <> ?)
+                        WHERE pp.llamada_id = l.id AND pp.usuario_id <> ?),
+                      cv.tipo
                FROM llamada l
                  JOIN llamada_participante p ON p.llamada_id = l.id AND p.usuario_id = ?
                  LEFT JOIN conversacion cv ON cv.id = l.conversacion_id
@@ -656,6 +746,10 @@ object Llamadas {
                         // unico que reclama una accion.
                         perdida = !fueMia && miEstado in listOf("no_contesto", "sonando"),
                         participantes = otros,
+                        // Del tipo de la conversacion, no del numero de
+                        // participantes: una llamada de grupo a una sola
+                        // persona tambien tiene uno.
+                        esGrupo = it.getString(12) == "grupo",
                     )
                 }
             }

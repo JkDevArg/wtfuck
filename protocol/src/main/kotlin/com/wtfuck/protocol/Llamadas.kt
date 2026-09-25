@@ -184,6 +184,20 @@ data class LlamadaEnHistorial(
      */
     val perdida: Boolean = false,
     val participantes: List<String> = emptyList(),
+    /**
+     * Si la llamada fue en un grupo.
+     *
+     * ## Por que no se deduce de `participantes`
+     *
+     * Se podria mirar si hay mas de uno, y estaria mal: una llamada de grupo a
+     * una sola persona tambien tiene un participante. Adivinarlo hacia que el
+     * historial dibujara un grupo con el icono de una persona —el mismo
+     * defecto que el modulo AE encontro en los canales— y que el boton de
+     * devolver la llamada intentara llamar al grupo entero.
+     *
+     * El servidor lo sabe: es `conversacion.tipo`.
+     */
+    val esGrupo: Boolean = false,
 )
 
 @Serializable

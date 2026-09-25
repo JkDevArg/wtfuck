@@ -171,6 +171,11 @@ ck('y con la otra persona listada', (h1?.participantes || []).includes(beto.user
 // listaba "Llamada" sin nombre, que es justo el dato que se va a buscar.
 ck('el titulo de una directa es con quien se hablo, no vacio',
    h1?.titulo === beto.user, JSON.stringify(h1?.titulo));
+// Y NO es de grupo. La pantalla lo necesita para dos cosas: dibujar el icono
+// de una persona en vez del de un grupo, y decidir si devolver la llamada es
+// redialar -una directa- o abrir la hoja para elegir -un grupo, donde el tope
+// de la malla son cuatro-.
+ck('una directa NO se marca como de grupo', h1?.esGrupo === false, String(h1?.esGrupo));
 
 // Una que se cancela antes de contestar: eso NO es "colgada".
 r = await post('/v1/llamadas', ana.t, { conversacionId: directa });
@@ -562,6 +567,24 @@ ck('y NO se emitio ningun llamada_terminada todavia',
    psql(`SELECT count(*) FROM evento_pendiente WHERE tipo='llamada_terminada' ` +
         `AND detalle LIKE '%${LLP}%'`) === '0');
 
+// Y en el historial queda marcada COMO DE GRUPO, que es de lo que depende que
+// la pantalla dibuje un grupo y no una persona.
+//
+// No se deduce del numero de participantes, y ahi estaba el defecto: una
+// llamada de grupo a una sola persona tambien tiene un participante, asi que
+// adivinarlo la habria dibujado como una directa.
+r = await get('/v1/llamadas/historial', pa.t);
+{
+  const h = (r.b.llamadas || []).find((x) => x.id === LLP);
+  ck('la llamada de grupo queda marcada como de grupo', h?.esGrupo === true, String(h?.esGrupo));
+  ck('con el nombre del grupo como titulo', (h?.titulo || '').startsWith('Grupo avisos'),
+     JSON.stringify(h?.titulo));
+  ck('y con los dos invitados listados', (h?.participantes || []).includes(pb.user) &&
+     (h?.participantes || []).includes(pc.user), JSON.stringify(h?.participantes));
+  ck('sin la gente del grupo que no fue invitada',
+     !(h?.participantes || []).includes(pd.user), JSON.stringify(h?.participantes));
+}
+
 // Se cierra la anterior ANTES de abrir la siguiente: dos llamadas vivas en la
 // misma conversacion se rechazan con 409, y el 409 se leeria como un fallo del
 // aviso.
@@ -584,6 +607,79 @@ ck('quien estaba dentro y cuelga sale como fuera, no como rechazo',
         `AND e.detalle LIKE '%${LLP2}%' AND e.detalle LIKE '%"fuera"%'`) !== '0');
 await post(`/v1/llamadas/${LLP2}/terminar`, pd.t, { motivo: 'colgada' });
 await post(`/v1/llamadas/${LLP2}/terminar`, pb.t, { motivo: 'colgada' });
+
+console.log('\n=== AJ: una llamada en curso que nadie cerro ===');
+//
+// El barrido de timbres cierra las que SUENAN, y su comentario dice por que:
+// el timbre no puede depender del cliente. Lo mismo vale para una llamada EN
+// CURSO y no estaba: si las dos apps mueren sin mandar el "fin", la fila se
+// queda en `en_curso` para siempre.
+//
+// No es teorico. En la base de desarrollo habia 121 asi, la mas vieja de seis
+// dias. Y no es solo basura en el historial: `vivaEn` rechaza una llamada
+// nueva en esa conversacion, asi que ese grupo no podia llamar nunca mas.
+const ab1 = await reg('kt');
+const ab2 = await reg('ku');
+for (const [i, u] of [ab1, ab2].entries()) await put('/v1/claves', u.t, juego(20 + i));
+const directaAb = (await post('/v1/conversaciones/directa', ab1.t,
+  { usernameDestino: ab2.user })).b.id;
+
+r = await post('/v1/llamadas', ab1.t, { conversacionId: directaAb });
+const LLAB = r.b.llamadaId;
+await post(`/v1/llamadas/${LLAB}/contestar`, ab2.t);
+ck('la llamada esta en curso', psql(`SELECT estado FROM llamada WHERE id='${LLAB}'`) === 'en_curso',
+   psql(`SELECT estado FROM llamada WHERE id='${LLAB}'`));
+
+// Nadie cuelga. Se envejece la fila trece horas: el tope son doce.
+psql(`UPDATE llamada SET contestada_en = now() - interval '13 hours' WHERE id='${LLAB}'`);
+await new Promise((res) => setTimeout(res, 12000));
+
+ck('el barrido la cierra sola, aunque nadie avise',
+   psql(`SELECT estado FROM llamada WHERE id='${LLAB}'`) === 'terminada',
+   psql(`SELECT estado FROM llamada WHERE id='${LLAB}'`));
+ck('con motivo fallo_red: la conexion se perdio y nadie lo conto',
+   psql(`SELECT fin_motivo FROM llamada WHERE id='${LLAB}'`) === 'fallo_red',
+   psql(`SELECT fin_motivo FROM llamada WHERE id='${LLAB}'`));
+
+// La duracion que queda es el TOPE, no trece horas. El servidor no sabe
+// cuando termino de verdad —el medio nunca paso por el— y escribir `now()`
+// inventaria una duracion que nada sostiene.
+ck('la duracion anotada es el tope, no el tiempo real transcurrido',
+   psql(`SELECT round(EXTRACT(EPOCH FROM (terminada_en - contestada_en))/3600) FROM llamada WHERE id='${LLAB}'`) === '12',
+   psql(`SELECT EXTRACT(EPOCH FROM (terminada_en - contestada_en))/3600 FROM llamada WHERE id='${LLAB}'`));
+
+// Y nadie queda 'dentro' de una llamada terminada.
+ck('no queda nadie dentro',
+   psql(`SELECT count(*) FROM llamada_participante WHERE llamada_id='${LLAB}' AND estado='dentro'`) === '0');
+
+// Se avisa, igual que el otro barrido. Cerrar la fila sin decirlo deja las
+// pantallas afirmando una llamada que ya no existe.
+ck('y se le avisa a los dos lados',
+   psql(`SELECT count(DISTINCT d.usuario_id) FROM evento_pendiente e ` +
+        `JOIN dispositivo d ON d.id=e.destino_dispositivo ` +
+        `WHERE e.tipo='llamada_terminada' AND e.detalle LIKE '%${LLAB}%'`) === '2',
+   psql(`SELECT count(DISTINCT d.usuario_id) FROM evento_pendiente e ` +
+        `JOIN dispositivo d ON d.id=e.destino_dispositivo ` +
+        `WHERE e.tipo='llamada_terminada' AND e.detalle LIKE '%${LLAB}%'`));
+
+// Lo que de verdad importa: esa conversacion vuelve a poder llamar.
+r = await post('/v1/llamadas', ab1.t, { conversacionId: directaAb });
+ck('y la conversacion vuelve a poder llamar, que era lo que se bloqueaba',
+   r.s === 200, String(r.s) + JSON.stringify(r.b).slice(0, 110));
+await post(`/v1/llamadas/${r.b.llamadaId}/terminar`, ab1.t, { motivo: 'colgada' });
+
+// Y una llamada NORMAL no se toca: el tope esta para las abandonadas, no para
+// cortar reuniones largas.
+r = await post('/v1/llamadas', ab1.t, { conversacionId: directaAb });
+const LLOK = r.b.llamadaId;
+await post(`/v1/llamadas/${LLOK}/contestar`, ab2.t);
+psql(`UPDATE llamada SET contestada_en = now() - interval '2 hours' WHERE id='${LLOK}'`);
+await new Promise((res) => setTimeout(res, 12000));
+ck('una llamada de dos horas NO se corta: el tope no esta para eso',
+   psql(`SELECT estado FROM llamada WHERE id='${LLOK}'`) === 'en_curso',
+   psql(`SELECT estado FROM llamada WHERE id='${LLOK}'`));
+await post(`/v1/llamadas/${LLOK}/terminar`, ab1.t, { motivo: 'colgada' });
+await post(`/v1/llamadas/${LLOK}/terminar`, ab2.t, { motivo: 'colgada' });
 
 console.log('\n=== coherencia del estado en la base ===');
 ck('no hay llamadas "terminada" sin fecha de fin: lo impide un CHECK',

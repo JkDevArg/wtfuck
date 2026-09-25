@@ -5688,3 +5688,88 @@ llamada conectada y el momento en que uno se cae.
 
 **1823 pruebas en verde**: 1502 de integración en 36 suites, 246 JUnit de app
 y 75 de servidor.
+
+---
+
+## Módulo AJ · El historial, y 121 llamadas que nadie cerró ✅
+
+Después de tanto trabajo en llamadas de grupo, el historial seguía sin saber
+que existían.
+
+### AJ.1 · Un grupo dibujado como una persona
+
+`Avatar(nombre = l.titulo, ...)` sin `esGrupo`. Es **exactamente** el defecto
+que el módulo AE encontró en los canales, esperando un archivo más allá.
+
+Y `esGrupo` no se puede deducir de `participantes`: una llamada de grupo a una
+sola persona también tiene un participante. El servidor lo sabe —es
+`conversacion.tipo`— y ahora lo manda.
+
+### AJ.2 · Un botón que no podía funcionar
+
+Devolver la llamada hacía `llamar(conversacionId, titulo, conVideo)` **sin
+invitados**, o sea "llamar al grupo entero". En un grupo de más de cuatro el
+servidor responde 409 y el botón no servía para nada.
+
+Ahora en un grupo abre la **misma hoja** que el chat: hay que elegir a quién,
+igual que al llamar. Devolver una llamada de grupo no es redialar.
+
+### AJ.3 · Dos filas idénticas
+
+Dos llamadas al mismo grupo se veían igual: mismo título, misma hora, ninguna
+forma de saber si habían sido con las mismas personas. Con quién fue es lo
+único que cambia entre una llamada y otra, y el servidor ya lo mandaba.
+
+Ahora dice `con joaquin, rocio`, y con más de dos, `con ana, beto y 2 más`:
+cuatro nombres no entran en una línea y los puntos suspensivos no dicen
+**cuántos** faltan, que es lo único que se quiere saber cuando no caben.
+
+![Historial de llamadas de grupo](evidencias/llamadas-grupales/11-historial-de-grupo.png)
+
+---
+
+## AJ.4 · Y ahí apareció un `2:30:29`
+
+Una fila del historial marcaba dos horas y media. En la base había **121
+llamadas en estado `en_curso`**, la más vieja de **seis días**.
+
+El barrido de timbres cierra las que **suenan**, y su comentario explica por
+qué: *«el timbre no puede depender del cliente»*. Lo mismo vale para una
+llamada en curso, y no estaba. Si las dos apps mueren sin mandar el "fin" —sin
+batería, matadas por el sistema, cerradas de golpe— la fila se queda así para
+siempre.
+
+Y no es sólo basura en el historial: `vivaEn` rechaza una llamada nueva en esa
+conversación —*«Ya hay una llamada en curso aquí»*—, así que **ese grupo
+quedaba sin poder llamar nunca más**.
+
+### La fecha de fin que se escribe, y por qué ésa
+
+`contestada_en + MAX_DURACION`, no `now()`. El servidor **no sabe** cuándo
+terminó de verdad —el medio nunca pasó por él— y escribir `now()` inventaría
+una duración de seis días. El tope es lo máximo que esa llamada pudo haber
+durado siendo una llamada, que es lo único que la evidencia sostiene.
+
+Doce horas, y no menos, porque una llamada larga de verdad existe: una reunión,
+una clase. El tope no está para cortar llamadas; está para que una abandonada
+no viva eternamente. La recuperación rápida la sigue haciendo el cliente al
+arrancar.
+
+### AJ.5 · Y el arnés de validación mintió otra vez
+
+Con el barrido roto a propósito, las 138 pruebas pasaban. **La otra instancia
+seguía viva**: 8301 corría el jar bueno contra la misma base, y su hilo de
+barrido cerraba las llamadas que el 8300 roto ya no cerraba.
+
+> Es la segunda vez hoy. La primera fue un `Out-Null` que se tragaba un fallo
+> de compilación; ésta, una instancia que no se reiniciaba. Las dos veces el
+> síntoma fue idéntico —"ninguna prueba caza este defecto"— y las dos veces la
+> causa era que **el defecto nunca llegó a estar instalado**.
+
+Para un defecto en el camino de una petición no se notaba: la suite ataca el
+8300. Para un **trabajo de fondo** sí, porque corre en las dos. El guion ahora
+para y levanta las dos, y con eso el defecto cae con 6 pruebas — incluida la
+que importa: `409 Ya hay una llamada en curso aquí`.
+
+**1842 pruebas en verde**: 1515 de integración en 36 suites, 252 JUnit de app
+y 75 de servidor.

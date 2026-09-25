@@ -9,8 +9,8 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-25: 1823 pruebas en verde** (1502 de integración + 321 de
-JUnit) con todo levantado; **1803** en la configuración mínima, porque dos
+**Estado al 2026-09-25: 1842 pruebas en verde** (1515 de integración + 327 de
+JUnit) con todo levantado; **1822** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
 Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
 beta cerrada**.
@@ -45,7 +45,7 @@ AD junto con el ajuste de privacidad número dieciséis.
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada · ninguna pantalla afirma lo que no comprobó (X, Z.5) | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero · el barrido lo mantiene un **auditor que lee `Main.kt`**, no un recuento a mano (AG) | A, N.7, N.8, AG |
-| 17 | Calidad y pruebas | ✅ 1823 con todo levantado · 1803 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1842 con todo levantado · 1822 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -466,7 +466,7 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1823 pruebas con todo levantado**: 1502 de integración en 36 suites de Node,
+**1842 pruebas con todo levantado**: 1515 de integración en 36 suites de Node,
 75 de JUnit en el servidor (RBAC, seguridad, cuentas, auditoría y el
 intermediario de GIFs) y 230 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el
