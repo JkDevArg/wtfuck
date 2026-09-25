@@ -677,7 +677,8 @@ object Repo {
             """SELECT priv_foto, priv_estado, priv_escribe, priv_grupos, priv_llamadas,
                       priv_ultima_vez, priv_nombre, priv_busqueda, priv_lectura,
                       priv_escribiendo, priv_historias,
-                      priv_biografia, priv_videollamadas, priv_grabando, priv_solicitudes
+                      priv_biografia, priv_videollamadas, priv_grabando, priv_solicitudes,
+                      priv_comunidades
                FROM usuario WHERE id = ?"""
         ).use { st ->
             st.setObject(1, usuarioId)
@@ -699,6 +700,7 @@ object Repo {
                         videollamadas = it.getString(13),
                         grabando = it.getBoolean(14),
                         solicitudes = it.getBoolean(15),
+                        comunidades = it.getString(16),
                     )
                 }
             } ?: Privacidad()
@@ -710,7 +712,8 @@ object Repo {
             p.llamadas !in Privacidad.NIVELES || p.ultimaVez !in Privacidad.NIVELES ||
             p.nombre !in Privacidad.NIVELES || p.busqueda !in Privacidad.NIVELES ||
             p.historias !in Privacidad.NIVELES ||
-            p.biografia !in Privacidad.NIVELES || p.videollamadas !in Privacidad.NIVELES
+            p.biografia !in Privacidad.NIVELES || p.videollamadas !in Privacidad.NIVELES ||
+            p.comunidades !in Privacidad.NIVELES
         ) {
             throw ErrorNegocio(400, "Nivel de privacidad invalido.")
         }
@@ -720,7 +723,8 @@ object Repo {
                                   priv_nombre = ?, priv_busqueda = ?, priv_lectura = ?,
                                   priv_escribiendo = ?, priv_historias = ?,
                                   priv_biografia = ?, priv_videollamadas = ?,
-                                  priv_grabando = ?, priv_solicitudes = ?
+                                  priv_grabando = ?, priv_solicitudes = ?,
+                                  priv_comunidades = ?
                WHERE id = ?"""
         ).use { st ->
             st.setString(1, p.foto); st.setString(2, p.estado)
@@ -734,7 +738,8 @@ object Repo {
             st.setString(13, p.videollamadas)
             st.setBoolean(14, p.grabando)
             st.setBoolean(15, p.solicitudes)
-            st.setObject(16, yo.usuarioId)
+            st.setString(16, p.comunidades)
+            st.setObject(17, yo.usuarioId)
             st.executeUpdate()
         }
         p
@@ -1057,6 +1062,8 @@ object Repo {
             st.setObject(2, yo.usuarioId)
             if (st.executeUpdate() == 0) throw ErrorNegocio(404, "No perteneces a esa conversacion.")
         }
+        // Si era su ultimo grupo de la comunidad, sale tambien de los anuncios.
+        Comunidades.alSalirDeGrupo(c, conversacionId, yo.usuarioId)
     }
 
     private fun exigirRol(c: Connection, conv: UUID, usuario: UUID, rol: String) {
@@ -1081,7 +1088,21 @@ object Repo {
             }
         }
 
-    private fun agregarParticipantes(c: Connection, conv: UUID, usuarios: List<UUID>, rol: String) {
+    /**
+     * Modulo AD: si el grupo esta en una comunidad, quien entra al grupo entra
+     * tambien a sus anuncios.
+     *
+     * El enganche va **aqui y no en cada sitio que agrega gente**: este es el
+     * paso por el que todos acaban entrando. Repetirlo en cada llamador es
+     * garantizar que alguien agregue un camino nuevo y se olvide.
+     */
+    private fun agregarParticipantes(
+        c: Connection,
+        conv: UUID,
+        usuarios: List<UUID>,
+        rol: String,
+        actor: UUID? = null,
+    ) {
         if (usuarios.isEmpty()) return
         val rolId = rolSistema(c, if (rol == "admin") "propietario" else "miembro")
         c.prepareStatement(
@@ -1095,6 +1116,7 @@ object Repo {
             }
             st.executeBatch()
         }
+        usuarios.forEach { Comunidades.alEntrarAGrupo(c, conv, it, actor ?: it) }
     }
 
     fun listar(yo: Auth): List<ConversacionResumen> = Db.query { c ->

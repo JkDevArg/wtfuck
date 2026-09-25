@@ -9,16 +9,19 @@ mismo trabajo visto desde el otro lado.
 
 Convención: ✅ hecho y verificado · 🔨 parcial · ⬜ pendiente
 
-**Estado al 2026-09-24: 1664 pruebas en verde** (1368 de integración + 296 de
-JUnit) con todo levantado; **1573** en la configuración mínima, porque dos
+**Estado al 2026-09-24: 1707 pruebas en verde** (1411 de integración + 296 de
+JUnit) con todo levantado; **1616** en la configuración mínima, porque dos
 suites se omiten cuando les falta el entorno y lo dicen.
 Módulos 0, A, B, C, D, **E, F, G, H, I, J, K, L, M, N y O completos**, y **P en
 beta cerrada**.
 
-Lo que queda es **una credencial y dos cosas de alcance declarado**: la clave de
-Firebase para el push (el camino está entero y probado contra un FCM de
-mentira), `K.5` (SFU para llamadas de más de 4, la malla tiene techo) y el
-cliente web de mensajería.
+Lo que queda es **una credencial, dos cosas de alcance declarado y un
+subsistema**: la clave de Firebase para el push (el camino está entero y
+probado contra un FCM de mentira), `K.5` (SFU para llamadas de más de 4, la
+malla tiene techo), el cliente web de mensajería y **los bots** del §4.
+
+Las **comunidades**, que eran el otro hueco declarado, se cerraron en el módulo
+AD junto con el ajuste de privacidad número dieciséis.
 
 ---
 
@@ -28,7 +31,7 @@ cliente web de mensajería.
 |---|---|---|---|
 | 1 | Objetivo general | ✅ 13 de 13 · push construido, falta la credencial | varios |
 | 2 | Sistema de usuarios | ✅ | 0, I |
-| 3 | Sistema de privacidad | ✅ **15 ajustes** en el servidor + `personalizado` con listas + solicitudes | 0, L.1, O, Q |
+| 3 | Sistema de privacidad | ✅ **16 ajustes** en el servidor + `personalizado` con listas + solicitudes · comunidades incluidas (AD) | 0, L.1, O, Q, AD |
 | 4 | Sistema de permisos | 🔨 34 permisos, RBAC completo · **falta gestionar bots** | A |
 | 5 | Grupos | ✅ | B |
 | 6 | Roles personalizados | ✅ | B.4 |
@@ -42,7 +45,7 @@ cliente web de mensajería.
 | 14 | Arquitectura | ✅ | — |
 | 15 | Interfaz | ✅ móvil, tablet y escritorio · dos temas · accesibilidad verificada · ninguna pantalla afirma lo que no comprobó (X, Z.5) | L, L.8, N.2, N.3, N.5 |
 | 16 | Permisos técnicos | ✅ escrituras (N.7) y lecturas (N.8) barridas por un tercero | A, N.7, N.8 |
-| 17 | Calidad y pruebas | ✅ 1664 con todo levantado · 1573 mínimo | — |
+| 17 | Calidad y pruebas | ✅ 1707 con todo levantado · 1616 mínimo | — |
 | 18 | Entregables | ✅ 20 de 20 | — |
 
 ---
@@ -53,7 +56,7 @@ cliente web de mensajería.
 |---|---|
 | Chats privados 1 a 1 | ✅ |
 | Chats grupales | ✅ |
-| Canales o comunidades | ✅ |
+| Canales o comunidades | ✅ las dos: canales (F) y comunidades (AD) |
 | Texto, imágenes, videos, audios, documentos | ✅ |
 | Mensajes de voz | ✅ con adelantar y velocidad 1x/1.5x/2x (N.12) |
 | Llamadas de audio y video | ✅ módulo K, con ventana flotante |
@@ -117,9 +120,20 @@ haciendo alguien, y las solicitudes tienen detrás una bandeja aparte, no sólo
 un ajuste. Los dos están en los quince y los cubre
 [`pruebas/privacidad-fina.mjs`](../pruebas/privacidad-fina.mjs).
 
-**Lo que sigue fuera:** "invitaciones a comunidades", porque **no hay
-comunidades**. Es lo único del §3 que falta, y falta porque falta el contenedor
-entero, no el ajuste. Ver el resumen del final.
+**Y el último que faltaba, cerrado en el módulo AD**: "invitaciones a
+comunidades". Faltaba el **contenedor entero** y no el ajuste, así que se hizo
+la comunidad —un conjunto de grupos más un canal de anuncios— y con ella el
+ajuste número dieciséis.
+
+No gobierna "que me inviten a una comunidad", porque a nadie se lo invita: se
+lo agrega a un **grupo**, y eso ya lo decide `grupos`. Gobierna el hecho nuevo
+que ese ajuste no cubre: **alguien agrega a la comunidad el grupo en el que ya
+estabas**, y de golpe estás en un canal de anuncios con quinientos
+desconocidos sin que nadie te haya agregado a nada.
+
+Y `nadie` **no te saca del grupo**: seguís donde estabas, y lo único que deja
+de pasar es que te sumen a un canal que no pediste. Un ajuste de privacidad que
+te expulsa de algo no es un ajuste de privacidad, es una sanción.
 
 **El nivel `personalizado` sí está.** `todos`, `conocidos` y `nadie` son valores
 y caben en una columna; "todos menos Fulano" y "sólo Mengano" son **listas**, así
@@ -451,7 +465,7 @@ restricciones → ejecutar → registrar. Con excepciones por persona
 
 ## §17 · Calidad y pruebas ✅
 
-**1664 pruebas con todo levantado**: 1368 de integración en 35 suites de Node,
+**1707 pruebas con todo levantado**: 1411 de integración en 36 suites de Node,
 75 de JUnit en el servidor (RBAC, seguridad, cuentas, auditoría y el
 intermediario de GIFs) y 221 en
 la app (el decodificador de QR, lo que anuncia el lector de pantalla, y el
@@ -462,7 +476,7 @@ incluidas).
 === 35 suites · 1323 pasan, 0 fallan ===
 ```
 
-**1573 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
+**1616 en la configuración mínima** —una instancia, sin Redis y sin push—, y la
 diferencia no es un fallo: dos suites necesitan más que el servidor y lo dicen
 en vez de fingir.
 

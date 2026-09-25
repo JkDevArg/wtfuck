@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Badge
@@ -96,6 +97,7 @@ fun PerfilPantalla(
     /** Nulo cuando esta pantalla es una pestaña: no hay atras que ofrecer. */
     onAtras: (() -> Unit)?,
     onPrivacidad: () -> Unit,
+    onComunidades: () -> Unit,
     onAlmacenamiento: () -> Unit,
     onMiCuenta: () -> Unit,
     onPanel: () -> Unit,
@@ -344,8 +346,17 @@ fun PerfilPantalla(
                     icono = Icons.Filled.Notifications,
                     titulo = "Notificaciones",
                     detalle = "Que avisa este aparato y que se ve",
-                    conDivisor = false,
                     onClick = onNotificaciones,
+                )
+                // Modulo AD. Va aqui y no en la pestaña de canales porque una
+                // comunidad no es un canal que se descubre: es una forma de
+                // agrupar TUS grupos, y se llega desde tus cosas.
+                FilaAjuste(
+                    icono = Icons.Filled.Campaign,
+                    titulo = "Comunidades",
+                    detalle = "Varios grupos bajo un nombre, con anuncios comunes",
+                    conDivisor = false,
+                    onClick = onComunidades,
                 )
             }
 

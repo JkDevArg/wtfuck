@@ -544,6 +544,26 @@ class ApiCliente(private val sesion: Sesion) {
             "GET", null, true,
         )
 
+    // --- modulo AD: comunidades ---------------------------------------
+
+    suspend fun crearComunidad(req: CrearComunidadReq): ComunidadDetalle =
+        pedir(RUTA_COMUNIDADES, "POST", jsonApp.encodeToString(req), true)
+
+    suspend fun misComunidades(): ListaComunidades =
+        pedir(RUTA_COMUNIDADES, "GET", null, true)
+
+    suspend fun comunidad(id: String): ComunidadDetalle =
+        pedir("$RUTA_COMUNIDADES/$id", "GET", null, true)
+
+    suspend fun editarComunidad(id: String, req: EditarComunidadReq): ComunidadDetalle =
+        pedir("$RUTA_COMUNIDADES/$id", "PUT", jsonApp.encodeToString(req), true)
+
+    suspend fun agregarGruposAComunidad(id: String, req: AgregarGruposReq): ComunidadDetalle =
+        pedir("$RUTA_COMUNIDADES/$id/grupos", "POST", jsonApp.encodeToString(req), true)
+
+    suspend fun quitarGrupoDeComunidad(id: String, grupo: String): Unit =
+        pedir("$RUTA_COMUNIDADES/$id/grupos/$grupo", "DELETE", null, true)
+
     suspend fun estadisticasCanal(convId: String): EstadisticasCanal =
         pedir("$RUTA_CANALES/$convId/estadisticas", "GET", null, true)
 

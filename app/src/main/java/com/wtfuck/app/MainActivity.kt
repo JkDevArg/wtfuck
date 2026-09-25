@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.wtfuck.app.ui.ComunidadesPantalla
 import com.wtfuck.app.ui.ChatPantalla
 import com.wtfuck.app.ui.DiagnosticoPantalla
 import com.wtfuck.app.ui.TipoCuentaPantalla
@@ -304,6 +305,7 @@ private fun Raiz() {
                     onAbrirChat = { id -> if (ancho) elegido = id else nav.navigate("chat/$id") },
                     onAbrirCanal = { id -> nav.navigate("canal/$id") },
                     onPrivacidad = { nav.navigate("privacidad") },
+                    onComunidades = { nav.navigate("comunidades") },
                     onAlmacenamiento = { nav.navigate("almacenamiento") },
                     onMiCuenta = { nav.navigate("mi-cuenta") },
                     onPanel = { nav.navigate("panel") },
@@ -367,6 +369,16 @@ private fun Raiz() {
 
         composable("excepciones") {
             ExcepcionesPantalla(onAtras = { nav.popBackStack() })
+        }
+
+        composable("comunidades") {
+            ComunidadesPantalla(
+                onAtras = { nav.popBackStack() },
+                // El canal de anuncios y los grupos se abren con las pantallas
+                // que ya existen: una comunidad no tiene conversaciones
+                // propias, agrupa las que ya hay.
+                onAbrirConversacion = { id -> nav.navigate("chat/$id") },
+            )
         }
 
         composable("mi-cuenta") {

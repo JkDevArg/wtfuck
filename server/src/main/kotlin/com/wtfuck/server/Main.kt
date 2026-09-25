@@ -651,6 +651,51 @@ fun Application.modulo() {
         }
 
         // ============================================================
+        //  Modulo AD: comunidades
+        // ============================================================
+        //
+        // Un conjunto de grupos bajo un nombre, mas un canal de anuncios. Lo
+        // segundo es lo unico que la hace una comunidad: agrupar chats sin eso
+        // es una carpeta, y una carpeta se resuelve en el telefono.
+        //
+        // No hay ruta para "unirse a una comunidad" y no es un olvido: **la
+        // pertenencia se deriva** de estar en alguno de sus grupos. Una ruta
+        // para unirse crearia una segunda forma de pertenecer, y dos listas
+        // que dicen lo mismo se separan.
+
+        post(RUTA_COMUNIDADES) {
+            val yo = call.autenticar()
+            call.respond(Comunidades.crear(yo, call.receive()))
+        }
+
+        get(RUTA_COMUNIDADES) {
+            call.respond(Comunidades.mias(call.autenticar()))
+        }
+
+        get("$RUTA_COMUNIDADES/{id}") {
+            call.respond(Comunidades.detalle(call.autenticar(), call.idRuta()))
+        }
+
+        put("$RUTA_COMUNIDADES/{id}") {
+            val yo = call.autenticar()
+            call.respond(Comunidades.editar(yo, call.idRuta(), call.receive()))
+        }
+
+        post("$RUTA_COMUNIDADES/{id}/grupos") {
+            val yo = call.autenticar()
+            call.respond(Comunidades.agregarGrupos(yo, call.idRuta(), call.receive()))
+        }
+
+        delete("$RUTA_COMUNIDADES/{id}/grupos/{grupo}") {
+            val yo = call.autenticar()
+            val grupo = call.parameters["grupo"]?.let {
+                runCatching { java.util.UUID.fromString(it) }.getOrNull()
+            } ?: throw ErrorNegocio(400, "Identificador de grupo invalido.")
+            Comunidades.quitarGrupo(yo, call.idRuta(), grupo)
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        // ============================================================
         //  Modulo K: llamadas
         // ============================================================
         //

@@ -60,6 +60,7 @@ fun Inicio(
     onAbrirChat: (String) -> Unit,
     onAbrirCanal: (String) -> Unit,
     onPrivacidad: () -> Unit,
+    onComunidades: () -> Unit,
     onAlmacenamiento: () -> Unit,
     onMiCuenta: () -> Unit,
     onPanel: () -> Unit,
@@ -162,6 +163,7 @@ fun Inicio(
                 Pestana.PERFIL -> PerfilPantalla(
                     onAtras = null,
                     onPrivacidad = onPrivacidad,
+                    onComunidades = onComunidades,
                     onAlmacenamiento = onAlmacenamiento,
                     onMiCuenta = onMiCuenta,
                     onPanel = onPanel,

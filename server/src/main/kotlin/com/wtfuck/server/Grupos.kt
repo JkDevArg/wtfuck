@@ -182,6 +182,11 @@ object Grupos {
                 "UPDATE participante SET salido_en = now() WHERE conversacion_id = ? AND usuario_id = ?"
             ).use { st -> st.setObject(1, convId); st.setObject(2, objetivoId); st.executeUpdate() }
 
+            // Modulo AD: a quien se expulsa de su ultimo grupo de la comunidad
+            // se lo saca tambien de los anuncios. Dejarlo ahi seria expulsarlo
+            // a medias: fuera del grupo y todavia escuchando a la comunidad.
+            Comunidades.alSalirDeGrupo(c, convId, objetivoId)
+
             // Vetado = no puede volver ni con un enlace valido.
             if (req.vetar) {
                 c.prepareStatement(
@@ -542,6 +547,9 @@ object Grupos {
                VALUES (?, ?, 'miembro', (SELECT id FROM rol WHERE es_sistema AND clave = 'miembro'))
                ON CONFLICT (conversacion_id, usuario_id) DO UPDATE SET salido_en = NULL"""
         ).use { st -> st.setObject(1, convId); st.setObject(2, usuarioId); st.executeUpdate() }
+        // Modulo AD: entrar por invitacion o por solicitud aprobada tambien
+        // suma a los anuncios, si el grupo esta en una comunidad.
+        Comunidades.alEntrarAGrupo(c, convId, usuarioId, usuarioId)
     }
 
     private fun administradores(c: Connection, convId: UUID): List<UUID> =

@@ -2776,6 +2776,43 @@ class Repositorio(
     suspend fun urlImagenPublicacion(adjuntoId: String): String? =
         runCatching { api.adjunto(adjuntoId).urlDescarga }.getOrNull()
 
+    // ============================================================
+    //  Modulo AD: comunidades
+    // ============================================================
+
+    /**
+     * Mis comunidades, o `null` si no se pudo preguntar.
+     *
+     * Nullable por lo mismo que `publicaciones` y las seis de Z.5: "no tenes
+     * ninguna" y "no pude leerlas" no son lo mismo, y en una pantalla que
+     * existe para listarlas la diferencia es toda la pantalla.
+     */
+    suspend fun misComunidades(): List<ComunidadResumen>? =
+        runCatching { api.misComunidades().comunidades }.getOrNull()
+
+    suspend fun comunidad(id: String): ComunidadDetalle? =
+        runCatching { api.comunidad(id) }.getOrNull()
+
+    suspend fun crearComunidad(
+        nombre: String,
+        descripcion: String,
+        grupos: List<String>,
+    ): Result<ComunidadDetalle> =
+        runCatching { api.crearComunidad(CrearComunidadReq(nombre, descripcion, grupos)) }
+
+    suspend fun editarComunidad(
+        id: String,
+        nombre: String,
+        descripcion: String,
+    ): Result<ComunidadDetalle> =
+        runCatching { api.editarComunidad(id, EditarComunidadReq(nombre, descripcion)) }
+
+    suspend fun agregarGruposAComunidad(id: String, grupos: List<String>): Result<ComunidadDetalle> =
+        runCatching { api.agregarGruposAComunidad(id, AgregarGruposReq(grupos)) }
+
+    suspend fun quitarGrupoDeComunidad(id: String, grupo: String): Result<Unit> =
+        runCatching { api.quitarGrupoDeComunidad(id, grupo) }
+
     suspend fun estadisticasCanal(convId: String): EstadisticasCanal? =
         runCatching { api.estadisticasCanal(convId) }.getOrNull()
 

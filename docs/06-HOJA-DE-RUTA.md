@@ -4990,3 +4990,124 @@ incluida la del primer intento con el texto tapado.
 servidor y 221 en la app. Las 14 nuevas no necesitaron reversión para
 validarse: dos de ellas **fallaron contra el código que ya existía** y de ahí
 salieron AC.3 y AC.4.
+
+---
+
+## Módulo AD · Comunidades ✅
+
+Era **el último hueco declarado del brief**. El §3 pedía un ajuste de
+"invitaciones a comunidades" y la cobertura decía, con razón, que faltaba el
+contenedor entero y no el ajuste.
+
+### AD.1 · Qué es una comunidad, y qué la distingue de una carpeta
+
+Un conjunto de grupos bajo un nombre, **más un canal de anuncios**. Lo segundo
+es lo único que la hace una comunidad: sin él, agrupar chats es una carpeta, y
+una carpeta se resuelve en el teléfono sin que el servidor se entere. El canal
+de anuncios es un sitio donde quien administra alcanza a todos de una vez, y
+eso sí necesita existir en el servidor.
+
+El canal de anuncios es una `conversacion` de tipo `canal`, **privada**:
+reusa participante, roles, permisos, mensajes y adjuntos sin duplicar nada.
+Privada y no pública porque los anuncios de una comunidad son para su gente; un
+canal público guardaría el contenido en claro, y esa excepción se declara para
+lo que de verdad es público, no se hereda sin querer.
+
+**Administrar la comunidad es ser admin de su canal de anuncios.** No se
+inventa un rol nuevo.
+
+### AD.2 · La pertenencia se deriva, no se declara
+
+Sos de la comunidad si sos de alguno de sus grupos. No hay lista de miembros
+aparte, y eso es deliberado: **dos listas que dicen lo mismo se separan, y el
+día que se separan nadie sabe cuál manda.**
+
+Lo que sí existe es la fila de `participante` del canal de anuncios, que hay
+que **mantener** en cuatro momentos:
+
+1. cuando un grupo entra a la comunidad
+2. cuando alguien entra a un grupo que **ya estaba** en la comunidad
+3. cuando alguien sale de un grupo (o lo expulsan)
+4. cuando un grupo sale de la comunidad
+
+Los enganches van en los **pasos por los que todos acaban pasando** —
+`Repo.agregarParticipantes`, `Repo.salir`, `Grupos.unir`, `Grupos.expulsar` — y
+no en cada llamador: repetirlos es garantizar que alguien agregue un camino
+nuevo y se olvide.
+
+> Un grupo pertenece a **una** comunidad como mucho. Con dos, "salir de la
+> comunidad" deja de tener un significado único: ¿de qué anuncios te vas? Es la
+> clase de generalidad que se agrega barata y se paga cara.
+
+### AD.3 · La prueba que no probaba nada, y dos defectos que se tapaban
+
+Quité los dos enganches a propósito y la suite dio **una sola falla de 41**.
+
+La causa: dos de mis cuatro secciones comprobaban `GET /v1/comunidades`, que se
+**deriva** de estar en un grupo. Al salir del grupo la comunidad desaparece de
+esa lista aunque la fila del canal se quede para siempre. O sea que pasaban con
+el enganche puesto y sin él.
+
+Y había algo peor, que sólo se vio al insistir: **los dos defectos se tapaban
+entre sí.** Sin el enganche de entrada, quien entró después nunca estuvo en el
+canal, así que "sale del canal" pasaba trivialmente. Hubo que romperlos **por
+separado**.
+
+> **Dos defectos simultáneos pueden esconderse el uno al otro.** Validar por
+> reversión con varios cambios a la vez mide menos de lo que parece.
+
+Con la sección arreglada —comprobando la lista de conversaciones, que es la que
+refleja `participante`— y sólo el enganche de salida roto, fallan dos.
+
+### AD.4 · El ajuste del §3, y por qué es este y no otro
+
+El brief pide "invitaciones a comunidades". En este modelo a nadie se lo invita
+a una comunidad: se lo agrega a un **grupo**, y eso ya lo gobierna
+`priv_grupos`.
+
+Lo que `priv_grupos` **no** cubre es el caso propio de las comunidades: alguien
+agrega a la comunidad **el grupo en el que ya estabas**, y de golpe estás en un
+canal de anuncios con quinientos desconocidos sin que nadie te haya agregado a
+nada. Ese es el hecho nuevo, y es el que `priv_comunidades` gobierna.
+
+| | Qué pasa |
+|---|---|
+| `todos` | me meten en el canal de anuncios |
+| `conocidos` | sólo si quien agrega el grupo es alguien con quien ya hablo |
+| `nadie` | mi grupo puede estar en la comunidad; yo no en sus anuncios |
+
+**`nadie` no te saca del grupo ni te echa de la comunidad.** Un ajuste de
+privacidad que te expulsa de algo no es un ajuste de privacidad, es una
+sanción.
+
+Por defecto `todos`, al contrario que `historias` y `llamadas`: estar en los
+anuncios de la comunidad de tus propios grupos es lo que casi todo el mundo
+espera, y un defecto en `nadie` dejaría a la mayoría sin la función sin saber
+por qué.
+
+### AD.5 · No falla entero
+
+Agregar cinco grupos teniendo permiso en cuatro mete los cuatro y **devuelve
+los rechazados con su motivo**. Un 403 que descarta los cinco convierte un
+aviso en un reintento a ciegas.
+
+La pantalla lo dice —"Algunos grupos no entraron: No administras ese grupo"— y
+el número de la lista dice la verdad en vez de fingir que entró.
+
+### AD.6 · Y no hay botón de "unirse"
+
+No es un olvido: la pertenencia se deriva. Una ruta para unirse crearía una
+segunda forma de pertenecer, y volveríamos a las dos listas que se separan.
+
+### Evidencias
+
+Cinco capturas en
+[`docs/evidencias/comunidades/`](evidencias/comunidades/).
+
+**1707 pruebas en verde**: 1411 de integración en **36 suites**, 75 de JUnit en
+el servidor y 221 en la app. Las 43 nuevas están en `pruebas/comunidades.mjs`,
+y su validación por reversión es la que produjo AD.3.
+
+> La máquina se reinició a mitad del módulo. El entorno se levantó de cero
+> —Docker, los tres contenedores, las dos instancias y los dos AVDs— y quedó
+> anotado que `emulator-5554` y `5556` no vuelven necesariamente al mismo AVD.

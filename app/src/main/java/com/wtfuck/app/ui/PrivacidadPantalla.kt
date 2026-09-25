@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Chat
@@ -151,6 +152,17 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 titulo = "Quien me puede agregar a grupos",
                 valor = actual.grupos,
             ) { abierto = "grupos" }
+
+            // Justo debajo de la de grupos porque es su continuacion: el
+            // ajuste de grupos cubre que me agreguen a un grupo; este cubre lo
+            // que ese no puede, que es que agreguen a una comunidad el grupo
+            // en el que YA estaba. Separarlos en la pantalla haria pensar que
+            // uno implica al otro.
+            Ajuste(
+                icono = Icons.Filled.Campaign,
+                titulo = "Quien me puede sumar a una comunidad",
+                valor = actual.comunidades,
+            ) { abierto = "comunidades" }
 
             Ajuste(
                 icono = Icons.Filled.Phone,
@@ -445,6 +457,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
             "nombre" -> cargados.nombre
             "ultimaVez" -> cargados.ultimaVez
             "busqueda" -> cargados.busqueda
+            "comunidades" -> cargados.comunidades
             else -> cargados.grupos
         }
         AlertDialog(
@@ -462,6 +475,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                         "nombre" -> "Quien ve mi nombre"
                         "ultimaVez" -> "Quien ve mi ultima conexion"
                         "busqueda" -> "Quien me encuentra por mi usuario"
+                        "comunidades" -> "Quien me puede sumar a una comunidad"
                         else -> "Quien me puede agregar a grupos"
                     },
                     color = TextoPrimario,
@@ -476,6 +490,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                                 .clickable {
                                     guardar(
                                         when (campo) {
+                                            "comunidades" -> cargados.copy(comunidades = nivel)
                                             "foto" -> cargados.copy(foto = nivel)
                                             "estado" -> cargados.copy(estado = nivel)
                                             "escribe" -> cargados.copy(escribe = nivel)

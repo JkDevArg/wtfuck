@@ -209,6 +209,29 @@ data class Privacidad(
     val historias: String = CONOCIDOS,
 
     /**
+     * Quien me puede sumar al canal de anuncios de una comunidad. Modulo AD.
+     *
+     * ## Por que hace falta si ya existe [grupos]
+     *
+     * [grupos] gobierna que me agreguen a un grupo. Lo que no cubre es el caso
+     * propio de una comunidad: alguien agrega a la comunidad **el grupo en el
+     * que yo ya estaba**, y de golpe estoy en un canal de anuncios con
+     * quinientos desconocidos sin que nadie me haya agregado a nada. Ese es el
+     * hecho nuevo, y este ajuste es el que lo gobierna.
+     *
+     * `nadie` **no te saca del grupo** ni te echa de la comunidad: seguis
+     * donde estabas. Lo unico que deja de pasar es que te sumen a un canal que
+     * no pediste. Un ajuste de privacidad que te expulsa de algo no es un
+     * ajuste de privacidad, es una sancion.
+     *
+     * Por defecto `todos`, al contrario que [historias] y [llamadas]: estar en
+     * los anuncios de la comunidad de tus propios grupos es lo que casi todo
+     * el mundo espera, y un defecto en `nadie` dejaria a la mayoria sin la
+     * funcion sin saber por que.
+     */
+    val comunidades: String = TODOS,
+
+    /**
      * Si aviso cuando estoy escribiendo.
      *
      * Reciproco tambien, y por el mismo motivo. Va aparte de [lectura] porque
