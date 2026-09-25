@@ -182,7 +182,9 @@ class CifradorSignal(
         destinos: List<DestinoDispositivo>,
         carga: Carga,
     ): List<CopiaCifrada> {
-        val claro = jsonApp.encodeToString(Carga.serializer(), carga).toByteArray()
+        val claro = Relleno.poner(
+            jsonApp.encodeToString(Carga.serializer(), carga).toByteArray(),
+        )
         return candado.withLock {
             destinos.mapNotNull { d -> cifrarUno(d, claro) }
         }
@@ -229,7 +231,9 @@ class CifradorSignal(
         carga: Carga,
     ): List<CopiaCifrada> {
         val miDispositivo = sesion.dispositivoId ?: return cifrarPorPares(destinos, carga)
-        val claro = jsonApp.encodeToString(Carga.serializer(), carga).toByteArray()
+        val claro = Relleno.poner(
+            jsonApp.encodeToString(Carga.serializer(), carga).toByteArray(),
+        )
 
         return candado.withLock {
             val fila = dao.distribucion(conversacionId)
@@ -377,7 +381,10 @@ class CifradorSignal(
             }
         }
 
-        val carga = jsonApp.decodeFromString(Carga.serializer(), String(claro))
+        val carga = jsonApp.decodeFromString(
+            Carga.serializer(),
+            String(Relleno.quitar(claro)),
+        )
 
         // Si venia con la clave de emisor pegada, se procesa la clave y se
         // sigue con lo de adentro. El resto de la app no se entera de que

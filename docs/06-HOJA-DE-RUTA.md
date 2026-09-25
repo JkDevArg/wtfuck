@@ -5969,7 +5969,7 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1903 pruebas en verde**: 1523 de integración en 36 suites, 305 JUnit de app
+**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6077,7 +6077,7 @@ si fuera de ahora. Ahora se valida primero.
 [`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
 dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
 
-**1903 pruebas en verde**: 1523 de integración en 36 suites, 305 JUnit de app
+**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6145,7 +6145,7 @@ contestan "quién es esta persona" son dos respuestas que se separan.
 [`docs/evidencias/perfil-de-una-persona/`](evidencias/perfil-de-una-persona/)
 — la ficha, la galería y el salto al mensaje.
 
-**1903 pruebas en verde**: 1523 de integración en 36 suites, 305 JUnit de app
+**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
 y 75 de servidor.
 
 ---
@@ -6221,5 +6221,79 @@ siendo ilegible.
 — los cinco hallazgos, lo que se miró y estaba bien, y lo que se decidió no
 hacer.
 
-**1903 pruebas en verde**: 1523 de integración en 36 suites, 305 JUnit de app
+**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
+y 75 de servidor.
+
+---
+
+## Módulo AR · El tamaño también dice cosas ✅
+
+El servidor no puede abrir un sobre — eso es todo el producto. Pero **sí puede
+medirlo**, y la longitud del cifrado seguía de cerca a la del claro: Signal usa
+bloques de 16 bytes y no esconde el tamaño.
+
+Un sobre de 40 bytes no es un párrafo: es "ok", "sí", "ya voy". Y la secuencia
+de tamaños y tiempos dibuja la forma de una charla sin leer una palabra. No
+hace falta romper el cifrado: basta `SELECT length(cuerpo)`.
+
+### AR.1 · Medido desde el servidor
+
+Cuatro mensajes de 2, 9, 19 y 25 caracteres, con el otro teléfono apagado para
+que se quedaran en el buzón:
+
+```
+antes:  266  266  250  250      dos tamaños, separados por un bloque AES
+ahora:  362  362  362  362      el mismo mensaje, desde el servidor
+```
+
+### AR.2 · Dentro del cifrado, no fuera
+
+Se rellena el JSON **antes de cifrar**, así el relleno va autenticado como el
+resto y nadie en el camino puede quitarlo ni medir por debajo.
+
+Los cubos doblan hasta 8 KiB y suben de 8 en 8 KiB después. Las dos escalas son
+por dónde está la información: el texto vive en los primeros cientos de bytes
+y ahí hay que ser grueso; arriba el tamaño ya lo domina una miniatura, y seguir
+duplicando regalaría 30 KiB por sobre para esconder algo que no dice nada.
+
+Cuesta unos 100 bytes por mensaje corto. **No esconde** que hubo un mensaje,
+cuándo ni entre quiénes: eso necesitaría tráfico de cobertura, que es otra
+decisión y mucho más cara.
+
+### AR.3 · Ceros y no espacios
+
+Los espacios eran lo obvio —un parser de JSON los ignora al final— pero eso
+depende de que la biblioteca sea tolerante, y puede cambiar en una
+actualización sin que nadie lo note. Un byte cero no aparece nunca crudo en
+JSON, así que recortarlos no puede comerse contenido.
+
+---
+
+## Una prueba que pasaba por el motivo equivocado
+
+Había una llamada *"un texto que termina en caracteres raros tampoco se
+rompe"* que mandaba `"fin   "` y pasaba. No fijaba nada: un JSON **siempre
+termina en `}`**, así que esos espacios nunca quedan al final de los bytes. Se
+cambió `quitar` para que se comiera también los espacios y **ninguna prueba se
+enteró**.
+
+La regla se comprueba ahora directamente sobre la función, con bytes escritos a
+mano.
+
+> Una prueba que pasa por el motivo equivocado es peor que no tener prueba:
+> ocupa el sitio de la que haría falta.
+
+## Y una corrección de la auditoría
+
+En AP dije que no había límite de tamaño para el cuerpo cifrado, tras buscarlo
+en la ruta HTTP y en `Mensajes.registrar`. Estaba mal: vive en `manejarEnvio`,
+en el camino del WebSocket. Apareció al calcular hasta dónde podían llegar los
+cubos, y obligó a bajar el máximo de 128 KiB a 60 KiB.
+
+### Evidencias
+
+[`docs/evidencias/relleno-del-sobre/`](evidencias/relleno-del-sobre/) — los
+tamaños antes y después, medidos en Postgres.
+
+**1915 pruebas en verde**: 1523 de integración en 36 suites, 317 JUnit de app
 y 75 de servidor.

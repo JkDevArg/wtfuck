@@ -2,6 +2,7 @@ package com.wtfuck.app.datos
 
 import com.wtfuck.protocol.Base64Util
 import com.wtfuck.protocol.Carga
+import com.wtfuck.protocol.Relleno
 import com.wtfuck.protocol.CopiaCifrada
 import com.wtfuck.protocol.DestinoDispositivo
 import com.wtfuck.protocol.TipoCifrado
@@ -89,7 +90,13 @@ class CifradorPlano : Cifrador {
         // Un solo cuerpo para todos: sin cifrar, todos los destinos pueden
         // compartir los mismos bytes.
         if (destinos.isEmpty()) return emptyList()
-        val cuerpo = Base64Util.enc(jsonApp.encodeToString(Carga.serializer(), carga).toByteArray())
+        // Tambien aqui, aunque este cifrador no cifre: si el modo de
+        // desarrollo no rellenara, los sobres tendrian tamanos distintos en
+        // desarrollo y en produccion, y una prueba que mida tamanos no
+        // valdria para nada.
+        val cuerpo = Base64Util.enc(
+            Relleno.poner(jsonApp.encodeToString(Carga.serializer(), carga).toByteArray()),
+        )
         return listOf(CopiaCifrada(destinos.map { it.dispositivoId }, cuerpo, TipoCifrado.PLANO))
     }
 
@@ -97,5 +104,5 @@ class CifradorPlano : Cifrador {
         conversacionId: String,
         origen: OrigenSobre,
         bytes: ByteArray,
-    ): Carga = jsonApp.decodeFromString(Carga.serializer(), String(bytes))
+    ): Carga = jsonApp.decodeFromString(Carga.serializer(), String(Relleno.quitar(bytes)))
 }
