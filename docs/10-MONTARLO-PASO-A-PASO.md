@@ -57,23 +57,18 @@ intentas antes te quedas sin intentos: hay un límite de 5 fallos por hora.
 
 ## Paso 2 — Subir el código
 
-**Desde tu PC** (Git Bash), no desde la VPS:
+En la VPS:
 
 ```bash
-cd /g/PROYECTOS/wtfuck
-git archive --format=tar.gz -o /tmp/wtfuck.tar.gz HEAD
-scp /tmp/wtfuck.tar.gz root@<IP-DE-TU-VPS>:/opt/
+cd /opt && git clone https://github.com/JkDevArg/wtfuck.git && cd wtfuck
 ```
 
-`git archive` manda **sólo lo que está en git**: sin `build/`, sin `.env`, sin
-la clave de firma. Copiar la carpeta entera con `scp -r` son varios GB de
-resultados de compilación y, peor, arrastra secretos locales.
+**En `/opt` y no en el directorio del sitio de CloudPanel.** Esto no es una web
+que nginx sirva desde disco: son contenedores. CloudPanel sólo hace de proxy
+hacia un puerto local, y lo que haya en la carpeta del sitio le da igual.
 
-**En la VPS:**
-
-```bash
-mkdir -p /opt/wtfuck && tar -xzf /opt/wtfuck.tar.gz -C /opt/wtfuck && cd /opt/wtfuck
-```
+Para actualizar más adelante, `git pull` y volver a levantar. Nada de copiar
+carpetas.
 
 **Comprobación:**
 
@@ -139,14 +134,25 @@ la base está bien conectada.
 
 ## Paso 5 — CloudPanel
 
-Dos sitios, cada uno de tipo **Reverse Proxy**:
+Los dos se crean **desde CloudPanel**, no a mano. El panel gestiona el vhost y
+la renovación del certificado; un vhost escrito a mano lo puede pisar en la
+siguiente actualización, y el certificado habría que renovarlo tú.
 
-| Site | Domain | Reverse Proxy URL |
-|---|---|---|
-| 1 | `apiwtf.hackl4bs.com` | `http://127.0.0.1:8300` |
-| 2 | `mediawtf.hackl4bs.com` | `http://127.0.0.1:9000` |
+**Sites → Add Site → Create a Reverse Proxy.** Ese tipo y no PHP, Node ni
+Static: los otros esperan servir archivos de un directorio.
+
+| Domain | Reverse Proxy URL |
+|---|---|
+| `apiwtf.hackl4bs.com` | `http://127.0.0.1:8300` |
+| `mediawtf.hackl4bs.com` | `http://127.0.0.1:9000` |
 
 En cada uno: **SSL/TLS → Let's Encrypt → Install**.
+
+> CloudPanel te va a crear un directorio por sitio, algo como
+> `/home/<usuario>/htdocs/apiwtf.hackl4bs.com`. **Va a quedarse vacío y está
+> bien.** El código vive en `/opt/wtfuck` y nadie sirve archivos desde disco:
+> nginx sólo reenvía a un puerto local. Si esperabas poner el proyecto ahí, no
+> es ese el sitio.
 
 **Comprobación** (desde tu PC):
 
@@ -162,10 +168,18 @@ Tiene que responder lo mismo que el `curl` de la VPS, ahora con HTTPS.
 
 Esto es lo que más cuesta si se salta, así que va aparte.
 
-En CloudPanel, para **cada** sitio: **Vhost → Vhost Editor**. Copia los bloques
-de [`despliegue/nginx-tras-panel.conf`](../despliegue/nginx-tras-panel.conf)
-dentro del `server { ... }` del 443, reemplazando el `location /` que
-CloudPanel puso.
+En CloudPanel, para **cada** sitio: **Vhost → Vhost Editor**.
+
+> **No pegues un `location /` nuevo.** CloudPanel ya escribió uno al crear el
+> sitio, y dos con la misma ruta hacen que nginx no arranque:
+> `nginx: [emerg] duplicate location "/"`.
+>
+> Lo que hay que hacer es **abrir el `location /` que ya está y pegar las
+> líneas dentro**, dejando su `proxy_pass` como está.
+
+Las líneas están en
+[`despliegue/nginx-tras-panel.conf`](../despliegue/nginx-tras-panel.conf), una
+sección por sitio.
 
 Después:
 
