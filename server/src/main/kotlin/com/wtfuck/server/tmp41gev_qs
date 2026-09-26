@@ -482,17 +482,14 @@ object Llamadas {
             } ?: throw ErrorNegocio(404, "No estas en esa llamada.")
 
             // Dos cuentas, y las dos hacen falta.
-            val (dentro, vivos, seFueron) = c.prepareStatement(
+            val (dentro, vivos) = c.prepareStatement(
                 """SELECT count(*) FILTER (WHERE estado = 'dentro'),
-                          count(*) FILTER (WHERE estado IN ('dentro','sonando')),
-                          count(*) FILTER (WHERE estado = 'fuera')
+                          count(*) FILTER (WHERE estado IN ('dentro','sonando'))
                      FROM llamada_participante WHERE llamada_id = ?"""
             ).use { st ->
                 st.setObject(1, llamadaId)
-                st.executeQuery().use { rs ->
-                    rs.primero { Triple(it.getInt(1), it.getInt(2), it.getInt(3)) }
-                }
-            } ?: Triple(0, 0, 0)
+                st.executeQuery().use { rs -> rs.primero { it.getInt(1) to it.getInt(2) } }
+            } ?: (0 to 0)
 
             // La llamada sigue si queda alguien DENTRO y, en una directa,
             // si ademas hay al menos dos personas en juego —dentro o sonando—.
@@ -531,18 +528,7 @@ object Llamadas {
                 st.executeQuery().use { rs -> rs.primero { it.getBoolean(1) } } ?: false
             }
 
-            // Irse no es lo mismo que rechazar, y la diferencia decide esto.
-            //
-            // Quien se FUE puede volver: se le corto la red, cambio de sala,
-            // colgo sin querer. Quien RECHAZO dijo que no, y esperarlo cinco
-            // minutos es esperar a alguien que ya contesto.
-            //
-            // Asi que un grupo aguanta a uno solo mientras haya alguien que
-            // pueda aparecer: alguien que todavia suena, o alguien que estuvo
-            // y se fue. Si los demas rechazaron y no queda nadie mas, no hay
-            // a quien esperar y se cierra igual que una directa.
-            val puedeVolverAlguien = vivos >= 2 || seFueron >= 1
-            if (dentro >= 1 && (esGrupo && puedeVolverAlguien || vivos >= 2)) {
+            if (dentro >= 1 && (esGrupo || vivos >= 2)) {
                 // La llamada sigue, pero hay que CONTARLO.
                 //
                 // Antes de AF este camino no existia: cualquier rechazo
@@ -683,7 +669,7 @@ object Llamadas {
             """SELECT l.id, l.conversacion_id
                FROM llamada l
                  JOIN conversacion cv ON cv.id = l.conversacion_id
-               WHERE l.estado = 'en_curso' AND cv.tipo = 'grupo'
+               WHERE l.estado = 'en_curso' 
                  AND (SELECT count(*) FROM llamada_participante p
                        WHERE p.llamada_id = l.id AND p.estado IN ('dentro','sonando')) = 1
                  AND (SELECT max(p.salido_en) FROM llamada_participante p

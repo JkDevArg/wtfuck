@@ -150,6 +150,17 @@ ck('se termina la llamada', r.s === 204, String(r.s));
 r = await get('/v1/llamadas/en-curso', ana.t);
 ck('y ya no hay ninguna viva', r.s === 204, String(r.s));
 
+// En una DIRECTA, colgar uno la termina para los dos.
+//
+// Es la regla que distingue una directa de un grupo: aqui quedarse solo es
+// que la otra persona colgo, y no hay nadie mas que pueda entrar. Sin esto,
+// el que no colgo se queda mirando una pantalla que ya no es una llamada.
+ck('en una directa, que cuelgue UNO la cierra entera',
+   psql(`SELECT estado FROM llamada WHERE id='${LL1}'`) === 'terminada',
+   psql(`SELECT estado FROM llamada WHERE id='${LL1}'`));
+r = await get('/v1/llamadas/en-curso', beto.t);
+ck('y al otro tampoco le queda ninguna viva', r.s === 204, String(r.s));
+
 r = await post(`/v1/llamadas/${LL1}/terminar`, ana.t, { motivo: 'colgada' });
 ck('terminar una llamada ya terminada no revienta', r.s === 404 || r.s === 204, String(r.s));
 
@@ -263,7 +274,23 @@ ck('pero la llamada sigue viva: quedan dos dentro',
    psql(`SELECT estado FROM llamada WHERE id='${LLG}'`));
 
 r = await post(`/v1/llamadas/${LLG}/terminar`, beto.t, { motivo: 'colgada' });
-ck('cuando queda uno solo, la llamada termina: una llamada de uno no es una llamada',
+// En un GRUPO, quedarse solo NO la cierra, y es el cambio del modulo AX.
+//
+// Antes esta misma linea afirmaba lo contrario —"una llamada de uno no es una
+// llamada"— y para una directa sigue siendo cierto. Para un grupo no: alguien
+// llega tarde, alguien se corta y vuelve, y cerrar al instante haria imposible
+// ser el primero en entrar.
+//
+// No se queda viva para siempre: `cerrarLlamadasSolitarias` la cierra a los
+// cinco minutos, y eso se prueba aparte en `SoloEnLlamadaTest` moviendo el
+// reloj de la base — aqui habria que esperarlos de verdad.
+ck('en un grupo, quedarse solo NO la cierra: se puede esperar a que entren',
+   psql(`SELECT estado FROM llamada WHERE id='${LLG}'`) === 'en_curso',
+   psql(`SELECT estado FROM llamada WHERE id='${LLG}'`));
+
+// Y cuando se va tambien el ultimo, ahi si.
+r = await post(`/v1/llamadas/${LLG}/terminar`, ana.t, { motivo: 'colgada' });
+ck('y cuando se va el ultimo, la llamada termina',
    psql(`SELECT estado FROM llamada WHERE id='${LLG}'`) === 'terminada',
    psql(`SELECT estado FROM llamada WHERE id='${LLG}'`));
 
@@ -447,7 +474,14 @@ ck('el segundo todavia puede contestar: era lo que se perdia', r.s === 200, Stri
 ck('y ahora si esta en curso',
    psql(`SELECT estado FROM llamada WHERE id='${LLR}'`) === 'en_curso',
    psql(`SELECT estado FROM llamada WHERE id='${LLR}'`));
+// Cuelgan LOS DOS, y hace falta que sea asi desde el modulo AX.
+//
+// Con solo ana colgando, ceci se quedaba sola en una llamada de GRUPO — que
+// ahora es un estado valido y dura cinco minutos— y esa llamada viva impedia
+// empezar la siguiente en la misma conversacion. La suite fallaba dos pruebas
+// mas abajo con un 400 que no tenia nada que ver.
 await post(`/v1/llamadas/${LLR}/terminar`, ana.t, { motivo: 'colgada' });
+await post(`/v1/llamadas/${LLR}/terminar`, ceci.t, { motivo: 'colgada' });
 
 // Y el limite del otro lado: si rechaza el ULTIMO que sonaba, no queda nadie
 // que pueda contestar y la llamada si termina.

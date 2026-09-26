@@ -335,6 +335,14 @@ private fun arrancarTareas() {
                     bitacora.info("Cerradas {} llamadas abandonadas.", abandonadas)
                 }
 
+                // Y las de grupo donde quedo una sola persona. Va aqui y
+                // no en el barrido de una hora porque el limite son CINCO
+                // MINUTOS: con el reloj lento, esperar solo en una llamada
+                // podrian ser sesenta y cinco.
+                val (solas, avisosSolo) = Llamadas.cerrarLlamadasSolitarias()
+                avisosSolo.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
+                if (solas > 0) bitacora.info("Cerradas {} llamadas con una sola persona.", solas)
+
                 val (cerradas, avisos) = Llamadas.cerrarTimbresVencidos()
                 // Los avisos se empujan FUERA de la transaccion, igual que en
                 // el resto del servidor. Sin esto, la pantalla del que llamaba
