@@ -54,6 +54,11 @@ TAMANO=$(du -h "$SALIDA/$NOMBRE" | cut -f1)
 # Que falte la primera no puede impedir que se genere la pagina.
 CERT=""
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
+# En Windows la variable trae barras invertidas —`G:\Android\Sdk`— y en Git
+# Bash eso no es una ruta: el `find` no encuentra nada y la pagina salia sin
+# la huella del certificado, avisando de que faltaba ANDROID_HOME cuando la
+# variable estaba puesta. El aviso mentia y mandaba a mirar donde no era.
+SDK="${SDK//\\//}"
 if [ -d "$SDK/build-tools" ]; then
   # `-name apksigner*` cogia el `lib/apksigner.jar`, que no es ejecutable.
   # Se busca el lanzador: `.bat` en Windows, sin extension en el resto, y de
@@ -66,8 +71,9 @@ if [ -d "$SDK/build-tools" ]; then
   fi
 fi
 if [ -z "$CERT" ]; then
-  CERT="(no calculada: define ANDROID_HOME y vuelve a ejecutar)"
-  echo "AVISO: no encontre apksigner, la pagina saldra sin la huella del certificado."
+  CERT="(no calculada)"
+  echo "AVISO: no encontre apksigner en: $SDK"
+  echo "       La pagina saldra sin la huella del certificado. La del archivo si esta."
 fi
 
 sed -e "s|@NOMBRE@|$NOMBRE|g" \
