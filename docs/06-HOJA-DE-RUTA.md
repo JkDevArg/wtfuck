@@ -5381,7 +5381,7 @@ Siete capturas del recorrido completo, con vídeo conectado de verdad, en
 que las produce es [`pruebas/llamada-de-grupo.sh`](../pruebas/llamada-de-grupo.sh).
 
 **1761 pruebas en verde**: 1456 de integración en 36 suites, 230 JUnit de app
-y 83 de servidor. Son **+54** sobre las 1707 del módulo anterior — 45 de
+y 87 de servidor. Son **+54** sobre las 1707 del módulo anterior — 45 de
 integración y 9 de `MallaTest`.
 
 ---
@@ -5508,7 +5508,7 @@ por su nombre.
 ---
 
 **1790 pruebas en verde**: 1485 de integración en 36 suites, 230 JUnit de app y
-83 de servidor. En la configuración mínima —una instancia, sin Redis— son
+87 de servidor. En la configuración mínima —una instancia, sin Redis— son
 **1770**, con `bus` y `bus-inyeccion` marcadas `OMIT`.
 
 ---
@@ -5620,7 +5620,7 @@ una llamada de grupo sin saber con quién es raro. Quien contesta ve
 `con tatiana · llamando a rocio`.
 
 **1815 pruebas en verde**: 1502 de integración en 36 suites, 238 JUnit de app
-y 83 de servidor.
+y 87 de servidor.
 
 ---
 
@@ -5687,7 +5687,7 @@ Dos capturas en
 llamada conectada y el momento en que uno se cae.
 
 **1823 pruebas en verde**: 1502 de integración en 36 suites, 246 JUnit de app
-y 83 de servidor.
+y 87 de servidor.
 
 ---
 
@@ -5772,7 +5772,7 @@ para y levanta las dos, y con eso el defecto cae con 6 pruebas — incluida la
 que importa: `409 Ya hay una llamada en curso aquí`.
 
 **1842 pruebas en verde**: 1515 de integración en 36 suites, 252 JUnit de app
-y 83 de servidor.
+y 87 de servidor.
 
 ---
 
@@ -5824,7 +5824,7 @@ una tercera bandera opcional que nadie pasa.
 > por defecto.
 
 **1846 pruebas en verde**: 1515 de integración en 36 suites, 256 JUnit de app
-y 83 de servidor.
+y 87 de servidor.
 
 ---
 
@@ -5969,8 +5969,8 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1938 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
-y 83 de servidor.
+**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+y 87 de servidor.
 
 ---
 
@@ -6077,8 +6077,8 @@ si fuera de ahora. Ahora se valida primero.
 [`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
 dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
 
-**1938 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
-y 83 de servidor.
+**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+y 87 de servidor.
 
 ---
 
@@ -6145,8 +6145,8 @@ contestan "quién es esta persona" son dos respuestas que se separan.
 [`docs/evidencias/perfil-de-una-persona/`](evidencias/perfil-de-una-persona/)
 — la ficha, la galería y el salto al mensaje.
 
-**1938 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
-y 83 de servidor.
+**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+y 87 de servidor.
 
 ---
 
@@ -6221,8 +6221,8 @@ siendo ilegible.
 — los cinco hallazgos, lo que se miró y estaba bien, y lo que se decidió no
 hacer.
 
-**1938 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
-y 83 de servidor.
+**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+y 87 de servidor.
 
 ---
 
@@ -6295,8 +6295,8 @@ cubos, y obligó a bajar el máximo de 128 KiB a 60 KiB.
 [`docs/evidencias/relleno-del-sobre/`](evidencias/relleno-del-sobre/) — los
 tamaños antes y después, medidos en Postgres.
 
-**1938 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
-y 83 de servidor.
+**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+y 87 de servidor.
 
 ---
 
@@ -6368,8 +6368,8 @@ emulador para tocarla.
 [`docs/evidencias/sobre-hostil/`](evidencias/sobre-hostil/) — el defecto del
 bucle, el fuzzer y lo que encontró.
 
-**1938 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
-y 83 de servidor.
+**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+y 87 de servidor.
 
 ---
 
@@ -6435,8 +6435,8 @@ vuelve tras un día caído tiene un día de cosas vencidas encima.
 
 `RetencionTest`, 5 pruebas contra la base real.
 
-**1938 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
-y 83 de servidor.
+**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+y 87 de servidor.
 
 ---
 
@@ -6506,8 +6506,8 @@ Se resolvió mirando la pantalla en vez del contador.
 [`docs/evidencias/modo-cine/`](evidencias/modo-cine/) — el diálogo del sistema
 y la pantalla compartida desde los dos tipos de llamada.
 
-**1938 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
-y 83 de servidor.
+**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+y 87 de servidor.
 
 ---
 
@@ -6569,5 +6569,5 @@ la app deja la conversación sin poder llamar durante cinco minutos.
 esperar) y la suite `llamadas` (141). Validado inyectando siete defectos: los
 siete los caza la prueba que afirma esa propiedad.
 
-**1938 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
-y 83 de servidor.
+**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+y 87 de servidor.
