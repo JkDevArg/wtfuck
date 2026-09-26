@@ -233,6 +233,10 @@ const PANEL = [
   { n: 'los limites del sistema', r: () => '/v1/panel/limites', nivel: 80 },
   { n: 'las conversaciones cerradas por el panel', r: () => '/v1/panel/conversaciones', nivel: 80 },
   { n: 'la cola de canales por aprobar', r: () => '/v1/panel/canales', nivel: 100 },
+  // BC. No lleva el prefijo /panel pero es una lectura del panel: la lista
+  // dice quien invito a quien, y eso es exactamente lo que un curioso
+  // querria saber en un servidor cerrado.
+  { n: 'la lista de codigos de invitacion', r: () => '/v1/registro/invitaciones', nivel: 80 },
 ];
 
 // `/leidos` es el caso aparte, y conviene decir por que no esta en la lista de
@@ -290,6 +294,12 @@ const EXENTAS_LECTURA = [
   ['/v1/claves/dispositivo/{}', 'claves publicas: son publicas por definicion, lo mira claves.mjs'],
   ['/v1/conversaciones/{}/leidos', 'contesta 200 VACIO a proposito; se comprueba aqui abajo'],
   ['/v1/panel/consola', 'pese al prefijo /panel no es global: es `Consola.mias(yo)`; se comprueba aqui abajo'],
+  // Publica A PROPOSITO, y sin autenticar: la pregunta la hace quien
+  // todavia no tiene cuenta, que es el unico momento en que la respuesta
+  // sirve de algo. No filtra nada que no se descubra igual intentando
+  // registrarse; lo que evita es rellenar el formulario entero para que lo
+  // rechacen al final por un campo que no se sabia que existia.
+  ['/v1/registro/modo', 'publica a proposito: la pregunta quien aun no tiene cuenta'],
 ];
 
 console.log('\n=== ninguna ruta de lectura queda sin mirar ===');

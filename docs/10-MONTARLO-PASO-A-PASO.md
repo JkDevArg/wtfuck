@@ -86,8 +86,20 @@ Los tres tienen que existir.
 cd /opt/wtfuck && bash despliegue/preparar.sh
 ```
 
-Te pregunta tres cosas y genera el resto. **No escribas secretos a mano**: una
-clave pensada por una persona tiene la entropía de una persona.
+Te pregunta cuatro cosas y genera el resto. **No escribas secretos a mano**:
+una clave pensada por una persona tiene la entropía de una persona.
+
+La cuarta es si el registro queda **abierto** o **por invitación**:
+
+- **Abierto** — cualquiera que tenga el APK se crea una cuenta. Es lo que
+  quieres si el servidor es público.
+- **Invitación** — sólo se entra con un código. Tú entras igual sin ninguno
+  —eres el propietario— y luego repartes códigos desde **Panel →
+  Invitaciones**, dentro de la app.
+
+Se puede cambiar después: `WTFUCK_REGISTRO` en `.env.produccion`, y reiniciar
+el servidor. Lo que **no** se puede es cerrar un servidor por el que ya pasó
+gente que no querías.
 
 El script comprueba solo que no quedó nada pendiente, y lo dice. Si ya lo
 ejecutaste con una versión anterior se niega a pisar lo que hay; bórralo y
@@ -328,6 +340,44 @@ Con la app abierta llega todo; cerrada, no suena. Ver
 [`09-DESPLIEGUE.md`](09-DESPLIEGUE.md), "Push: encenderlo".
 
 **El modo cerca** necesita dos teléfonos reales.
+
+---
+
+## Repartir el acceso
+
+Si elegiste **invitación** en el paso 3, entra con tu usuario —el propietario
+entra sin código— y ve a **Panel → Invitaciones**.
+
+- **Un uso** para invitar a una persona concreta.
+- **Varios usos** para un código que se pega en un canal.
+- **Sin caducidad** sólo si sabes por qué; lo normal es una semana.
+
+Revocar deja de dar cuentas nuevas y **no expulsa** a quien ya entró.
+
+### Si no ves el panel de administración
+
+Es el caso más probable, y no es un fallo de la app: tu cuenta se registró
+**después** de arrancar el servidor. La promoción del propietario corría sólo
+al arrancar, así que no encontró a nadie a quien promover.
+
+```bash
+docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml restart servidor
+```
+
+Al arrancar vuelve a mirar, ahora la cuenta existe, y la promueve. Cierra la
+app del todo y vuelve a abrirla: el nivel se pide al servidor cada vez que se
+abre el perfil.
+
+Comprueba que el nombre coincide exactamente —minúsculas, sin espacios—:
+
+```bash
+grep WTFUCK_PROPIETARIO .env.produccion
+```
+
+> Desde la versión con el módulo de invitaciones el propietario queda con su
+> nivel **al registrarse**, así que esto sólo hace falta en despliegues
+> anteriores. No cuesta nada saberlo igual: es el mismo comando de cuando algo
+> se rompe.
 
 ---
 

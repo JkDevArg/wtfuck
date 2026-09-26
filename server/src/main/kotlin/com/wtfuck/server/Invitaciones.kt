@@ -1,0 +1,281 @@
+package com.wtfuck.server
+
+import com.wtfuck.protocol.InvitacionResp
+import com.wtfuck.protocol.ModoRegistroResp
+import com.wtfuck.protocol.NuevaInvitacionReq
+import java.security.SecureRandom
+import java.sql.Connection
+import java.time.Instant
+import java.util.UUID
+
+/**
+ * Invitaciones para registrarse.
+ *
+ * ## Por que existe
+ *
+ * El registro era abierto: quien tuviera el APK se creaba una cuenta. Para un
+ * despliegue publico eso esta bien; para el de un equipo o un laboratorio no,
+ * y la unica alternativa que habia era no repartir el APK — o sea, no tener
+ * app.
+ *
+ * ## No cobra nada
+ *
+ * Una invitacion controla QUIEN puede registrarse, no si paga. El registro
+ * sigue siendo gratis; lo que deja de ser es anonimo para el servidor, que
+ * ahora sabe quien invito a cada quien.
+ *
+ * ## Abierto por defecto
+ *
+ * `WTFUCK_REGISTRO` vale `abierto` si no se dice otra cosa. Actualizar el
+ * servidor no puede cerrarle el registro a quien no pidio cerrarlo: un cambio
+ * que rompe un despliegue ajeno por venir activado de fabrica es peor que uno
+ * que hay que encender a mano.
+ */
+object Invitaciones {
+
+    /** Cuanto staff hace falta para repartir invitaciones. */
+    private const val NIVEL_MINIMO = Moderacion.ADMINISTRADOR
+
+    /**
+     * El alfabeto de los codigos.
+     *
+     * Sin `0`, `O`, `1`, `I` ni `l`. Un codigo se dicta por telefono y se
+     * copia a mano de una captura, y esas cinco son las que se confunden — un
+     * codigo que no entra porque alguien leyo una O donde habia un cero es un
+     * fallo de diseno, no de quien lo escribio.
+     */
+    private const val ALFABETO = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+    /**
+     * 12 caracteres de 31 simbolos: unos 59 bits.
+     *
+     * No es una contrasena, pero si algo que se puede probar a ciegas contra
+     * una ruta publica. Con esto, adivinar uno exige mas intentos de los que
+     * el limitador por IP deja hacer en varias vidas.
+     */
+    private const val LARGO = 12
+
+    private val azar = SecureRandom()
+
+    private fun generar(): String =
+        (1..LARGO).map { ALFABETO[azar.nextInt(ALFABETO.length)] }.joinToString("")
+
+    // ------------------------------------------------------------------
+    //  El modo
+    // ------------------------------------------------------------------
+
+    /** Si este servidor exige invitacion para registrarse. */
+    val exigeInvitacion: Boolean by lazy {
+        System.getenv("WTFUCK_REGISTRO")?.trim()?.lowercase() == "invitacion"
+    }
+
+    /** El username que queda de propietario. Vacio si no se declaro. */
+    private val propietario: String by lazy {
+        System.getenv("WTFUCK_PROPIETARIO")?.trim()?.lowercase().orEmpty()
+    }
+
+    /**
+     * El propietario entra sin invitacion. Es el unico que puede.
+     *
+     * ## El huevo y la gallina que esto resuelve
+     *
+     * Un servidor que arranca en modo invitacion no tiene ninguna cuenta, y
+     * crear invitaciones exige ser administrador. Sin esta excepcion el
+     * despliegue queda inservible: nadie puede entrar, nadie puede invitar, y
+     * la unica salida es apagarlo, abrirlo, registrarse y volver a cerrarlo.
+     *
+     * Se encontro probandolo: con `WTFUCK_REGISTRO=invitacion` puesto desde el
+     * primer arranque, hasta el propietario recibia
+     * "Hace falta un codigo de invitacion".
+     *
+     * ## Por que no es un agujero
+     *
+     * Vale para UN username concreto, el que eligio quien desplego el
+     * servidor, y solo mientras no exista. En cuanto esa cuenta se crea, el
+     * segundo intento choca con la unicidad del username y falla — o sea que
+     * la excepcion se cierra sola, sin ninguna marca que mantener.
+     *
+     * Y quien no sepa ese nombre no puede usarla; quien lo sepa, tampoco, si
+     * la cuenta ya existe.
+     */
+    fun entraSinInvitacion(username: String): Boolean =
+        propietario.isNotEmpty() && username.trim().lowercase() == propietario
+
+    /**
+     * Lo que se le dice a la app ANTES de mostrar el formulario.
+     *
+     * Es publico a proposito y no filtra nada: que un servidor exija
+     * invitacion se descubre igual intentando registrarse. Decirlo antes evita
+     * que alguien rellene un formulario entero para que lo rechacen al final.
+     */
+    fun modo(): ModoRegistroResp = ModoRegistroResp(requiereInvitacion = exigeInvitacion)
+
+    // ------------------------------------------------------------------
+    //  Canjear
+    // ------------------------------------------------------------------
+
+    /**
+     * Reserva un uso del codigo, o lanza.
+     *
+     * Se llama DENTRO de la transaccion que crea la cuenta. Si el registro
+     * falla despues —un username ya cogido, por ejemplo— la reserva se
+     * deshace con todo lo demas, y el codigo no se queda gastado por un alta
+     * que nunca ocurrio.
+     *
+     * ## La carrera, y como se cierra
+     *
+     * El incremento va en el `WHERE` y no en Kotlin:
+     *
+     *     UPDATE ... SET usos = usos + 1 WHERE codigo = ? AND usos < usos_max
+     *
+     * Leer el contador, comprobarlo y escribirlo desde el servidor deja una
+     * ventana entre la lectura y la escritura, y dos personas canjeando el
+     * ultimo uso a la vez la encuentran. Asi la condicion y el incremento son
+     * la misma operacion, y el `CHECK` de la tabla es la segunda red.
+     *
+     * @return el codigo normalizado, para anotar quien lo uso.
+     */
+    fun canjear(c: Connection, codigo: String): String {
+        val limpio = normalizar(codigo)
+        if (limpio.isEmpty()) {
+            throw ErrorNegocio(400, "Hace falta un codigo de invitacion para registrarse.")
+        }
+
+        val ok = c.prepareStatement(
+            """UPDATE invitacion_registro
+                  SET usos = usos + 1
+                WHERE codigo = ?
+                  AND revocada_en IS NULL
+                  AND (expira_en IS NULL OR expira_en > now())
+                  AND usos < usos_max"""
+        ).use { st ->
+            st.setString(1, limpio)
+            st.executeUpdate() == 1
+        }
+
+        // Un solo mensaje para "no existe", "caducada", "revocada" y "agotada".
+        //
+        // Distinguirlos ayudaria a quien se equivoco de letra y tambien a
+        // quien esta probando codigos: le diria cuales existen. Y quien tiene
+        // una invitacion de verdad no necesita el matiz — la suya funciona.
+        if (!ok) throw ErrorNegocio(403, "El codigo de invitacion no es valido o ya se uso.")
+        return limpio
+    }
+
+    /** Se anota DESPUES de crear la cuenta, cuando ya hay un id que apuntar. */
+    fun anotarUso(c: Connection, codigo: String, usuarioId: UUID) {
+        c.prepareStatement(
+            "INSERT INTO invitacion_uso (codigo, usuario_id) VALUES (?, ?) ON CONFLICT DO NOTHING"
+        ).use { st ->
+            st.setString(1, codigo)
+            st.setObject(2, usuarioId)
+            st.executeUpdate()
+        }
+    }
+
+    /**
+     * Mayusculas y sin espacios ni guiones.
+     *
+     * Quien copia un codigo de una captura o lo recibe por voz lo escribe como
+     * puede. Rechazarlo por un espacio de mas seria un no gratuito.
+     */
+    private fun normalizar(codigo: String): String =
+        codigo.trim().uppercase().filter { it in ALFABETO }
+
+    // ------------------------------------------------------------------
+    //  Repartir
+    // ------------------------------------------------------------------
+
+    fun crear(yo: Auth, req: NuevaInvitacionReq): InvitacionResp = Db.tx { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, NIVEL_MINIMO)
+
+        val usos = req.usos.coerceIn(1, 500)
+        val expira = req.diasValida
+            .takeIf { it > 0 }
+            ?.let { Instant.now().plusSeconds(it.toLong() * 86_400) }
+
+        // Se reintenta por si sale un codigo repetido. Con 59 bits no va a
+        // pasar, y el bucle cuesta tres lineas: el dia que el alfabeto o el
+        // largo cambien, esto sigue siendo correcto sin que nadie lo revise.
+        repeat(5) {
+            val codigo = generar()
+            val puesto = c.prepareStatement(
+                """INSERT INTO invitacion_registro (codigo, creada_por, expira_en, usos_max, nota)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (codigo) DO NOTHING"""
+            ).use { st ->
+                st.setString(1, codigo)
+                st.setObject(2, yo.usuarioId)
+                if (expira == null) st.setNull(3, java.sql.Types.TIMESTAMP)
+                else st.setObject(3, java.sql.Timestamp.from(expira))
+                st.setInt(4, usos)
+                st.setString(5, req.nota.take(120))
+                st.executeUpdate() == 1
+            }
+            if (puesto) {
+                // El codigo va en `detalle` y no en `recursoId`: ese campo es un UUID
+                // y un codigo no lo es. Forzarlo seria inventarse un id.
+                Autz.auditar(
+                    c, yo.usuarioId, "invitacion.creada", "invitacion_registro",
+                    recursoId = null, detalle = codigo,
+                )
+                return@tx InvitacionResp(
+                    codigo = codigo,
+                    creadaEn = Instant.now().toEpochMilli(),
+                    expiraEn = expira?.toEpochMilli() ?: 0,
+                    usos = 0,
+                    usosMax = usos,
+                    revocada = false,
+                    nota = req.nota.take(120),
+                )
+            }
+        }
+        throw ErrorNegocio(500, "No se pudo generar un codigo. Intenta de nuevo.")
+    }
+
+    fun listar(yo: Auth): List<InvitacionResp> = Db.tx { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, NIVEL_MINIMO)
+        c.prepareStatement(
+            """SELECT codigo, creada_en, expira_en, usos, usos_max, revocada_en, nota
+                 FROM invitacion_registro
+                ORDER BY creada_en DESC
+                LIMIT 200"""
+        ).use { st ->
+            st.executeQuery().use { rs ->
+                rs.mapear {
+                    InvitacionResp(
+                        codigo = it.getString(1),
+                        creadaEn = it.getTimestamp(2).time,
+                        expiraEn = it.getTimestamp(3)?.time ?: 0,
+                        usos = it.getInt(4),
+                        usosMax = it.getInt(5),
+                        revocada = it.getTimestamp(6) != null,
+                        nota = it.getString(7).orEmpty(),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Revocar no borra.
+     *
+     * Borrar la fila se llevaria por delante, en cascada, el rastro de quien
+     * entro con ese codigo — que es exactamente lo que hace falta conservar
+     * cuando se revoca algo. Se marca y se queda.
+     */
+    fun revocar(yo: Auth, codigo: String) = Db.tx { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, NIVEL_MINIMO)
+        val n = c.prepareStatement(
+            "UPDATE invitacion_registro SET revocada_en = now() WHERE codigo = ? AND revocada_en IS NULL"
+        ).use { st ->
+            st.setString(1, normalizar(codigo))
+            st.executeUpdate()
+        }
+        if (n == 0) throw ErrorNegocio(404, "No se encontro.")
+        Autz.auditar(
+            c, yo.usuarioId, "invitacion.revocada", "invitacion_registro",
+            recursoId = null, detalle = normalizar(codigo),
+        )
+    }
+}

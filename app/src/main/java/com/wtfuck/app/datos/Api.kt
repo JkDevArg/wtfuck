@@ -243,6 +243,28 @@ class ApiCliente(private val sesion: Sesion) {
         pedir<SesionResp>(RUTA_REGISTRO, "POST", jsonApp.encodeToString(req), false)
             .also { sesion.guardar(it) }
 
+    /**
+     * Si este servidor pide invitacion, preguntado ANTES del formulario.
+     *
+     * Sin autenticar, porque quien lo pregunta todavia no tiene cuenta: ese es
+     * el unico momento en que la respuesta sirve de algo.
+     *
+     * No filtra nada que no se descubra igual intentando registrarse. Lo que
+     * evita es que alguien rellene el formulario entero para que lo rechacen
+     * al final por un campo que no sabia que existia.
+     */
+    suspend fun modoRegistro(): ModoRegistroResp =
+        pedir(RUTA_REGISTRO_MODO, "GET", null, false)
+
+    suspend fun crearInvitacion(req: NuevaInvitacionReq): InvitacionResp =
+        pedir(RUTA_INVITACIONES_REGISTRO, "POST", jsonApp.encodeToString(req), true)
+
+    suspend fun listarInvitaciones(): List<InvitacionResp> =
+        pedir(RUTA_INVITACIONES_REGISTRO, "GET", null, true)
+
+    suspend fun revocarInvitacion(codigo: String): Unit =
+        pedir("$RUTA_INVITACIONES_REGISTRO/$codigo", "DELETE", null, true)
+
     suspend fun login(req: SesionReq): SesionResp =
         pedir<SesionResp>(RUTA_SESION, "POST", jsonApp.encodeToString(req), false)
             .also { sesion.guardar(it) }

@@ -6702,3 +6702,67 @@ inyección de defectos y qué quedó sin verificar.
 
 **1979 pruebas en verde**: 1548 de integración en 37 suites, 344 JUnit de app
 y 87 de servidor. 8 defectos inyectados en `Cerca.kt`, 8 cazados.
+
+---
+
+# Módulo BC · Invitaciones de registro
+
+Cerrar el registro de un despliegue sin dejar de repartir el APK.
+
+El registro era abierto: quien tuviera el APK se creaba una cuenta. Para un
+servidor público está bien; para el de un equipo o un laboratorio, no, y la
+única alternativa era **no repartir el APK** — o sea, no tener app.
+
+Una invitación controla **quién** puede registrarse, no si paga. El registro
+sigue siendo gratis; lo que deja de ser es anónimo para el servidor.
+
+## Abierto por defecto, y eso es la decisión
+
+`WTFUCK_REGISTRO` vale `abierto` mientras nadie diga otra cosa. Actualizar el
+servidor no puede cerrarle el registro a quien no pidió cerrarlo: un cambio que
+rompe un despliegue ajeno por venir activado de fábrica es peor que uno que hay
+que encender a mano.
+
+## El huevo y la gallina, dos veces
+
+Un servidor que arranca cerrado no tiene ninguna cuenta, y crear invitaciones
+exige ser administrador. Sin excepción, el despliegue **nace bloqueado**.
+
+La primera vez se vio probándolo: con `WTFUCK_REGISTRO=invitacion` desde el
+primer arranque, hasta el propietario recibía *"Hace falta un código"*. La
+segunda estaba escondida detrás: `sembrarPropietario` corría **sólo al
+arrancar**, así que quien se registraba después se quedaba sin nivel de staff
+—y sin poder repartir el primer código—.
+
+Esa segunda se manifestó en producción: la cuenta del VPS se registró después
+de levantar el servidor y se quedó sin panel. Ahora el propietario queda con su
+nivel **al registrarse**, en la misma transacción del alta.
+
+## La carrera se cierra en el `WHERE`
+
+`UPDATE ... SET usos = usos + 1 WHERE ... AND usos < usos_max`. Leer, comprobar
+y escribir desde Kotlin deja una ventana, y dos personas canjeando el último
+uso a la vez la encuentran. El canje va dentro de la transacción que crea la
+cuenta: si el alta falla después, el código no se queda gastado.
+
+## Lo que encontró la prueba de acceso ajeno
+
+Añadir tres rutas hizo fallar `ajeno.mjs` y `ajeno-lectura.mjs`, que exigen que
+**toda** ruta esté cubierta por un ataque o eximida con un motivo escrito. Tres
+rutas nuevas, tres huecos señalados por nombre. Es el trabajo de esas suites y
+lo hicieron sin que nadie se acordara de pedírselo.
+
+## Y una suite que sólo pasaba la primera vez
+
+`invitaciones.mjs` exigía una base virgen: el nombre del propietario lo fija el
+entorno, así que en la segunda corrida ya existía, el registro devolvía 409 y
+la suite se caía entera. Ahora entra con su clave — y **avisa** de que, en ese
+caso, la comprobación de "es administrador desde que se registra" no concluye.
+
+### Evidencias
+
+[`docs/evidencias/invitaciones/`](evidencias/invitaciones/) — las decisiones,
+los dos bloqueos de arranque y lo que cada prueba sí demuestra.
+
+**2000 pruebas en verde**: 1544 de integración en 37 suites, 369 JUnit de app
+y 87 de servidor.

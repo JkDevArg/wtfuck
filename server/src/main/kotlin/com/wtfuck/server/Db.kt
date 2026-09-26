@@ -78,6 +78,7 @@ object Db {
         38 to "/db/V38__aviso_de_participante.sql",
         39 to "/db/V39__conversaciones_temporales.sql",
         40 to "/db/V40__aviso_de_chat_vencido.sql",
+        41 to "/db/V41__invitaciones_de_registro.sql",
     )
 
     /**

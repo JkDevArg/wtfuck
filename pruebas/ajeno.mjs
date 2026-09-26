@@ -218,6 +218,13 @@ if (faltan.length > 0) {
 //  sobre su propio objeto, con el motivo escrito. No se dan por verdes: se
 //  cuentan aparte y se dicen al final.
 
+// Un codigo que no existe, y da igual que no exista: la peticion se tiene que
+// negar por QUIEN la hace, antes de mirar si el codigo esta en la base. Si
+// alguna vez empezara a contestar por no encontrarlo en vez de por falta de
+// permiso, la diferencia no se veria aqui -las dos son 404- pero si en
+// invitaciones.mjs, que revoca uno de verdad y comprueba que deja de servir.
+const CODIGO_FALSO = 'ABCDEFGHJKMN';
+
 const FILAS = [
   // --- grupo: administracion ------------------------------------------
   { n: 'configurar un grupo ajeno', m: 'PUT', ruta: (w) => `/v1/conversaciones/${w.G}/config`,
@@ -353,6 +360,20 @@ const FILAS = [
     cuerpo: () => ({ tope: 99999, ventanaSegundos: 1 }), soloPanel: true },
   { n: 'borrar un limite del sistema sin ser staff', m: 'DELETE',
     ruta: (w) => `/v1/panel/limites/${w.LIMITE}`, soloPanel: true },
+
+  // --- invitaciones de registro (modulo BC) ----------------------------
+  //
+  // `sinControl` porque el control necesitaria un codigo que exista, y crear
+  // uno exige ser administrador: el mundo de control no tiene ninguno. Que un
+  // administrador SI pueda revocar lo cubre invitaciones.mjs de punta a punta
+  // -crear, revocar, y comprobar que el revocado deja de servir-.
+  //
+  // Lo que se exige AQUI es lo otro: que una cuenta de a pie no pueda anular
+  // el codigo de otro. En un servidor cerrado eso seria poder cerrarle la
+  // puerta a quien esta invitado, sin ser nadie.
+  { n: 'revocar un codigo de invitacion sin ser staff', m: 'DELETE',
+    ruta: () => `/v1/registro/invitaciones/${CODIGO_FALSO}`, soloPanel: true,
+    sinControl: 'crear el codigo del control exige ser administrador, y el mundo de control no lo es' },
 ];
 
 /**

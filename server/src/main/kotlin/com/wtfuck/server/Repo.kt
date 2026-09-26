@@ -89,6 +89,20 @@ object Repo {
             }
         }
 
+        // La invitacion se canjea DENTRO de esta transaccion y antes de crear
+        // nada. Si el alta falla despues —un username ya cogido— la reserva se
+        // deshace con el resto, y el codigo no queda gastado por una cuenta
+        // que nunca existio.
+        //
+        // Se comprueba aqui y no en la ruta porque aqui es donde hay
+        // transaccion: en la ruta seria una comprobacion suelta, y entre ella
+        // y el INSERT cabe otro registro.
+        val invitacion = if (Invitaciones.exigeInvitacion && !Invitaciones.entraSinInvitacion(user)) {
+            Invitaciones.canjear(c, r.codigoInvitacion)
+        } else {
+            null
+        }
+
         val usuarioId = c.prepareStatement(
             "INSERT INTO usuario (username, password_hash) VALUES (?, ?) RETURNING id"
         ).use { st ->
@@ -111,6 +125,33 @@ object Repo {
             st.setBytes(4, hwHash)
             st.setString(5, r.hardwareNivel)
             st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
+        }
+
+        // Quien entro con cada codigo. Despues del INSERT, que es cuando ya
+        // hay un id al que apuntar.
+        invitacion?.let { Invitaciones.anotarUso(c, it, usuarioId) }
+
+        // El propietario queda con su nivel AL REGISTRARSE, no solo al
+        // arrancar el servidor.
+        //
+        // `Panel.sembrarPropietario` corre en el arranque y promueve a la
+        // cuenta si existe. En un servidor recien montado no existe todavia:
+        // se registra despues, y se queda sin nivel hasta el siguiente
+        // reinicio. En modo abierto eso es una molestia; en modo invitacion es
+        // un bloqueo, porque repartir codigos exige ser administrador y sin
+        // reiniciar no hay forma de empezar.
+        //
+        // Se encontro montandolo de cero: el propietario entraba y despues
+        // recibia 404 al crear la primera invitacion.
+        if (Invitaciones.entraSinInvitacion(user)) {
+            c.prepareStatement(
+                "UPDATE usuario SET staff_nivel = ? WHERE id = ? AND staff_nivel < ?"
+            ).use { st ->
+                st.setInt(1, Moderacion.PROPIETARIO)
+                st.setObject(2, usuarioId)
+                st.setInt(3, Moderacion.PROPIETARIO)
+                st.executeUpdate()
+            }
         }
 
         SesionResp(emitirToken(c, dispositivoId, ip, agente), usuarioId.toString(), dispositivoId.toString(), user)

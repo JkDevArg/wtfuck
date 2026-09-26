@@ -36,6 +36,26 @@ for v in D_API D_MEDIA PROPIETARIO; do
   if [ -z "${!v}" ]; then echo "Falta un dato. Nada escrito."; exit 1; fi
 done
 
+# El registro: abierto o por invitacion.
+#
+# Se pregunta AQUI y no se deja para despues porque cambiarlo luego exige
+# editar el .env a mano y reiniciar, y quien monta un servidor para su equipo
+# normalmente ya sabe que no lo quiere abierto. Preguntarlo cuesta una linea;
+# descubrirlo cuando ya entraron desconocidos, no.
+#
+# El valor por defecto es ABIERTO, que es el del servidor: la pregunta no
+# puede cambiar el comportamiento de quien pulsa Enter sin leer.
+echo
+echo "Registro:"
+echo "  1) Abierto     - cualquiera con el APK se crea una cuenta"
+echo "  2) Invitacion  - solo se entra con un codigo que tu repartes"
+read -rp "Elige [1]: " MODO
+if [ "${MODO:-1}" = "2" ]; then
+  REGISTRO=invitacion
+else
+  REGISTRO=abierto
+fi
+
 DB_PASS=$(secreto)
 REDIS_PASS=$(secreto)
 MINIO_PASS=$(secreto)
@@ -74,7 +94,14 @@ WTFUCK_S3_PUBLICO=https://$D_MEDIA
 WTFUCK_S3_USER=wtfuck
 WTFUCK_S3_PASS=$MINIO_PASS
 
+# El propietario. Entra sin codigo aunque el registro este cerrado -si no, un
+# servidor en modo invitacion nace bloqueado: nadie puede entrar y hace falta
+# estar dentro para invitar- y queda con nivel 100 al registrarse.
 WTFUCK_PROPIETARIO=$PROPIETARIO
+
+# `abierto` o `invitacion`. Se cambia aqui y se reinicia el servidor:
+#   docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml #     up -d --force-recreate servidor
+WTFUCK_REGISTRO=$REGISTRO
 EOF
 
 chmod 600 .env.produccion
@@ -121,6 +148,14 @@ echo "Listo:"
 echo "  .env.produccion            (600, con secretos generados)"
 echo "  despliegue/turnserver.conf (realm y secreto puestos)"
 echo "  despliegue/s3.json         (600, credenciales del almacen)"
+echo
+if [ "$REGISTRO" = "invitacion" ]; then
+  echo "Registro CERRADO. Entra tu primero con el usuario '$PROPIETARIO';"
+  echo "despues reparte codigos desde Panel > Invitaciones."
+else
+  echo "Registro ABIERTO: cualquiera con el APK se crea una cuenta."
+  echo "Para cerrarlo: WTFUCK_REGISTRO=invitacion en .env.produccion, y reiniciar."
+fi
 echo
 
 # Se ignoran los comentarios. La version anterior los contaba y decia "1"

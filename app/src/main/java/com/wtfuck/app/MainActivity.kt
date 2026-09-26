@@ -24,6 +24,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.wtfuck.app.ui.InvitacionesPantalla
 import com.wtfuck.app.ui.ComunidadesPantalla
 import com.wtfuck.app.ui.ChatPantalla
 import com.wtfuck.app.ui.CompartidoPantalla
@@ -432,7 +433,12 @@ private fun Raiz() {
                 onBitacora = { nav.navigate("bitacora") },
                 onConversaciones = { nav.navigate("panel-conversaciones") },
                 onConsolaWeb = { nav.navigate("consola-web") },
+                onInvitaciones = { nav.navigate("invitaciones") },
             )
+        }
+
+        composable("invitaciones") {
+            InvitacionesPantalla(onAtras = { nav.popBackStack() })
         }
 
         composable("limites") {

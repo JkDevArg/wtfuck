@@ -11,6 +11,17 @@ import kotlinx.serialization.Serializable
 
 const val RUTA_REGISTRO = "/v1/registro"
 const val RUTA_SESION = "/v1/sesion"
+const val RUTA_REGISTRO_MODO = "/v1/registro/modo"
+/**
+ * Las de REGISTRO, que no son las de grupo.
+ *
+ * `RUTA_INVITACIONES` ya existe en `Grupos.kt` y vale `/v1/invitaciones`: esa
+ * sirve para entrar a una conversacion. Esta abre una cuenta. Dos permisos
+ * completamente distintos, y la primera version de esto les dio el mismo
+ * nombre y la misma ruta — lo caza el compilador, pero solo porque estan en el
+ * mismo modulo. Bajo `/v1/registro/` no hay forma de confundirlas.
+ */
+const val RUTA_INVITACIONES_REGISTRO = "/v1/registro/invitaciones"
 const val RUTA_USUARIO = "/v1/usuarios"
 const val RUTA_CONVERSACIONES = "/v1/conversaciones"
 const val RUTA_DIRECTA = "/v1/conversaciones/directa"
@@ -35,6 +46,46 @@ data class RegistroReq(
     val hardwareHash: String,
     /** STRONGBOX | TEE | SOFTWARE_DEV */
     val hardwareNivel: String,
+    /**
+     * Codigo de invitacion. Vacio cuando el servidor no lo exige.
+     *
+     * Con valor por defecto para que una app vieja siga registrandose contra
+     * un servidor abierto: si el servidor no lo pide, el campo sobra, y si lo
+     * pide, la app vieja recibe un 403 con el motivo escrito.
+     */
+    val codigoInvitacion: String = "",
+)
+
+/**
+ * Si este servidor exige invitacion. Se pregunta ANTES del formulario.
+ *
+ * Es publico y no filtra nada: exigir invitacion se descubre igual intentando
+ * registrarse. Preguntarlo antes evita rellenar un formulario entero para que
+ * lo rechacen al final, que es la peor forma de enterarse.
+ */
+@Serializable
+data class ModoRegistroResp(val requiereInvitacion: Boolean)
+
+@Serializable
+data class NuevaInvitacionReq(
+    /** Cuantas cuentas puede crear. 1 = personal. */
+    val usos: Int = 1,
+    /** Dias hasta que caduca. 0 = no caduca. */
+    val diasValida: Int = 0,
+    /** Para quien es. Solo lo ve el staff. */
+    val nota: String = "",
+)
+
+@Serializable
+data class InvitacionResp(
+    val codigo: String,
+    val creadaEn: Long,
+    /** 0 = no caduca. */
+    val expiraEn: Long,
+    val usos: Int,
+    val usosMax: Int,
+    val revocada: Boolean,
+    val nota: String,
 )
 
 @Serializable

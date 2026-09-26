@@ -59,8 +59,20 @@ fun AuthPantalla(onListo: () -> Unit) {
     var totp by remember { mutableStateOf("") }
     var usuario by rememberSaveable { mutableStateOf(app.sesion.username.orEmpty()) }
     var clave by rememberSaveable { mutableStateOf("") }
+    // El codigo de invitacion, y si este servidor lo pide.
+    //
+    // Se pregunta al servidor en vez de compilarlo en la app porque el mismo
+    // APK sirve a despliegues distintos: el publico no pide codigo y el de un
+    // equipo si. Un campo fijo obligaria a compilar dos versiones.
+    var codigo by rememberSaveable { mutableStateOf("") }
+    var pideInvitacion by rememberSaveable { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var cargando by remember { mutableStateOf(false) }
+
+    // El modo se pregunta una vez, al abrir la pantalla, y no al pulsar "crear
+    // cuenta": asi el campo ya esta cuando hace falta, en vez de aparecer de
+    // golpe debajo del dedo.
+    LaunchedEffect(Unit) { pideInvitacion = app.repo.registroPideInvitacion() }
 
     // La identidad de hardware se calcula una vez: genera el par de claves en el
     // Keystore si aun no existe.
@@ -78,11 +90,17 @@ fun AuthPantalla(onListo: () -> Unit) {
         if (u.length < 3) { error = "El usuario necesita al menos 3 caracteres."; return }
         if (!Regex("^[a-z0-9_]+$").matches(u)) { error = "Solo letras, números y guion bajo."; return }
         if (clave.length < 8) { error = "La contraseña necesita al menos 8 caracteres."; return }
+        // Se comprueba aqui y no solo en el servidor para no gastar un viaje
+        // -y un intento del limitador- en algo que ya se sabe que va a fallar.
+        if (esRegistro && pideInvitacion && codigo.isBlank()) {
+            error = "Este servidor necesita un código de invitación."
+            return
+        }
 
         cargando = true
         ambito.launch {
             val r = runCatching {
-                if (esRegistro) app.repo.registrar(u, clave, id, android.os.Build.MODEL ?: "dispositivo")
+                if (esRegistro) app.repo.registrar(u, clave, id, android.os.Build.MODEL ?: "dispositivo", codigo)
                 else app.repo.login(u, clave, id, totp.trim().ifBlank { null })
             }
             cargando = false
@@ -177,6 +195,41 @@ fun AuthPantalla(onListo: () -> Unit) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // El campo del codigo: solo al crear cuenta y solo si el servidor lo
+        // pide. A quien entra no le hace falta, y en un servidor abierto no
+        // existe.
+        if (esRegistro && pideInvitacion) {
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = codigo,
+                // Se normaliza mientras se escribe -mayusculas, sin espacios-
+                // porque el codigo se copia de una captura o se dicta por
+                // telefono. El servidor tambien lo limpia; hacerlo aqui
+                // ademas es para que se VEA igual al que le pasaron, y no
+                // parezca que escribio otra cosa.
+                onValueChange = { codigo = it.uppercase().filter { c -> !c.isWhitespace() && c != '-' } },
+                label = { Text("Código de invitación") },
+                supportingText = {
+                    Text(
+                        "Este servidor es cerrado. Te lo tiene que dar alguien que ya esté dentro.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextoTerciario,
+                    )
+                },
+                singleLine = true,
+                enabled = !cargando,
+                isError = error != null,
+                keyboardOptions = KeyboardOptions(
+                    // Sin autocorreccion ni mayuscula automatica: son doce
+                    // caracteres sin sentido y el teclado los "arreglaria".
+                    autoCorrectEnabled = false,
+                    keyboardType = KeyboardType.Ascii,
+                    imeAction = ImeAction.Done,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
         if (pideTotp) {
             Spacer(Modifier.height(12.dp))

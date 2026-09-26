@@ -3902,16 +3902,45 @@ class Repositorio(
     //  Cuenta y conversaciones
     // ============================================================
 
-    suspend fun registrar(username: String, password: String, id: Hardware.Identidad, etiqueta: String) {
+    suspend fun registrar(
+        username: String,
+        password: String,
+        id: Hardware.Identidad,
+        etiqueta: String,
+        codigoInvitacion: String = "",
+    ) {
         val antes = sesion.usuarioId
         api.registrar(
             RegistroReq(
                 username = username, password = password, etiquetaDispositivo = etiqueta,
                 identidadPub = id.identidadPub, hardwareHash = id.hardwareHash, hardwareNivel = id.nivel,
+                codigoInvitacion = codigoInvitacion,
             )
         )
         limpiarSiCambioDeCuenta(antes)
     }
+
+    /**
+     * Si este servidor pide invitacion para registrarse.
+     *
+     * Ante un fallo devuelve `false`, o sea "abierto". Es la respuesta menos
+     * danina de las dos: si el servidor SI pide codigo y aqui se asume que no,
+     * el campo no aparece y el registro falla con el mensaje del servidor, que
+     * lo explica. Al reves —asumir que pide codigo cuando no— se le plantaria
+     * un campo obligatorio a quien no tiene ninguno, y ahi no hay salida.
+     *
+     * El caso normal de este fallo es no tener red todavia, y entonces el
+     * registro tampoco va a funcionar.
+     */
+    suspend fun registroPideInvitacion(): Boolean =
+        runCatching { api.modoRegistro().requiereInvitacion }.getOrElse { false }
+
+    suspend fun crearInvitacion(usos: Int, diasValida: Int, nota: String): InvitacionResp =
+        api.crearInvitacion(NuevaInvitacionReq(usos = usos, diasValida = diasValida, nota = nota))
+
+    suspend fun listarInvitaciones(): List<InvitacionResp> = api.listarInvitaciones()
+
+    suspend fun revocarInvitacion(codigo: String) = api.revocarInvitacion(codigo)
 
     suspend fun login(
         username: String,

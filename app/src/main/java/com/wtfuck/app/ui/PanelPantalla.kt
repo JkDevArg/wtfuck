@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -62,6 +63,7 @@ fun PanelPantalla(
     onBitacora: () -> Unit,
     onConversaciones: () -> Unit,
     onConsolaWeb: () -> Unit,
+    onInvitaciones: () -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
@@ -137,6 +139,11 @@ fun PanelPantalla(
                         }
                         IconButton(onClick = onConversaciones) {
                             Icon(Icons.Filled.Groups, "Grupos y canales", tint = TextoSecundario)
+                        }
+                        // BC. Con el resto de administrador (80), que es lo
+                        // que pide el servidor para repartir codigos.
+                        IconButton(onClick = onInvitaciones) {
+                            Icon(Icons.Filled.MailOutline, "Invitaciones", tint = TextoSecundario)
                         }
                         IconButton(onClick = onLimites) {
                             Icon(Icons.Filled.Speed, "Limites", tint = TextoSecundario)

@@ -453,6 +453,9 @@ fun Application.modulo() {
             else call.respondText(html, ContentType.Text.Html)
         }
 
+        // Publico y antes del formulario. Ver `Invitaciones.modo`.
+        get(RUTA_REGISTRO_MODO) { call.respond(Invitaciones.modo()) }
+
         post(RUTA_REGISTRO) {
             val resp = Repo.registrar(
                 call.receive(), call.ipCliente(), call.request.headers["User-Agent"],
@@ -469,6 +472,23 @@ fun Application.modulo() {
             }
             call.respond(resp)
         }
+        // --- invitaciones de registro (modulo BC) --------------------
+        //
+        // Autenticadas y solo para administradores. `exigirStaff` contesta 404
+        // a quien no llega al nivel, no 403: un 403 confirmaria que la ruta
+        // existe, y quien no reparte invitaciones no tiene por que saber que
+        // este servidor las usa.
+        post(RUTA_INVITACIONES_REGISTRO) {
+            call.respond(Invitaciones.crear(call.autenticar(), call.receive()))
+        }
+        get(RUTA_INVITACIONES_REGISTRO) {
+            call.respond(Invitaciones.listar(call.autenticar()))
+        }
+        delete("$RUTA_INVITACIONES_REGISTRO/{codigo}") {
+            Invitaciones.revocar(call.autenticar(), call.parameters["codigo"].orEmpty())
+            call.respond(HttpStatusCode.NoContent)
+        }
+
         post(RUTA_SESION) {
             val ip = call.ipCliente()
             val req = call.receive<SesionReq>()
