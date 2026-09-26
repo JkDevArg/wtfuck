@@ -37,25 +37,56 @@ object Almacen {
     private const val MINUTOS_SUBIDA = 15
     private const val MINUTOS_DESCARGA = 60
 
+    private fun credenciales(b: MinioClient.Builder) = b.credentials(
+        System.getenv("WTFUCK_S3_USER") ?: "wtfuck",
+        System.getenv("WTFUCK_S3_PASS") ?: "wtfuck_dev_minio",
+    )
+
+    /**
+     * Para hablar con el almacen: crear el bucket, medir, leer unos bytes.
+     *
+     * Va por la red interna. En un despliegue con Docker eso es `http://minio:9000`,
+     * que no sale de la maquina.
+     */
     private val cliente: MinioClient by lazy {
-        MinioClient.builder()
-            .endpoint(System.getenv("WTFUCK_S3_URL") ?: "http://127.0.0.1:9000")
-            .credentials(
-                System.getenv("WTFUCK_S3_USER") ?: "wtfuck",
-                System.getenv("WTFUCK_S3_PASS") ?: "wtfuck_dev_minio",
-            )
-            .build()
+        credenciales(
+            MinioClient.builder()
+                .endpoint(System.getenv("WTFUCK_S3_URL") ?: "http://127.0.0.1:9000")
+        ).build()
     }
 
     /**
-     * OJO: la URL del almacen tiene que ser la MISMA que usara el cliente.
+     * Para FIRMAR las URLs que se le dan al telefono.
      *
-     * La firma SigV4 incluye el header Host, asi que reescribir el host de una
-     * URL ya firmada la invalida (403 del almacen). Lo intente y no funciona.
-     * Si el cliente llega por otro host -por ejemplo un emulador con
-     * `adb reverse`-, hay que configurar WTFUCK_S3_URL con ESE host, no
-     * traducirlo despues.
+     * ## Por que es un cliente aparte, y no el de arriba
+     *
+     * La firma SigV4 incluye el header `Host`. O sea que la URL firmada solo
+     * vale si el cliente la pide **por ese mismo host**: reescribirlo despues
+     * la invalida y el almacen responde 403.
+     *
+     * Y los dos hosts no pueden ser el mismo:
+     *
+     *  - el servidor alcanza el almacen por la red interna (`minio:9000`), un
+     *    nombre que solo existe dentro de Docker;
+     *  - el telefono lo alcanza por un dominio publico con TLS
+     *    (`media.ejemplo.com`), que es lo unico que puede resolver.
+     *
+     * Con un solo cliente hay que elegir, y las dos elecciones rompen algo.
+     * Con el interno, el telefono recibe `http://minio:9000/...` y **no hay
+     * adjuntos en produccion**: no resuelve ese nombre y ademas no es HTTPS.
+     * Con el publico, el servidor no puede crear el bucket al arrancar hasta
+     * que el DNS y el certificado esten listos — y el certificado no existe
+     * hasta el primer arranque, que es un huevo y una gallina.
+     *
+     * Asi que son dos, y `WTFUCK_S3_PUBLICO` es lo que el telefono va a ver.
+     * Si no se declara, vale el interno: en desarrollo los dos SON el mismo
+     * host y no hay nada que separar.
      */
+    private val firmante: MinioClient by lazy {
+        val publico = System.getenv("WTFUCK_S3_PUBLICO")?.trim()?.takeIf { it.isNotEmpty() }
+        if (publico == null) cliente
+        else credenciales(MinioClient.builder().endpoint(publico)).build()
+    }
 
     @Volatile private var listo = false
 
@@ -93,7 +124,7 @@ object Almacen {
 
     private fun firmar(objeto: String, metodo: Http.Method, minutos: Int): String {
         if (!listo) throw ErrorNegocio(503, "El almacen de archivos no esta disponible.")
-        val url = cliente.getPresignedObjectUrl(
+        val url = firmante.getPresignedObjectUrl(
             GetPresignedObjectUrlArgs.builder()
                 .method(metodo)
                 .bucket(BUCKET)

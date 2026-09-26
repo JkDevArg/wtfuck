@@ -1,0 +1,142 @@
+# Para un servidor que YA tiene un proxy con TLS: CloudPanel, Plesk, aaPanel,
+# o un nginx puesto a mano.
+#
+# Es el mismo despliegue que `docker-compose.produccion.yml` menos Caddy. Ese
+# archivo trae su propio Caddy y quiere los puertos 80 y 443, que en una
+# maquina con panel ya son del nginx del panel. Dos cosas no pueden escuchar
+# en el mismo puerto, asi que se elige una: la del panel, porque es la que ya
+# gestiona los certificados y la que el panel sabe reconfigurar.
+#
+# Lo que cambia respecto al otro archivo, y nada mas:
+#
+#   1. No hay Caddy.
+#   2. `servidor` y `minio` publican en 127.0.0.1 — el proxy del anfitrion
+#      llega ahi, y nadie de fuera.
+#   3. Hace falta `WTFUCK_S3_PUBLICO` (ver `.env.produccion.ejemplo`).
+#
+# La configuracion del proxy esta en `docs/09-DESPLIEGUE.md`, seccion
+# "Detras de un panel". Tiene tres detalles que si se saltan dan fallos que no
+# se parecen a su causa; no es relleno.
+#
+#   docker compose -f docker-compose.tras-proxy.yml up -d
+
+name: wtfuck
+
+services:
+
+  servidor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env.produccion
+    environment:
+      WTFUCK_PUERTO: 8300
+      WTFUCK_DB_URL: jdbc:postgresql://db:5432/wtfuck
+      WTFUCK_REDIS_URL: redis://:${REDIS_PASS}@redis:6379
+      # El interruptor mas importante de todo el despliegue: en `true` se
+      # aceptan aparatos sin enclave seguro, o sea emuladores, y el vinculo de
+      # hardware se salta con cinco minutos de trabajo.
+      WTFUCK_PERMITIR_SOFTWARE_DEV: "false"
+    ports:
+      # SOLO en la interfaz local. Sin el `127.0.0.1:` delante, Docker abre el
+      # puerto en todas las interfaces Y le escribe una regla a iptables que
+      # se salta el cortafuegos del anfitrion — o sea que ufw dice que esta
+      # cerrado y esta abierto a internet. Es de los errores mas comunes al
+      # juntar Docker con un panel, y no avisa.
+      - "127.0.0.1:8300:8300"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wtfuck
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: wtfuck
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wtfuck -d wtfuck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Sin `ports`: nadie fuera de esta red la necesita. Un Postgres escuchando
+    # en 0.0.0.0 lo encuentra un escaner en horas, no en meses.
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASS}", "--appendonly", "yes"]
+    volumes:
+      - redisdatos:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASS}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/datos"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS}
+    volumes:
+      - minio:/datos
+    ports:
+      # Tambien solo local, y por lo mismo. Lo que el telefono alcanza es
+      # DOMINIO_MEDIA, que el proxy del anfitrion trae hasta aqui.
+      - "127.0.0.1:9000:9000"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    # `host` y no una red de Docker: coturn reparte los relevos por un rango
+    # de puertos UDP y necesita ver la IP publica de verdad. Con NAT de Docker
+    # anuncia direcciones que no sirven, y el sintoma es una llamada que se
+    # queda conectando para siempre sin ningun error.
+    #
+    # Esto NO choca con el panel: los paneles no usan 3478 ni el rango de
+    # relevos. Lo que si hay que hacer es abrirlos en el cortafuegos.
+    network_mode: host
+    volumes:
+      - ./despliegue/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
+  copias:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${DB_PASS}
+    volumes:
+      - ./copias:/copias
+    # Un pg_dump diario con 14 dias de retencion. Que RESTAURARLO funcione es
+    # otra cosa y no se puede automatizar: hay que probarlo a mano una vez.
+    command: >
+      sh -c 'while true; do
+        pg_dump -h db -U wtfuck -d wtfuck -Fc
+          -f /copias/wtfuck-$$(date +%%Y%%m%%d-%%H%%M).dump 2>&1 || true;
+        find /copias -name "wtfuck-*.dump" -mtime +14 -delete 2>/dev/null || true;
+        sleep 86400;
+      done'
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  minio:
+  redisdatos:

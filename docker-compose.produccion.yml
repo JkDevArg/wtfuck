@@ -64,6 +64,11 @@ services:
       # emulador y cinco minutos. Va explicito aqui y no por defecto para que
       # se vea al leer el archivo.
       WTFUCK_PERMITIR_SOFTWARE_DEV: "false"
+      # El almacen tiene dos direcciones y no una: la interna para hablar con
+      # el, y la publica para FIRMAR lo que ve el telefono. Ver la nota de
+      # `WTFUCK_S3_PUBLICO` en `.env.produccion.ejemplo`; con una sola, los
+      # adjuntos no funcionan en produccion.
+      WTFUCK_S3_PUBLICO: https://${DOMINIO_MEDIA}
     depends_on:
       db:
         condition: service_healthy

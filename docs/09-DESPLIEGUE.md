@@ -141,6 +141,86 @@ base, Redis y el almacén no publican ni un puerto.
 > de datos: un Postgres escuchando en `0.0.0.0` lo encuentra un escáner en
 > horas, no en meses.
 
+### Detrás de un panel (CloudPanel, Plesk, aaPanel)
+
+Si la máquina ya tiene un panel, **no hace falta una VPS limpia**. Lo único que
+choca es el proxy: el panel ya es dueño del 80 y el 443, y
+`docker-compose.produccion.yml` trae su propio Caddy que quiere esos mismos.
+Dos cosas no pueden escuchar en el mismo puerto.
+
+Se elige el del panel —es el que ya gestiona los certificados y el que el panel
+sabe reconfigurar— y se usa el otro archivo:
+
+```bash
+docker compose -f docker-compose.tras-proxy.yml up -d
+```
+
+Ese compose es el mismo menos Caddy, y publica `servidor` y `minio` **sólo en
+`127.0.0.1`**. El resto —base, Redis— no publica nada.
+
+> **El `127.0.0.1:` del `ports:` no es decorativo.** Sin él, Docker abre el
+> puerto en todas las interfaces *y* le escribe una regla a iptables que se
+> salta el cortafuegos del anfitrión: `ufw status` dice que está cerrado y
+> está abierto a internet. Es de los errores más comunes al juntar Docker con
+> un panel, y no avisa.
+
+Después, en el panel, **dos sitios de tipo "Reverse Proxy"**, cada uno con su
+certificado:
+
+| Sitio | Apunta a |
+|---|---|
+| `apiwtf.hackl4bs.com` | `http://127.0.0.1:8300` |
+| `mediawtf.hackl4bs.com` | `http://127.0.0.1:9000` |
+
+La configuración de nginx está en
+[`despliegue/nginx-tras-panel.conf`](../despliegue/nginx-tras-panel.conf), lista
+para pegar. No es una plantilla genérica: cada bloque tapa un fallo concreto, y
+**tres dan síntomas que no se parecen a su causa**.
+
+1. **Sin `Upgrade`/`Connection`**, el WebSocket no se establece nunca. Los
+   mensajes se quedan "enviando" para siempre y no hay error en ningún log.
+2. **Sin `X-Forwarded-For`**, todo queda registrado con `127.0.0.1` y el límite
+   de intentos fallidos cuenta a todo el mundo como una sola persona: cinco
+   personas equivocándose de contraseña bloquean a la sexta.
+3. **Sin `proxy_set_header Host $host` en el dominio de medios**, la firma
+   SigV4 deja de cuadrar y el almacén responde 403 a todo. El texto va
+   perfecto y **sólo** fallan fotos, vídeos y audios. Parece un problema de la
+   función de adjuntos y es una línea del proxy.
+4. `client_max_body_size 0`, porque el defecto de nginx es **1 MB** y cualquier
+   foto de un teléfono de hoy se rechaza con un 413 antes de llegar al almacén.
+
+Y en el `.env.produccion`, las dos direcciones del almacén:
+
+```
+DOMINIO_API=apiwtf.hackl4bs.com
+DOMINIO_MEDIA=mediawtf.hackl4bs.com
+WTFUCK_S3_URL=http://minio:9000
+WTFUCK_S3_PUBLICO=https://mediawtf.hackl4bs.com
+```
+
+Son dos porque la firma SigV4 incluye el `Host`: el servidor alcanza el almacén
+por la red interna de Docker y el teléfono por el dominio público, y **con una
+sola dirección hay que elegir y las dos elecciones rompen algo**. Con la
+interna, el teléfono recibe `http://minio:9000/...` y no hay adjuntos. Con la
+pública, el servidor no puede crear el bucket al arrancar hasta que el DNS y el
+certificado existan — y el certificado no existe hasta el primer arranque.
+
+### Lo que el panel NO cubre
+
+**coturn**. Ningún panel usa el 3478 ni el rango de relevos, así que no hay
+choque — pero tampoco los abre. Hay que hacerlo a mano en el cortafuegos:
+
+```bash
+ufw allow 3478/tcp
+ufw allow 3478/udp
+ufw allow 49160:49200/udp
+```
+
+Ese rango UDP es lo que se olvida, y el síntoma es **una llamada que se queda
+conectando para siempre sin ningún error**. Si el proveedor tiene además un
+cortafuegos propio en su panel —la mayoría lo tiene— hay que abrirlo en los dos
+sitios.
+
 ### Qué tipo de sitio sirve, y cuál no
 
 **coturn es lo que manda**, y se pasa por alto siempre. Necesita una IP
