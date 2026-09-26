@@ -135,6 +135,36 @@ rota.
 
 ![visor](3-visor-de-foto.png)
 
+## 7. La portada también se abre, y le hacía más falta
+
+La portada se dibuja con `ContentScale.Crop` en una banda de 132 dp: lo que se
+ve en el perfil **no es la foto**, es una franja del medio. En el avatar el
+recorte es a cuadrado y al menos se adivina el resto; aquí se pierde casi todo.
+
+Se abre con su propio rótulo — "Portada de Joaquín" y no sólo el nombre:
+abierta a pantalla completa y sin el círculo del avatar al lado, una portada y
+una foto de perfil se parecen demasiado, y el visor es el único sitio donde se
+puede decir cuál se está mirando.
+
+![visor de portada](4-visor-de-portada.png)
+
+### Y de paso: no se abre lo que no existe
+
+`ApiCliente.urlImagen` devuelve `null` cuando no hay imagen (`version <= 0`),
+así que el toque sólo se conecta si hay foto. Sin esto, tocar un avatar que son
+unas iniciales dibujadas abría un visor para mostrar "no se pudo abrir la
+foto" — un callejón sin salida donde antes no pasaba nada, que es peor que no
+reaccionar.
+
+La comprobación de dentro del visor se queda como red, pero ahora cierra desde
+un `LaunchedEffect` en vez de llamar a `onCerrar` **durante** la composición.
+Un efecto lanzado desde la composición es de los errores que no se notan hasta
+que un día algo parpadea y nadie sabe por qué.
+
+La compresión de la portada ya venía del cambio anterior: mismo camino que el
+avatar, con 1920 px de lado y 1 MB de tope. Verificada con la misma foto de
+10.4 MB.
+
 ---
 
 ## Pruebas

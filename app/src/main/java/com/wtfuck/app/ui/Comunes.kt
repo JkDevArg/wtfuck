@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -618,7 +619,14 @@ fun EstadoDeError(
  */
 @Composable
 fun VisorDeFoto(url: String?, titulo: String, onCerrar: () -> Unit) {
-    if (url.isNullOrBlank()) { onCerrar(); return }
+    // Los sitios que lo abren ya comprueban que haya foto; esto es la red por
+    // si alguno se olvida. `LaunchedEffect` y no una llamada directa: cerrar
+    // es un efecto, y hacerlo DURANTE la composicion es de los errores que se
+    // manifiestan como un parpadeo raro meses despues.
+    if (url.isNullOrBlank()) {
+        LaunchedEffect(Unit) { onCerrar() }
+        return
+    }
 
     // Sin `by`: el delegado de Compose choca aqui con el `getValue` de la
     // biblioteca estandar, ya importado en este archivo. `.floatValue` es lo

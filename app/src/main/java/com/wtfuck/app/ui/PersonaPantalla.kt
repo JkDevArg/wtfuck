@@ -251,7 +251,10 @@ fun PersonaPantalla(
                     tamano = 96.dp,
                     modifier = Modifier
                         .clip(CircleShape)
-                        .clickable { verFoto = true },
+                        .then(
+                            if (urlAvatar != null) Modifier.clickable { verFoto = true }
+                            else Modifier
+                        ),
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(

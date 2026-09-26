@@ -630,20 +630,31 @@ private fun Cabecera(
     // sin que el resto de la pantalla se entere, y asi no hay que pasar un
     // callback mas por una firma que ya tiene seis.
     var verFoto by remember { mutableStateOf(false) }
+    var verPortada by remember { mutableStateOf(false) }
     val urlAvatar = ApiCliente.urlImagen(usuario, "avatar", avatarVersion)
+    val urlPortada = ApiCliente.urlImagen(usuario, "portada", portadaVersion)
+    val titulo = nombreMostrado.ifBlank { "@$usuario" }
 
-    if (verFoto) {
-        VisorDeFoto(urlAvatar, nombreMostrado.ifBlank { "@$usuario" }) { verFoto = false }
-    }
+    if (verFoto) VisorDeFoto(urlAvatar, titulo) { verFoto = false }
+    // La portada se abre con su propio rotulo. "Portada de Joaquin" y no solo
+    // el nombre: abierta a pantalla completa y sin el circulo del avatar al
+    // lado, una portada y una foto de perfil se parecen demasiado, y el visor
+    // es el unico sitio donde se puede decir cual se esta mirando.
+    if (verPortada) VisorDeFoto(urlPortada, "Portada de $titulo") { verPortada = false }
 
     Box(Modifier.fillMaxWidth().height(altoPortada + avatar / 2)) {
-        val urlPortada = ApiCliente.urlImagen(usuario, "portada", portadaVersion)
         if (urlPortada != null) {
             AsyncImage(
                 model = urlPortada,
                 contentDescription = "Portada",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().height(altoPortada),
+                // Se recorta con `Crop` para la banda de 132 dp, asi que lo
+                // que se ve aqui NO es la foto: es una franja del medio.
+                // Abrirla es la unica forma de ver lo que se subio.
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(altoPortada)
+                    .clickable { verPortada = true },
             )
         } else {
             // Sin portada, un degradado con el color de la persona: se ve
@@ -705,7 +716,13 @@ private fun Cabecera(
                 modifier = Modifier
                     .border(3.dp, BgBase, CircleShape)
                     .clip(CircleShape)
-                    .clickable { verFoto = true },
+                    // Solo si HAY foto. Sin ella el avatar son unas iniciales
+                    // dibujadas, y abrir un visor para mostrar "no se pudo
+                    // abrir la foto" es peor que no reaccionar al toque.
+                    .then(
+                        if (urlAvatar != null) Modifier.clickable { verFoto = true }
+                        else Modifier
+                    ),
             )
             BotonCamara(
                 onClick = onCambiarAvatar,
