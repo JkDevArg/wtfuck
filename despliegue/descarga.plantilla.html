@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wtfuck · descarga</title>
+<!--
+  Plantilla de la pagina de descarga. La rellena despliegue/publicar-apk.sh
+  con el nombre, la huella y el tamano de cada compilacion.
+
+  Sin nada externo: ni tipografias, ni analiticas, ni CDN. Una pagina que
+  reparte una app de mensajeria cifrada no deberia contarle a un tercero quien
+  la visita.
+-->
+<style>
+  :root {
+    --fondo: #0E1313;
+    --caja: #1F2828;
+    --texto: #E6EDED;
+    --tenue: #95A1A1;
+    --cian: #6CF8F6;
+    --ambar: #E8B44A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 64px;
+    background: var(--fondo);
+    color: var(--texto);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 620px; margin: 0 auto; }
+  h1 { color: var(--cian); font-size: 30px; margin: 24px 0 4px; letter-spacing: -0.5px; }
+  h2 { font-size: 17px; margin: 34px 0 10px; }
+  p { margin: 10px 0; }
+  .lema { color: var(--tenue); margin-top: 0; }
+  .boton {
+    display: block; text-align: center; margin: 26px 0 8px;
+    background: var(--cian); color: #08201F; text-decoration: none;
+    padding: 16px; border-radius: 12px; font-weight: 700; font-size: 17px;
+  }
+  .meta { color: var(--tenue); font-size: 13px; text-align: center; margin-top: 0; }
+  .caja { background: var(--caja); border-radius: 12px; padding: 14px 16px; margin: 16px 0; }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 12px; word-break: break-all; color: var(--cian);
+  }
+  .etiqueta { color: var(--tenue); font-size: 12px; text-transform: uppercase;
+              letter-spacing: 0.6px; margin-bottom: 4px; }
+  ol, ul { padding-left: 22px; }
+  li { margin: 7px 0; }
+  .aviso { border-left: 3px solid var(--ambar); padding-left: 14px; color: var(--tenue); }
+  footer { margin-top: 44px; color: var(--tenue); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>wtfuck</h1>
+  <p class="lema">Mensajería cifrada de extremo a extremo. Sin número de teléfono.</p>
+
+  <a class="boton" href="@NOMBRE@" download>Descargar para Android</a>
+  <p class="meta">@TAMANO@ · Android 8 o superior · procesador arm64 · @FECHA@</p>
+
+  <h2>Comprueba que es el archivo correcto</h2>
+  <p>
+    Esto se descarga fuera de una tienda, así que conviene verificarlo. Si la
+    huella no coincide, <strong>no lo instales</strong>: el archivo no es el
+    que se publicó aquí.
+  </p>
+
+  <div class="caja">
+    <div class="etiqueta">SHA-256 del archivo</div>
+    <code>@HUELLA@</code>
+  </div>
+
+  <p>En Windows:</p>
+  <div class="caja"><code>certutil -hashfile @NOMBRE@ SHA256</code></div>
+  <p>En Linux o Mac:</p>
+  <div class="caja"><code>sha256sum @NOMBRE@</code></div>
+
+  <div class="caja">
+    <div class="etiqueta">Huella del certificado de firma</div>
+    <code>@CERT@</code>
+  </div>
+  <p style="color:var(--tenue); font-size:14px">
+    Esta segunda responde otra pregunta. La del archivo cambia en cada versión;
+    la del certificado no. Es lo que permite saber que una actualización viene
+    de quien hizo la primera — Android lo comprueba solo y rechaza cualquier
+    actualización firmada con otra clave.
+  </p>
+
+  <h2>Cómo instalarlo</h2>
+  <ol>
+    <li>Descarga el archivo.</li>
+    <li>Ábrelo. Android va a decir que no puede instalar apps de esta fuente.</li>
+    <li>Toca <strong>Ajustes</strong> y activa el permiso para tu navegador o
+        gestor de archivos.</li>
+    <li>Vuelve atrás y continúa.</li>
+    <li>Puede aparecer un aviso de Play Protect. Es porque la app no viene de
+        Google Play, no porque haya detectado nada.</li>
+  </ol>
+
+  <div class="aviso">
+    <p>
+      <strong>Las actualizaciones no son automáticas.</strong> Al no venir de
+      una tienda, nadie te va a avisar: hay que volver a esta página.
+    </p>
+  </div>
+
+  <h2>Qué hace y qué no</h2>
+  <ul>
+    <li>Los mensajes van cifrados de extremo a extremo. El servidor mueve
+        sobres que no puede abrir.</li>
+    <li>El historial vive <strong>sólo en tu teléfono</strong>, cifrado. No hay
+        copia en el servidor: si pierdes el teléfono, se pierde.</li>
+    <li>No hace falta número de teléfono. Sólo un nombre de usuario.</li>
+    <li>El servidor sí conoce <strong>quién habla con quién y cuándo</strong>.
+        Eso no lo tapa el cifrado de extremo a extremo, en esta app ni en
+        ninguna.</li>
+  </ul>
+
+  <footer>
+    El código está publicado en
+    <a href="https://github.com/JkDevArg/wtfuck" style="color:var(--cian)">github.com/JkDevArg/wtfuck</a>.
+  </footer>
+
+</main>
+</body>
+</html>

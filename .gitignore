@@ -37,3 +37,7 @@ docs/evidencias/**/*.png
 
 # Credenciales del almacen, generadas por despliegue/preparar.sh
 despliegue/s3.json
+
+# Lo que genera despliegue/publicar-apk.sh: el APK pesa 90 MB y se
+# reconstruye en cada version. No va a git.
+despliegue/descarga/
