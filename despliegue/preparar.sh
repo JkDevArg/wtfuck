@@ -101,7 +101,20 @@ cat > despliegue/s3.json <<EOF
   ]
 }
 EOF
+# 600 para que no lo lea nadie mas del anfitrion, y propiedad del uid 1000
+# porque ES QUIEN TIENE QUE LEERLO: el proceso de SeaweedFS baja al usuario
+# `seaweed`, que en esa imagen es uid 1000.
+#
+# Con root:600 —que es lo que hacia antes— el contenedor arranca, monta el
+# archivo y muere:
+#
+#   F auth_credentials.go:372 fail to load config file /etc/seaweedfs/s3.json:
+#     permission denied
+#
+# Y lo que se ve desde fuera es `container wtfuck-almacen-1 is unhealthy`, que
+# senala al chequeo de salud y no al permiso.
 chmod 600 despliegue/s3.json
+chown 1000:1000 despliegue/s3.json 2>/dev/null ||   echo "AVISO: no se pudo cambiar el dueno de s3.json. Si el almacen no arranca, prueba: sudo chown 1000:1000 despliegue/s3.json"
 
 echo
 echo "Listo:"

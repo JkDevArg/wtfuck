@@ -117,6 +117,19 @@ bandera. Sin ella arrancaría un Postgres sin contraseña.
 La primera vez compila el servidor dentro de Docker: **tarda entre 5 y 15
 minutos** y parece colgado. No lo es.
 
+> **Si el almacén queda `unhealthy`**, casi siempre es el permiso de su
+> configuración. SeaweedFS corre como el usuario `seaweed` (uid 1000) y no
+> puede leer un archivo de root:
+>
+> ```bash
+> sudo chown 1000:1000 despliegue/s3.json
+> docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml up -d
+> ```
+>
+> El síntoma engaña: Compose dice "unhealthy" y apunta al chequeo de salud,
+> pero el contenedor ni llega a levantar. El motivo real sale en
+> `docker logs wtfuck-almacen-1`, en una línea que empieza por `F`.
+
 **Comprobación:**
 
 ```bash
