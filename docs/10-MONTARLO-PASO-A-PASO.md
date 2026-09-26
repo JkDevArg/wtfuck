@@ -345,11 +345,22 @@ mensaje**. La regla que sale de ahí:
 | `almacen is unhealthy` | el chequeo no aceptaba el 403 del S3 |
 | `almacen is unhealthy` | `/datos` sin permiso de escritura para el uid 1000 |
 | `almacen is unhealthy` | `s3.json` en root:600, ilegible para el uid 1000 |
-| `servidor Restarting (1)` | Postgres con la contraseña del volumen anterior |
+| `servidor Restarting (1)` | el compose no le pasaba `WTFUCK_DB_PASS` al servidor |
+| `Almacen no disponible` | `WTFUCK_S3_URL` con el nombre viejo del servicio |
 
 En los tres primeros el contenedor **ni llegaba a levantar**, así que ningún
 chequeo de salud podía pasar. El motivo salía siempre en `docker logs`, en una
 línea que empieza por `F`.
+
+El cuarto merece una nota aparte: `password authentication failed` se lee como
+"la contraseña no coincide" y lleva derecho a sospechar del volumen de
+Postgres. Es la lectura razonable y la equivocada — nadie le estaba pasando la
+variable al servidor, que caía a su clave de desarrollo. Borrar el volumen no
+cambia nada.
+
+Y el quinto no tumba nada: el servidor **arranca igual** y avisa de que los
+adjuntos fallarán. Es deliberado — el chat de texto no debería caerse porque
+el almacén esté mal.
 
 ## Si algo se rompe
 

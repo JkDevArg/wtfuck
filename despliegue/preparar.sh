@@ -69,7 +69,7 @@ WTFUCK_TURN_URL=turn:$D_API:3478?transport=udp
 # Dos direcciones y no una. La interna es para que el servidor hable con el
 # almacen; la publica es la que se FIRMA y ve el telefono. Con una sola, los
 # adjuntos no funcionan.
-WTFUCK_S3_URL=http://minio:9000
+WTFUCK_S3_URL=http://almacen:9000
 WTFUCK_S3_PUBLICO=https://$D_MEDIA
 WTFUCK_S3_USER=wtfuck
 WTFUCK_S3_PASS=$MINIO_PASS

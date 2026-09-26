@@ -194,14 +194,14 @@ Y en el `.env.produccion`, las dos direcciones del almacén:
 ```
 DOMINIO_API=apiwtf.hackl4bs.com
 DOMINIO_MEDIA=mediawtf.hackl4bs.com
-WTFUCK_S3_URL=http://minio:9000
+WTFUCK_S3_URL=http://almacen:9000
 WTFUCK_S3_PUBLICO=https://mediawtf.hackl4bs.com
 ```
 
 Son dos porque la firma SigV4 incluye el `Host`: el servidor alcanza el almacén
 por la red interna de Docker y el teléfono por el dominio público, y **con una
 sola dirección hay que elegir y las dos elecciones rompen algo**. Con la
-interna, el teléfono recibe `http://minio:9000/...` y no hay adjuntos. Con la
+interna, el teléfono recibe `http://almacen:9000/...` y no hay adjuntos. Con la
 pública, el servidor no puede crear el bucket al arrancar hasta que el DNS y el
 certificado existan — y el certificado no existe hasta el primer arranque.
 
