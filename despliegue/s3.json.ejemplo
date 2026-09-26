@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "wtfuck",
+      "credentials": [
+        { "accessKey": "PLACEHOLDER_USER", "secretKey": "PLACEHOLDER_PASS" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

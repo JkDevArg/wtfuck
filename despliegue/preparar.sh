@@ -86,13 +86,45 @@ chmod 600 .env.produccion
 sed -i "s|^static-auth-secret=.*|static-auth-secret=$TURN|" despliegue/turnserver.conf
 sed -i "s|^realm=.*|realm=$D_API|" despliegue/turnserver.conf
 
+# Las credenciales del almacen van en un JSON: SeaweedFS no las toma por
+# variable de entorno, al reves que casi todo lo demas de este despliegue.
+cat > despliegue/s3.json <<EOF
+{
+  "identities": [
+    {
+      "name": "wtfuck",
+      "credentials": [
+        { "accessKey": "wtfuck", "secretKey": "$MINIO_PASS" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
+EOF
+chmod 600 despliegue/s3.json
+
 echo
 echo "Listo:"
 echo "  .env.produccion            (600, con secretos generados)"
 echo "  despliegue/turnserver.conf (realm y secreto puestos)"
+echo "  despliegue/s3.json         (600, credenciales del almacen)"
 echo
-echo "Comprobacion rapida de que no quedo ningun CAMBIAR:"
-grep -c CAMBIAR despliegue/turnserver.conf || true
-echo "(un 0 de arriba es lo correcto)"
+
+# Se ignoran los comentarios. La version anterior los contaba y decia "1"
+# porque queda un `# external-ip=CAMBIAR_IP_PUBLICA` comentado a proposito:
+# una comprobacion que da falsos positivos entrena a ignorarla, que es peor
+# que no tenerla.
+faltan=$(grep -v '^[[:space:]]*#' despliegue/turnserver.conf | grep -c CAMBIAR || true)
+if [ "$faltan" -eq 0 ]; then
+  echo "Comprobacion: turnserver.conf sin nada pendiente. Correcto."
+else
+  echo "OJO: quedan $faltan valores sin poner en despliegue/turnserver.conf."
+  grep -vn '^[[:space:]]*#' despliegue/turnserver.conf | grep CAMBIAR || true
+  exit 1
+fi
+
 echo
-echo "Siguiente paso: docs/10-MONTARLO-PASO-A-PASO.md, paso 4."
+echo "Siguiente paso, y el --env-file NO es opcional:"
+echo
+echo "  docker compose --env-file .env.produccion \\"
+echo "    -f docker-compose.tras-proxy.yml up -d --build"

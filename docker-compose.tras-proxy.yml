@@ -10,7 +10,7 @@
 # Lo que cambia respecto al otro archivo, y nada mas:
 #
 #   1. No hay Caddy.
-#   2. `servidor` y `minio` publican en 127.0.0.1 — el proxy del anfitrion
+#   2. `servidor` y `almacen` publican en 127.0.0.1 — el proxy del anfitrion
 #      llega ahi, y nadie de fuera.
 #   3. Hace falta `WTFUCK_S3_PUBLICO` (ver `.env.produccion.ejemplo`).
 #
@@ -19,6 +19,19 @@
 # se parecen a su causa; no es relleno.
 #
 #   docker compose -f docker-compose.tras-proxy.yml up -d
+
+# ATENCION AL --env-file
+#
+#   docker compose --env-file .env.produccion -f <este archivo> up -d
+#
+# La bandera NO es opcional. `env_file:` de abajo inyecta variables DENTRO de
+# los contenedores, pero las `${VARIABLES}` de este archivo las resuelve
+# Compose ANTES, y para eso solo mira `.env` o lo que diga `--env-file`.
+#
+# Sin la bandera, Compose avisa con un WARN facil de pasar por alto y sigue
+# con cadenas vacias: un Postgres sin contrasena y un almacen con credenciales
+# en blanco. Por eso cada variable lleva `:?` — asi Compose se PARA con un
+# mensaje que dice cual falta, en vez de levantar algo abierto.
 
 name: wtfuck
 
@@ -33,7 +46,7 @@ services:
     environment:
       WTFUCK_PUERTO: 8300
       WTFUCK_DB_URL: jdbc:postgresql://db:5432/wtfuck
-      WTFUCK_REDIS_URL: redis://:${REDIS_PASS}@redis:6379
+      WTFUCK_REDIS_URL: redis://:${REDIS_PASS:?hace falta --env-file .env.produccion}@redis:6379
       # El interruptor mas importante de todo el despliegue: en `true` se
       # aceptan aparatos sin enclave seguro, o sea emuladores, y el vinculo de
       # hardware se salta con cinco minutos de trabajo.
@@ -50,7 +63,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      almacen:
         condition: service_healthy
 
   db:
@@ -58,7 +71,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: wtfuck
-      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_PASSWORD: ${DB_PASS:?hace falta --env-file .env.produccion}
       POSTGRES_DB: wtfuck
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -73,30 +86,56 @@ services:
   redis:
     image: redis:8-alpine
     restart: unless-stopped
-    command: ["redis-server", "--requirepass", "${REDIS_PASS}", "--appendonly", "yes"]
+    command: ["redis-server", "--requirepass", "${REDIS_PASS:?hace falta --env-file .env.produccion}", "--appendonly", "yes"]
     volumes:
       - redisdatos:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASS}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASS:?hace falta --env-file .env.produccion}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  minio:
-    image: quay.io/minio/minio:latest
+  # ------------------------------------------------------------- almacen
+  #
+  # SeaweedFS y no MinIO, y no por gusto: MinIO retiro la imagen del servidor
+  # de los registros publicos. `quay.io/minio/minio` devuelve 401 hasta para
+  # consultar el repositorio, `minio/minio` ya no existe en Docker Hub —la
+  # organizacion conserva 20 repos y ese no esta— y ni ghcr ni ECR la tienen.
+  #
+  # Se descubrio de la peor forma posible: funcionando en la maquina de
+  # desarrollo, donde la imagen llevaba un ano en cache, y fallando en un
+  # servidor nuevo que si tenia que descargarla. Docker no vuelve a bajar lo
+  # que ya tiene, asi que un registro que se cierra es invisible hasta que
+  # alguien empieza de cero. Es un argumento para fijar versiones y guardar
+  # copia de las imagenes de las que uno depende.
+  #
+  # SeaweedFS habla S3 con firmas SigV4, que es lo unico que esta app le pide
+  # a un almacen. Verificado con las 1548 pruebas de integracion, que suben y
+  # bajan adjuntos por URL firmada: pasan las mismas que pasaban con MinIO.
+  #
+  # Las credenciales van en `despliegue/s3.json` —SeaweedFS no las toma por
+  # variable de entorno— y las escribe `despliegue/preparar.sh`.
+  almacen:
+    image: chrislusf/seaweedfs:latest
     restart: unless-stopped
-    command: ["server", "/datos"]
-    environment:
-      MINIO_ROOT_USER: ${MINIO_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASS}
+    command:
+      - server
+      - -dir=/datos
+      - -s3
+      - -s3.port=9000
+      - -s3.config=/etc/seaweedfs/s3.json
     volumes:
-      - minio:/datos
+      - almacen:/datos
+      - ./despliegue/s3.json:/etc/seaweedfs/s3.json:ro
     ports:
-      # Tambien solo local, y por lo mismo. Lo que el telefono alcanza es
-      # DOMINIO_MEDIA, que el proxy del anfitrion trae hasta aqui.
+      # Solo local. Lo que el telefono alcanza es DOMINIO_MEDIA, que el proxy
+      # del anfitrion trae hasta aqui.
       - "127.0.0.1:9000:9000"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # `wget` y no `mc`: la imagen de SeaweedFS no trae el cliente de MinIO.
+      # Un 403 del S3 sin credenciales ya demuestra que responde, y `wget -q`
+      # devuelve 0 con cualquier respuesta HTTP.
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:9000/"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -120,7 +159,7 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      PGPASSWORD: ${DB_PASS}
+      PGPASSWORD: ${DB_PASS:?hace falta --env-file .env.produccion}
     volumes:
       - ./copias:/copias
     # Un pg_dump diario con 14 dias de retencion. Identico al del compose de
@@ -144,5 +183,5 @@ services:
 
 volumes:
   pgdata:
-  minio:
+  almacen:
   redisdatos:

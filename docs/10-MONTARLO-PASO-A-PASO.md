@@ -89,21 +89,30 @@ cd /opt/wtfuck && bash despliegue/preparar.sh
 Te pregunta tres cosas y genera el resto. **No escribas secretos a mano**: una
 clave pensada por una persona tiene la entropía de una persona.
 
-**Comprobación:**
+El script comprueba solo que no quedó nada pendiente, y lo dice. Si ya lo
+ejecutaste con una versión anterior se niega a pisar lo que hay; como todavía
+no hay datos que perder, bórralo y empieza de nuevo:
 
 ```bash
-grep -c CAMBIAR despliegue/turnserver.conf
+rm -f .env.produccion && git pull && bash despliegue/preparar.sh
 ```
-
-Tiene que decir **0**. Si dice otra cosa, el script no llegó al final.
 
 ---
 
 ## Paso 4 — Levantarlo
 
 ```bash
-cd /opt/wtfuck && docker compose -f docker-compose.tras-proxy.yml up -d --build
+cd /opt/wtfuck && docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml up -d --build
 ```
+
+**El `--env-file` no es opcional.** `env_file:` dentro del compose inyecta
+variables en los contenedores, pero las `${VARIABLES}` del propio archivo las
+resuelve Compose *antes*, y para eso sólo mira `.env` o lo que diga esa
+bandera. Sin ella arrancaría un Postgres sin contraseña.
+
+> Ya no puede pasar en silencio: cada variable lleva `:?`, así que Compose se
+> **para** diciendo cuál falta en vez de seguir con cadenas vacías. Pero es
+> más rápido ponerla que leer el error.
 
 La primera vez compila el servidor dentro de Docker: **tarda entre 5 y 15
 minutos** y parece colgado. No lo es.
@@ -111,10 +120,10 @@ minutos** y parece colgado. No lo es.
 **Comprobación:**
 
 ```bash
-docker compose -f docker-compose.tras-proxy.yml ps
+docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml ps
 ```
 
-`wtfuck-db-1`, `wtfuck-redis-1` y `wtfuck-minio-1` tienen que decir
+`wtfuck-db-1`, `wtfuck-redis-1` y `wtfuck-almacen-1` tienen que decir
 **`healthy`**, y `wtfuck-servidor-1` **`Up`**. Después:
 
 ```bash
@@ -124,7 +133,7 @@ curl -s http://127.0.0.1:8300/salud
 Si responde, el servidor está vivo. Si no:
 
 ```bash
-docker compose -f docker-compose.tras-proxy.yml logs servidor --tail 50
+docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml logs servidor --tail 50
 ```
 
 En ese log tienen que aparecer las migraciones aplicándose. Es la señal de que
@@ -297,14 +306,14 @@ Con la app abierta llega todo; cerrada, no suena. Ver
 ## Si algo se rompe
 
 ```bash
-docker compose -f docker-compose.tras-proxy.yml logs --tail 100
-docker compose -f docker-compose.tras-proxy.yml restart servidor
+docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml logs --tail 100
+docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml restart servidor
 ```
 
 Y para empezar de cero **borrando los datos** — cuidado, esto borra cuentas:
 
 ```bash
-docker compose -f docker-compose.tras-proxy.yml down -v
+docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml down -v
 ```
 
 Sin `-v` para y no borra nada: es lo que quieres el 90 % de las veces.

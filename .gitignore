@@ -34,3 +34,6 @@ keystore.properties
 # Las capturas de evidencia se quedan en local: llevan conversaciones de prueba
 # con nombres de usuario reales, y este repositorio es publico.
 docs/evidencias/**/*.png
+
+# Credenciales del almacen, generadas por despliegue/preparar.sh
+despliegue/s3.json
