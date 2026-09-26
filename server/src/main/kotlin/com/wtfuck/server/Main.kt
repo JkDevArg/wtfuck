@@ -48,7 +48,28 @@ object Config {
     val puerto = System.getenv("WTFUCK_PUERTO")?.toIntOrNull() ?: 8300
     val dbUrl = System.getenv("WTFUCK_DB_URL") ?: "jdbc:postgresql://localhost:5433/wtfuck"
     val dbUser = System.getenv("WTFUCK_DB_USER") ?: "wtfuck"
-    val dbPass = System.getenv("WTFUCK_DB_PASS") ?: "wtfuck_dev"
+
+    /**
+     * La clave de la base.
+     *
+     * El valor por defecto es el de desarrollo, y eso es comodo hasta que un
+     * despliegue se olvida de pasar la variable: entonces el servidor manda
+     * `wtfuck_dev` contra una base de produccion y Postgres contesta
+     *
+     *     FATAL: password authentication failed for user "wtfuck"
+     *
+     * que se lee como "la contrasena no coincide" y lleva a sospechar del
+     * volumen de Postgres —que graba la suya al inicializar y nunca mas— en
+     * vez de a una variable que nadie paso. Borrar el volumen no arregla
+     * nada, y esa pista falsa costo un rato.
+     *
+     * Por eso [claveDeDesarrollo] existe: para poder avisarlo al arrancar.
+     */
+    const val CLAVE_DEV = "wtfuck_dev"
+    val dbPass = System.getenv("WTFUCK_DB_PASS") ?: CLAVE_DEV
+
+    /** Si se esta usando la clave de desarrollo sin haberla declarado. */
+    val claveDeDesarrollo = System.getenv("WTFUCK_DB_PASS") == null
 
     /**
      * Acepta dispositivos sin atestacion de hardware valida (emuladores).
@@ -159,6 +180,17 @@ object Hub {
 }
 
 fun main() {
+    // Se avisa ANTES de intentar conectar. Si la clave es la de desarrollo
+    // porque nadie paso la variable, el error de Postgres que viene despues
+    // no lo dice, y sin esta linea hay que deducirlo.
+    if (Config.claveDeDesarrollo && !Config.permitirSoftwareDev) {
+        org.slf4j.LoggerFactory.getLogger("wtfuck").warn(
+            "WTFUCK_DB_PASS no esta definida: se usara la clave de desarrollo. " +
+                "Si la base no la reconoce, el fallo sera " +
+                "'password authentication failed' y la causa es esta variable, " +
+                "no el volumen de Postgres."
+        )
+    }
     Db.iniciar(Config.dbUrl, Config.dbUser, Config.dbPass)
     bitacora.info("Base lista. permitirSoftwareDev=${Config.permitirSoftwareDev}")
     // El chat de texto debe seguir funcionando aunque el almacen este caido.

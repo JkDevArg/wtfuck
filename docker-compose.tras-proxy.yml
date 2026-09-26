@@ -46,6 +46,23 @@ services:
     environment:
       WTFUCK_PUERTO: 8300
       WTFUCK_DB_URL: jdbc:postgresql://db:5432/wtfuck
+      # El usuario y la CLAVE, que faltaban.
+      #
+      # `DB_PASS` del .env solo llegaba a Postgres, porque el compose la usa
+      # ahi como POSTGRES_PASSWORD. El servidor no lee esa: lee
+      # `WTFUCK_DB_PASS`, y sin ella cae a su valor de desarrollo
+      # —`wtfuck_dev`— que la base recien creada no reconoce.
+      #
+      # El sintoma es el peor posible porque suena a otra cosa:
+      #
+      #   FATAL: password authentication failed for user "wtfuck"
+      #
+      # Eso se lee como "la contrasena no coincide", y lleva a sospechar del
+      # volumen de Postgres —que graba la suya al inicializar y nunca mas— en
+      # vez de a una variable que nadie estaba pasando. Borrar el volumen no
+      # arregla nada: el servidor sigue mandando la clave de desarrollo.
+      WTFUCK_DB_USER: wtfuck
+      WTFUCK_DB_PASS: ${DB_PASS:?hace falta --env-file .env.produccion}
       WTFUCK_REDIS_URL: redis://:${REDIS_PASS:?hace falta --env-file .env.produccion}@redis:6379
       # El interruptor mas importante de todo el despliegue: en `true` se
       # aceptan aparatos sin enclave seguro, o sea emuladores, y el vinculo de
