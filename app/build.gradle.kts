@@ -26,7 +26,18 @@ android {
             // biblioteca nativa pesa unos 70 MB sin recortar: incluir los tres
             // ABIs en desarrollo son 200 MB de APK que se instalan en cada
             // vuelta por nada. El de release si lleva los de telefono.
-            ndk { abiFilters += listOf("x86_64") }
+            //
+            // Para probar en un TELEFONO de verdad hay que pedirlo:
+            //
+            //   ./gradlew :app:assembleDebug -Pabi=arm64-v8a
+            //
+            // Sin eso el APK de depuracion no tiene una sola biblioteca que
+            // sirva en un telefono, y el instalador lo rechaza con
+            // INSTALL_FAILED_NO_MATCHING_ABIS. Falla temprano y con un nombre
+            // claro, que es lo mejor que puede pasar: instalarlo y reventar al
+            // arrancar cuando libsignal no encuentra su motor seria peor.
+            val abiPedido = (project.findProperty("abi") as String?) ?: "x86_64"
+            ndk { abiFilters += abiPedido.split(",").map { it.trim() } }
 
             // Se usa 127.0.0.1 + `adb reverse tcp:8088 tcp:8088`, NO 10.0.2.2.
             // Motivo verificado: el AVD de API 37 tiene eth0 y wlan0 en la misma
