@@ -782,8 +782,8 @@ enum class EstadoEnvio { PENDIENTE, ENVIADO, ENTREGADO, LEIDO, FALLIDO }
 /**
  * Un transporte es cualquier cosa capaz de sacar un sobre del dispositivo.
  *
- * Fase 2: TransporteWebSocket  — hay internet (wifi, 3G, 4G, 5G; da igual).
- * Fase 7: TransporteMalla      — hay un peer cerca por BLE / Wi-Fi Direct.
+ * TransporteWebSocket — hay internet (wifi, 3G, 4G, 5G; da igual).
+ * TransporteCerca     — no hay, pero hay alguien a unos metros (Bluetooth).
  *
  * El despachador los consulta por prioridad y usa el primero disponible.
  */
@@ -793,7 +793,7 @@ interface Transporte {
     /** Barato y sincrono: no abre conexiones, solo mira el estado actual. */
     fun disponible(): Boolean
 
-    /** Prioridad menor = se intenta primero. WebSocket 0, malla 10. */
+    /** Prioridad menor = se intenta primero. WebSocket 0, cerca 10. */
     val prioridad: Int
 
     suspend fun entregar(sobre: Sobre): Result<Unit>

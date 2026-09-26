@@ -51,6 +51,18 @@ interface Cifrador {
     suspend fun descifrar(conversacionId: String, origen: OrigenSobre, bytes: ByteArray): Carga
 
     /**
+     * Si ya hay una sesion con ese aparato.
+     *
+     * Existe por el transporte de cerca (modulo AZ): por el aire solo se
+     * aceptan sobres que CONTINUAN una sesion, nunca los que abren una. Sin
+     * poder preguntarlo, esa regla no se puede aplicar.
+     *
+     * Por defecto `false`: un cifrador que no sabe contestar tiene que hacer
+     * que se rechace, no que se acepte.
+     */
+    suspend fun haySesionCon(usuarioId: String, dispositivoId: String): Boolean = false
+
+    /**
      * El transporte acepto el envio.
      *
      * Existe por las claves de emisor: hasta que el servidor no acepta, no se

@@ -6639,3 +6639,66 @@ diálogo, y qué está verificado y qué no.
 
 **1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.
+
+---
+
+# Módulo AZ · Modo cerca — hablar sin internet
+
+Mensajes entre dos teléfonos que están a unos metros, sin servidor y sin señal.
+
+## Cabe porque el servidor ya era tonto
+
+El servidor mueve sobres cifrados que no puede abrir, y el historial vive sólo
+en los clientes. Un enlace Bluetooth mueve **los mismos sobres**. Eso convierte
+"mensajería sin internet" en un transporte más en vez de en un producto aparte:
+el despachador, la cola, el esquema y la pantalla de chat no cambian.
+
+La interfaz `Transporte` reservaba el sitio desde la fase 2, con un comentario
+que listaba qué faltaba. `TransporteCerca` lo ocupa.
+
+## La decisión que hace seguro un enlace con un desconocido
+
+**Por el aire no se abre una sesión nueva.** Un `PreKeySignalMessage` establece
+una sesión con la identidad que traiga dentro; por el servidor hay una cuenta
+detrás, por el aire no hay nada. Sin esa regla, cualquiera con una radio y esta
+app modificada aparece en la pantalla de alguien con el nombre que quiera.
+
+Detectarlo después sería posible —saltaría el aviso de clave cambiada— pero un
+aviso que se lee después del mensaje llega tarde.
+
+Por eso el enlace va **sin emparejar**: cifrar el enlace no protegía nada que
+no estuviera ya protegido, y sí añadía un diálogo del sistema y un motivo para
+abandonar. Lo que protege es qué se acepta al otro lado.
+
+## El límite, dicho en la pantalla
+
+Sólo funciona con gente con la que ya hablaste: las claves para empezar una
+conversación nueva viven en el servidor. Sin esa frase en el diálogo se
+enciende, no pasa nada, y no hay forma de saber si está roto o si es así.
+
+## Prioridad 10 y un fallo a propósito
+
+El buzón llega a todos los destinos, esto sólo al que está enfrente: con
+internet, salir por aquí sería entregarle a uno y dejar a los demás esperando.
+Y si el aparato enlazado no está entre los destinos, `entregar` falla —el sobre
+se queda en la cola— porque darlo por entregado lo perdería para el resto.
+
+## Lo que el emulador sí pudo decir
+
+Las radios virtuales de dos emuladores están aisladas: `Bonded devices: 0`, no
+se ven. Así que el enlace entre teléfonos **no está verificado** y hace falta
+hardware.
+
+Lo que sí: el stack de Bluetooth de Android aceptó de verdad el registro SDP
+(`btsock_rfc_listen: Adding listening socket service_name: wtfuck-cerca`), el
+diálogo funciona, y —la regresión que importaba— **con el modo cerca encendido
+el buzón sigue entregando**, porque `cerca` entró en la lista de transportes y
+había que comprobar que no se robe los envíos.
+
+### Evidencias
+
+[`docs/evidencias/modo-cerca/`](evidencias/modo-cerca/) — las decisiones, la
+inyección de defectos y qué quedó sin verificar.
+
+**1979 pruebas en verde**: 1548 de integración en 37 suites, 344 JUnit de app
+y 87 de servidor. 8 defectos inyectados en `Cerca.kt`, 8 cazados.

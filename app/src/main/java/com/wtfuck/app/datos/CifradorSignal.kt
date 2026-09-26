@@ -72,6 +72,17 @@ class CifradorSignal(
     private val candado = Mutex()
 
     private fun dir(dispositivoId: String) = SignalProtocolAddress(dispositivoId, 1)
+
+    /**
+     * Se pregunta por el DISPOSITIVO y no por la persona.
+     *
+     * Una sesion de Signal es entre dos aparatos, no entre dos cuentas: la
+     * misma persona con telefono y tablet son dos sesiones. Preguntarlo por
+     * usuario daria "si" para alguien con quien se hablo desde otro aparato,
+     * y por ese hueco entraria justo lo que la regla quiere dejar fuera.
+     */
+    override suspend fun haySesionCon(usuarioId: String, dispositivoId: String): Boolean =
+        runCatching { almacen.containsSession(dir(dispositivoId)) }.getOrDefault(false)
     private fun b64(b: ByteArray) = Base64.encodeToString(b, Base64.NO_WRAP)
     private fun deB64(s: String): ByteArray = Base64.decode(s, Base64.NO_WRAP)
 

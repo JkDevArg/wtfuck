@@ -139,10 +139,25 @@ class Repositorio(
      */
     private val VIGENCIA_DESTINOS = 30_000L
 
-    /** Transportes por prioridad. La malla de la fase 7 se suma a esta lista. */
+    /**
+     * Mensajeria sin internet, entre telefonos que estan cerca (modulo AZ).
+     *
+     * Ocupa el hueco que la fase 2 dejo reservado para esto. Ver
+     * [TransporteCerca].
+     *
+     * Empieza APAGADO: prender la radio y aceptar conexiones de cualquiera que
+     * pase no puede ser el comportamiento por defecto de una app de
+     * mensajeria. Se enciende desde la pantalla, para la sala en la que uno
+     * esta.
+     */
+    val cerca: TransporteCerca = TransporteCerca(contexto, sesion) { sobre ->
+        recibirDeCerca(sobre)
+    }
+
+    /** Transportes por prioridad. */
     private val transportes: List<Transporte> = listOf(
         TransporteWebSocket(socket),
-        TransporteMalla(),
+        cerca,
     ).sortedBy { it.prioridad }
 
     val conversaciones: Flow<List<ChatFila>> = dao.conversaciones(archivados = false)
@@ -580,6 +595,48 @@ class Repositorio(
     // ============================================================
     //  Entrada
     // ============================================================
+
+    /**
+     * Un sobre que llego por el aire.
+     *
+     * ## Entra por el MISMO camino que los del buzon
+     *
+     * Se arma una `Bajada.Entrega` y se pasa al manejador de siempre. No es
+     * pereza: un segundo camino de entrada seria un segundo sitio donde
+     * equivocarse con contenido que escribio otra persona, y el primero ya
+     * tiene la deduplicacion, el descifrado, el guardado y los avisos.
+     *
+     * ## Lo que se comprueba ANTES
+     *
+     * Que el sobre continue una sesion que ya existe. Por el aire no hay
+     * ninguna cuenta detras: un mensaje que ABRE sesion dejaria a cualquiera
+     * con una radio aparecer en esta pantalla con el nombre que quisiera. Ver
+     * `aceptable`.
+     *
+     * @return si se acepto. El transporte no hace nada con eso todavia, pero
+     *   lo devuelve para que un rechazo se pueda contar y no sea invisible.
+     */
+    private suspend fun recibirDeCerca(s: com.wtfuck.protocol.MensajeCerca.Sobre): Boolean {
+        val hay = cifrador.haySesionCon(s.origenUsuarioId, s.origenDispositivo)
+        if (!com.wtfuck.protocol.aceptable(s.tipo, hay)) {
+            Log.w(TAG, "Sobre de cerca rechazado: tipo=${s.tipo} sesion=$hay")
+            return false
+        }
+        manejar(
+            Bajada.Entrega(
+                sobreId = s.sobreId,
+                mensajeId = s.mensajeId,
+                conversacionId = s.conversacionId,
+                origenUsuarioId = s.origenUsuarioId,
+                origenUsername = s.origenUsername,
+                origenDispositivo = s.origenDispositivo,
+                cuerpo = s.cuerpo,
+                tipo = s.tipo,
+                creadoEn = s.creadoEn,
+            )
+        )
+        return true
+    }
 
     private suspend fun manejar(msg: Bajada) {
         when (msg) {
@@ -3945,31 +4002,6 @@ class TransporteWebSocket(private val socket: Socket) : Transporte {
         )
         return if (ok) Result.success(Unit) else Result.failure(IllegalStateException("socket cerrado"))
     }
-}
-
-/**
- * FASE 7 - `msg off`: entrega directa entre dispositivos cercanos por BLE o
- * Wi-Fi Direct, sin internet.
- *
- * Esta declarado y enchufado al despachador, pero `disponible()` devuelve
- * false: NO esta implementado. Se dejo cableado a proposito para que activarlo
- * sea implementar esta clase y nada mas — ni el despachador, ni la cola, ni la
- * UI, ni el esquema cambian.
- *
- * Lo que falta:
- *   1. Descubrimiento de pares (Nearby Connections o BLE + Wi-Fi Direct).
- *   2. Reenvio store-and-forward: un tercero transporta el sobre sin leerlo.
- *      Solo es seguro DESPUES de la fase 4: sin E2EE, el intermediario lee todo.
- *   3. Deduplicacion por id de sobre al reencontrarse con el servidor.
- *
- * NO se puede probar en emulador: no hay radios. Requiere dos equipos fisicos.
- */
-class TransporteMalla : Transporte {
-    override val nombre = "malla"
-    override val prioridad = 10
-    override fun disponible() = false
-    override suspend fun entregar(sobre: Sobre): Result<Unit> =
-        Result.failure(NotImplementedError("Transporte de malla: fase 7"))
 }
 
 /**

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.MarkChatUnread
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -55,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.wtfuck.app.WtfuckApp
+import com.wtfuck.app.datos.TransporteCerca
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.datos.ChatFila
 import com.wtfuck.app.datos.EstadoConexion
@@ -104,6 +106,8 @@ fun ChatsPantalla(
     modifier: Modifier = Modifier,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
+    var cercaAbierto by remember { mutableStateOf(false) }
+    val cercaEstado by app.repo.cerca.estado.collectAsStateWithLifecycle()
     val ambito = rememberCoroutineScope()
 
     // Modulo O. La fila de historias.
@@ -344,6 +348,18 @@ fun ChatsPantalla(
                                 visibles.firstOrNull()?.let { seleccion = setOf(it.id) }
                             }
                             HorizontalDivider(color = Slate.copy(alpha = 0.3f))
+                            // Mensajeria sin internet (modulo AZ). Vive aqui y
+                            // no en Ajustes porque no es una preferencia: se
+                            // enciende en un momento y en un sitio —sin senal,
+                            // con la otra persona enfrente— y se apaga al salir.
+                            OpcionMenu(
+                                if (cercaEstado == TransporteCerca.Estado.APAGADO) "Modo cerca"
+                                else "Modo cerca · activo",
+                                Icons.Filled.Bluetooth,
+                            ) {
+                                menuAbierto = false
+                                cercaAbierto = true
+                            }
                             OpcionMenu("Actualizar", Icons.Filled.Refresh) {
                                 menuAbierto = false
                                 ambito.launch { app.repo.sincronizar(); app.repo.despachar() }
@@ -755,6 +771,8 @@ fun ChatsPantalla(
             },
         )
     }
+
+    if (cercaAbierto) DialogoCerca { cercaAbierto = false }
 
     errorDialogo?.let { msg ->
         AlertDialog(

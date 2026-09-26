@@ -48,6 +48,26 @@
       alguien no puede pasar sin una notificacion visible que lo diga.
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
+    <!--
+      Modulo AZ · Mensajeria sin internet, entre telefonos que estan cerca.
+
+      `neverForLocation` en el escaneo importa: sin esa marca, Android exige
+      ADEMAS el permiso de ubicacion, porque historicamente escanear Bluetooth
+      servia para deducir donde esta alguien. Aqui no se usa para eso, y
+      declararlo evita pedir un permiso de ubicacion que no hace falta — pedir
+      de mas es como se ensena a la gente a aceptar sin leer.
+
+      Las dos de abajo son para Android 11 y anteriores, donde estos permisos
+      todavia no estaban separados.
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
     <!-- Que una llamada entrante se vea con el telefono bloqueado. Android 14
          lo reserva para apps de llamadas y alarmas: esta es una de llamadas. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
