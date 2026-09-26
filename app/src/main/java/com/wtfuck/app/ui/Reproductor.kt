@@ -260,6 +260,21 @@ class Grabadora(private val ctx: Context) {
     private var inicio = 0L
 
     /**
+     * Las muestras de la nota que se esta grabando.
+     *
+     * Las lee UN SOLO hilo, el de abajo, y esa es la razon de que exista: leer
+     * `maxAmplitude` DEVUELVE el pico y lo pone a cero, asi que dos lectores
+     * se roban las muestras entre si. Antes lo leia la pantalla para mover el
+     * indicador; ahora lo lee el muestreador y la pantalla mira el resultado.
+     */
+    private val muestras = java.util.Collections.synchronizedList(mutableListOf<Float>())
+
+    @Volatile
+    private var ultimoNivel = 0f
+
+    private var muestreador: Thread? = null
+
+    /**
      * Si el sistema corto la grabacion por llegar al tope.
      *
      * Lo consulta el temporizador de la pantalla para cerrar la nota sola. Va
@@ -295,6 +310,8 @@ class Grabadora(private val ctx: Context) {
      */
     fun iniciar(): Boolean {
         topeAlcanzado = false
+        muestras.clear()
+        ultimoNivel = 0f
         val f = File(ctx.cacheDir, "voz-${System.currentTimeMillis()}.m4a")
         val r = if (android.os.Build.VERSION.SDK_INT >= 31) MediaRecorder(ctx) else @Suppress("DEPRECATION") MediaRecorder()
         return runCatching {
@@ -324,6 +341,21 @@ class Grabadora(private val ctx: Context) {
             rec = r
             destino = f
             inicio = System.currentTimeMillis()
+
+            // Un hilo propio y no el temporizador de la pantalla: si la
+            // pantalla deja de preguntar —se va a segundo plano, se traba un
+            // fotograma— la figura saldria con agujeros justo donde la
+            // grabacion siguio. Cada 80 ms son unas 12 muestras por segundo,
+            // de sobra para 40 barras.
+            muestreador = Thread {
+                while (rec != null) {
+                    val a = runCatching { rec?.maxAmplitude ?: 0 }.getOrDefault(0)
+                    val n = (a / 12000f).coerceIn(0f, 1f)
+                    ultimoNivel = n
+                    muestras.add(n)
+                    runCatching { Thread.sleep(80) }.getOrElse { return@Thread }
+                }
+            }.also { it.isDaemon = true; it.start() }
             true
         }.getOrElse {
             android.util.Log.w("Grabadora", "No se pudo grabar: ${it.message}")
@@ -334,9 +366,16 @@ class Grabadora(private val ctx: Context) {
     }
 
     /** Nivel de entrada de 0 a 1, para mover el indicador mientras se graba. */
-    fun nivel(): Float = runCatching {
-        (rec?.maxAmplitude ?: 0) / 12000f
-    }.getOrDefault(0f).coerceIn(0f, 1f)
+    fun nivel(): Float = ultimoNivel
+
+    /**
+     * La silueta de lo ultimo que se grabo, lista para viajar.
+     *
+     * Vacia si no se pudo muestrear. Ver [com.wtfuck.protocol.Onda].
+     */
+    fun onda(): String = synchronized(muestras) {
+        com.wtfuck.protocol.Onda.codificar(muestras.toList())
+    }
 
     fun milisegundos(): Long = if (inicio == 0L) 0 else System.currentTimeMillis() - inicio
 
@@ -353,6 +392,11 @@ class Grabadora(private val ctx: Context) {
         rec = null
         destino = null
         inicio = 0L
+        // `rec = null` ya le dijo al muestreador que pare; esto solo espera a
+        // que termine la vuelta en curso, para que `onda()` no lea una lista
+        // a la que todavia se le esta escribiendo.
+        runCatching { muestreador?.join(300) }
+        muestreador = null
         runCatching { r.stop() }
         runCatching { r.release() }
         if (f == null || duro < 1000 || f.length() <= 0) {

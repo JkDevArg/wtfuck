@@ -389,6 +389,8 @@ private fun VistaAudio(m: MensajeEnt, local: File?, sobreAcento: Boolean, alToca
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             OndaSonido(
+                // La que midio quien grabo, si la mando. Ver `Onda`.
+                forma = m.adjuntoOnda,
                 semilla = m.id,
                 avance = avance,
                 activo = acento,
@@ -479,22 +481,45 @@ private fun BotonVelocidad(reproductor: Reproductor, sobreAcento: Boolean, acent
 /**
  * Forma de onda.
  *
- * No son las amplitudes reales del audio: dibujarlas exigiria decodificar el
- * archivo entero para cada burbuja de la lista. Se derivan del id del mensaje,
- * que da una figura estable -la misma nota se ve siempre igual- y distinta
- * entre mensajes, que es todo lo que esta forma tiene que comunicar.
+ * ## De donde sale la figura
+ *
+ * De quien grabo, cuando la mando. El microfono le da los niveles gratis
+ * mientras graba, asi que viajan dentro del sobre en cuarenta caracteres —
+ * menos que el nombre del archivo. Ver [com.wtfuck.protocol.Onda].
+ *
+ * Sacarla del audio al dibujar no era una opcion: habria que decodificar el
+ * archivo entero **en cada burbuja de la lista**, y una conversacion con
+ * veinte notas haria eso veinte veces por cada scroll.
+ *
+ * ## Cuando no hay figura
+ *
+ * Las notas de antes de esto, las que manda una version vieja, y cualquier
+ * cadena que no se entienda. Ahi se dibuja la de siempre: derivada del id, que
+ * da una forma estable —la misma nota se ve igual cada vez— y distinta entre
+ * mensajes.
+ *
+ * Se prefiere eso a no dibujar nada porque el hueco no seria mas honesto: una
+ * barra vacia se lee como un audio roto, y el audio esta perfecto. Lo que
+ * falta es su retrato.
  */
 @Composable
 private fun OndaSonido(
+    forma: String,
     semilla: String,
     avance: Float,
     activo: Color,
     inactivo: Color,
     alSaltar: ((Float) -> Unit)? = null,
 ) {
-    val barras = remember(semilla) {
-        val r = java.util.Random(semilla.hashCode().toLong())
-        List(34) { 0.25f + r.nextFloat() * 0.75f }
+    val barras = remember(forma, semilla) {
+        com.wtfuck.protocol.Onda.decodificar(forma)
+            // Un piso para las barras: a cero se dibujan como una linea de un
+            // pixel y los silencios parecen un fallo del dibujo en vez de
+            // silencio. Con 0.12 se ven bajitas, que es lo que son.
+            ?.map { 0.12f + it * 0.88f }
+            ?: java.util.Random(semilla.hashCode().toLong()).let { r ->
+                List(34) { 0.25f + r.nextFloat() * 0.75f }
+            }
     }
     var ancho by remember { mutableIntStateOf(0) }
 

@@ -209,6 +209,15 @@ data class MensajeEnt(
     val adjuntoNonce: String = "",
     /** Miniatura JPEG en base64. Lo que se ve antes de descargar nada. */
     val adjuntoMiniatura: String = "",
+    /**
+     * La silueta de una nota de voz. Vacia en todo lo demas.
+     *
+     * Ver `com.wtfuck.protocol.Onda`. Se guarda en vez de calcularse al
+     * dibujar porque calcularla exigiria decodificar el audio entero en cada
+     * burbuja, y una conversacion con veinte notas haria eso veinte veces por
+     * cada scroll.
+     */
+    val adjuntoOnda: String = "",
 
     // --- modulo O: la historia que este mensaje contesta ---------------
     //
@@ -1124,7 +1133,7 @@ interface ChatDao {
         EmojiUsoEnt::class,
         AjusteLocalEnt::class,
     ],
-    version = 18,
+    version = 19,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1143,7 +1152,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .openHelperFactory(factory)
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
-                    DE_15_A_16, DE_16_A_17, DE_17_A_18,
+                    DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1294,6 +1303,21 @@ abstract class BaseLocal : RoomDatabase() {
          * unica copia del historial. Dejar que Room la recree por una columna
          * nueva borraria todos los mensajes de todo el mundo.
          */
+        /**
+         * La silueta de las notas de voz.
+         *
+         * Las notas que ya estaban se quedan con la cadena vacia y se siguen
+         * dibujando como antes, con la figura derivada del id. No se puede
+         * hacer mejor: la onda real de una nota vieja solo se podria sacar
+         * decodificandola, y ninguna migracion deberia abrir mil archivos de
+         * audio.
+         */
+        private val DE_18_A_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN adjuntoOnda TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         private val DE_17_A_18 = object : Migration(17, 18) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE conversacion ADD COLUMN expiraEn INTEGER NOT NULL DEFAULT 0")

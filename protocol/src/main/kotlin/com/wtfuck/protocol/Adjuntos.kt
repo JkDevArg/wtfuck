@@ -132,6 +132,13 @@ data class CargaAdjunto(
     val ancho: Int = 0,
     val alto: Int = 0,
     val duracionMs: Int = 0,
+    /**
+     * La silueta de una nota de voz. Vacio si no la hay. Ver [Onda].
+     *
+     * Con valor por defecto para que una version vieja que no lo mande siga
+     * entendiendose: lo que llega sin onda se dibuja como siempre.
+     */
+    val onda: String = "",
     /** Texto que acompana al archivo, si lo hay. */
     val pie: String = "",
     /**
@@ -144,3 +151,100 @@ data class CargaAdjunto(
      */
     val miniatura: String = "",
 ) : Carga
+
+// ============================================================
+//  La forma de onda de una nota de voz
+// ============================================================
+
+/**
+ * La silueta de una nota de voz, comprimida a un puñado de caracteres.
+ *
+ * ## Por qué viaja, si el audio ya viaja
+ *
+ * Porque dibujar la forma real exigiría **decodificar el archivo entero en
+ * cada burbuja de la lista**, y una conversación con veinte notas de voz son
+ * veinte decodificaciones cada vez que se hace scroll. Quien graba ya tiene
+ * los niveles gratis —el micrófono se los da mientras graba— así que los manda
+ * hechos.
+ *
+ * Cuarenta caracteres. Es menos que el nombre del archivo.
+ *
+ * ## Por qué se normaliza al máximo de la propia nota
+ *
+ * Si se guardaran los niveles absolutos, casi todas las notas se verían planas:
+ * hablar normal no satura el micrófono ni de lejos, y la diferencia entre una
+ * sílaba y un silencio quedaría en unos pocos píxeles.
+ *
+ * Normalizar hace que cada nota use todo el alto disponible, que es lo único
+ * que esta figura tiene que comunicar: dónde hay voz y dónde no. No es un
+ * medidor: nadie compara el volumen de dos notas mirando los dibujos.
+ */
+object Onda {
+
+    /** Cuántas barras. Es también el largo exacto de la cadena. */
+    const val BARRAS = 40
+
+    /**
+     * 32 niveles, un carácter cada uno.
+     *
+     * Base 32 y no base 64 para que la cadena sea legible en un volcado y no
+     * lleve `+`, `/` ni `=`, que obligarían a pensar en escapes cada vez que
+     * esto pase por un JSON o por una URL. Treinta y dos niveles de altura son
+     * más de los que un ojo distingue en una barra de 20 dp.
+     */
+    private const val ALFABETO = "0123456789abcdefghijklmnopqrstuv"
+
+    /**
+     * Comprime las muestras a la cadena.
+     *
+     * Devuelve `""` cuando no hay nada que dibujar —sin muestras, o todas en
+     * silencio—, y eso es deliberado: una cadena de cuarenta ceros sería una
+     * línea plana dibujada con seguridad, y no tener figura es distinto de
+     * tener una figura vacía. Quien la reciba usa la de siempre.
+     */
+    fun codificar(muestras: List<Float>): String {
+        if (muestras.isEmpty()) return ""
+        val tope = muestras.max()
+        if (tope <= 0f) return ""
+
+        val sb = StringBuilder(BARRAS)
+        for (i in 0 until BARRAS) {
+            // Los bordes se calculan por multiplicación y no acumulando un
+            // paso: con pocas muestras, acumular deja el último cubo fuera del
+            // rango por redondeo y se pierde el final de la nota.
+            val desde = i * muestras.size / BARRAS
+            val hasta = ((i + 1) * muestras.size / BARRAS).coerceAtLeast(desde + 1)
+
+            // El MÁXIMO del tramo, no el promedio. Promediar borra justo lo
+            // que se quiere ver: una sílaba corta entre dos silencios se
+            // promedia hasta desaparecer, y la figura queda lisa.
+            var pico = 0f
+            for (j in desde until minOf(hasta, muestras.size)) {
+                if (muestras[j] > pico) pico = muestras[j]
+            }
+            val nivel = ((pico / tope) * (ALFABETO.length - 1)).toInt()
+                .coerceIn(0, ALFABETO.length - 1)
+            sb.append(ALFABETO[nivel])
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Lee la cadena, o devuelve `null` si no es una.
+     *
+     * Devuelve null y no una lista vacía ni una por defecto: esto llega dentro
+     * de un sobre que escribió otra persona, y lo único sensato con algo que
+     * no se entiende es no usarlo. Quien dibuja ya sabe qué hacer sin figura.
+     */
+    fun decodificar(s: String): List<Float>? {
+        if (s.length != BARRAS) return null
+        val fuera = ALFABETO.length - 1f
+        val salida = ArrayList<Float>(BARRAS)
+        for (c in s) {
+            val i = ALFABETO.indexOf(c)
+            if (i < 0) return null
+            salida.add(i / fuera)
+        }
+        return salida
+    }
+}

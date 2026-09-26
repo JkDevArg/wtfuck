@@ -280,11 +280,11 @@ fun ChatPantalla(
     }
 
     /** Envia un archivo usando el texto escrito como pie de foto. */
-    fun mandarArchivo(uri: android.net.Uri, clase: String) {
+    fun mandarArchivo(uri: android.net.Uri, clase: String, onda: String = "") {
         val pie = texto.text.trim()
         texto = TextFieldValue("")
         ambito.launch {
-            runCatching { app.repo.enviarAdjunto(conversacionId, uri, clase, pie) }
+            runCatching { app.repo.enviarAdjunto(conversacionId, uri, clase, pie, onda = onda) }
                 .onFailure { aviso = it.message }
         }
     }
@@ -324,7 +324,7 @@ fun ChatPantalla(
                 val f = grabadora.terminar()
                 if (f != null) {
                     aviso = "La nota llego al maximo y se envio."
-                    mandarArchivo(android.net.Uri.fromFile(f), ClaseAdjunto.NOTA_VOZ)
+                    mandarArchivo(android.net.Uri.fromFile(f), ClaseAdjunto.NOTA_VOZ, grabadora.onda())
                 }
                 break
             }
@@ -716,7 +716,7 @@ fun ChatPantalla(
                             grabando = false
                             val f = grabadora.terminar()
                             if (f == null) aviso = "Nota demasiado corta."
-                            else mandarArchivo(android.net.Uri.fromFile(f), ClaseAdjunto.NOTA_VOZ)
+                            else mandarArchivo(android.net.Uri.fromFile(f), ClaseAdjunto.NOTA_VOZ, grabadora.onda())
                         },
                     )
                     return@Column

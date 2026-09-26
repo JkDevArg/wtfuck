@@ -862,6 +862,11 @@ class Repositorio(
                         adjuntoClave = adj?.clave.orEmpty(),
                         adjuntoNonce = adj?.nonce.orEmpty(),
                         adjuntoMiniatura = adj?.miniatura.orEmpty(),
+                        // Se guarda tal cual vino. Que sea una figura
+                        // dibujable lo decide quien la dibuja, con
+                        // `Onda.decodificar`: esto lo escribio otra persona y
+                        // aqui no se valida nada que no haga falta validar.
+                        adjuntoOnda = adj?.onda.orEmpty(),
                         adjuntoEstado = if (adj != null) "ESPERA" else "",
                         especial = claseDe(carga),
                         // Se guarda la carga tal como vino, sin desarmarla en
@@ -2175,6 +2180,14 @@ class Repositorio(
         clase: String,
         pie: String = "",
         respondeA: MensajeEnt? = null,
+        /**
+         * La silueta de una nota de voz, si quien graba la midio.
+         *
+         * Llega desde arriba y no se calcula aqui porque los niveles solo
+         * existen MIENTRAS se graba: el microfono los da gratis y el archivo
+         * ya no. Sacarla del .m4a obligaria a decodificarlo entero.
+         */
+        onda: String = "",
     ) {
         val mensajeId = UUID.randomUUID().toString()
         val original = archivos.datosDe(uri, clase)
@@ -2221,6 +2234,7 @@ class Repositorio(
                 adjuntoAlto = datos.alto,
                 adjuntoDuracionMs = datos.duracionMs,
                 adjuntoMiniatura = archivos.miniaturaDe(Uri.fromFile(local), clase),
+                adjuntoOnda = onda,
                 rutaLocal = local.absolutePath,
                 adjuntoEstado = "SUBIENDO",
             )
@@ -3878,6 +3892,7 @@ class Repositorio(
                 ancho = m.adjuntoAncho,
                 alto = m.adjuntoAlto,
                 duracionMs = m.adjuntoDuracionMs,
+                onda = m.adjuntoOnda,
                 pie = m.texto,
                 miniatura = m.adjuntoMiniatura,
             )
