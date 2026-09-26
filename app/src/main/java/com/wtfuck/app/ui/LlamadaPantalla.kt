@@ -29,6 +29,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -280,17 +286,28 @@ fun CapaLlamada() {
                         Alignment.CenterHorizontally
                     },
                     modifier = if (conFondo) {
+                        // Sin cartel: el contraste lo pone una SOMBRA en el
+                        // texto, no un rectangulo detras.
+                        //
+                        // Antes habia un recuadro al 82% para que el texto se
+                        // leyera sobre un video claro. Funcionaba y tapaba
+                        // media pantalla: sobre una videollamada, la imagen
+                        // ES el contenido, y el nombre de quien llama no
+                        // merece un bloque opaco encima durante toda la
+                        // conversacion.
+                        //
+                        // Una sombra da contraste contra CUALQUIER fondo sin
+                        // ocupar area — es lo que hacen los subtitulos de
+                        // video desde siempre, y por lo mismo.
                         Modifier
                             .align(Alignment.Start)
-                            .padding(start = 32.dp, end = 124.dp)
-                            // 0.82 y no 0.55. Sobre un video CLARO —una cara
-                            // con la luz de frente, una pared blanca— un 55%
-                            // de un color oscuro da un gris medio, y encima de
-                            // ese gris el texto secundario desaparecia. Se vio
-                            // en el emulador, cuya camara de mentira es casi
-                            // blanca: el nombre se leia y el pie no.
-                            .background(BgBase.copy(alpha = 0.82f), RoundedCornerShape(16.dp))
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            // 76 y no 20: el boton de minimizar ocupa de 12 a
+                            // 138 px (unos 52 dp) en esa misma banda, y el
+                            // nombre le quedaba pegado al borde. Sin el
+                            // recuadro de antes ya no habia nada que marcara
+                            // la separacion, asi que la tiene que dar el
+                            // hueco.
+                            .padding(start = 76.dp, end = 124.dp)
                     } else {
                         Modifier.padding(horizontal = 8.dp)
                     },
@@ -317,14 +334,19 @@ fun CapaLlamada() {
                     // por la cara de uno.
                     Text(
                         "@${e.conQuien}",
-                        fontSize = 26.sp,
+                        // Con video, la mitad de grande. El nombre importa
+                        // mientras suena —hay que decidir si contestar— y deja
+                        // de importar en cuanto se contesta: a partir de ahi
+                        // lo que se mira es la cara, no el rotulo.
+                        fontSize = if (conFondo) 17.sp else 26.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = TextoPrimario,
+                        style = if (conFondo) sombraDeVideo else LocalTextStyle.current,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = if (conFondo) TextAlign.Start else TextAlign.Center,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(if (conFondo) 2.dp else 6.dp))
                     TextoDeFase(e)
 
                     // Quien presenta, dicho.
@@ -376,7 +398,18 @@ fun CapaLlamada() {
                     // servidor manda la foto al contestar, ese lado tiene el
                     // dato. Mientras suena sigue sin tenerlo, y ahi la frase
                     // del grupo es la util.
+                    // En una DIRECTA el pie decia "con joaquin" debajo de un
+                    // titulo que ya decia "@joaquin". Dos veces lo mismo,
+                    // ocupando una linea sobre el video.
+                    //
+                    // La lista de participantes existe para las llamadas de
+                    // grupo, donde si cambia algo: quien mas esta, quien
+                    // todavia no contesta. Con una sola persona del otro lado
+                    // no hay nada que esa linea pueda decir que el titulo no
+                    // haya dicho ya.
+                    val esDirecta = e.grupo.isBlank() && e.estadoDe.size <= 1
                     val pie = when {
+                        esDirecta -> ""
                         e.estadoDe.isNotEmpty() -> pieDeParticipantes(e.estadoDe)
                         e.grupo.isNotBlank() -> "llamada de grupo · ${e.grupo}"
                         else -> ""
@@ -389,6 +422,7 @@ fun CapaLlamada() {
                             // esta hablando, que no es un adorno.
                             fontSize = 12.sp,
                             color = if (conFondo) TextoSecundario else TextoTerciario,
+                            style = if (conFondo) sombraDeVideo else LocalTextStyle.current,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = if (conFondo) TextAlign.Start else TextAlign.Center,
@@ -477,16 +511,105 @@ fun CapaLlamada() {
             // La ventanita propia tambien se aparta: es chica pero esta
             // justo sobre una esquina de lo que se esta mirando.
             if (controles && e.conVideo && videoLocal != null && e.camaraActiva) {
-                VistaVideo(
-                    track = videoLocal,
-                    espejo = true,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 56.dp, end = 16.dp)
-                        .size(width = 108.dp, height = 168.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                )
+                VideoPropio(videoLocal)
             }
+        }
+    }
+}
+
+/**
+ * La sombra que hace legible un texto sobre video, sin tapar el video.
+ *
+ * Un rectangulo opaco detras tambien funciona y ocupa area; una sombra da
+ * contraste contra cualquier fondo ocupando cero. Es lo que hacen los
+ * subtitulos de video desde siempre, por la misma razon.
+ */
+private val SOMBRA_VIDEO = Shadow(
+    color = Color.Black.copy(alpha = 0.85f),
+    offset = Offset(0f, 1f),
+    blurRadius = 6f,
+)
+
+private val sombraDeVideo: TextStyle
+    @Composable get() = LocalTextStyle.current.copy(shadow = SOMBRA_VIDEO)
+
+/**
+ * El video propio: chico, en espejo, y **se puede mover**.
+ *
+ * ## Por que se mueve
+ *
+ * Esta fijo arriba a la derecha y ahi es donde tapa. En una videollamada lo
+ * que importa esta en el centro de la imagen del otro casi siempre, pero no
+ * siempre: si la persona esta sentada a un lado, o si lo que muestra es una
+ * pantalla, la esquina de arriba pasa a ser justo lo que hay que ver.
+ *
+ * No hay una esquina correcta para todos los casos, asi que la elige quien
+ * mira.
+ *
+ * ## Vuelve sola a su sitio si la pantalla cambia de tamano
+ *
+ * La posicion se guarda en pixeles y se recorta contra la caja en cada
+ * arrastre. Al rotar el telefono, una posicion guardada de la orientacion
+ * anterior puede quedar fuera: por eso el recorte mira el tamano ACTUAL y no
+ * el de cuando se solto.
+ *
+ * En espejo porque es lo que la persona espera de su propia camara: un
+ * espejo, no una foto.
+ */
+@Composable
+private fun VideoPropio(track: org.webrtc.VideoTrack?) {
+    val d = LocalDensity.current
+    val ancho = 108.dp
+    val alto = 168.dp
+
+    var caja by remember { mutableStateOf(IntSize.Zero) }
+    // `null` = todavia no la movieron; vale la esquina de siempre. Guardar la
+    // esquina como un valor concreto obligaria a calcularla antes de saber el
+    // tamano de la caja, que es justo lo que no se sabe en la primera
+    // composicion.
+    var movida by remember { mutableStateOf<Offset?>(null) }
+
+    Box(Modifier.fillMaxSize().onSizeChanged { caja = it }) {
+        if (caja.width > 0 && caja.height > 0) {
+            val anchoPx = with(d) { ancho.toPx() }
+            val altoPx = with(d) { alto.toPx() }
+            val margen = with(d) { 16.dp.toPx() }
+            val arriba = with(d) { 56.dp.toPx() }
+
+            // Los topes se calculan asi y no al reves porque en una pantalla
+            // mas angosta que la ventanita —no deberia pasar, pero un
+            // multiventana lo hace— el maximo queda por debajo del minimo y
+            // `coerceIn` lanza. Vale mas quedar pegado al borde que cerrar la
+            // llamada con una excepcion.
+            val maxX = (caja.width - anchoPx - margen).coerceAtLeast(margen)
+            val maxY = (caja.height - altoPx - margen).coerceAtLeast(margen)
+
+            val donde = movida?.let {
+                Offset(it.x.coerceIn(margen, maxX), it.y.coerceIn(margen, maxY))
+            } ?: Offset(maxX, arriba.coerceIn(margen, maxY))
+
+            VistaVideo(
+                track = track,
+                espejo = true,
+                modifier = Modifier
+                    .offset { IntOffset(donde.x.roundToInt(), donde.y.roundToInt()) }
+                    .size(width = ancho, height = alto)
+                    .clip(RoundedCornerShape(12.dp))
+                    .pointerInput(caja) {
+                        detectDragGestures { cambio, arrastre ->
+                            // Se consume: sin esto el arrastre tambien llega a
+                            // la capa de abajo, que es la que muestra y
+                            // esconde los controles. Mover la ventanita
+                            // apagaria los botones.
+                            cambio.consume()
+                            val base = movida ?: donde
+                            movida = Offset(
+                                (base.x + arrastre.x).coerceIn(margen, maxX),
+                                (base.y + arrastre.y).coerceIn(margen, maxY),
+                            )
+                        }
+                    },
+            )
         }
     }
 }
@@ -508,9 +631,15 @@ private fun TextoDeFase(e: EstadoLlamada) {
             else -> "Llamada terminada"
         }
     }
+    val sobreVideo = (e.conVideo && e.fase != EstadoLlamada.Fase.SONANDO) ||
+        e.presentando != null
     Text(
         texto,
-        style = MaterialTheme.typography.bodyLarge,
+        style = if (sobreVideo) {
+            MaterialTheme.typography.bodyMedium.copy(shadow = SOMBRA_VIDEO)
+        } else {
+            MaterialTheme.typography.bodyLarge
+        },
         color = if (e.fase == EstadoLlamada.Fase.EN_CURSO) Cian else TextoSecundario,
     )
 }

@@ -163,6 +163,117 @@ object Media {
         return Base64.encodeToString(datos, Base64.NO_WRAP)
     }
 
+    // ------------------------------------------------------------------
+    //  Foto de perfil
+    // ------------------------------------------------------------------
+
+    /**
+     * Deja una imagen lista para subir: se **comprime hasta que entra**.
+     *
+     * ## Por que no se rechaza
+     *
+     * Antes se leia el archivo y, si pesaba mas que el tope, se mostraba "la
+     * imagen pesa 3204 KB y el limite es 512 KB". Eso le pasa el problema a
+     * quien no tiene como resolverlo: nadie tiene a mano una herramienta para
+     * achicar una foto, y el telefono —que si la tiene— se estaba negando a
+     * usarla.
+     *
+     * Una foto de la camara de cualquier telefono de hoy pasa los 3 MB. O sea
+     * que el camino normal —elegir la foto que uno acaba de sacarse— fallaba
+     * siempre.
+     *
+     * ## Como entra
+     *
+     * Primero se baja la RESOLUCION, despues la calidad. En ese orden y no al
+     * reves: una foto de 4000 px comprimida a calidad 20 se ve peor, y pesa
+     * mas, que la misma foto a 1280 px con calidad 85. El tamano de un JPEG lo
+     * manda la cantidad de pixeles mucho antes que la calidad.
+     *
+     * `inSampleSize` decodifica ya reducido, asi que la de 4000 px nunca llega
+     * entera a memoria. En un telefono modesto, decodificarla entera para
+     * despues achicarla es como se cierra una app sin decir nada.
+     *
+     * ## Lo que NO hace
+     *
+     * Quitar el limite del servidor. Ese sigue donde estaba y tiene que
+     * seguir: comprimir aqui es una comodidad para quien usa la app, y un
+     * servidor que acepta subidas sin tope es otra cosa. Este lado siempre
+     * puede estar modificado.
+     *
+     * @param lado el lado mayor, en pixeles, despues de reducir.
+     * @param tope el peso maximo en bytes.
+     */
+    fun paraSubir(ctx: Context, uri: Uri, lado: Int, tope: Int): ByteArray {
+        val op = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        runCatching {
+            ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, op) }
+        }
+        if (op.outWidth <= 0 || op.outHeight <= 0) error("No se pudo leer la imagen.")
+
+        // Se decodifica ya reducida: `inSampleSize` divide por potencias de
+        // dos y es lo unico que evita traer la foto entera a memoria.
+        var paso = 1
+        while (maxOf(op.outWidth, op.outHeight) / (paso * 2) >= lado) paso *= 2
+
+        var bmp = runCatching {
+            ctx.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = paso })
+            }
+        }.getOrNull() ?: error("No se pudo leer la imagen.")
+
+        // El giro del EXIF importa MAS en una foto de perfil que en un adjunto:
+        // una selfie de lado en el chat se nota y se pasa; de avatar queda
+        // para siempre y en todas las pantallas.
+        bmp = girarSegunExif(ctx, uri, ajustarLado(bmp, lado))
+
+        var calidad = 90
+        var datos = comprimir(bmp, calidad)
+        while (datos.size > tope && calidad > 40) {
+            calidad -= 15
+            datos = comprimir(bmp, calidad)
+        }
+
+        // Si a calidad 40 todavia no entra, el problema son los pixeles y no
+        // la calidad: se achica a la mitad y se vuelve a empezar. Pasa con
+        // fotos de mucho detalle —texto, follaje— donde el JPEG no puede
+        // tirar nada.
+        var intentos = 0
+        while (datos.size > tope && intentos < 4) {
+            val mitad = ajustarLado(bmp, maxOf(bmp.width, bmp.height) / 2)
+            if (mitad === bmp) break
+            bmp.recycle()
+            bmp = mitad
+            calidad = 85
+            datos = comprimir(bmp, calidad)
+            while (datos.size > tope && calidad > 40) {
+                calidad -= 15
+                datos = comprimir(bmp, calidad)
+            }
+            intentos++
+        }
+        bmp.recycle()
+        return datos
+    }
+
+    private fun comprimir(b: Bitmap, calidad: Int): ByteArray =
+        ByteArrayOutputStream().use { s ->
+            b.compress(Bitmap.CompressFormat.JPEG, calidad, s)
+            s.toByteArray()
+        }
+
+    /** Reduce al lado pedido. Devuelve el MISMO bitmap si ya era mas chico. */
+    private fun ajustarLado(b: Bitmap, lado: Int): Bitmap {
+        val mayor = maxOf(b.width, b.height)
+        if (mayor <= lado || lado < 1) return b
+        val f = lado.toFloat() / mayor
+        return Bitmap.createScaledBitmap(
+            b,
+            (b.width * f).toInt().coerceAtLeast(1),
+            (b.height * f).toInt().coerceAtLeast(1),
+            true,
+        )
+    }
+
     fun deBase64(b64: String): ByteArray? =
         if (b64.isBlank()) null else runCatching { Base64.decode(b64, Base64.NO_WRAP) }.getOrNull()
 

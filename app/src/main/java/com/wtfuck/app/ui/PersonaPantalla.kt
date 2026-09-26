@@ -62,6 +62,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.wtfuck.app.WtfuckApp
+import androidx.compose.foundation.shape.CircleShape
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.datos.ConversacionEnt
 import com.wtfuck.app.ui.theme.BgBase
@@ -237,13 +238,20 @@ fun PersonaPantalla(
                 // conversacion todavia y la cara tiene que salir igual.
                 val nombre = c?.titulo(alias)
                     ?: alias.ifBlank { perfil?.nombreMostrado.orEmpty() }.ifBlank { usuario }
+                val urlAvatar = ApiCliente.urlImagen(
+                    usuario, "avatar", c?.avatarVersion ?: perfil?.avatarVersion ?: 0L,
+                )
+                var verFoto by remember { mutableStateOf(false) }
+                if (verFoto) VisorDeFoto(urlAvatar, nombre) { verFoto = false }
+
                 AvatarDeChat(
                     nombre = nombre,
-                    url = ApiCliente.urlImagen(
-                        usuario, "avatar", c?.avatarVersion ?: perfil?.avatarVersion ?: 0L,
-                    ),
+                    url = urlAvatar,
                     clase = ClaseDeChat.DIRECTA,
                     tamano = 96.dp,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { verFoto = true },
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(

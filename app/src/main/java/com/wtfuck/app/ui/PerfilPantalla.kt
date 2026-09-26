@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.datos.ApiCliente
+import com.wtfuck.app.datos.Media
 import com.wtfuck.app.datos.Hardware
 import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.CapacidadesCuenta
@@ -61,8 +62,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// Ya no son un RECHAZO: son a donde se comprime. Ver `Media.paraSubir`.
+//
+// Una foto de la camara de cualquier telefono de hoy pasa los 3 MB, asi que
+// el camino normal —elegir la foto que uno se acaba de sacar— fallaba
+// siempre. El telefono sabe achicarla; negarse a hacerlo y pedirselo a la
+// persona era pasarle un problema que no tiene como resolver.
 private const val LIMITE_AVATAR = 512 * 1024
 private const val LIMITE_PORTADA = 1024 * 1024
+
+/**
+ * El lado mayor al que se reduce cada una, en pixeles.
+ *
+ * El avatar se dibuja como mucho a 112 dp y la portada a lo ancho de la
+ * pantalla. 1280 y 1920 dejan margen de sobra para pantallas densas y para
+ * abrir la foto entera, sin subir una de 4000 px que nadie va a ver.
+ */
+private const val LADO_AVATAR = 1280
+private const val LADO_PORTADA = 1920
 
 /**
  * La pestaña de perfil.
@@ -151,18 +168,17 @@ fun PerfilPantalla(
         sinRecuperacion = app.repo.estadoCuenta()?.puedeRecuperarse == false
     }
 
-    /** Lee la imagen elegida, valida el tamano y la sube. */
-    fun subir(campo: String, uri: Uri?, limite: Int) {
+    /** Comprime la imagen elegida hasta que entra, y la sube. */
+    fun subir(campo: String, uri: Uri?, lado: Int, tope: Int) {
         if (uri == null) return
         subiendo = true
         ambito.launch {
             val r = runCatching {
-                val bytes = withContext(Dispatchers.IO) {
-                    ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                } ?: error("No se pudo leer la imagen.")
-                if (bytes.size > limite) {
-                    error("La imagen pesa ${bytes.size / 1024} KB y el limite es ${limite / 1024} KB.")
-                }
+                // En IO: decodificar y comprimir una foto grande tarda lo
+                // suficiente como para congelar la pantalla si se hace en el
+                // hilo principal, y la barra de "subiendo" no llegaria a
+                // dibujarse.
+                val bytes = withContext(Dispatchers.IO) { Media.paraSubir(ctx, uri, lado, tope) }
                 app.repo.subirImagen(campo, bytes)
             }
             subiendo = false
@@ -172,11 +188,11 @@ fun PerfilPantalla(
 
     val elegirAvatar = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
-    ) { subir("avatar", it, LIMITE_AVATAR) }
+    ) { subir("avatar", it, LADO_AVATAR, LIMITE_AVATAR) }
 
     val elegirPortada = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
-    ) { subir("portada", it, LIMITE_PORTADA) }
+    ) { subir("portada", it, LADO_PORTADA, LIMITE_PORTADA) }
 
     Scaffold(
         modifier = modifier,
@@ -610,6 +626,15 @@ private fun Cabecera(
     // empezaba mas abajo de lo necesario.
     val altoPortada = 132.dp
     val avatar = 92.dp
+    // El visor vive AQUI y no arriba: es de la cabecera, se abre y se cierra
+    // sin que el resto de la pantalla se entere, y asi no hay que pasar un
+    // callback mas por una firma que ya tiene seis.
+    var verFoto by remember { mutableStateOf(false) }
+    val urlAvatar = ApiCliente.urlImagen(usuario, "avatar", avatarVersion)
+
+    if (verFoto) {
+        VisorDeFoto(urlAvatar, nombreMostrado.ifBlank { "@$usuario" }) { verFoto = false }
+    }
 
     Box(Modifier.fillMaxWidth().height(altoPortada + avatar / 2)) {
         val urlPortada = ApiCliente.urlImagen(usuario, "portada", portadaVersion)
@@ -670,9 +695,17 @@ private fun Cabecera(
         Box(Modifier.align(Alignment.BottomStart).padding(start = 20.dp)) {
             Avatar(
                 nombre = nombreMostrado.ifBlank { usuario },
-                url = ApiCliente.urlImagen(usuario, "avatar", avatarVersion),
+                url = urlAvatar,
                 tamano = avatar,
-                modifier = Modifier.border(3.dp, BgBase, CircleShape),
+                // Tocar la foto la abre; el boton de camara, que esta encima
+                // en una esquina, sigue sirviendo para cambiarla. Son dos
+                // cosas distintas y por eso son dos toques distintos: abrir
+                // para mirar es lo que se hace mas seguido, asi que se lleva
+                // el area grande.
+                modifier = Modifier
+                    .border(3.dp, BgBase, CircleShape)
+                    .clip(CircleShape)
+                    .clickable { verFoto = true },
             )
             BotonCamara(
                 onClick = onCambiarAvatar,

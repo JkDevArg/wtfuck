@@ -1,5 +1,13 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -575,6 +583,124 @@ fun EstadoDeError(
                 Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Reintentar")
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------
+//  La foto de perfil, abierta
+// ------------------------------------------------------------------
+
+/**
+ * La foto de alguien, a pantalla completa y con zoom.
+ *
+ * ## Por que un diálogo y no una pantalla
+ *
+ * Igual que el visor de los adjuntos: se abre y se cierra sin tocar la pila de
+ * navegación, así que el botón de atrás devuelve al perfil en la posición en
+ * la que estaba, y no a la pantalla anterior al perfil.
+ *
+ * ## El zoom no es un adorno
+ *
+ * Una foto de perfil se dibuja en un círculo de 112 dp y se recorta a
+ * cuadrado. Abrirla sirve justamente para ver lo que ese círculo no muestra:
+ * el resto de la imagen, y de cerca. Abrirla al tamaño de la pantalla y nada
+ * más sería un círculo un poco más grande.
+ *
+ * Doble toque vuelve al inicio: con solo pellizcar no hay forma de volver
+ * exactamente a 1x, y una foto que quedó torcida y no se deja enderezar se
+ * siente rota.
+ *
+ * @param url de dónde sale. Puede ser `null` cuando la persona no tiene foto,
+ *   y en ese caso no se abre nada — no hay foto que mirar, y un visor negro
+ *   con un aviso es peor que no reaccionar al toque.
+ */
+@Composable
+fun VisorDeFoto(url: String?, titulo: String, onCerrar: () -> Unit) {
+    if (url.isNullOrBlank()) { onCerrar(); return }
+
+    // Sin `by`: el delegado de Compose choca aqui con el `getValue` de la
+    // biblioteca estandar, ya importado en este archivo. `.floatValue` es lo
+    // mismo y no depende de que import gane.
+    val zoom = remember { mutableFloatStateOf(1f) }
+    val desX = remember { mutableFloatStateOf(0f) }
+    val desY = remember { mutableFloatStateOf(0f) }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onCerrar,
+        // Sin esto el diálogo se queda con el ancho de un cuadro de diálogo
+        // normal y el `fillMaxSize` de adentro solo llena esa caja: el perfil
+        // se sigue viendo alrededor y parece a medio abrir.
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, arrastre, escala, _ ->
+                        zoom.floatValue = (zoom.floatValue * escala).coerceIn(1f, 5f)
+                        // Arrastrar solo tiene sentido con zoom: a 1x la foto
+                        // entra entera y moverla la sacaría de la pantalla sin
+                        // mostrar nada nuevo.
+                        if (zoom.floatValue > 1f) {
+                            desX.floatValue += arrastre.x
+                            desY.floatValue += arrastre.y
+                        } else {
+                            desX.floatValue = 0f; desY.floatValue = 0f
+                        }
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            zoom.floatValue = 1f; desX.floatValue = 0f; desY.floatValue = 0f
+                        },
+                        onTap = { if (zoom.floatValue <= 1f) onCerrar() },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            coil3.compose.SubcomposeAsyncImage(
+                model = url,
+                contentDescription = "Foto de $titulo",
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = zoom.floatValue, scaleY = zoom.floatValue,
+                        translationX = desX.floatValue, translationY = desY.floatValue,
+                    ),
+                // Un visor que no puede abrir la foto tiene que decirlo en vez
+                // de quedarse negro: negro y sin texto se lee como que la app
+                // se colgó.
+                error = { Text("No se pudo abrir la foto", color = TextoSecundario) },
+            )
+
+            Row(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onCerrar) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack, "Cerrar",
+                        tint = TextoPrimario,
+                    )
+                }
+                Text(
+                    titulo,
+                    color = TextoPrimario,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

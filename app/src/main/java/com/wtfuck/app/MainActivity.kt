@@ -183,14 +183,29 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         // Una notificacion de llamada entrante es "ongoing": no se va sola.
         // Si nadie la borra, queda una llamada fantasma en la bandeja despues
         // de colgar, con sus botones de contestar incluidos.
+        //
+        // Se borra al DEJAR DE SONAR, no al colgar. Antes solo se limpiaba
+        // cuando el estado pasaba a null —o sea al terminar la llamada— y el
+        // cartel de "Toca para contestar" se quedaba encima durante toda la
+        // conversacion, con sus botones de Contestar y Rechazar puestos.
+        //
+        // Tapaba ademas la ventanita de la camara propia, que vive justo
+        // debajo en la esquina de arriba: parecia que la camara no arrancaba.
+        // Dos sintomas que no se parecian entre si, y una sola causa.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.CREATED) {
                 var ultima: String? = null
                 app.repo.llamadas.estado.collect { e ->
-                    if (e != null) ultima = e.conversacionId
-                    else ultima?.let {
-                        Notificaciones.quitarLlamada(this@MainActivity, it)
-                        ultima = null
+                    val sonando = e != null &&
+                        e.fase == com.wtfuck.app.datos.EstadoLlamada.Fase.SONANDO &&
+                        !e.saliente
+                    if (sonando) {
+                        ultima = e!!.conversacionId
+                    } else {
+                        ultima?.let {
+                            Notificaciones.quitarLlamada(this@MainActivity, it)
+                            ultima = null
+                        }
                     }
                 }
             }
