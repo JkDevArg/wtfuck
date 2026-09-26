@@ -17,23 +17,63 @@ services:
       retries: 20
 
   # Almacen de objetos para multimedia (modulo D).
+  #
   # Los archivos NO van a Postgres: un blob de 40 MB por mensaje revienta la
   # base y arruina los backups. Van aqui, cifrados, y en el mensaje viaja solo
   # la URL y la clave.
-  minio:
-    image: quay.io/minio/minio:latest
-    container_name: wtfuck_minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: wtfuck
-      MINIO_ROOT_PASSWORD: wtfuck_dev_minio
+  #
+  # ## Por que SeaweedFS y no MinIO, que es lo que habia
+  #
+  # Dos razones, y la segunda es la importante.
+  #
+  # La primera: las imagenes de MinIO se retiraron de los registros publicos.
+  # `quay.io/minio/minio:latest` ya no se puede descargar. Aqui seguia
+  # funcionando por la cache de Docker -una imagen bajada hace un ano sigue
+  # arrancando aunque el registro haya cerrado- y en un equipo limpio, o en el
+  # VPS, no. Eso costo una tarde de depuracion en produccion.
+  #
+  # La segunda: produccion ya corre SeaweedFS. Tener MinIO aqui significaba
+  # probar contra un almacen y desplegar contra otro, y en este proyecto esa
+  # forma de comprobar -mirar con una herramienta distinta de la real- ya
+  # produjo cuatro defectos seguidos. Las pruebas de adjuntos valen justo lo
+  # que se parezca esto a lo de alla.
+  almacen:
+    image: chrislusf/seaweedfs:4.47
+    # Fijada, y no `latest`.
+    #
+    # `latest` significa que el proximo `docker compose pull` puede cambiar el
+    # motor de almacenamiento debajo de un despliegue que funciona, sin que
+    # nadie lo pida. Ya se vio en esta misma version: la 4.47 empezo a quejarse
+    # de una configuracion IAM que antes no pedia -no rompe las credenciales
+    # estaticas, pero es exactamente el tipo de cambio que aparece solo-.
+    #
+    # Para subirla: cambiar el numero aqui, levantar en local, y correr
+    # `node pruebas/correr.mjs media historias` antes de tocar el VPS.
+    container_name: wtfuck_almacen
+    command:
+      # `/data` y NO otra ruta: la imagen declara ese path como su volumen y lo
+      # deja en propiedad del usuario `seaweed`, con el que acaba corriendo el
+      # proceso. Con cualquier otra, Docker crea el volumen en propiedad de
+      # root y el arranque muere con `permission denied`.
+      - server
+      - -dir=/data
+      - -s3
+      - -s3.port=9000
+      - -s3.config=/etc/seaweedfs/s3.json
     ports:
       - "9000:9000"
-      - "9001:9001"
     volumes:
-      - wtfuck_minio:/data
+      - wtfuck_almacen:/data
+      # Las credenciales de desarrollo, versionadas y a la vista: este almacen
+      # escucha en local y no guarda nada de nadie. Las de produccion las
+      # genera despliegue/preparar.sh.
+      - ./pruebas/s3-dev.json:/etc/seaweedfs/s3.json:ro
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # Se comprueba que contesto HTTP, no que devolviera 200: sin credenciales
+      # la raiz responde 403, y eso ya demuestra que esta vivo. Un `wget -q`
+      # daba por muerto al contenedor en ese caso, porque BusyBox sale con
+      # codigo distinto de cero ante cualquier respuesta de error.
+      test: ["CMD-SHELL", "wget -O- http://127.0.0.1:9000/ 2>&1 | grep -q HTTP"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -69,4 +109,4 @@ services:
 
 volumes:
   wtfuck_pgdata:
-  wtfuck_minio:
+  wtfuck_almacen:

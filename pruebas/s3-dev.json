@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "wtfuck",
+      "credentials": [
+        { "accessKey": "wtfuck", "secretKey": "wtfuck_dev_minio" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

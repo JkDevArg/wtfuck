@@ -166,7 +166,17 @@ services:
   # Las credenciales van en `despliegue/s3.json` —SeaweedFS no las toma por
   # variable de entorno— y las escribe `despliegue/preparar.sh`.
   almacen:
-    image: chrislusf/seaweedfs:latest
+    image: chrislusf/seaweedfs:4.47
+    # Fijada, y no `latest`.
+    #
+    # `latest` significa que el proximo `docker compose pull` puede cambiar el
+    # motor de almacenamiento debajo de un despliegue que funciona, sin que
+    # nadie lo pida. Ya se vio en esta misma version: la 4.47 empezo a quejarse
+    # de una configuracion IAM que antes no pedia -no rompe las credenciales
+    # estaticas, pero es exactamente el tipo de cambio que aparece solo-.
+    #
+    # Para subirla: cambiar el numero aqui, levantar en local, y correr
+    # `node pruebas/correr.mjs media historias` antes de tocar el VPS.
     restart: unless-stopped
     command:
       - server
