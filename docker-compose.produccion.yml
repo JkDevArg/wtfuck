@@ -153,12 +153,22 @@ services:
     restart: unless-stopped
     command:
       - server
-      - -dir=/datos
+      # `/data` y NO otra ruta: la imagen declara ese path como su volumen y
+      # lo deja en propiedad del usuario `seaweed`, que es con el que acaba
+      # corriendo el proceso.
+      #
+      # Con cualquier otra —lo puse en `/datos`— Docker crea el volumen vacio
+      # y en propiedad de root, y el arranque muere con
+      # `mkdir /datos/m9333: permission denied`. El contenedor sale, nunca
+      # llega a healthy, y lo que se ve arriba es al servidor esperandolo:
+      # `dependency failed to start: container wtfuck-almacen-1 is unhealthy`.
+      # El sintoma senala al chequeo de salud y la causa esta en el montaje.
+      - -dir=/data
       - -s3
       - -s3.port=9000
       - -s3.config=/etc/seaweedfs/s3.json
     volumes:
-      - almacen:/datos
+      - almacen:/data
       - ./despliegue/s3.json:/etc/seaweedfs/s3.json:ro
     healthcheck:
       # Se comprueba que el S3 CONTESTO con HTTP, no que devolviera 200.
