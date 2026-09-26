@@ -602,6 +602,10 @@ class ServicioLlamadas(
             return false
         }
 
+        // Mas presupuesto y prioridad a los fotogramas: se esta mirando algo
+        // que se mueve, no una cara. Ver `MotorWebRtc.ajustarVideo`.
+        motores.values.forEach { it.ajustarVideo(BITRATE_CINE, fluido = true) }
+
         ambito.launch { avisarPantalla(true) }
         return true
     }
@@ -618,6 +622,7 @@ class ServicioLlamadas(
         // alguien que no la pidio.
         if (e.conVideo) m?.camara() else m?.detenerCaptura()
 
+        motores.values.forEach { it.ajustarVideo(BITRATE_CAMARA, fluido = false) }
         _estado.value = e.copy(presentando = null, presentoYo = false)
         ServicioLlamadaFg.subirAProyeccion(_estado.value)
         avisarPantalla(false)
@@ -635,6 +640,26 @@ class ServicioLlamadas(
                 )
             }
         }
+    }
+
+    private companion object {
+        /**
+         * Techos de subida, en bits por segundo.
+         *
+         * 3 Mbit/s para el modo cine y 1,2 para una camara. Son techos, no
+         * objetivos: WebRTC gasta menos si el enlace no da, y estos numeros
+         * solo le dicen hasta donde puede subir si da.
+         *
+         * La diferencia no es capricho. Una cara a 640x480 no mejora por
+         * encima de 1 Mbit/s —lo unico que cambia es el consumo de datos de
+         * quien llama—, y una pantalla de 560x1264 con imagen en movimiento a
+         * 1 Mbit/s se deshace en bloques en cada corte de plano.
+         *
+         * En malla esto se multiplica por participante, que es el motivo de
+         * que no sean mas altos.
+         */
+        const val BITRATE_CINE = 3_000_000
+        const val BITRATE_CAMARA = 1_200_000
     }
 
     /** El otro lado empezo o dejo de presentar. */

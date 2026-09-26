@@ -55,6 +55,10 @@ import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
 import androidx.compose.material.icons.filled.StopScreenShare
 import androidx.compose.material.icons.filled.ScreenShare
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedVisibility
 
 /**
  * La pantalla de una llamada: sonando, conectando, en curso.
@@ -95,6 +99,38 @@ fun CapaLlamada() {
     // miniatura, y una llamada entrante que aparece como una ventanita de 128
     // dp en una esquina es una llamada que nadie ve.
     var minimizada by remember(e.llamadaId) { mutableStateOf(false) }
+
+    /**
+     * Si se ven los botones y la cabecera.
+     *
+     * Sólo se esconden cuando hay **algo que mirar**: alguien presentando su
+     * pantalla. En una llamada normal se quedan puestos, porque no tapan nada
+     * y esconderlos obligaría a tocar para colgar.
+     *
+     * Es el comportamiento de cualquier reproductor, y aquí importa más: la
+     * cabecera y los cuatro botones se comían justo el centro de una película.
+     */
+    var controles by remember(e.llamadaId) { mutableStateOf(true) }
+
+    /** Viendo lo de otro. Quien presenta está en otra app, no mirando esto. */
+    val mirando = e.presentando != null && !e.presentoYo
+
+    // Se apartan solos a los pocos segundos, y no de golpe: da tiempo a ver
+    // quién empezó a presentar antes de que el aviso se vaya.
+    //
+    // El temporizador se reinicia en cada toque porque depende de `controles`:
+    // volver a mostrarlos arranca una cuenta nueva.
+    LaunchedEffect(mirando, controles) {
+        if (mirando && controles) {
+            kotlinx.coroutines.delay(3_500)
+            controles = false
+        }
+    }
+
+    // Y vuelven al tocar en cualquier sitio. Al dejar de mirar vuelven solos:
+    // si no, al terminar la presentación quedaría una llamada sin controles y
+    // sin nada que explique por qué.
+    LaunchedEffect(mirando) { if (!mirando) controles = true }
 
     // ---------------------------------------------------------------
     // Modo cine: el permiso lo da el sistema, no esta app
@@ -145,7 +181,20 @@ fun CapaLlamada() {
     }
 
     Surface(color = BgBase, modifier = Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                // El toque va en el Box de fuera y no en una capa encima.
+                //
+                // En Compose el evento baja primero a los hijos: un botón lo
+                // consume y aquí no llega, y un toque en el hueco entre
+                // botones no lo consume nadie y sí llega. Una capa propia
+                // habría tenido que elegir entre tapar los botones o no
+                // recibir nada.
+                .pointerInput(mirando) {
+                    if (mirando) detectTapGestures { controles = !controles }
+                },
+        ) {
 
             // Con UNA persona al otro lado, su video ocupa el fondo: es la
             // llamada que existe desde el modulo K y sigue siendo el caso
@@ -191,6 +240,7 @@ fun CapaLlamada() {
             }
 
 
+            AnimatedVisibility(visible = controles, enter = fadeIn(), exit = fadeOut()) {
             Column(
                 Modifier
                     .fillMaxSize()
@@ -385,11 +435,16 @@ fun CapaLlamada() {
                     )
                 }
             }
+            }
 
             // Minimizar solo aparece cuando hay algo que minimizar: una
             // llamada en curso. Mientras suena, el boton seria una trampa.
-            if (e.fase == EstadoLlamada.Fase.EN_CURSO ||
-                e.fase == EstadoLlamada.Fase.CONECTANDO
+            //
+            // Y se va con los demas controles mientras se mira algo: dejarlo
+            // solo en una esquina seria el unico resto de interfaz sobre la
+            // pelicula, que es peor que esconderlo todo o no esconder nada.
+            if (controles && (e.fase == EstadoLlamada.Fase.EN_CURSO ||
+                e.fase == EstadoLlamada.Fase.CONECTANDO)
             ) {
                 IconButton(
                     onClick = { minimizada = true },
@@ -419,7 +474,9 @@ fun CapaLlamada() {
 
             // El video propio, chico y arriba. Va en espejo porque es lo que
             // la persona espera de su propia camara: un espejo, no una foto.
-            if (e.conVideo && videoLocal != null && e.camaraActiva) {
+            // La ventanita propia tambien se aparta: es chica pero esta
+            // justo sobre una esquina de lo que se esta mirando.
+            if (controles && e.conVideo && videoLocal != null && e.camaraActiva) {
                 VistaVideo(
                     track = videoLocal,
                     espejo = true,

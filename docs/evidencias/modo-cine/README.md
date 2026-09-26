@@ -56,6 +56,38 @@ Una cara aguanta el recorte —está en el medio—; una pantalla no, porque lo 
 se recorta son los bordes, que es donde están los controles, la barra de
 progreso y los subtítulos.
 
+## 4 · Mientras se mira, la interfaz se aparta
+
+| Sola, a los 3,5 s | Al tocar |
+|---|---|
+| ![Sin controles](4-sin-controles.png) | ![Al tocar vuelven](5-al-tocar-vuelven.png) |
+
+La cabecera y los cuatro botones se comían justo el centro de lo que se estaba
+mirando. Ahora se apartan solos y vuelven al tocar en cualquier sitio, como en
+cualquier reproductor.
+
+**Sólo cuando hay algo que mirar.** En una llamada normal los controles se
+quedan puestos: no tapan nada, y esconderlos obligaría a tocar la pantalla para
+poder colgar.
+
+Y sólo a quien **mira**, no a quien presenta: quien presenta está en otra app, y
+si vuelve a la llamada necesita el botón de dejar de presentar a mano.
+
+Tres detalles que se decidieron:
+
+- **3,5 segundos y no menos.** Da tiempo a leer quién empezó a presentar antes
+  de que el aviso se vaya.
+- **Se va todo, también el botón de minimizar y la ventanita propia.** Dejar uno
+  solo en una esquina sería el único resto de interfaz encima de la película,
+  que es peor que esconder todo o no esconder nada.
+- **Vuelven solos cuando la presentación termina.** Si no, quedaría una llamada
+  sin controles y sin nada que explique por qué.
+
+El toque se escucha en el contenedor de fuera y no en una capa encima. En
+Compose el evento baja primero a los hijos: un botón lo consume y ahí no llega,
+y un toque en el hueco entre botones no lo consume nadie y sí llega. Una capa
+propia habría tenido que elegir entre tapar los botones o no recibir nada.
+
 ## El sonido
 
 ```
@@ -75,6 +107,41 @@ flujo, una pista, ninguna renegociación.
 La media va al 70 %. Una película sale mucho más fuerte que alguien hablando, y
 sumadas a volumen pleno la voz queda debajo y además satura. Se está viendo algo
 *con* alguien, no en vez de alguien.
+
+### 8000 Hz, y por qué ahora son 48000
+
+La primera prueba dejó esto en el log:
+
+```
+AudioDeCine: Capturando audio a 8000 Hz, 1 canal(es)
+```
+
+Ocho kilohercios es calidad de teléfono. Para una voz alcanza —para eso lo
+eligió el sistema— pero por ahí va la banda sonora de lo que se está mirando, y
+una película a 8 kHz suena a lata.
+
+Ahora el módulo de audio se fija en **48 kHz**, que además es lo que usa Opus de
+forma nativa y evita un remuestreo. Cuesta algo de CPU y de datos en una llamada
+normal, y vale: es la diferencia entre "se oye" y "se oye bien".
+
+También se apaga el supresor de ruido **por hardware** —no el de eco, que hace
+falta siempre—. El de ruido está afinado para dejar pasar una voz y borrar lo
+demás, y "lo demás" incluye la música.
+
+### El vídeo, cuando el enlace aprieta
+
+WebRTC reparte pensando en una cara: unos 2 Mbit/s de techo y, si falta ancho de
+banda, prefiere bajar los fotogramas antes que la nitidez. Para una
+videollamada es correcto —una cara a 10 fps se entiende— y para una película es
+exactamente al revés: borrosa y fluida se mira, nítida y a tirones no.
+
+Mientras se presenta, el techo sube a 3 Mbit/s y la preferencia pasa a
+`MAINTAIN_FRAMERATE`. Al dejar de presentar vuelve a 1,2 Mbit/s y `BALANCED`:
+una cara a 640x480 no mejora por encima de 1 Mbit/s, y lo único que cambiaría es
+el consumo de datos de quien llama.
+
+En malla esto se multiplica por participante, que es el motivo de que no sean
+números más altos.
 
 ---
 

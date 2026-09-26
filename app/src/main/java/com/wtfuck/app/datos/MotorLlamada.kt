@@ -19,6 +19,7 @@ import org.webrtc.SessionDescription
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoCapturer
 import org.webrtc.VideoSource
+import org.webrtc.RtpParameters
 import org.webrtc.VideoTrack
 import org.webrtc.audio.JavaAudioDeviceModule
 import kotlin.coroutines.resume
@@ -138,6 +139,30 @@ object FabricaWebRtc {
         // linea. El costo en una llamada normal es una llamada a funcion cada
         // 10 ms, que no se mide.
         val audio = JavaAudioDeviceModule.builder(ctx.applicationContext)
+            // 48 kHz a la entrada y a la salida.
+            //
+            // Sin fijarlo, el modulo toma lo que diga el aparato, y lo que
+            // dijo en la prueba fue **8000 Hz**: calidad de telefono. Para una
+            // voz alcanza —para eso se eligio— pero el modo cine manda por ahi
+            // la banda sonora de lo que se esta mirando, y una pelicula a 8 kHz
+            // suena a lata. 48 kHz es lo que usa Opus de forma nativa, asi que
+            // ademas evita un remuestreo.
+            //
+            // Cuesta mas CPU y mas datos en una llamada normal. Vale: es la
+            // diferencia entre "se oye" y "se oye bien", y el codec ya baja
+            // solo cuando el enlace no da.
+            .setSampleRate(48_000)
+            .setInputSampleRate(48_000)
+            .setOutputSampleRate(48_000)
+            // El supresor de ruido POR HARDWARE apagado, el eco encendido.
+            //
+            // No es lo mismo. El de eco hace falta siempre: sin el, una llamada
+            // con altavoz se realimenta y es inusable. El de ruido, en cambio,
+            // esta afinado para dejar pasar una voz y borrar lo demas — y "lo
+            // demas" incluye la musica. El del propio WebRTC, por software, es
+            // mas suave y se le puede pedir cuentas.
+            .setUseHardwareNoiseSuppressor(false)
+            .setUseHardwareAcousticEchoCanceler(true)
             .setAudioBufferCallback { pcm, _, canales, ritmo, bytes, marca ->
                 runCatching { AudioDeCine.mezclar(pcm, canales, ritmo, bytes) }
                 // Se devuelve la marca tal cual: no se esta cambiando CUANDO
@@ -358,6 +383,38 @@ class MotorWebRtc(
     // participantes a la vez. Es lo correcto —silenciarse es silenciarse para
     // todos, no para uno— y ademas hace que llamarlas una vez por motor,
     // como hace el servicio, sea idempotente en lugar de contradictorio.
+    /**
+     * Le pide al codificador otro presupuesto y otra prioridad.
+     *
+     * ## Por que hace falta tocarlo
+     *
+     * WebRTC reparte el ancho de banda pensando en una cara: unos 2 Mbit/s de
+     * techo y, cuando el enlace aprieta, prefiere bajar los fotogramas antes
+     * que la nitidez. Para una videollamada es lo correcto —una cara a 10 fps
+     * se entiende— y para una pelicula es exactamente al reves: borrosa y
+     * fluida se mira, nitida y a tirones no.
+     *
+     * @param techoBps cuanto puede gastar como maximo.
+     * @param fluido `true` = antes perder resolucion que fotogramas.
+     */
+    fun ajustarVideo(techoBps: Int, fluido: Boolean) {
+        val emisor = pc.senders.firstOrNull { it.track()?.kind() == "video" } ?: return
+        runCatching {
+            val p = emisor.parameters ?: return
+            p.degradationPreference = if (fluido) {
+                RtpParameters.DegradationPreference.MAINTAIN_FRAMERATE
+            } else {
+                RtpParameters.DegradationPreference.BALANCED
+            }
+            p.encodings.forEach { it.maxBitrateBps = techoBps }
+            // `setParameters` devuelve false si no le gusto algo, y no lanza:
+            // sin mirarlo, un ajuste rechazado se ve igual que uno aplicado.
+            if (!emisor.setParameters(p)) {
+                Log.w(TAG, "El codificador rechazo el ajuste de video")
+            }
+        }.onFailure { Log.w(TAG, "No se pudo ajustar el video: ${it.message}") }
+    }
+
     override fun silenciar(silenciado: Boolean) {
         medios.audio.setEnabled(!silenciado)
     }
