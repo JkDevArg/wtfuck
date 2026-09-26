@@ -53,6 +53,8 @@ import kotlinx.coroutines.launch
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
+import androidx.compose.material.icons.filled.StopScreenShare
+import androidx.compose.material.icons.filled.ScreenShare
 
 /**
  * La pantalla de una llamada: sonando, conectando, en curso.
@@ -94,6 +96,35 @@ fun CapaLlamada() {
     // dp en una esquina es una llamada que nadie ve.
     var minimizada by remember(e.llamadaId) { mutableStateOf(false) }
 
+    // ---------------------------------------------------------------
+    // Modo cine: el permiso lo da el sistema, no esta app
+    // ---------------------------------------------------------------
+    //
+    // `createScreenCaptureIntent()` abre un diálogo del sistema donde la
+    // persona elige **qué** compartir —una sola app o la pantalla entera— y
+    // confirma. Esta app no ve esa elección, no puede preseleccionar nada y no
+    // puede saltársela: leer la pantalla de alguien no puede pasar sin que lo
+    // autorice ahí.
+    //
+    // Y una advertencia que conviene tener presente: una app con contenido
+    // protegido —HBO, Netflix, Disney+— marca su ventana con `FLAG_SECURE` y
+    // el sistema entrega **negro** en su lugar. Es el DRM funcionando, no un
+    // fallo, y no hay nada que hacer del lado de acá.
+    val contexto = LocalContext.current
+    val proyector = remember(contexto) {
+        contexto.getSystemService(android.media.projection.MediaProjectionManager::class.java)
+    }
+    val pedirPantalla = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { res ->
+        // Cancelar es una respuesta válida y frecuente: se abre el diálogo,
+        // se lee lo que pide y se dice que no. No hay nada que avisar.
+        val datos = res.data
+        if (res.resultCode == android.app.Activity.RESULT_OK && datos != null) {
+            servicio.iniciarCine(datos)
+        }
+    }
+
     // Mientras suena NO se puede minimizar, y al terminar se vuelve a abrir:
     // las dos son pantallas que existen para decir algo -"contesta" y "te
     // rechazaron"- y en una ventanita de una esquina no se dicen.
@@ -125,7 +156,27 @@ fun CapaLlamada() {
             // sola pista, asi que en una llamada de tres se veia a uno -y
             // cambiaba sin motivo, porque la ultima pista en llegar pisaba a
             // la anterior-.
-            if (e.conVideo && videosRemotos.size > 1) {
+            //
+            // Y el MODO CINE manda sobre las dos. Cuando alguien presenta, lo
+            // que se vino a mirar es eso: una rejilla que le da a la pantalla
+            // compartida el mismo cuarto que a cada cara convierte la pelicula
+            // en un sello de correos. Las caras siguen, pero abajo y chicas.
+            val pistaCine = e.presentando
+                ?.takeIf { !e.presentoYo }
+                ?.let { quien ->
+                    e.participantes.entries
+                        .firstOrNull { it.value == quien }
+                        ?.let { videosRemotos[it.key] }
+                }
+
+            if (pistaCine != null) {
+                VistaVideo(
+                    track = pistaCine,
+                    espejo = false,
+                    completo = true,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else if (e.conVideo && videosRemotos.size > 1) {
                 RejillaVideos(
                     videos = videosRemotos,
                     nombres = e.participantes,
@@ -139,6 +190,7 @@ fun CapaLlamada() {
                 )
             }
 
+
             Column(
                 Modifier
                     .fillMaxSize()
@@ -148,7 +200,18 @@ fun CapaLlamada() {
             ) {
                 // Con video de fondo el texto necesita su propia base oscura o
                 // se vuelve ilegible sobre una imagen clara.
-                val conFondo = e.conVideo && videosRemotos.isNotEmpty()
+                // Hay imagen detrás, y por tanto el texto necesita su base
+                // oscura o se vuelve ilegible sobre una pantalla clara.
+                //
+                // Antes decía sólo `e.conVideo`, y con el modo cine eso dejó
+                // de alcanzar: una llamada de AUDIO con alguien presentando
+                // tiene imagen de fondo —una página web blanca, por ejemplo—
+                // y el nombre y el cronómetro quedaban blancos sobre blanco.
+                // Es el mismo defecto que el texto de las burbujas: el color
+                // se decidía por el tipo de llamada en vez de por lo que de
+                // verdad hay debajo.
+                val conFondo = (e.conVideo && videosRemotos.isNotEmpty()) ||
+                    e.presentando != null
                 // Con video, el encabezado se va a la IZQUIERDA.
                 //
                 // Centrado se metia debajo de la ventanita del video propio,
@@ -213,6 +276,28 @@ fun CapaLlamada() {
                     )
                     Spacer(Modifier.height(6.dp))
                     TextoDeFase(e)
+
+                    // Quien presenta, dicho.
+                    //
+                    // Va DENTRO de la cabecera y no suelto arriba: puesto por
+                    // su cuenta en el borde superior se montaba encima del
+                    // nombre, porque los dos empiezan donde termina la barra
+                    // de estado. Aquí no puede pisar nada por construcción.
+                    //
+                    // Y hace falta: una pantalla ajena que aparece de golpe sin
+                    // decir de quién es se lee como un fallo de la app.
+                    e.presentando?.let { quien ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (e.presentoYo) "Estás presentando tu pantalla"
+                            else "@$quien está presentando",
+                            color = TextoPrimario,
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .background(Cian.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
 
                     // En una llamada de grupo, de donde sale.
                     //
@@ -281,6 +366,21 @@ fun CapaLlamada() {
                         onSilenciar = servicio::silenciar,
                         onCamara = servicio::camara,
                         onAltavoz = servicio::altavoz,
+                        onCine = {
+                            if (e.presentoYo) {
+                                ambito.launch { servicio.detenerCine() }
+                            } else {
+                                // Esto abre el diálogo del SISTEMA, que es
+                                // donde se elige qué mostrar: una app sola o
+                                // la pantalla entera. La app no ve esa
+                                // elección ni puede influir en ella, y así
+                                // tiene que ser — es el único punto en el que
+                                // la persona autoriza que se lea su pantalla.
+                                pedirPantalla.launch(
+                                    proyector.createScreenCaptureIntent(),
+                                )
+                            }
+                        },
                         onColgar = { ambito.launch { servicio.colgar() } },
                     )
                 }
@@ -421,6 +521,7 @@ private fun BotonesEnCurso(
     onSilenciar: () -> Unit,
     onCamara: () -> Unit,
     onAltavoz: () -> Unit,
+    onCine: () -> Unit,
     onColgar: () -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -446,6 +547,21 @@ private fun BotonesEnCurso(
                     if (e.camaraActiva) "Apagar cámara" else "Encender cámara",
                     activo = !e.camaraActiva,
                     onClick = onCamara,
+                )
+            }
+            // Modo cine. Está también en una llamada de sólo audio: la pista
+            // de vídeo existe desde el principio justamente para eso.
+            //
+            // No aparece cuando **otra persona** ya está presentando. Dos
+            // pantallas a la vez en una llamada de cuatro es una rejilla de
+            // recuadros ilegibles, y el caso real es que uno muestra y los
+            // demás miran.
+            if (e.presentando == null || e.presentoYo) {
+                BotonChico(
+                    if (e.presentoYo) Icons.Filled.StopScreenShare else Icons.Filled.ScreenShare,
+                    if (e.presentoYo) "Dejar de presentar" else "Modo cine",
+                    activo = e.presentoYo,
+                    onClick = onCine,
                 )
             }
         }
@@ -612,7 +728,22 @@ private fun RejillaVideos(
  *    deja la superficie negra hasta que se recrea.
  */
 @Composable
-private fun VistaVideo(track: VideoTrack?, espejo: Boolean, modifier: Modifier = Modifier) {
+private fun VistaVideo(
+    track: VideoTrack?,
+    espejo: Boolean,
+    modifier: Modifier = Modifier,
+    /**
+     * `true` para una pantalla compartida: se ve ENTERA, con bandas si hace
+     * falta.
+     *
+     * Una cara aguanta el recorte —lo que se pierde son los bordes y la cara
+     * esta en el medio—, y por eso el modo normal es llenar. Una pantalla no:
+     * lo que se recorta son justamente los bordes, que es donde estan los
+     * controles, la barra de progreso y los subtitulos. Recortar una pantalla
+     * compartida es quitarle lo que se vino a mirar.
+     */
+    completo: Boolean = false,
+) {
     val egl = FabricaWebRtc.egl ?: return
     var vista by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
 
@@ -621,7 +752,10 @@ private fun VistaVideo(track: VideoTrack?, espejo: Boolean, modifier: Modifier =
         factory = { ctx ->
             SurfaceViewRenderer(ctx).apply {
                 init(egl, null)
-                setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+                setScalingType(
+                    if (completo) RendererCommon.ScalingType.SCALE_ASPECT_FIT
+                    else RendererCommon.ScalingType.SCALE_ASPECT_FILL
+                )
                 setEnableHardwareScaler(true)
                 setMirror(espejo)
                 vista = this
@@ -632,6 +766,17 @@ private fun VistaVideo(track: VideoTrack?, espejo: Boolean, modifier: Modifier =
             vista = null
         },
     )
+
+    // El modo de escalado cambia EN VIVO: la misma pista pasa de cara a
+    // pantalla cuando alguien enciende el modo cine, y la vista no se recrea.
+    // Sin esto, la primera pantalla compartida de la llamada se veria
+    // recortada hasta que algo mas forzara a rehacer la vista.
+    LaunchedEffect(vista, completo) {
+        vista?.setScalingType(
+            if (completo) RendererCommon.ScalingType.SCALE_ASPECT_FIT
+            else RendererCommon.ScalingType.SCALE_ASPECT_FILL
+        )
+    }
 
     DisposableEffect(track, vista) {
         val v = vista

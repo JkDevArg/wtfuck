@@ -6437,3 +6437,74 @@ vuelve tras un día caído tiene un día de cosas vencidas encima.
 
 **1932 pruebas en verde**: 1523 de integración en 36 suites, 329 JUnit de app
 y 80 de servidor.
+
+---
+
+## Módulo AV · Modo cine ✅
+
+Compartir la pantalla **con su sonido** dentro de una llamada, para mirar algo
+entre dos. Igual en una llamada de audio que en una de vídeo.
+
+**Con HBO, Netflix o Disney+ no funciona**, y conviene decirlo primero: esas
+apps marcan su ventana con `FLAG_SECURE` y su audio como no capturable, así que
+Android entrega negro y silencio a propósito. Es el DRM funcionando. Sí funciona
+con un vídeo propio, un navegador sin DRM, YouTube, un juego, una presentación.
+
+### AV.1 · Lo pregunta el sistema
+
+El diálogo es de Android, dice qué se va a exponer y ofrece "compartir una app"
+o la pantalla entera. Esta app no ve esa elección, no puede preseleccionar nada
+y no puede saltársela.
+
+### AV.2 · Sin renegociar, nunca
+
+La pista de vídeo existe desde que empieza la llamada, **también en una de sólo
+audio**. Añadirla después obligaría a renegociar, y esta app no renegocia: en
+malla trae el mismo problema de choque que se resolvió en `Malla` para la oferta
+inicial, multiplicado por cada cambio. Una `m=` de más cuesta unas líneas de SDP
+y ningún medio.
+
+Encender el cine cambia **quién da los fotogramas**, no lo que está negociado.
+
+### AV.3 · El sonido
+
+El micrófono no servía: la cancelación de eco existe para **borrar** lo que sale
+por el altavoz. Se usa `AudioPlaybackCapture`, autorizado por la **misma**
+proyección que la pantalla —una confirmación, no dos— y se mezcla con la voz en
+`setAudioBufferCallback`, el único sitio donde se puede tocar el búfer del
+micrófono antes de que WebRTC lo procese.
+
+---
+
+## Un defecto que estaba desde antes
+
+Había un motor WebRTC **por dispositivo** y cada uno abría su propia cámara.
+Android no da dos sesiones sobre la misma, así que en una videollamada de tres
+**sólo una persona veía tu cámara**: las demás recibían un recuadro vacío, sin
+ningún error — el capturador falla en silencio y la llamada sigue.
+
+No lo vio ninguna prueba porque las evidencias de llamadas de grupo son de
+llamadas de audio. `MediaProjection` tiene la misma limitación y peor, así que
+compartir la captura era condición para el modo cine y arregla las dos cosas.
+
+## Dos cosas que costaron encontrar
+
+**Los lados tienen que ser múltiplos de 16.** Con la forma real de la pantalla
+salía `570x1278` y no llegaba una imagen, sin ningún error: los codificadores
+por hardware trabajan en macrobloques de 16 y rechazan en silencio lo que no
+encaja.
+
+**Y un contador que engañaba.** `Frames received: 0` se leyó como "no llega
+nada". Una pantalla **estática** no genera fotogramas nuevos y el renderizador
+sigue mostrando el último: el número decía la verdad y contestaba otra pregunta.
+Se resolvió mirando la pantalla en vez del contador.
+
+> Una métrica que mide lo que dice medir puede seguir contestando otra pregunta.
+
+### Evidencias
+
+[`docs/evidencias/modo-cine/`](evidencias/modo-cine/) — el diálogo del sistema
+y la pantalla compartida desde los dos tipos de llamada.
+
+**1932 pruebas en verde**: 1523 de integración en 36 suites, 329 JUnit de app
+y 80 de servidor.

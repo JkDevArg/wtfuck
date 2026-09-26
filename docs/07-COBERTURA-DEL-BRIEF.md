@@ -63,6 +63,7 @@ AD junto con el ajuste de privacidad número dieciséis.
 | Llamadas y videollamadas **de grupo** | ✅ módulo AF · hasta 4, eligiendo a quién; rejilla de vídeos · quien llama ve quién entró y quién dijo que no (AH) |
 | Ubicación **en tiempo real** | ✅ módulo AM · 15 min a 24 h · el servidor no ve ni la posición ni el vencimiento |
 | Ficha de contacto | ✅ módulo AO · al tocar la cabecera · lo compartido se cuenta y se abre, y el recuento sale de este teléfono porque el servidor no guarda el historial |
+| Compartir pantalla en llamada | ✅ módulo AV · "modo cine", con audio de la app · el DRM de HBO/Netflix lo impide por diseño y está dicho |
 | Mapa incrustado | ✅ módulo AN · OpenStreetMap en las dos formas de mandar la posición, o **modo oculto** que dibuja el mismo recorrido sin pedirle una imagen a nadie |
 | Respuestas, reacciones, menciones, reenvíos | ✅ una reacción por persona (V25) · responder deslizando (N.13) · menciones con selector y resaltado (T.2) · emojis, GIFs y stickers en un panel de tres pestañas (Y.3), con recientes, buscador, tonos de piel y stickers sugeridos al escribir un emoji (Z) |
 | Mensajes fijados | ✅ |

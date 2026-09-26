@@ -38,6 +38,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <!--
+      Modulo AV · Modo cine.
+
+      Presentar la pantalla necesita su propio tipo de servicio en primer
+      plano. Desde Android 14 no es opcional ni decorativo: el sistema exige
+      que el servicio YA este corriendo con este tipo antes de entregar la
+      proyeccion, y si no, lanza. Es a proposito — capturar la pantalla de
+      alguien no puede pasar sin una notificacion visible que lo diga.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <!-- Que una llamada entrante se vea con el telefono bloqueado. Android 14
          lo reserva para apps de llamadas y alarmas: esta es una de llamadas. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
@@ -79,7 +89,7 @@
         <service
             android:name=".datos.ServicioLlamadaFg"
             android:exported="false"
-            android:foregroundServiceType="microphone|camera"
+            android:foregroundServiceType="microphone|camera|mediaProjection"
             android:stopWithTask="false" />
 
         <!--

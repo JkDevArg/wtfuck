@@ -1,6 +1,7 @@
 package com.wtfuck.app.datos
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioManager
 import android.util.Log
 import com.wtfuck.protocol.*
@@ -65,6 +66,27 @@ data class EstadoLlamada(
     /** Cuando se conecto. Sirve para el cronometro; 0 mientras no conecta. */
     val conectadaEn: Long = 0,
     val motivoFin: String? = null,
+    /**
+     * Modulo AV · Quien esta presentando su pantalla, o `null`.
+     *
+     * Es el USERNAME y no un booleano porque la pantalla llega por la misma
+     * pista de video que una cara: sin saber de quien es, la rejilla no puede
+     * rotularla ni decidir dibujarla entera en vez de recortada.
+     *
+     * Uno solo a la vez, a proposito. Dos pantallas compartidas en una
+     * llamada de cuatro es una rejilla de recuadros ilegibles, y ademas el
+     * caso real es que uno muestra y los demas miran.
+     */
+    val presentando: String? = null,
+    /**
+     * Si el que presenta soy YO.
+     *
+     * Aparte de [presentando] y no deducido comparando nombres: el servicio en
+     * primer plano necesita este dato para pedir el tipo `mediaProjection`, y
+     * ahi no hay a mano quien soy. Un booleano explicito es mas barato que
+     * arrastrar el username hasta el servicio para volver a compararlo.
+     */
+    val presentoYo: Boolean = false,
 ) {
     enum class Fase { SONANDO, CONECTANDO, EN_CURSO, TERMINADA }
 }
@@ -169,6 +191,18 @@ class ServicioLlamadas(
     val videoLocal: StateFlow<VideoTrack?> = _videoLocal.asStateFlow()
 
     private val motores = ConcurrentHashMap<String, MotorWebRtc>()
+
+    /**
+     * Lo que este telefono emite, **uno para toda la llamada**.
+     *
+     * Vive aqui y no en cada motor porque la camara —y la proyeccion de
+     * pantalla— no se pueden abrir dos veces. Ver [MediosLocales].
+     *
+     * Se crea con el primer motor y se libera en `limpiar`, no al colgar un
+     * motor: colgar con UNA persona de una llamada de tres no puede apagarle
+     * la camara a las otras dos.
+     */
+    private var medios: MediosLocales? = null
     private var turn: ConfigTurn = ConfigTurn()
 
     private val audio by lazy { ctx.getSystemService(AudioManager::class.java) }
@@ -528,6 +562,96 @@ class ServicioLlamadas(
         _estado.value = e.copy(camaraActiva = nuevo)
     }
 
+    // ============================================================
+    //  Modulo AV · Modo cine
+    // ============================================================
+
+    /**
+     * Empieza a mostrar la pantalla a quien esta en la llamada.
+     *
+     * @param permiso lo que devolvio el dialogo del sistema. Ahi es donde la
+     *   persona elige **que** mostrar —una app sola o la pantalla entera—; esa
+     *   eleccion la hace el sistema y esta app no la ve ni puede influir en
+     *   ella, que es como tiene que ser.
+     *
+     * ## El orden no es negociable
+     *
+     * Primero se marca el estado y se sube el servicio a primer plano con el
+     * tipo `mediaProjection`, y **despues** se crea el capturador. Al reves,
+     * Android 14 lanza al entregar la proyeccion. Ver `subirAProyeccion`.
+     */
+    fun iniciarCine(permiso: Intent): Boolean {
+        val e = _estado.value ?: return false
+        val m = medios ?: return false
+        if (e.fase != EstadoLlamada.Fase.EN_CURSO) return false
+
+        val yo = sesion.username.orEmpty()
+        _estado.value = e.copy(presentando = yo, presentoYo = true)
+        ServicioLlamadaFg.subirAProyeccion(_estado.value)
+
+        val ok = m.pantalla(permiso) {
+            // El sistema puede cortar la proyeccion por su cuenta: la persona
+            // toca "Dejar de compartir" en la barra del sistema, o otra app
+            // pide la proyeccion. Sin atender eso, la llamada seguiria
+            // anunciando que alguien presenta sin emitir nada.
+            ambito.launch { runCatching { detenerCine() } }
+        }
+        if (!ok) {
+            _estado.value = _estado.value?.copy(presentando = null, presentoYo = false)
+            ServicioLlamadaFg.subirAProyeccion(_estado.value)
+            return false
+        }
+
+        ambito.launch { avisarPantalla(true) }
+        return true
+    }
+
+    /** Deja de presentar y vuelve a lo que habia antes. */
+    suspend fun detenerCine() {
+        val e = _estado.value ?: return
+        if (!e.presentoYo) return
+        val m = medios
+
+        // Volver a la camara SOLO si la llamada era de video. En una de audio
+        // no habia imagen antes del cine y no tiene que haberla despues:
+        // encender la camara al dejar de presentar seria mostrarle la cara a
+        // alguien que no la pidio.
+        if (e.conVideo) m?.camara() else m?.detenerCaptura()
+
+        _estado.value = e.copy(presentando = null, presentoYo = false)
+        ServicioLlamadaFg.subirAProyeccion(_estado.value)
+        avisarPantalla(false)
+    }
+
+    private suspend fun avisarPantalla(activo: Boolean) {
+        val e = _estado.value ?: return
+        // A cada dispositivo por separado, como el resto de la senalizacion:
+        // va cifrado y el servidor no sabe que es.
+        for (dispositivo in motores.keys) {
+            runCatching {
+                enviarCifrado(
+                    e.conversacionId, dispositivo,
+                    Carga.LlamadaPantalla(e.llamadaId, activo),
+                )
+            }
+        }
+    }
+
+    /** El otro lado empezo o dejo de presentar. */
+    fun pantallaEntrante(dispositivoOrigen: String, p: Carga.LlamadaPantalla) {
+        val e = _estado.value ?: return
+        if (e.llamadaId != p.llamadaId) return
+        val quien = e.participantes[dispositivoOrigen] ?: return
+        _estado.value = if (p.activo) {
+            e.copy(presentando = quien)
+        } else {
+            // Solo si el que deja de presentar es el que estaba presentando.
+            // Sin esta comprobacion, un aviso viejo que llega tarde apaga la
+            // presentacion de OTRA persona.
+            if (e.presentando == quien) e.copy(presentando = null) else e
+        }
+    }
+
     fun altavoz() {
         val e = _estado.value ?: return
         val nuevo = !e.altavoz
@@ -542,10 +666,18 @@ class ServicioLlamadas(
     private fun crearMotor(dispositivoId: String, conVideo: Boolean): MotorWebRtc {
         motores[dispositivoId]?.let { return it }
 
+        val m = medios ?: MediosLocales(ctx, FabricaWebRtc.obtener(ctx)).also {
+            medios = it
+            // La camara arranca con el primer motor y ya vale para todos los
+            // que vengan despues: los siguientes solo enganchan la pista.
+            if (conVideo) it.camara()
+        }
+
         val motor = MotorWebRtc(
             ctx = ctx,
             turn = turn,
             conVideo = conVideo,
+            medios = m,
             oyente = object : OyenteLlamada {
                 override fun onCandidato(candidato: String, sdpMid: String?, indice: Int) {
                     val e = _estado.value ?: return
@@ -650,6 +782,11 @@ class ServicioLlamadas(
 
     private fun limpiar(motivo: String?) {
         motores.values.forEach { runCatching { it.colgar() } }
+        // DESPUES de colgar los motores y no antes: una fuente liberada bajo
+        // una conexion viva deja al track nativo apuntando a memoria muerta,
+        // que es un cierre de la app y no una excepcion.
+        runCatching { medios?.liberar() }
+        medios = null
         conectados.clear()
         _videosRemotos.value = emptyMap()
         motores.clear()

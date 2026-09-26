@@ -69,6 +69,22 @@ class ServicioLlamadaFg : Service() {
 
     companion object {
         private const val ID_AVISO = 4242
+
+        /**
+         * La instancia que esta corriendo, o `null`.
+         *
+         * Un servicio no se puede "llamar" desde fuera sin `bind`, y aqui hace
+         * falta una llamada SINCRONA: subir el tipo de primer plano antes de
+         * pedir la proyeccion de pantalla. Un `bind` para una sola llamada es
+         * mas maquinaria que esto, y `@Volatile` cubre el unico riesgo real —
+         * que el hilo que presenta lea una referencia a medio escribir.
+         */
+        @Volatile
+        private var vivo: ServicioLlamadaFg? = null
+
+        /** Ver [asegurarProyeccion]. `false` si el servicio no esta vivo. */
+        fun subirAProyeccion(e: EstadoLlamada?): Boolean =
+            vivo?.asegurarProyeccion(e) ?: false
         const val ACCION_COLGAR = "com.wtfuck.app.COLGAR"
         const val ACCION_CONTESTAR = "com.wtfuck.app.CONTESTAR"
         const val ACCION_RECHAZAR = "com.wtfuck.app.RECHAZAR"
@@ -116,6 +132,9 @@ class ServicioLlamadaFg : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Ver `subirAProyeccion`: el modo cine necesita llamar a este servicio
+        // de forma sincrona y un `bind` seria mas maquinaria que esto.
+        vivo = this
 
         // Primero el primer plano, y solo despues cualquier otra cosa.
         //
@@ -167,6 +186,9 @@ class ServicioLlamadaFg : Service() {
     }
 
     override fun onDestroy() {
+        // Solo si sigo siendo yo: si el sistema ya creo otra instancia, la
+        // referencia es suya y borrarla dejaria el modo cine sin servicio.
+        if (vivo === this) vivo = null
         ambito.cancel()
         super.onDestroy()
     }
@@ -197,10 +219,35 @@ class ServicioLlamadaFg : Service() {
 
     override fun onBind(intent: Intent): IBinder? = null
 
+    /**
+     * Sube el servicio a primer plano incluyendo el tipo de proyeccion, YA.
+     *
+     * Existe por una carrera real. El servicio se entera de los cambios de
+     * estado por un `collect`, que es asincrono: si el modo cine se limitara a
+     * marcar el estado y crear el capturador a continuacion, el sistema
+     * todavia no habria visto el tipo nuevo y la peticion de proyeccion
+     * fallaria — a veces, segun quien llegue primero. Las carreras que fallan
+     * "a veces" son las que no se encuentran probando.
+     *
+     * Devuelve si quedo en primer plano con el tipo puesto.
+     */
+    fun asegurarProyeccion(e: EstadoLlamada?): Boolean {
+        alPrimerPlano(e)
+        return true
+    }
+
     private fun alPrimerPlano(e: EstadoLlamada?) {
         val tipo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             var t = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             if (e?.conVideo == true) t = t or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            // Modulo AV. El tipo tiene que estar puesto ANTES de que el
+            // sistema entregue la proyeccion, no despues: desde Android 14,
+            // pedirla sin el servicio ya en primer plano con este tipo lanza
+            // una excepcion. Por eso `asegurarProyeccion` se llama y se espera
+            // antes de crear el capturador.
+            if (e?.presentoYo == true) {
+                t = t or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            }
             t
         } else {
             0

@@ -634,6 +634,11 @@ class Repositorio(
                         socket.enviar(Subida.Acuse(listOf(msg.sobreId)))
                         return
                     }
+                    is Carga.LlamadaPantalla -> {
+                        llamadas.pantallaEntrante(msg.origenDispositivo, carga)
+                        socket.enviar(Subida.Acuse(listOf(msg.sobreId)))
+                        return
+                    }
                     else -> Unit
                 }
 

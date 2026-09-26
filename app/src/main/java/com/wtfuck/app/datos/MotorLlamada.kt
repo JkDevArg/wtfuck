@@ -20,6 +20,7 @@ import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoCapturer
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
+import org.webrtc.audio.JavaAudioDeviceModule
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -128,11 +129,29 @@ object FabricaWebRtc {
         val base = EglBase.create()
         eglBase = base
 
+        // El modulo de audio se construye a mano y no por defecto, por una
+        // sola razon: `setAudioBufferCallback` es el unico sitio donde se
+        // puede meter mano al audio del microfono ANTES de que WebRTC lo
+        // procese, y es donde el modo cine suma lo que esta sonando.
+        //
+        // Cuando el modo cine esta apagado, `mezclar` sale en la primera
+        // linea. El costo en una llamada normal es una llamada a funcion cada
+        // 10 ms, que no se mide.
+        val audio = JavaAudioDeviceModule.builder(ctx.applicationContext)
+            .setAudioBufferCallback { pcm, _, canales, ritmo, bytes, marca ->
+                runCatching { AudioDeCine.mezclar(pcm, canales, ritmo, bytes) }
+                // Se devuelve la marca tal cual: no se esta cambiando CUANDO
+                // se capturo, solo que hay dentro.
+                marca
+            }
+            .createAudioDeviceModule()
+
         val nueva = PeerConnectionFactory.builder()
             // El hardware primero: el software cae a 320x240 y calienta el
             // telefono. `true, true` = intentar H264 y VP8 por hardware.
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(base.eglBaseContext, true, true))
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(base.eglBaseContext))
+            .setAudioDeviceModule(audio)
             .createPeerConnectionFactory()
 
         fabrica = nueva
@@ -156,19 +175,20 @@ class MotorWebRtc(
     private val ctx: Context,
     private val turn: com.wtfuck.protocol.ConfigTurn,
     private val conVideo: Boolean,
+    /**
+     * Lo que este telefono emite, **compartido con los demas motores**.
+     *
+     * Antes cada motor abria su propia camara, y Android no da dos sesiones
+     * sobre la misma: en una videollamada de tres, solo una persona veia tu
+     * camara. Ver [MediosLocales].
+     */
+    private val medios: MediosLocales,
     private val oyente: OyenteLlamada,
 ) : MotorLlamada {
 
     private val TAG = "MotorWebRtc"
 
     private val fabrica = FabricaWebRtc.obtener(ctx)
-
-    private var audioSource: AudioSource? = null
-    private var audioTrack: AudioTrack? = null
-    private var videoSource: VideoSource? = null
-    private var videoTrack: VideoTrack? = null
-    private var captura: VideoCapturer? = null
-    private var ayudante: SurfaceTextureHelper? = null
 
     private val pc: PeerConnection = crearConexion()
 
@@ -279,53 +299,25 @@ class MotorWebRtc(
         return conexion
     }
 
+    /**
+     * Engancha a esta conexion lo que YA se esta capturando.
+     *
+     * No crea nada. Las pistas son las de [MediosLocales] y la misma pista se
+     * anade a todas las conexiones — se puede porque todas salen de la misma
+     * `PeerConnectionFactory`.
+     *
+     * La pista de video se anade **siempre**, tambien en una llamada de solo
+     * audio. Ahi no lleva fotogramas, pero deja el `m=` negociado desde el
+     * principio: es lo que permite encender el modo cine sin renegociar, que
+     * esta app no sabe hacer.
+     */
     private fun agregarMedioLocal(conexion: PeerConnection) {
-        val restricciones = MediaConstraints().apply {
-            // Los tres de siempre. Sin cancelacion de eco, una llamada con
-            // altavoz se realimenta y es inusable.
-            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
-        }
-        audioSource = fabrica.createAudioSource(restricciones)
-        audioTrack = fabrica.createAudioTrack("audio0", audioSource).also {
-            conexion.addTrack(it, listOf("wtfuck"))
-        }
-
-        if (!conVideo) return
-
-        val cap = abrirCamara() ?: run {
-            Log.w(TAG, "Sin camara disponible: la llamada sigue con audio")
-            return
-        }
-        captura = cap
-        val helper = SurfaceTextureHelper.create("captura", FabricaWebRtc.egl)
-        ayudante = helper
-        videoSource = fabrica.createVideoSource(cap.isScreencast).also { src ->
-            cap.initialize(helper, ctx, src.capturerObserver)
-            // 640x480 a 24 fps. No es un numero mágico: es lo que cabe en el
-            // enlace de subida de datos moviles cuando hay que subir el video
-            // una vez por participante en una llamada en malla.
-            cap.startCapture(640, 480, 24)
-        }
-        videoTrack = fabrica.createVideoTrack("video0", videoSource).also {
-            conexion.addTrack(it, listOf("wtfuck"))
-        }
+        conexion.addTrack(medios.audio, listOf("wtfuck"))
+        conexion.addTrack(medios.video, listOf("wtfuck"))
     }
 
-    private fun abrirCamara(): VideoCapturer? {
-        val enumerador = if (Camera2Enumerator.isSupported(ctx)) {
-            Camera2Enumerator(ctx)
-        } else {
-            Camera1Enumerator(false)
-        }
-        // La frontal primero: en una videollamada uno se filma a si mismo.
-        val nombres = enumerador.deviceNames
-        val frontal = nombres.firstOrNull { enumerador.isFrontFacing(it) } ?: nombres.firstOrNull()
-        return frontal?.let { enumerador.createCapturer(it, null) }
-    }
 
-    val pistaLocal: VideoTrack? get() = videoTrack
+    val pistaLocal: VideoTrack? get() = medios.video
 
     // ============================================================
     //  Señalizacion: entra y sale como texto
@@ -362,12 +354,16 @@ class MotorWebRtc(
         pc.addIceCandidate(c)
     }
 
+    // Las dos tocan la pista COMPARTIDA, asi que valen para todos los
+    // participantes a la vez. Es lo correcto —silenciarse es silenciarse para
+    // todos, no para uno— y ademas hace que llamarlas una vez por motor,
+    // como hace el servicio, sea idempotente en lugar de contradictorio.
     override fun silenciar(silenciado: Boolean) {
-        audioTrack?.setEnabled(!silenciado)
+        medios.audio.setEnabled(!silenciado)
     }
 
     override fun verVideo(activo: Boolean) {
-        videoTrack?.setEnabled(activo)
+        medios.video.setEnabled(activo)
     }
 
     override fun colgar() {
@@ -394,15 +390,11 @@ class MotorWebRtc(
         // de red pueden llegar a la vez desde hilos distintos.
         if (!colgado.compareAndSet(false, true)) return
 
-        runCatching { captura?.stopCapture() }
-        // `dispose()` cierra y libera. Va ANTES de soltar las fuentes: una
-        // fuente liberada bajo una conexion viva deja al track nativo
-        // apuntando a memoria muerta.
+        // Solo la conexion. Las pistas y los capturadores son de
+        // [MediosLocales], que es de la llamada entera y no de este motor:
+        // soltarlos aqui dejaria a los OTROS motores con pistas muertas.
+        // Quien creo los medios los libera cuando termina la llamada.
         runCatching { pc.dispose() }
-        runCatching { captura?.dispose() }
-        runCatching { ayudante?.dispose() }
-        runCatching { videoSource?.dispose() }
-        runCatching { audioSource?.dispose() }
     }
 
     // ============================================================
@@ -413,9 +405,13 @@ class MotorWebRtc(
         suspendCoroutine { cont ->
             val restricciones = MediaConstraints().apply {
                 mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-                mandatory.add(
-                    MediaConstraints.KeyValuePair("OfferToReceiveVideo", conVideo.toString())
-                )
+                // SIEMPRE, tambien en una llamada de solo audio.
+                //
+                // Con `false`, una llamada de audio negocia sin `m=video` y
+                // encender el modo cine despues exigiria renegociar. Aceptarlo
+                // desde el principio cuesta unas lineas de SDP y ningun medio:
+                // sin nadie capturando, por ahi no viaja un solo byte.
+                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
             }
             val obs = object : SdpObserver {
                 override fun onCreateSuccess(sdp: SessionDescription) = cont.resume(sdp)

@@ -292,6 +292,30 @@ sealed interface Carga {
     ) : Carga
 
     /**
+     * Modulo AV · Alguien empezo o dejo de presentar su pantalla.
+     *
+     * ## Por que hace falta avisar
+     *
+     * Los fotogramas llegan por la MISMA pista de video que la camara —el modo
+     * cine cambia el capturador, no la pista, para no tener que renegociar— y
+     * desde fuera son indistinguibles. Sin este aviso, del otro lado una
+     * pantalla compartida llegaria como una cara con una forma rara: recortada
+     * al cuadro de la rejilla, sin decir de quien es ni que es.
+     *
+     * Con el aviso, quien recibe sabe que tiene que dibujarla ENTERA —una
+     * pantalla recortada pierde justo los bordes, que es donde estan los
+     * controles— y ponerle nombre.
+     *
+     * No lleva nada mas. Ni que app es, ni que se esta mirando: eso es
+     * asunto de quien presenta, y el otro lado ya lo va a ver.
+     */
+    @Serializable
+    data class LlamadaPantalla(
+        val llamadaId: String,
+        val activo: Boolean,
+    ) : Carga
+
+    /**
      * Fin de la llamada.
      *
      * Viaja cifrado como todo lo demas **y ademas** se avisa por HTTP. No es
