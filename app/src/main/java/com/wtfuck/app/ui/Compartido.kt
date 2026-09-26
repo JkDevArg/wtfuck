@@ -17,6 +17,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.mutableStateSetOf
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -147,6 +157,8 @@ fun CompartidoPantalla(
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ctx = LocalContext.current
     var filas by remember { mutableStateOf<List<MensajeEnt>?>(null) }
+    /** Que foto esta abierta a pantalla completa, por posicion. */
+    var abrirEn by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(conversacionId, clase) {
         filas = runCatching { app.repo.compartidoDe(conversacionId, clase) }.getOrElse { emptyList() }
@@ -192,19 +204,32 @@ fun CompartidoPantalla(
             clase == ClaseAdjunto.STICKER
 
         if (enRejilla) {
+            abrirEn?.let { i ->
+                VisorDeGaleria(
+                    items = lista,
+                    inicial = i,
+                    onVerEnElChat = onVerEnElChat,
+                    onCerrar = { abrirEn = null },
+                )
+            }
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 108.dp),
                 modifier = Modifier.fillMaxSize().padding(pad).padding(2.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                items(lista, key = { it.id }) { m ->
+                itemsIndexed(lista, key = { _, m -> m.id }) { i, m ->
                     Box(
                         Modifier
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(4.dp))
                             .background(BgElev)
-                            .clickable { onVerEnElChat(m.id) },
+                            // Abre el visor en vez de saltar al chat. El salto
+                            // sigue existiendo, dentro del visor: en una
+                            // galeria lo que uno quiere es mirar las fotos una
+                            // detras de otra, y con el salto habia que volver
+                            // atras y buscar la siguiente cada vez.
+                            .clickable { abrirEn = i },
                         contentAlignment = Alignment.Center,
                     ) {
                         // La miniatura ya está en la base, descifrada al
@@ -349,4 +374,151 @@ fun ordenCompartido(resumen: Map<String, Int>): List<Pair<String, Int>> {
     val conocidas = orden.mapNotNull { c -> resumen[c]?.let { c to it } }
     val resto = resumen.filterKeys { it !in orden }.toList().sortedBy { it.first }
     return conocidas + resto
+}
+
+// ------------------------------------------------------------------
+//  El visor de la galeria
+// ------------------------------------------------------------------
+
+/**
+ * Las fotos y los vídeos de la galería, a pantalla completa y deslizando.
+ *
+ * ## Por qué no basta con "ver en el chat"
+ *
+ * Tocar una miniatura llevaba al mensaje dentro de la conversación. Está bien
+ * y sigue estando —es el botón de arriba— pero no es lo que uno quiere hacer
+ * en una galería: mirar las fotos, una detrás de otra. Con el salto al chat
+ * había que volver atrás, buscar la siguiente y volver a saltar.
+ *
+ * ## Lo que se ve mientras se descarga
+ *
+ * La miniatura, estirada. Ya está en la base y se ve **sin red**, así que la
+ * foto aparece al instante aunque borrosa y se cambia sola por la buena cuando
+ * llega. Un recuadro vacío con una rueda girando sería más honesto sobre lo
+ * que falta y peor para quien está mirando: la miniatura ya dice qué foto es.
+ *
+ * ## Se descarga sola, y sólo la que se está mirando
+ *
+ * Abrir la galería no descarga nada. Deslizar hasta una foto descarga esa. Es
+ * la diferencia entre mirar diez fotos y bajarse las trescientas que hay en la
+ * conversación sin haberlo pedido.
+ */
+@Composable
+fun VisorDeGaleria(
+    items: List<MensajeEnt>,
+    inicial: Int,
+    onVerEnElChat: (String) -> Unit,
+    onCerrar: () -> Unit,
+) {
+    if (items.isEmpty()) {
+        LaunchedEffect(Unit) { onCerrar() }
+        return
+    }
+    val app = LocalContext.current.applicationContext as WtfuckApp
+    val estado = rememberPagerState(
+        initialPage = inicial.coerceIn(0, items.size - 1),
+        pageCount = { items.size },
+    )
+    // Qué mensajes ya se mandaron a descargar, para no pedir lo mismo cada vez
+    // que la página se recompone.
+    val pedidos = remember { mutableStateSetOf<String>() }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onCerrar,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            HorizontalPager(state = estado, modifier = Modifier.fillMaxSize()) { pagina ->
+                val m = items[pagina]
+                val local = remember(m.rutaLocal) {
+                    m.rutaLocal?.let { java.io.File(it) }?.takeIf { it.exists() }
+                }
+
+                LaunchedEffect(m.id, local) {
+                    if (local == null && pedidos.add(m.id)) {
+                        runCatching { app.repo.descargarAdjunto(m.id) }
+                    }
+                }
+
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (local != null) {
+                        coil3.compose.AsyncImage(
+                            model = local,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        val mini = remember(m.adjuntoMiniatura) {
+                            Media.deBase64(m.adjuntoMiniatura)
+                                ?.let { b -> Media.miniaturaAjena(b)?.asImageBitmap() }
+                        }
+                        if (mini != null) {
+                            Image(
+                                bitmap = mini,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                        CircularProgressIndicator(color = Cian)
+                    }
+                }
+            }
+
+            // Arriba: quién y cuándo, volver, y el salto al chat que antes era
+            // lo único que hacía el toque.
+            val actual = items.getOrNull(estado.currentPage)
+            Row(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .statusBarsPadding()
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onCerrar) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Cerrar", tint = TextoPrimario)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (actual?.esMio == true) "Tú" else actual?.autor.orEmpty(),
+                        color = TextoPrimario,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "${horaCorta(actual?.creadoEn ?: 0)} · " +
+                            "${estado.currentPage + 1} de ${items.size}",
+                        color = TextoSecundario,
+                        fontSize = 12.sp,
+                    )
+                }
+                actual?.let { m ->
+                    TextButton(onClick = { onCerrar(); onVerEnElChat(m.id) }) {
+                        Text("Ver en el chat", color = Cian, fontSize = 14.sp)
+                    }
+                }
+            }
+
+            // El pie, cuando la foto lleva uno. Debajo y no encima: es del
+            // mensaje, no de la galería.
+            actual?.texto?.takeIf { it.isNotBlank() }?.let { pie ->
+                Text(
+                    pie,
+                    color = TextoPrimario,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .navigationBarsPadding()
+                        .padding(16.dp),
+                )
+            }
+        }
+    }
 }

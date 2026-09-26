@@ -944,6 +944,12 @@ fun ChatPantalla(
                                     .onFailure { aviso = it.message }
                             }
                         },
+                        // Tocar el resumen de una llamada vuelve a llamar,
+                        // con el mismo tipo que la de antes: quien toca una
+                        // videollamada perdida quiere una videollamada.
+                        onDevolverLlamada = { conVideo ->
+                            chat?.let { llamar(conversacionId, it.titulo, conVideo) }
+                        },
                         onAbrirContacto = { quien ->
                             ambito.launch {
                                 runCatching { app.repo.nuevaDirecta(quien) }
@@ -1349,6 +1355,8 @@ private fun Burbuja(
     onMantener: () -> Unit,
     onReaccion: (String, Boolean) -> Unit,
     onAbrirContacto: (String) -> Unit,
+    /** Volver a llamar desde el resumen de una llamada. El booleano es el video. */
+    onDevolverLlamada: (Boolean) -> Unit,
     onResponder: () -> Unit,
 ) {
     val estado = runCatching { EstadoEnvio.valueOf(m.estado) }.getOrDefault(EstadoEnvio.PENDIENTE)
@@ -1523,7 +1531,7 @@ private fun Burbuja(
                     Text("Mensaje eliminado", color = TextoTerciario, fontSize = 15.sp)
                 }
             } else if (esEspecial) {
-                ContenidoEspecialBurbuja(m, onAbrirContacto)
+                ContenidoEspecialBurbuja(m, onAbrirContacto, onDevolverLlamada)
             } else {
                 if (m.adjuntoClase.isNotBlank()) {
                     ContenidoAdjunto(m, sobreAcento, onDescargar, onAbrir, onReintentar)

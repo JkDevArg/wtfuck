@@ -1074,6 +1074,7 @@ fun HojaEvento(
 fun ContenidoEspecialBurbuja(
     m: MensajeEnt,
     onAbrirContacto: (String) -> Unit,
+    onDevolverLlamada: (Boolean) -> Unit = {},
 ) {
     val ctxBurbuja = LocalContext.current
     val app = ctxBurbuja.applicationContext as com.wtfuck.app.WtfuckApp
@@ -1109,7 +1110,7 @@ fun ContenidoEspecialBurbuja(
         )
         is Carga.Contacto -> BurbujaContacto(segura(carga), onAbrirContacto)
 
-        is Carga.ResumenLlamada -> BurbujaLlamada(carga)
+        is Carga.ResumenLlamada -> BurbujaLlamada(carga, onDevolverLlamada)
 
         is Carga.Encuesta -> {
             val votos by app.repo.votos(m.id).collectAsState(initial = emptyList())
@@ -1194,14 +1195,14 @@ private fun fotoDe(
  *
  * Es ademas lo que hace cualquier app de mensajeria, y por lo mismo.
  *
- * ## Lo que NO hace todavia
+ * ## Tocarla vuelve a llamar
  *
- * Tocarla no devuelve la llamada. Se puede y es lo siguiente, pero una burbuja
- * que parece un boton y no lo es seria peor que una que no lo parece: por eso
- * no tiene ni ripple ni flecha.
+ * Con el MISMO tipo que la de antes: quien toca una videollamada perdida
+ * quiere una videollamada, no una de voz. Preguntarlo con un menu de dos
+ * opciones seria un paso de mas en la accion mas obvia que hay aqui.
  */
 @Composable
-private fun BurbujaLlamada(carga: Carga.ResumenLlamada) {
+private fun BurbujaLlamada(carga: Carga.ResumenLlamada, onDevolver: (Boolean) -> Unit) {
     val r = remember(carga) {
         llamadaEnElChat(carga.conVideo, carga.saliente, carga.motivoFin, carga.segundos)
     }
@@ -1211,7 +1212,10 @@ private fun BurbujaLlamada(carga: Carga.ResumenLlamada) {
     // "llamada", que es lo que ya dice el icono.
     val acento = if (r.perdida) Coral else Cian
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clickable { onDevolver(carga.conVideo) },
+    ) {
         Box(
             Modifier
                 .size(36.dp)
