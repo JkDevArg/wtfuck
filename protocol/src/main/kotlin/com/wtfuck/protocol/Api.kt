@@ -366,10 +366,48 @@ data class Privacidad(
 // ============================================================
 
 @Serializable
-data class DirectaReq(val usernameDestino: String)
+data class DirectaReq(
+    val usernameDestino: String,
+    /** Cuanto vive, en ms. `0` = para siempre. Ver [DuracionChat]. */
+    val duracionMs: Long = 0,
+)
 
 @Serializable
-data class GrupoReq(val nombre: String, val usernames: List<String>)
+data class GrupoReq(
+    val nombre: String,
+    val usernames: List<String>,
+    /** Cuanto vive, en ms. `0` = para siempre. Ver [DuracionChat]. */
+    val duracionMs: Long = 0,
+)
+
+/**
+ * Cuanto puede durar un chat temporal.
+ *
+ * ## Por que una lista cerrada
+ *
+ * Por lo mismo que en la ubicacion en vivo: "cuanto es demasiado" no es una
+ * pregunta de interfaz. Un campo libre invita a poner un ano, y un chat que se
+ * borra dentro de un ano no es un chat temporal — es un chat con una promesa
+ * lejana que nadie va a comprobar.
+ *
+ * ## Y por que el tope son 7 dias
+ *
+ * Porque mas alla deja de ser "esto no tiene que quedar" y pasa a ser un chat
+ * normal con fecha. La utilidad de un chat temporal es que quien lo abre SABE
+ * cuando desaparece; a los treinta dias ya nadie se acuerda de que era
+ * temporal, y entonces borrarse es una perdida y no una funcion.
+ */
+object DuracionChat {
+    const val HORA_1 = 3_600_000L
+    const val HORAS_8 = 8 * 3_600_000L
+    const val HORAS_24 = 24 * 3_600_000L
+    const val DIAS_7 = 7 * 24 * 3_600_000L
+
+    val OPCIONES = listOf(HORA_1, HORAS_8, HORAS_24, DIAS_7)
+
+    /** `0` —para siempre— tambien vale. Cualquier otra cosa, no. */
+    fun valida(ms: Long): Boolean = ms == 0L || ms in OPCIONES
+}
 
 @Serializable
 data class ConversacionResumen(
@@ -384,6 +422,15 @@ data class ConversacionResumen(
     val silenciadoHasta: Long? = null,
     val archivado: Boolean = false,
     val fijado: Boolean = false,
+    /**
+     * Cuando se borra sola, en epoch ms. `0` = nunca.
+     *
+     * Viaja con la conversacion y no se calcula en cada aparato, por lo mismo
+     * que el `hasta` de la ubicacion en vivo: **cada cliente lo hace cumplir
+     * por su cuenta**, y con una duracion en vez de una fecha, un telefono que
+     * estuvo apagado empezaria a contar desde que se entero.
+     */
+    val expiraEn: Long = 0,
     /**
      * Si esta conversacion todavia es una solicitud sin decidir.
      *

@@ -881,7 +881,29 @@ object Repo {
     //  Conversaciones
     // ============================================================
 
-    fun crearDirecta(yo: Auth, usernameDestino: String): ConversacionResumen = Db.tx { c ->
+    /**
+     * @param duracionMs `0` = para siempre. Ver `DuracionChat`.
+     *
+     * ## Un chat temporal es una conversacion APARTE
+     *
+     * No se convierte la que ya existe, y no es un detalle: convertirla
+     * pondria fecha de borrado a un historial que nadie acepto perder. Con una
+     * conversacion nueva, la de siempre sigue donde estaba y la temporal
+     * empieza vacia, que es lo que alguien espera al abrir una.
+     *
+     * Por eso su `clave_directa` lleva un identificador propio: la clave de
+     * una directa normal es unica por pareja —es lo que hace que abrirla dos
+     * veces devuelva la misma— y una temporal tiene que poder convivir con
+     * ella, e incluso con otra temporal.
+     */
+    fun crearDirecta(
+        yo: Auth,
+        usernameDestino: String,
+        duracionMs: Long = 0,
+    ): ConversacionResumen = Db.tx { c ->
+        if (!DuracionChat.valida(duracionMs)) {
+            throw ErrorNegocio(400, "Esa duracion no esta permitida.")
+        }
         val otro = publicoPorUsername(c, usernameDestino)
             ?: throw ErrorNegocio(404, "No existe el usuario @${usernameDestino.lowercase().trim()}.")
         if (otro.usuarioId == yo.usuarioId.toString()) {
@@ -916,7 +938,11 @@ object Repo {
         val b = otro.usuarioId
         val clave = if (a < b) "$a:$b" else "$b:$a"
 
-        val existente = c.prepareStatement(
+        // Una temporal NO reusa: cada una es nueva y tiene su propio plazo.
+        val temporal = duracionMs > 0
+        val claveFinal = if (temporal) "$clave:t:${UUID.randomUUID()}" else clave
+
+        val existente = if (temporal) null else c.prepareStatement(
             "SELECT id FROM conversacion WHERE clave_directa = ?"
         ).use { st ->
             st.setString(1, clave)
@@ -924,14 +950,15 @@ object Repo {
         }
         val convId = existente ?: run {
             val id = c.prepareStatement(
-                """INSERT INTO conversacion (tipo, creador_id, clave_directa, solicitud_de)
-                   VALUES ('directa', ?, ?, ?) RETURNING id"""
+                """INSERT INTO conversacion (tipo, creador_id, clave_directa, solicitud_de, expira_en)
+                   VALUES ('directa', ?, ?, ?, ?) RETURNING id"""
             ).use { st ->
                 st.setObject(1, yo.usuarioId)
-                st.setString(2, clave)
+                st.setString(2, claveFinal)
                 // NULL = conversacion normal. Con valor, es una solicitud y
                 // quien la recibe decide.
                 if (esSolicitud) st.setObject(3, yo.usuarioId) else st.setNull(3, java.sql.Types.OTHER)
+                ponerVencimiento(st, 4, duracionMs)
                 st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
             }
             agregarParticipantes(c, id, listOf(yo.usuarioId, UUID.fromString(otro.usuarioId)), "miembro")
@@ -941,7 +968,85 @@ object Repo {
         ConversacionResumen(
             convId.toString(), "directa", otro.username, listOf(otro),
             esSolicitud = esSolicitud,
+            expiraEn = if (temporal) System.currentTimeMillis() + duracionMs else 0,
         )
+    }
+
+    /**
+     * Pone la fecha de vencimiento, o NULL.
+     *
+     * Se calcula en el SERVIDOR y no en el cliente, a proposito. El plazo lo
+     * elige quien crea el chat, pero la fecha tiene que salir de un solo reloj:
+     * con dos telefonos mal puestos en hora, el mismo chat venceria en momentos
+     * distintos en cada uno — y el que lo tuviera adelantado lo borraria
+     * mientras el otro sigue escribiendo.
+     */
+    private fun ponerVencimiento(st: java.sql.PreparedStatement, indice: Int, duracionMs: Long) {
+        if (duracionMs > 0) {
+            st.setTimestamp(
+                indice,
+                java.sql.Timestamp(System.currentTimeMillis() + duracionMs),
+            )
+        } else {
+            st.setNull(indice, java.sql.Types.TIMESTAMP)
+        }
+    }
+
+    /**
+     * Borra las conversaciones temporales que ya vencieron.
+     *
+     * ## Que se borra de verdad
+     *
+     * La fila de `conversacion`, y con ella —en cascada— participantes,
+     * metadatos de mensajes y sobres pendientes. Del servidor no queda nada.
+     *
+     * Del contenido, aqui nunca hubo nada que borrar: el historial vive solo
+     * en los telefonos. Por eso esto NO es lo que hace desaparecer el chat —
+     * eso lo hace cada cliente con su copia— sino lo que impide que el
+     * servidor siga sabiendo que esa conversacion existio.
+     *
+     * ## Y por que se avisa antes de borrar
+     *
+     * Porque los avisos se emiten contra las filas de participantes, y despues
+     * del DELETE ya no hay a quien avisar. Se junta la lista primero.
+     */
+    fun borrarConversacionesVencidas(): Pair<Int, List<Pair<UUID, Bajada.Evento>>> = Db.tx { c ->
+        val vencidas = c.prepareStatement(
+            "SELECT id FROM conversacion WHERE expira_en IS NOT NULL AND expira_en < now()"
+        ).use { st ->
+            st.executeQuery().use { rs -> rs.mapear { it.getObject(1, UUID::class.java) } }
+        }
+        if (vencidas.isEmpty()) return@tx 0 to emptyList()
+
+        // Los participantes se leen ANTES de borrar, porque el DELETE se los
+        // lleva; los avisos se emiten DESPUES, y sin `conversacionId`.
+        //
+        // El orden costo una prueba en rojo. `evento_pendiente.conversacion_id`
+        // apunta a `conversacion` con ON DELETE CASCADE, asi que emitir antes
+        // creaba los avisos y el borrado los barria en la misma transaccion:
+        // quien estaba conectado se enteraba igual —el empujon lleva el objeto
+        // en memoria— y quien estaba apagado no se enteraba nunca.
+        //
+        // Con el id en el detalle en vez de en la columna, el aviso sobrevive
+        // al borrado y espera al telefono que estaba apagado.
+        val gentePorConv = vencidas.associateWith { id ->
+            c.prepareStatement(
+                "SELECT usuario_id FROM participante WHERE conversacion_id = ? AND salido_en IS NULL"
+            ).use { st ->
+                st.setObject(1, id)
+                st.executeQuery().use { rs -> rs.mapear { it.getObject(1, UUID::class.java) } }
+            }
+        }
+
+        val arr = c.createArrayOf("uuid", vencidas.toTypedArray())
+        c.prepareStatement("DELETE FROM conversacion WHERE id = ANY(?)")
+            .use { st -> st.setArray(1, arr); st.executeUpdate() }
+
+        val avisos = gentePorConv.entries.flatMap { (id, gente) ->
+            Eventos.emitir(c, gente, "conversacion_vencida", null, "", """{"conversacion":"$id"}""")
+        }
+
+        vencidas.size to avisos
     }
 
     /** Si esta persona acepta solicitudes de quien no puede escribirle. */
@@ -1003,6 +1108,9 @@ object Repo {
     }
 
     fun crearGrupo(yo: Auth, req: GrupoReq): ResultadoGrupo = Db.tx { c ->
+        if (!DuracionChat.valida(req.duracionMs)) {
+            throw ErrorNegocio(400, "Esa duracion no esta permitida.")
+        }
         val nombre = req.nombre.trim()
         if (nombre.isEmpty() || nombre.length > 64) {
             throw ErrorNegocio(400, "El nombre del grupo debe tener entre 1 y 64 caracteres.")
@@ -1015,10 +1123,12 @@ object Repo {
         miembros.forEach { exigirPermiso(c, yo.usuarioId, it, "grupos") }
 
         val id = c.prepareStatement(
-            "INSERT INTO conversacion (tipo, creador_id, nombre) VALUES ('grupo', ?, ?) RETURNING id"
+            """INSERT INTO conversacion (tipo, creador_id, nombre, expira_en)
+               VALUES ('grupo', ?, ?, ?) RETURNING id"""
         ).use { st ->
             st.setObject(1, yo.usuarioId)
             st.setString(2, nombre)
+            ponerVencimiento(st, 3, req.duracionMs)
             st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
         }
         agregarParticipantes(c, id, listOf(yo.usuarioId), "admin")
@@ -1028,7 +1138,15 @@ object Repo {
             c, miembros.map { UUID.fromString(it.usuarioId) },
             "agregado_grupo", id, yo.username,
         )
-        ResultadoGrupo(ConversacionResumen(id.toString(), "grupo", nombre, miembros), avisos)
+        ResultadoGrupo(
+            ConversacionResumen(
+                id.toString(), "grupo", nombre, miembros,
+                expiraEn = if (req.duracionMs > 0) {
+                    System.currentTimeMillis() + req.duracionMs
+                } else 0,
+            ),
+            avisos,
+        )
     }
 
     fun agregarMiembros(yo: Auth, conversacionId: UUID, usernames: List<String>): ResultadoGrupo = Db.tx { c ->
@@ -1130,9 +1248,15 @@ object Repo {
     }
 
     private fun resumen(c: Connection, conv: UUID, yo: UUID): ConversacionResumen? {
-        val meta = c.prepareStatement("SELECT tipo, nombre FROM conversacion WHERE id = ?").use { st ->
+        val meta = c.prepareStatement(
+            """SELECT tipo, nombre,
+                      coalesce(extract(epoch FROM expira_en) * 1000, 0)
+                 FROM conversacion WHERE id = ?"""
+        ).use { st ->
             st.setObject(1, conv)
-            st.executeQuery().use { rs -> rs.primero { it.getString(1) to it.getString(2) } }
+            st.executeQuery().use { rs ->
+                rs.primero { Triple(it.getString(1), it.getString(2), it.getDouble(3).toLong()) }
+            }
         } ?: return null
 
         // Rol y preferencias personales, en una sola consulta.
@@ -1198,6 +1322,10 @@ object Repo {
         return ConversacionResumen(
             id = conv.toString(),
             tipo = meta.first,
+            // Viaja en cada listado, no solo al crear: un aparato que se
+            // sincroniza por primera vez tiene que enterarse igual de que ese
+            // chat vence, y es el unico sitio por el que puede llegarle.
+            expiraEn = meta.third,
             nombre = nombre,
             participantes = otros,
             miRol = mio.rol,

@@ -76,6 +76,8 @@ object Db {
         36 to "/db/V36__imagen_de_publicacion.sql",
         37 to "/db/V37__comunidades.sql",
         38 to "/db/V38__aviso_de_participante.sql",
+        39 to "/db/V39__conversaciones_temporales.sql",
+        40 to "/db/V40__aviso_de_chat_vencido.sql",
     )
 
     /**

@@ -5129,7 +5129,7 @@ Ocho capturas en
 [`docs/evidencias/comunidades/`](evidencias/comunidades/), incluidas las del
 callejon sin salida antes y despues.
 
-**1707 pruebas en verde**: 1411 de integración en **36 suites**, 75 de JUnit en
+**1707 pruebas en verde**: 1411 de integración en **37 suites**, 75 de JUnit en
 el servidor y 221 en la app. Las 43 nuevas están en `pruebas/comunidades.mjs`,
 y su validación por reversión es la que produjo AD.3.
 
@@ -5380,7 +5380,7 @@ Siete capturas del recorrido completo, con vídeo conectado de verdad, en
 [`docs/evidencias/llamadas-grupales/`](evidencias/llamadas-grupales/). El guion
 que las produce es [`pruebas/llamada-de-grupo.sh`](../pruebas/llamada-de-grupo.sh).
 
-**1761 pruebas en verde**: 1456 de integración en 36 suites, 230 JUnit de app
+**1761 pruebas en verde**: 1456 de integración en 37 suites, 230 JUnit de app
 y 87 de servidor. Son **+54** sobre las 1707 del módulo anterior — 45 de
 integración y 9 de `MallaTest`.
 
@@ -5507,7 +5507,7 @@ por su nombre.
 
 ---
 
-**1790 pruebas en verde**: 1485 de integración en 36 suites, 230 JUnit de app y
+**1790 pruebas en verde**: 1485 de integración en 37 suites, 230 JUnit de app y
 87 de servidor. En la configuración mínima —una instancia, sin Redis— son
 **1770**, con `bus` y `bus-inyeccion` marcadas `OMIT`.
 
@@ -5619,7 +5619,7 @@ Con eso la línea vale para los dos lados y no sólo para quien llamó: entrar a
 una llamada de grupo sin saber con quién es raro. Quien contesta ve
 `con tatiana · llamando a rocio`.
 
-**1815 pruebas en verde**: 1502 de integración en 36 suites, 238 JUnit de app
+**1815 pruebas en verde**: 1502 de integración en 37 suites, 238 JUnit de app
 y 87 de servidor.
 
 ---
@@ -5686,7 +5686,7 @@ Dos capturas en
 [`docs/evidencias/llamadas-grupales/`](evidencias/llamadas-grupales/): la
 llamada conectada y el momento en que uno se cae.
 
-**1823 pruebas en verde**: 1502 de integración en 36 suites, 246 JUnit de app
+**1823 pruebas en verde**: 1502 de integración en 37 suites, 246 JUnit de app
 y 87 de servidor.
 
 ---
@@ -5771,7 +5771,7 @@ Para un defecto en el camino de una petición no se notaba: la suite ataca el
 para y levanta las dos, y con eso el defecto cae con 6 pruebas — incluida la
 que importa: `409 Ya hay una llamada en curso aquí`.
 
-**1842 pruebas en verde**: 1515 de integración en 36 suites, 252 JUnit de app
+**1842 pruebas en verde**: 1515 de integración en 37 suites, 252 JUnit de app
 y 87 de servidor.
 
 ---
@@ -5823,7 +5823,7 @@ una tercera bandera opcional que nadie pasa.
 > Arreglar tres instancias no es arreglar el defecto. El defecto era el valor
 > por defecto.
 
-**1846 pruebas en verde**: 1515 de integración en 36 suites, 256 JUnit de app
+**1846 pruebas en verde**: 1515 de integración en 37 suites, 256 JUnit de app
 y 87 de servidor.
 
 ---
@@ -5969,7 +5969,7 @@ rompe entero.
 pantallas, la posición moviéndose con `adb emu geo fix`, y el detalle de qué
 sabe el servidor.
 
-**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.
 
 ---
@@ -6077,7 +6077,7 @@ si fuera de ahora. Ahora se valida primero.
 [`docs/evidencias/mapa-y-modo-oculto/`](evidencias/mapa-y-modo-oculto/) — los
 dos modos, las dos pantallas, y la letra chica de OpenStreetMap.
 
-**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.
 
 ---
@@ -6145,7 +6145,7 @@ contestan "quién es esta persona" son dos respuestas que se separan.
 [`docs/evidencias/perfil-de-una-persona/`](evidencias/perfil-de-una-persona/)
 — la ficha, la galería y el salto al mensaje.
 
-**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.
 
 ---
@@ -6221,7 +6221,7 @@ siendo ilegible.
 — los cinco hallazgos, lo que se miró y estaba bien, y lo que se decidió no
 hacer.
 
-**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.
 
 ---
@@ -6295,7 +6295,7 @@ cubos, y obligó a bajar el máximo de 128 KiB a 60 KiB.
 [`docs/evidencias/relleno-del-sobre/`](evidencias/relleno-del-sobre/) — los
 tamaños antes y después, medidos en Postgres.
 
-**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.
 
 ---
@@ -6368,7 +6368,7 @@ emulador para tocarla.
 [`docs/evidencias/sobre-hostil/`](evidencias/sobre-hostil/) — el defecto del
 bucle, el fuzzer y lo que encontró.
 
-**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.
 
 ---
@@ -6435,7 +6435,7 @@ vuelve tras un día caído tiene un día de cosas vencidas encima.
 
 `RetencionTest`, 5 pruebas contra la base real.
 
-**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.
 
 ---
@@ -6506,7 +6506,7 @@ Se resolvió mirando la pantalla en vez del contador.
 [`docs/evidencias/modo-cine/`](evidencias/modo-cine/) — el diálogo del sistema
 y la pantalla compartida desde los dos tipos de llamada.
 
-**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.
 
 ---
@@ -6569,5 +6569,73 @@ la app deja la conversación sin poder llamar durante cinco minutos.
 esperar) y la suite `llamadas` (141). Validado inyectando siete defectos: los
 siete los caza la prueba que afirma esa propiedad.
 
-**1942 pruebas en verde**: 1526 de integración en 36 suites, 329 JUnit de app
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
+y 87 de servidor.
+
+---
+
+## Módulo AY · Chats y grupos temporales ✅
+
+Una conversación que se borra sola: la conversación entera, no sus mensajes uno
+a uno. Directas y grupos, con plazos de 1 h, 8 h, 24 h o 7 días.
+
+### AY.1 · Lo que promete y lo que no
+
+> *Al cumplirse el plazo, la conversación y sus mensajes se borran en todos los
+> teléfonos. **No impide que alguien haga una captura antes.***
+
+La segunda frase está donde se decide, a propósito. "Temporal" invita a
+entender "nadie lo va a poder ver", y no es eso: lo que hace es que el registro
+deje de existir.
+
+Apagado por defecto: crear sin querer un chat que se borra no se deshace, y
+cuando se nota ya no está.
+
+### AY.2 · Es una conversación aparte
+
+Pedir un chat temporal **no convierte** el que ya existe: eso le pondría fecha
+de borrado a un historial que nadie aceptó perder. La temporal empieza vacía y
+lleva una clave propia, para poder convivir con la normal y con otra temporal.
+
+### AY.3 · Lo hacen cumplir los dos, y hace falta
+
+El **teléfono** borra la conversación y sus mensajes — es el único que puede,
+porque el historial vive sólo ahí. El **servidor** borra su rastro y avisa a
+quien esté conectado. Sin el primero, el chat seguiría en pantalla; sin el
+segundo, quedaría para siempre el registro de que esa conversación existió,
+entre quiénes y cuándo.
+
+La fecha la calcula el servidor: con dos relojes mal puestos, el mismo chat
+vencería en momentos distintos y el adelantado lo borraría mientras el otro
+sigue escribiendo. Y viaja en cada listado, que es el único camino por el que se
+entera un aparato que no estuvo cuando se creó.
+
+---
+
+## Tres cosas que encontró el esquema, no una prueba
+
+**`expira_en` no puede ser anterior a `creada_en`.** El CHECK rechazó mi propia
+prueba, que adelantaba el reloj mal. Tenía razón.
+
+**`evento_pendiente` valida el tipo contra una lista cerrada.** Sin agregar el
+tipo nuevo, el barrido fallaba cada diez segundos. Un tipo mal escrito no se
+entrega en silencio.
+
+**Y ese fallo se llevaba puestos los otros barridos**, porque los tres
+compartían un `runCatching`: las llamadas dejaron de cerrarse solas por culpa de
+un chat, y el síntoma no se parecía a la causa. Ahora cada uno tiene el suyo.
+
+## Y un orden que costó una prueba en rojo
+
+`evento_pendiente.conversacion_id` cascadea con `conversacion`. Emitir el aviso
+antes de borrar lo creaba y el borrado se lo llevaba en la misma transacción:
+quien estaba conectado se enteraba igual, y **quien estaba apagado no se
+enteraba nunca**. Ahora se emite después, con el id en el detalle.
+
+### Evidencias
+
+[`docs/evidencias/chats-temporales/`](evidencias/chats-temporales/) — el
+diálogo, y qué está verificado y qué no.
+
+**1959 pruebas en verde**: 1548 de integración en 37 suites, 329 JUnit de app
 y 87 de servidor.

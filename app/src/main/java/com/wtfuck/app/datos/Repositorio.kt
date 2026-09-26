@@ -398,6 +398,13 @@ class Repositorio(
             // arregle nada.
             launch { runCatching { llamadas.recuperar() } }
             launch { runCatching { reanudarUbicacionEnVivo() } }
+            // Los chats temporales vencidos, al arrancar.
+            //
+            // Hace falta ademas del aviso del servidor: si el telefono estuvo
+            // apagado cuando vencio, ese aviso ya paso y nadie lo recibio. La
+            // fecha esta guardada, asi que el reloj sigue corriendo aunque la
+            // app no.
+            launch { runCatching { barrerChatsVencidos() } }
             // Cada sobre se maneja dentro de su propio `runCatching`.
             //
             // Sin esto, UNA excepcion mata el `collect` y con el todo el canal
@@ -522,6 +529,7 @@ class Repositorio(
                 silenciadoHasta = r.silenciadoHasta ?: 0L,
                 archivado = r.archivado,
                 fijado = r.fijado,
+                expiraEn = r.expiraEn,
             )
         )
     }
@@ -994,6 +1002,30 @@ class Repositorio(
             // Me sacaron: se marca de inmediato, sin esperar la proxima
             // sincronizacion. La linea de sistema se agrega mas abajo.
             "expulsado", "sacado_grupo" -> dao.marcarFuera(e.conversacionId)
+            // Un chat temporal vencio. Se borra AQUI y ahora.
+            //
+            // El barrido del arranque cubre al telefono que estaba apagado;
+            // esto cubre al que esta mirando la pantalla. Sin los dos, o el
+            // chat se queda visible hasta reiniciar, o solo desaparece para
+            // quien tuvo la mala suerte de reiniciar.
+            //
+            // No deja linea de sistema: seria una linea en un chat que acaba
+            // de dejar de existir.
+            "conversacion_vencida" -> {
+                // El id viene en el DETALLE y no en `conversacionId`, y no es
+                // un capricho: el aviso se emite despues de borrar la fila, y
+                // la columna apunta a `conversacion` con ON DELETE CASCADE —
+                // con el id ahi, el propio borrado se llevaria el aviso por
+                // delante y quien estuviera apagado no se enteraria nunca.
+                val cual = runCatching {
+                    jsonApp.parseToJsonElement(e.detalle.orEmpty())
+                        .jsonObject["conversacion"]?.jsonPrimitive?.content
+                }.getOrNull() ?: e.conversacionId
+                runCatching { vaciarChat(cual) }
+                runCatching { dao.borrarConversacion(cual) }
+                socket.enviar(Subida.AcuseEvento(listOf(e.eventoId)))
+                return
+            }
             // Publicacion nueva en un canal: NO se guarda como mensaje local.
             // El contenido vive en el servidor y la pantalla del canal lo lee
             // de ahi; meterlo tambien en la base local seria tener dos copias
@@ -2834,6 +2866,38 @@ class Repositorio(
      */
     suspend fun conversacion(id: String): ConversacionEnt? = dao.conversacion(id)
 
+    /**
+     * Borra los chats temporales que ya vencieron, con todo lo suyo.
+     *
+     * ## Por que lo hace el telefono y no el servidor
+     *
+     * Porque el servidor **no tiene** el historial: lo borra al confirmarse la
+     * entrega. Lo unico que puede borrar alla es el rastro de que esa
+     * conversacion existio. Los mensajes estan aqui, y aqui se borran.
+     *
+     * Es la misma reparticion que en la ubicacion en vivo: la fecha viaja
+     * dentro del dato y cada lado la hace cumplir con lo que tiene.
+     *
+     * ## Que NO promete
+     *
+     * Que nadie se lo haya llevado antes. Una captura de pantalla, una foto
+     * del telefono con otro telefono, o alguien mirando por encima del hombro
+     * no los para nada. Un chat temporal reduce cuanto tiempo existe el
+     * registro; no convierte lo dicho en irrecuperable, y la pantalla lo dice
+     * con esas palabras.
+     */
+    suspend fun barrerChatsVencidos(): Int {
+        val vencidas = dao.conversacionesVencidas(System.currentTimeMillis())
+        for (conv in vencidas) {
+            // Primero el contenido y despues la fila: al reves, borrar la
+            // conversacion deja los mensajes huerfanos si algo falla en el
+            // medio, y esos ya no los encuentra nadie para borrarlos.
+            runCatching { vaciarChat(conv.id) }
+            runCatching { dao.borrarConversacion(conv.id) }
+        }
+        return vencidas.size
+    }
+
     /** La directa que YA existe con alguien, sin crearla. Ver el DAO. */
     suspend fun directaCon(username: String): ConversacionEnt? =
         dao.directaCon(username.lowercase().trim())
@@ -3767,11 +3831,14 @@ class Repositorio(
         dao.borrarConversaciones()
     }
 
-    suspend fun nuevaDirecta(username: String): String =
-        api.crearDirecta(username).also { guardarResumen(it) }.id
+    suspend fun nuevaDirecta(username: String, duracionMs: Long = 0): String =
+        api.crearDirecta(username, duracionMs).also { guardarResumen(it) }.id
 
-    suspend fun nuevoGrupo(nombre: String, usernames: List<String>): String =
-        api.crearGrupo(nombre, usernames).also { guardarResumen(it) }.id
+    suspend fun nuevoGrupo(
+        nombre: String,
+        usernames: List<String>,
+        duracionMs: Long = 0,
+    ): String = api.crearGrupo(nombre, usernames, duracionMs).also { guardarResumen(it) }.id
 
     /** Borra el historial local de un chat. El servidor no guarda historial. */
     suspend fun vaciarChat(convId: String) {

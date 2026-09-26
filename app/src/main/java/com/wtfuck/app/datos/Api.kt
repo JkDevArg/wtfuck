@@ -262,11 +262,15 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun conversaciones(): List<ConversacionResumen> =
         pedir(RUTA_CONVERSACIONES, "GET", null, true)
 
-    suspend fun crearDirecta(username: String): ConversacionResumen =
-        pedir(RUTA_DIRECTA, "POST", jsonApp.encodeToString(DirectaReq(username)), true)
+    suspend fun crearDirecta(username: String, duracionMs: Long = 0): ConversacionResumen =
+        pedir(RUTA_DIRECTA, "POST", jsonApp.encodeToString(DirectaReq(username, duracionMs)), true)
 
-    suspend fun crearGrupo(nombre: String, usernames: List<String>): ConversacionResumen =
-        pedir(RUTA_GRUPOS, "POST", jsonApp.encodeToString(GrupoReq(nombre, usernames)), true)
+    suspend fun crearGrupo(
+        nombre: String,
+        usernames: List<String>,
+        duracionMs: Long = 0,
+    ): ConversacionResumen =
+        pedir(RUTA_GRUPOS, "POST", jsonApp.encodeToString(GrupoReq(nombre, usernames, duracionMs)), true)
 
     suspend fun agregarMiembros(convId: String, usernames: List<String>): ConversacionResumen =
         pedir("$RUTA_CONVERSACIONES/$convId/miembros", "POST", jsonApp.encodeToString(MiembrosReq(usernames)), true)

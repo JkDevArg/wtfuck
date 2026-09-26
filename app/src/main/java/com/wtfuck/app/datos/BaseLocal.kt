@@ -47,6 +47,15 @@ data class ConversacionEnt(
      * Se apaga sola al ABRIR el chat, que es la unica accion que significa
      * "ya la vi". Mirarla en la lista no cuenta.
      */
+    /**
+     * Cuando este chat se borra solo, en epoch ms. `0` = nunca.
+     *
+     * Lo calcula el SERVIDOR y viaja con la conversacion; aqui solo se guarda.
+     * Que la fecha venga de un solo reloj es lo que evita que el mismo chat
+     * venza en momentos distintos en cada telefono — y que el que lo tuviera
+     * adelantado lo borrara mientras el otro sigue escribiendo.
+     */
+    val expiraEn: Long = 0,
     val marcadaNoLeida: Boolean = false,
     /**
      * Si sigo perteneciendo a esta conversacion.
@@ -90,6 +99,8 @@ data class ChatFila(
     val fijado: Boolean,
     val marcadaNoLeida: Boolean,
     val soyMiembro: Boolean,
+    /** Cuando este chat se borra solo. `0` = nunca. Ver [ConversacionEnt]. */
+    val expiraEn: Long = 0,
     /** Como llamo YO a la otra persona, si la tengo agendada. Ver [titulo]. */
     val aliasContacto: String = "",
     /** Lo mismo para quien escribio el ultimo mensaje de un grupo. */
@@ -487,7 +498,7 @@ interface ChatDao {
                   m.adjuntoClase AS ultimoAdjuntoClase,
                   m.adjuntoNombre AS ultimoAdjuntoNombre,
                   c.miRol, c.miJerarquia, c.silenciadoHasta, c.archivado, c.fijado,
-                  c.marcadaNoLeida, c.soyMiembro,
+                  c.marcadaNoLeida, c.soyMiembro, c.expiraEn,
                   COALESCE(k.alias, '') AS aliasContacto,
                   COALESCE(ka.alias, '') AS aliasAutor
            FROM conversacion c
@@ -715,6 +726,20 @@ interface ChatDao {
      */
     @Query("SELECT * FROM conversacion WHERE tipo = 'directa' AND nombre = :username LIMIT 1")
     suspend fun directaCon(username: String): ConversacionEnt?
+
+    /**
+     * Los chats temporales que ya vencieron, segun el reloj de ESTE telefono.
+     *
+     * Se hace cumplir aqui ademas de en el servidor, y no es redundancia: el
+     * historial vive solo en este aparato, asi que el servidor **no puede**
+     * borrarlo. Lo unico que borra alla es el rastro de que la conversacion
+     * existio.
+     *
+     * Es la misma reparticion que en la ubicacion en vivo: la fecha viaja
+     * dentro del dato y cada lado la hace cumplir con lo que tiene.
+     */
+    @Query("SELECT * FROM conversacion WHERE expiraEn > 0 AND expiraEn <= :ahora")
+    suspend fun conversacionesVencidas(ahora: Long): List<ConversacionEnt>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun guardarConversacion(c: ConversacionEnt)
@@ -1099,7 +1124,7 @@ interface ChatDao {
         EmojiUsoEnt::class,
         AjusteLocalEnt::class,
     ],
-    version = 17,
+    version = 18,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1118,7 +1143,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .openHelperFactory(factory)
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
-                    DE_15_A_16, DE_16_A_17,
+                    DE_15_A_16, DE_16_A_17, DE_17_A_18,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1262,6 +1287,19 @@ abstract class BaseLocal : RoomDatabase() {
          * Sin `DEFAULT` en el CREATE: los valores por defecto viven en el
          * constructor de la entidad. Ver la nota de `CREAR_HISTORIA`.
          */
+        /**
+         * Modulo AY. La fecha en que un chat temporal se borra solo.
+         *
+         * A mano y no destructiva, por lo mismo de siempre: esta base es la
+         * unica copia del historial. Dejar que Room la recree por una columna
+         * nueva borraria todos los mensajes de todo el mundo.
+         */
+        private val DE_17_A_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE conversacion ADD COLUMN expiraEn INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         private val DE_16_A_17 = object : Migration(16, 17) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

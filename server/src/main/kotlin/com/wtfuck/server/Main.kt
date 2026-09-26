@@ -339,9 +339,32 @@ private fun arrancarTareas() {
                 // no en el barrido de una hora porque el limite son CINCO
                 // MINUTOS: con el reloj lento, esperar solo en una llamada
                 // podrian ser sesenta y cinco.
-                val (solas, avisosSolo) = Llamadas.cerrarLlamadasSolitarias()
-                avisosSolo.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
-                if (solas > 0) bitacora.info("Cerradas {} llamadas con una sola persona.", solas)
+                runCatching {
+                    val (solas, avisosSolo) = Llamadas.cerrarLlamadasSolitarias()
+                    avisosSolo.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
+                    if (solas > 0) bitacora.info("Cerradas {} llamadas con una sola.", solas)
+                }.onFailure { bitacora.warn("Fallo el barrido de solitarias: {}", it.message) }
+
+                // Cada barrido en su PROPIO runCatching.
+                //
+                // Compartian uno solo, y eso convierte el fallo de cualquiera
+                // en el fallo de todos: al agregar el de chats temporales, un
+                // CHECK violado en su aviso dejo de barrer tambien los timbres
+                // y las llamadas abandonadas —cada diez segundos, durante todo
+                // el rato que tardo en verse—. El sintoma no se parecia a la
+                // causa: las llamadas dejaron de cerrarse solas por un chat.
+                //
+                // Y los chats temporales que vencieron.
+                //
+                // Va en el hilo de 10 segundos y no en el de una hora porque
+                // el plazo mas corto que se puede elegir es UNA HORA: con el
+                // reloj lento, un chat de una hora podria durar dos, que es el
+                // doble de lo que su dueno acepto.
+                runCatching {
+                    val (chats, avisosChat) = Repo.borrarConversacionesVencidas()
+                    avisosChat.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
+                    if (chats > 0) bitacora.info("Borrados {} chats temporales vencidos.", chats)
+                }.onFailure { bitacora.warn("Fallo el barrido de temporales: {}", it.message) }
 
                 val (cerradas, avisos) = Llamadas.cerrarTimbresVencidos()
                 // Los avisos se empujan FUERA de la transaccion, igual que en
@@ -549,7 +572,7 @@ fun Application.modulo() {
         post(RUTA_DIRECTA) {
             val yo = call.autenticar()
             val req = call.receive<DirectaReq>()
-            call.respond(Repo.crearDirecta(yo, req.usernameDestino))
+            call.respond(Repo.crearDirecta(yo, req.usernameDestino, req.duracionMs))
         }
 
         post(RUTA_GRUPOS) {

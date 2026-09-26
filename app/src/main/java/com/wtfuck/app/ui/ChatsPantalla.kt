@@ -64,6 +64,15 @@ import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.EstadoEnvio
 import com.wtfuck.protocol.PreferenciasChat
 import kotlinx.coroutines.launch
+import com.wtfuck.app.ui.theme.TextoSobreAcento
+import com.wtfuck.protocol.DuracionChat
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.filled.Timer
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -677,16 +686,16 @@ fun ChatsPantalla(
         DialogoNueva(
             grupoInicial = arrancarEnGrupo,
             onCerrar = { mostrarNueva = false },
-            onDirecta = { usuario ->
+            onDirecta = { usuario, duracion ->
                 ambito.launch {
-                    runCatching { app.repo.nuevaDirecta(usuario) }
+                    runCatching { app.repo.nuevaDirecta(usuario, duracion) }
                         .onSuccess { mostrarNueva = false; onAbrir(it, "directa") }
                         .onFailure { errorDialogo = it.message }
                 }
             },
-            onGrupo = { nombre, usuarios ->
+            onGrupo = { nombre, usuarios, duracion ->
                 ambito.launch {
-                    runCatching { app.repo.nuevoGrupo(nombre, usuarios) }
+                    runCatching { app.repo.nuevoGrupo(nombre, usuarios, duracion) }
                         .onSuccess { mostrarNueva = false; onAbrir(it, "grupo") }
                         .onFailure { errorDialogo = it.message }
                 }
@@ -1119,6 +1128,18 @@ private fun FilaChat(
                     Icon(Icons.Filled.NotificationsOff, "Silenciado", tint = TextoTerciario, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(4.dp))
                 }
+                // Temporal, y en CIAN y no en gris como los otros dos.
+                //
+                // Fijado y silenciado son preferencias: se cambian de idea y no
+                // pasa nada. Que un chat se borre solo no se deshace, así que
+                // no puede verse como un detalle más de la fila.
+                if (c.expiraEn > 0) {
+                    Icon(
+                        Icons.Filled.Timer, "Chat temporal",
+                        tint = Cian, modifier = Modifier.size(13.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
                 Text(
                     horaCorta(c.ultimaFecha ?: 0L),
                     style = MaterialTheme.typography.labelSmall,
@@ -1158,12 +1179,14 @@ private fun FilaChat(
 private fun DialogoNueva(
     grupoInicial: Boolean,
     onCerrar: () -> Unit,
-    onDirecta: (String) -> Unit,
-    onGrupo: (String, List<String>) -> Unit,
+    onDirecta: (String, Long) -> Unit,
+    onGrupo: (String, List<String>, Long) -> Unit,
 ) {
     var esGrupo by remember { mutableStateOf(grupoInicial) }
     var usuario by remember { mutableStateOf("") }
     var nombreGrupo by remember { mutableStateOf("") }
+    /** `0` = para siempre, que es lo normal. */
+    var duracion by remember { mutableStateOf(0L) }
 
     AlertDialog(
         onDismissRequest = onCerrar,
@@ -1189,6 +1212,62 @@ private fun DialogoNueva(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Spacer(Modifier.height(12.dp))
+
+                // Temporal, y apagado por defecto.
+                //
+                // Lo normal es un chat que se queda. Ofrecerlo encendido haría
+                // que alguien creara sin querer un chat que se borra, y eso no
+                // se deshace: cuando se nota, ya no está.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = duracion != 0L,
+                        onCheckedChange = { duracion = if (it) DuracionChat.HORAS_24 else 0L },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = TextoSobreAcento,
+                            checkedTrackColor = Cian,
+                            uncheckedThumbColor = TextoTerciario,
+                            uncheckedTrackColor = BgElev,
+                            uncheckedBorderColor = Slate,
+                        ),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text("Temporal", color = TextoPrimario)
+                }
+
+                if (duracion != 0L) {
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DuracionChat.OPCIONES.forEach { ms ->
+                            FilterChip(
+                                selected = duracion == ms,
+                                onClick = { duracion = ms },
+                                label = { Text(etiquetaDuracionChat(ms)) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Cian,
+                                    selectedLabelColor = TextoSobreAcento,
+                                    labelColor = TextoSecundario,
+                                ),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    // Lo que promete y lo que no, donde se decide.
+                    //
+                    // "Temporal" invita a entender "nadie lo va a poder ver", y
+                    // no es eso: lo que hace es que el registro deje de
+                    // existir. Una captura de pantalla, o alguien mirando por
+                    // encima del hombro, no los para nada — y no decirlo aquí
+                    // sería vender algo que la app no puede cumplir.
+                    Text(
+                        "Al cumplirse el plazo, la conversación y sus mensajes se " +
+                            "borran en todos los teléfonos. No impide que alguien " +
+                            "haga una captura antes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+
                 Spacer(Modifier.height(8.dp))
                 TextButton(onClick = { esGrupo = !esGrupo }) {
                     Text(if (esGrupo) "Mejor una conversación directa" else "Crear un grupo", color = Cian)
@@ -1203,8 +1282,8 @@ private fun DialogoNueva(
                     if (us.isEmpty()) return@TextButton
                     if (esGrupo) {
                         if (nombreGrupo.isBlank()) return@TextButton
-                        onGrupo(nombreGrupo.trim(), us)
-                    } else onDirecta(us.first())
+                        onGrupo(nombreGrupo.trim(), us, duracion)
+                    } else onDirecta(us.first(), duracion)
                 }
             ) { Text("Crear", color = Cian) }
         },
@@ -1476,4 +1555,20 @@ private fun BarraSeleccion(
             }
         },
     )
+}
+
+/**
+ * "1 h", "24 h", "7 días".
+ *
+ * Aparte de `etiquetaDuracion` —la de la ubicación en vivo— porque las escalas
+ * no se tocan: aquella va de 15 minutos a 24 horas y ésta de 1 hora a 7 días.
+ * Una sola función para las dos tendría que cubrir un rango donde la mitad de
+ * los casos no existen.
+ */
+internal fun etiquetaDuracionChat(ms: Long): String = when (ms) {
+    DuracionChat.HORA_1 -> "1 h"
+    DuracionChat.HORAS_8 -> "8 h"
+    DuracionChat.HORAS_24 -> "24 h"
+    DuracionChat.DIAS_7 -> "7 días"
+    else -> "${ms / 3_600_000} h"
 }
