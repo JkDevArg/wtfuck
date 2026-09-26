@@ -3,8 +3,8 @@
 Cuando una llamada termina, aparece en el chat con el tipo, la dirección y
 cuánto duró — como en cualquier app de mensajería.
 
-![el lado que contestó](1-el-lado-que-contesto.png)
-![el lado que llamó](2-el-lado-que-llamo.png)
+> *Captura: el lado que contestó. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
+> *Captura: el lado que llamó. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 ---
 

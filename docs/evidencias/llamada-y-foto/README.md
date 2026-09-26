@@ -24,7 +24,7 @@ if (sonando) ultima = e!!.conversacionId
 else ultima?.let { Notificaciones.quitarLlamada(this, it); ultima = null }
 ```
 
-![sin cartel](1-sin-cartel-al-contestar.png)
+> *Captura: sin cartel. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 ## 2. "No se ve mi cámara" — y sí se veía
 
@@ -119,7 +119,7 @@ límite viejo. El servidor la aceptó, lo que significa que lo que le llegó pes
 512 KB o menos. Si el cliente hubiera mandado los 10.4 MB, habría respondido
 413 y la app habría mostrado el error.
 
-![foto de 10 MB](2-foto-de-10MB-subida.png)
+> *Captura: foto de 10 MB. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 ## 6. La foto de perfil ahora se abre
 
@@ -133,7 +133,7 @@ Doble toque vuelve al inicio porque con sólo pellizcar no hay forma de volver
 exactamente a 1x, y una foto que quedó torcida y no se deja enderezar se siente
 rota.
 
-![visor](3-visor-de-foto.png)
+> *Captura: visor. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 ## 7. La portada también se abre, y le hacía más falta
 
@@ -146,7 +146,7 @@ abierta a pantalla completa y sin el círculo del avatar al lado, una portada y
 una foto de perfil se parecen demasiado, y el visor es el único sitio donde se
 puede decir cuál se está mirando.
 
-![visor de portada](4-visor-de-portada.png)
+> *Captura: visor de portada. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 ### Y de paso: no se abre lo que no existe
 

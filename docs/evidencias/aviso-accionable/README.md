@@ -9,11 +9,11 @@ había que abrir los chats uno por uno hasta dar con la burbuja coral.
 
 ## Ahora
 
-![El aviso dice dónde](1-el-aviso-dice-donde.png)
+> *Captura: El aviso dice dónde. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 > ● 1 mensaje no se envió a joaquin · toca para ir
 
-![Y lleva al mensaje](2-y-lleva-al-mensaje.png)
+> *Captura: Y lleva al mensaje. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 Y no lleva al chat: lleva **al mensaje**. En la captura está arriba del todo,
 con su borde coral y su `No se pudo subir el archivo.` — y estaba en la

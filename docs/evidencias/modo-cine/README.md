@@ -15,7 +15,7 @@ presentación, fotos, cualquier app que no se haya excluido.
 
 ## 1 · Lo pregunta el sistema, no la app
 
-![El diálogo del sistema](1-lo-pregunta-el-sistema.png)
+> *Captura: El diálogo del sistema. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 El diálogo es de Android y dice lo que hay que decir:
 
@@ -30,7 +30,7 @@ tiene que seguir siendo del sistema.
 
 ## 2 · Desde una llamada de audio
 
-![Compartido en una llamada de audio](2-desde-una-llamada-de-audio.png)
+> *Captura: Compartido en una llamada de audio. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 El Chrome de quien presenta, en el teléfono del otro. Con la etiqueta
 *"@joaquin está presentando"*: una pantalla ajena que aparece de golpe sin
@@ -45,7 +45,7 @@ cambio—. Una `m=` de más en el SDP cuesta unas líneas y ningún medio.
 
 ## 3 · Desde una videollamada
 
-![Compartido en una videollamada](3-desde-una-videollamada.png)
+> *Captura: Compartido en una videollamada. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 La cámara se para y la pantalla ocupa su lugar en la **misma pista**: cambia
 quién da los fotogramas, no lo que está negociado. Del otro lado la imagen
@@ -60,7 +60,7 @@ progreso y los subtítulos.
 
 | Sola, a los 3,5 s | Al tocar |
 |---|---|
-| ![Sin controles](4-sin-controles.png) | ![Al tocar vuelven](5-al-tocar-vuelven.png) |
+| > *Captura: Sin controles. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.* | > *Captura: Al tocar vuelven. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.* |
 
 La cabecera y los cuatro botones se comían justo el centro de lo que se estaba
 mirando. Ahora se apartan solos y vuelven al tocar en cualquier sitio, como en

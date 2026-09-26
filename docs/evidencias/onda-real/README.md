@@ -4,7 +4,7 @@ Antes se dibujaba una figura **inventada**, derivada del id del mensaje. Se veí
 bien y no decía nada: dos notas distintas se veían distintas, pero ninguna se
 parecía a lo que había dentro.
 
-![la onda medida](1-la-onda-medida.png)
+> *Captura: la onda medida. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 ---
 

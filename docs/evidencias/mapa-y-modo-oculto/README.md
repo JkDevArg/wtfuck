@@ -14,7 +14,7 @@ ese costo**, que resultó ser dos preguntas distintas.
 
 ## 1 · Quien comparte elige si su posición puede llegar a un tercero
 
-![Los dos modos](1-elegir-el-modo.png)
+> *Captura: Los dos modos. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 El selector sólo aparece cuando hay una duración elegida: sin compartido en
 vivo no hay nada que encuadrar, y una opción que todavía no aplica es ruido
@@ -40,7 +40,7 @@ forma de saber si se aceptó el mapa si no se lo dicen.
 
 ## 2 · Con mapa
 
-![La burbuja con OpenStreetMap](2-con-mapa.png)
+> *Captura: La burbuja con OpenStreetMap. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 El recorrido sobre las calles de verdad, con el marcador que ya era la
 persona desde AM.5, la barra de escala y el crédito de OpenStreetMap — que no
@@ -54,7 +54,7 @@ para llegar a donde la íbamos a llevar igual.
 
 ## 3 · Quien mira elige si expone su propia IP
 
-![La oferta, una sola vez](3-quien-recibe-decide.png)
+> *Captura: La oferta, una sola vez. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 Acá está la parte que no se ve de entrada. Quien comparte decidió que su
 **posición** puede llegar a un tercero. Pero la petición la hace el teléfono
@@ -79,7 +79,7 @@ sincroniza. Un permiso que sólo se puede encender no es un permiso.
 
 ## 4 · Modo oculto: el rastro sin mapa
 
-![El rastro sin mapa](4-modo-oculto-rastro.png)
+> *Captura: El rastro sin mapa. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 Cinco posiciones a lo largo de unos 900 m, con el marcador en la punta nueva
 y el trazo detrás. **Ninguna petición a ningún tercero**, ni una.
@@ -100,7 +100,7 @@ porque sin ella la lectura obvia de un dibujo sin mapa es "se rompió".
 
 ## 5 · Y la ubicacion de una sola vez tambien
 
-![Una ubicacion normal con mapa](5-una-sola-vez.png)
+> *Captura: Una ubicacion normal con mapa. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 El caso comun sigue siendo mandar donde estas **una vez**, asi que el modo
 vale para las dos formas de compartir la posicion. Tenerlo solo para el

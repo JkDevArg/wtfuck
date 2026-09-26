@@ -166,8 +166,8 @@ radios virtuales están aisladas entre sí**. Dos emuladores no se ven.
 
 2. **El diálogo aparece en el menú y funciona.**
 
-   ![en el menú](1-en-el-menu.png)
-   ![apagado](2-apagado.png)
+   > *Captura: en el menú. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
+   > *Captura: apagado. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 3. **`encender()` abre de verdad el socket RFCOMM.** Esto no es un simulacro:
    el stack de Bluetooth de Android aceptó el registro SDP con el UUID y el
@@ -180,14 +180,14 @@ radios virtuales están aisladas entre sí**. Dos emuladores no se ven.
      Adding listening socket service_name: wtfuck-cerca
    ```
 
-   ![buscando](3-buscando.png)
+   > *Captura: buscando. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 4. **El buzón sigue funcionando con el modo cerca encendido.** Es la regresión
    que de verdad importaba: `cerca` entró en la lista de transportes, así que
    había que comprobar que no se robe los envíos. Con los dos teléfonos en
    `ESCUCHANDO`, un mensaje salió por el WebSocket y llegó con su aviso.
 
-   ![el buzón sigue](4-el-buzon-sigue-funcionando.png)
+   > *Captura: el buzón sigue. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 5. **Apagar no rompe nada.** Sin `FATAL` en logcat y el proceso vivo en los dos.
 

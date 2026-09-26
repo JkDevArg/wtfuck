@@ -3,7 +3,7 @@
 Una conversación que se borra sola: la conversación entera, no sus mensajes uno
 a uno.
 
-![Elegir el plazo](1-elegir-el-plazo.png)
+> *Captura: Elegir el plazo. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 ## Lo que dice, y lo que no promete
 

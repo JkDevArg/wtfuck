@@ -5,7 +5,7 @@ Probado de punta a punta en dos emuladores, moviendo la posición con
 
 ## 1 · Elegir cuánto
 
-![Las seis duraciones](1-elegir-cuanto.png)
+> *Captura: Las seis duraciones. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 15 min, 30 min, 1 h, 8 h, 12 h y 24 h. Una lista cerrada y no un campo libre:
 "cuánto es demasiado" no es una pregunta de interfaz. Compartir dónde estás es
@@ -23,7 +23,7 @@ hasta tocar el segundo.
 
 ## 2 · Quien comparte
 
-![La burbuja de quien comparte](2-quien-comparte.png)
+> *Captura: La burbuja de quien comparte. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 `En tiempo real · quedan 15 min`, la posición, el margen, **cuándo se
 actualizó**, y el botón de cortar.
@@ -39,14 +39,14 @@ la app está leyendo dónde estás y eso no puede pasar en silencio.
 
 ## 3 · Quien recibe
 
-![La burbuja de quien recibe](3-quien-recibe.png)
+> *Captura: La burbuja de quien recibe. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 Lo mismo, **sin** el botón de cortar: sólo lo puede hacer quien comparte, y un
 botón que no hace nada es peor que no tenerlo.
 
 ## 4 · Y se mueve sola
 
-![La posición se actualiza](4-se-mueve-sola.png)
+> *Captura: La posición se actualiza. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 Se movió el emulador con `adb emu geo fix` y la burbuja pasó de
 `-12.046400, -77.042798` a `-12.025000, -77.025000`, con el contador bajando de
@@ -58,7 +58,7 @@ decir siempre lo mismo, y el chat dejaría de ser un chat.
 
 ## 5 · La cara es el marcador
 
-![El avatar como marcador](5-la-cara-es-el-marcador.png)
+> *Captura: El avatar como marcador. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 El punto genérico obligaba a leer el nombre para saber de quién era la
 posición. Ahora el marcador **es la persona**, con una antena pequeña encima

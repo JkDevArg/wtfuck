@@ -7,7 +7,7 @@ está en Telegram.
 
 ## 1 · La ficha
 
-![El perfil](1-el-perfil.png)
+> *Captura: El perfil. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 **No hay número de teléfono.** Esta app registra por username y no pide
 teléfono ni correo, así que esa fila no existe. Poner un hueco donde otra app
@@ -46,7 +46,7 @@ nada.
 
 ## 2 · Y se pueden abrir
 
-![La galería](2-galeria.png)
+> *Captura: La galería. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 Un recuento que no se puede abrir es decoración: dice "hay 6 fotos" y deja a
 la persona haciendo scroll por el chat para encontrar una. **La razón de
@@ -65,7 +65,7 @@ habría salteado la única comprobación que hay.
 
 ## 3 · Tocar una lleva a su sitio en el chat
 
-![El salto al mensaje](3-salto-al-mensaje.png)
+> *Captura: El salto al mensaje. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 No a un visor suelto: al mensaje, donde está el contexto de quién lo mandó y
 qué se estaba diciendo. Reusa el salto a mensaje del módulo AB

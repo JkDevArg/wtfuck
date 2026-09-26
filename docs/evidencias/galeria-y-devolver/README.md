@@ -11,8 +11,8 @@ sigue estando —es el botón de arriba del visor— pero no es lo que uno quier
 hacer en una galería: mirar las fotos, una detrás de otra. Con el salto había
 que volver atrás, buscar la siguiente y volver a saltar.
 
-![el visor](1-visor-de-galeria.png)
-![deslizando](2-deslizando-y-descargando.png)
+> *Captura: el visor. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
+> *Captura: deslizando. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 ### Lo que se ve mientras se descarga
 
@@ -37,7 +37,7 @@ antes**: quien toca una videollamada perdida quiere una videollamada, no una de
 voz. Preguntarlo con un menú de dos opciones sería un paso de más en la acción
 más obvia que hay ahí.
 
-![devolver](3-devolver-la-llamada.png)
+> *Captura: devolver. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 En el commit anterior esto estaba declarado como lo que faltaba, con el motivo
 de no haberlo hecho a medias: *"una burbuja que parece un botón y no lo es

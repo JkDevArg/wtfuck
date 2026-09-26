@@ -11,7 +11,7 @@ darlo antes de que el timbre se agote, y a mano, entre dos ventanas, no llega.
 
 ## 1 · El botón que no existía
 
-![El grupo, con el botón de llamar](1-boton-en-el-grupo.png)
+> *Captura: El grupo, con el botón de llamar. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 En un grupo **no había botón de llamar**, y el comentario que lo ocultaba decía
 la verdad a medias:
@@ -27,8 +27,8 @@ malla se estaba aplicando al grupo en vez de a la llamada.
 
 ## 2 · Elegir a quién
 
-![La hoja de invitados](2-hoja-vacia.png)
-![Dos elegidos, tres de cuatro](3-dos-elegidos.png)
+> *Captura: La hoja de invitados. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
+> *Captura: Dos elegidos, tres de cuatro. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 El tope **se dice, no se descubre**: se explica arriba y las filas de más se
 deshabilitan en vez de desaparecer. Y se cuenta `1 + elegidos`, porque quien
@@ -39,8 +39,8 @@ Audio o vídeo se decide **aquí**, junto con la gente: es una misma decisión.
 
 ## 3 · Suena sólo a quien se eligió
 
-![Llamando](4-llamando.png)
-![Suena en el otro aparato](5-suena-en-el-otro.png)
+> *Captura: Llamando. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
+> *Captura: Suena en el otro aparato. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 Quien recibe ve **"llamada de grupo · Equipo seguridad"**. Antes veía sólo
 `@tatiana` y no tenía cómo saber que era una llamada de grupo ni de cuál:
@@ -49,8 +49,8 @@ a una persona.
 
 ## 4 · Conectada, con vídeo de verdad
 
-![Quien llamó](6-conectada-quien-llamo.png)
-![Quien contestó](7-conectada-quien-contesto.png)
+> *Captura: Quien llamó. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
+> *Captura: Quien contestó. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 Las dos pantallas dicen cosas **distintas**, porque la pregunta es distinta:
 
@@ -170,7 +170,7 @@ instalado.
 
 ## 8 · Uno rechaza y la llamada sigue
 
-![Uno rechaza y la llamada sigue](8-uno-rechaza-y-la-llamada-sigue.png)
+> *Captura: Uno rechaza y la llamada sigue. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 `llamando a rocio · joaquin no entró`, con la llamada viva:
 
@@ -197,8 +197,8 @@ quien aún podía contestar.
 
 ## 9 y 10 · Se cae una conexión y la pantalla no miente
 
-![Conectada con tres](9-conectada-tres.png)
-![Uno se desconecta](10-uno-se-desconecta.png)
+> *Captura: Conectada con tres. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
+> *Captura: Uno se desconecta. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.*
 
 Se mató la app del otro lado **sin colgar**, con la tercera todavía sonando. El
 cronómetro se detiene, la pantalla vuelve a *"Conectando…"* y el pie dice

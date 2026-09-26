@@ -5,7 +5,7 @@ cosas.
 
 | Antes | Después |
 |---|---|
-| ![antes](1-antes.png) | ![después](2-despues.png) |
+| > *Captura: antes. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.* | > *Captura: después. Las capturas no se publican; ver la nota de `docs/evidencias/README.md`.* |
 
 ## Qué pasaba
 
