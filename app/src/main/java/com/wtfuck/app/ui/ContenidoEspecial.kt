@@ -8,6 +8,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.wtfuck.protocol.llamadaEnElChat
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.automirrored.filled.CallMade
+import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
@@ -1104,6 +1109,8 @@ fun ContenidoEspecialBurbuja(
         )
         is Carga.Contacto -> BurbujaContacto(segura(carga), onAbrirContacto)
 
+        is Carga.ResumenLlamada -> BurbujaLlamada(carga)
+
         is Carga.Encuesta -> {
             val votos by app.repo.votos(m.id).collectAsState(initial = emptyList())
             BurbujaEncuesta(segura(carga), votos, yo) { elegidas ->
@@ -1169,4 +1176,89 @@ private fun fotoDe(
     val c = chats.firstOrNull { it.id == m.conversacionId } ?: return null
     if (c.avatarUsername != autor) return null
     return com.wtfuck.app.datos.ApiCliente.urlImagen(autor, "avatar", c.avatarVersion)
+}
+
+// ------------------------------------------------------------------
+//  Una llamada que termino
+// ------------------------------------------------------------------
+
+/**
+ * El rastro de una llamada en el chat.
+ *
+ * ## Por que es una burbuja y no una linea de sistema
+ *
+ * Las lineas de sistema —"@fulano salio del grupo"— cuentan algo que le paso
+ * al chat. Una llamada le paso a una PERSONA, y de que lado quedo dice quien
+ * llamo a quien, que es la mitad de la informacion. Centrada en medio de la
+ * pantalla habria que escribirlo con palabras.
+ *
+ * Es ademas lo que hace cualquier app de mensajeria, y por lo mismo.
+ *
+ * ## Lo que NO hace todavia
+ *
+ * Tocarla no devuelve la llamada. Se puede y es lo siguiente, pero una burbuja
+ * que parece un boton y no lo es seria peor que una que no lo parece: por eso
+ * no tiene ni ripple ni flecha.
+ */
+@Composable
+private fun BurbujaLlamada(carga: Carga.ResumenLlamada) {
+    val r = remember(carga) {
+        llamadaEnElChat(carga.conVideo, carga.saliente, carga.motivoFin, carga.segundos)
+    }
+    // Rojo SOLO en la perdida. Es la unica de la lista que pide hacer algo, y
+    // si se pintaran de rojo tambien la rechazada o la cancelada, el color
+    // dejaria de querer decir "hay algo pendiente" y pasaria a querer decir
+    // "llamada", que es lo que ya dice el icono.
+    val acento = if (r.perdida) Coral else Cian
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(acento.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (carga.conVideo) Icons.Filled.Videocam else Icons.Filled.Call,
+                null,
+                tint = acento,
+                modifier = Modifier.size(19.dp),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(
+                r.titulo,
+                color = TextoPrimario,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // La flecha dice quien llamo sin gastar una palabra. Entrante
+                // y saliente son formas distintas, no colores distintos: el
+                // color ya esta ocupado diciendo si quedo algo pendiente.
+                Icon(
+                    if (carga.saliente) Icons.AutoMirrored.Filled.CallMade
+                    else Icons.AutoMirrored.Filled.CallReceived,
+                    null,
+                    tint = TextoTerciario,
+                    modifier = Modifier.size(13.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    // Sin detalle —una perdida, una rechazada— el titulo ya lo
+                    // dijo todo, y repetirlo abajo seria ruido. Ahi la segunda
+                    // linea queda solo con la flecha y quien llamo.
+                    if (r.detalle.isBlank()) {
+                        if (carga.saliente) "Saliente" else "Entrante"
+                    } else {
+                        r.detalle
+                    },
+                    color = TextoSecundario,
+                    fontSize = 13.sp,
+                )
+            }
+        }
+    }
 }

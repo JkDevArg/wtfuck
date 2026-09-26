@@ -1590,7 +1590,15 @@ private fun Burbuja(
                         else -> TextoTerciario
                     },
                 )
-                if (m.esMio && !m.retirado) {
+                // Una llamada no lleva tildes de entrega.
+                //
+                // El resumen se escribe en ESTE telefono y no se manda a
+                // ningun lado, asi que un doble tilde de "entregado" estaria
+                // afirmando algo que no ocurrio. Y no es solo purismo: el
+                // tilde es lo que la gente mira para saber si algo llego, y
+                // que aparezca donde no significa nada le quita valor donde
+                // si.
+                if (m.esMio && !m.retirado && m.especial != ClaseContenido.LLAMADA) {
                     Spacer(Modifier.width(4.dp))
                     val (icono, tinteBase) = iconoEstado(estado)
                     // Sobre la burbuja propia -que es CIAN- el estado no

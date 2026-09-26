@@ -152,10 +152,48 @@ class ServicioLlamadas(
      * y esa frontera es lo que lo hace probable.
      */
     private val nombreDeGrupo: suspend (convId: String) -> String = { "" },
+    /**
+     * Se llama cuando una llamada termina, con su estado final.
+     *
+     * El Repositorio lo usa para dejar el rastro en el chat. Se inyecta por lo
+     * mismo que `enviarCifrado`: este servicio no sabe nada de Room, y esa
+     * frontera es lo que lo hace probable.
+     */
+    private val alTerminar: suspend (EstadoLlamada, segundos: Long) -> Unit = { _, _ -> },
 ) {
 
     private val TAG = "Llamadas"
     private val ambito = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Cuando conecto DE VERDAD esta llamada, atado a su id.
+     *
+     * ## Por que no vale `EstadoLlamada.conectadaEn`
+     *
+     * Ese campo tiene otro trabajo: es lo que el cronometro de la pantalla
+     * muestra AHORA. Cuando un participante se cae y la llamada vuelve a
+     * "conectando", se pone en cero a proposito — la pantalla tiene que dejar
+     * de contar mientras no hay nadie del otro lado.
+     *
+     * Usar el mismo campo para las dos preguntas parecia natural y estaba mal:
+     * "que muestro ahora" y "cuanto duro esta llamada" no son lo mismo, y la
+     * segunda no puede volver a cero nunca.
+     *
+     * Lo que se veia: quien CONTESTABA una llamada de veinte segundos la
+     * encontraba despues escrita en su chat como "Llamada perdida", en rojo.
+     * El log lo dijo en una linea — `inicio=0 segundos=0 saliente=false`—
+     * despues de que dos intentos de arreglarlo por el lado del orden no
+     * cambiaran nada.
+     *
+     * ## Por que lleva el id pegado
+     *
+     * Porque `limpiar` corre mas de una vez por llamada —cerrar los motores
+     * dispara el camino de caida, que vuelve a colgar— y un campo que se
+     * borrara al final haria que la segunda pasada reescribiera el chat con
+     * cero segundos. Con el id, las dos pasadas dan lo mismo, y una llamada
+     * nueva no puede leer el reloj de la anterior.
+     */
+    private var conecto: Pair<String, Long>? = null
 
     private val _estado = MutableStateFlow<EstadoLlamada?>(null)
     val estado: StateFlow<EstadoLlamada?> = _estado.asStateFlow()
@@ -722,6 +760,12 @@ class ServicioLlamadas(
                     when {
                         conectado -> {
                             conectados += dispositivoId
+                            // La primera conexion de ESTA llamada. Las
+                            // siguientes -otro participante, o el mismo que
+                            // vuelve- no la mueven.
+                            if (conecto?.first != e.llamadaId) {
+                                conecto = e.llamadaId to System.currentTimeMillis()
+                            }
                             _estado.value = e.copy(
                                 fase = EstadoLlamada.Fase.EN_CURSO,
                                 // Si ya estaba en curso se conserva el reloj:
@@ -806,6 +850,13 @@ class ServicioLlamadas(
     }
 
     private fun limpiar(motivo: String?) {
+        // De `conecto` y NO de `_estado.value.conectadaEn`: ese vuelve a cero
+        // cuando alguien se cae, que es lo correcto para el cronometro y
+        // ruinoso para la duracion. Ver la nota de `conecto`.
+        val inicio = _estado.value?.llamadaId
+            ?.let { id -> conecto?.takeIf { it.first == id }?.second }
+            ?: 0L
+
         motores.values.forEach { runCatching { it.colgar() } }
         // DESPUES de colgar los motores y no antes: una fuente liberada bajo
         // una conexion viva deja al track nativo apuntando a memoria muerta,
@@ -819,6 +870,30 @@ class ServicioLlamadas(
         _videoLocal.value = null
         modoLlamada(false)
         _estado.value = _estado.value?.copy(fase = EstadoLlamada.Fase.TERMINADA, motivoFin = motivo)
+
+        // El rastro en el chat, con el estado ya final.
+        //
+        // Aqui y no en `colgar`: por aqui pasan TODAS las formas de terminar
+        // —colgar, que cuelgue el otro, rechazar, que no contesten, que se
+        // caiga la red—, y una llamada que termina por un camino que nadie
+        // anoto es una que desaparece del historial sin dejar nada.
+        val segundos =
+            if (inicio > 0) ((System.currentTimeMillis() - inicio) / 1000).coerceAtLeast(0)
+            else 0L
+
+        // Se registra siempre: una llamada que queda mal anotada en el chat
+        // no deja ningun otro rastro de por que.
+        Log.i(
+            TAG,
+            "Fin de llamada: motivo=$motivo inicio=$inicio segundos=$segundos " +
+                "saliente=${_estado.value?.saliente} video=${_estado.value?.conVideo}",
+        )
+        _estado.value?.let { fin ->
+            ambito.launch {
+                runCatching { alTerminar(fin, segundos) }
+                    .onFailure { Log.w(TAG, "No se pudo anotar la llamada: ${it.message}") }
+            }
+        }
         // Se deja un instante el estado TERMINADA para que la pantalla pueda
         // mostrar "llamada finalizada" antes de cerrarse sola. Sin eso, la
         // pantalla desaparece y no queda claro si se colgo o si fallo.

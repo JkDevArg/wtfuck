@@ -1660,6 +1660,9 @@ class Repositorio(
         }
         is Carga.Encuesta -> "Encuesta: ${segura(carga).pregunta}".take(LARGO_RESUMEN)
         is Carga.Evento -> "Evento: ${segura(carga).titulo}".take(LARGO_RESUMEN)
+        is Carga.ResumenLlamada -> llamadaEnElChat(
+            carga.conVideo, carga.saliente, carga.motivoFin, carga.segundos,
+        ).let { r -> if (r.detalle.isBlank()) r.titulo else r.titulo + " · " + r.detalle }
         is Carga.Texto -> carga.cuerpo
         else -> ""
     }
@@ -2463,6 +2466,51 @@ class Repositorio(
                     ?.let { it.nombreMostrado.ifBlank { it.nombre } }
                     .orEmpty()
             },
+            alTerminar = ::anotarLlamadaEnElChat,
+        )
+    }
+
+    /**
+     * Deja el rastro de una llamada terminada en su chat.
+     *
+     * ## El id es derivado, y eso es lo que lo hace seguro
+     *
+     * `llamada-<llamadaId>` en vez de uno nuevo: `guardarMensaje` reemplaza
+     * por clave, asi que si esto corre dos veces para la misma llamada —y
+     * corre, porque el estado TERMINADA se puede emitir mas de una vez— queda
+     * una sola linea en vez de dos.
+     *
+     * ## No suma no leidos
+     *
+     * Una llamada perdida ya sono y ya dejo su notificacion. Sumarle ademas un
+     * globo de no leido al chat haria que un chat sin mensajes nuevos se vea
+     * como si los tuviera, y abrirlo para no encontrar nada nuevo es como se
+     * aprende a ignorar los globos.
+     */
+    private suspend fun anotarLlamadaEnElChat(e: EstadoLlamada, segundos: Long) {
+        val carga = Carga.ResumenLlamada(
+            conVideo = e.conVideo,
+            saliente = e.saliente,
+            motivoFin = e.motivoFin.orEmpty(),
+            segundos = segundos,
+        )
+        dao.guardarMensaje(
+            MensajeEnt(
+                id = "llamada-" + e.llamadaId,
+                conversacionId = e.conversacionId,
+                // Quien llamo. En una entrante es la otra persona, y de eso
+                // depende de que lado se dibuja la burbuja.
+                autor = if (e.saliente) sesion.username.orEmpty() else e.conQuien,
+                esMio = e.saliente,
+                // El texto es el resumen para la lista de chats. La burbuja no
+                // lo usa —se dibuja desde la carga— pero la lista si, y sin
+                // esto el ultimo renglon del chat quedaria en blanco.
+                texto = resumenDe(carga),
+                creadoEn = System.currentTimeMillis(),
+                estado = EstadoEnvio.ENTREGADO.name,
+                especial = ClaseContenido.LLAMADA,
+                especialJson = jsonApp.encodeToString(Carga.serializer(), carga),
+            )
         )
     }
 

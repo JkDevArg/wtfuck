@@ -511,6 +511,44 @@ sealed interface Carga {
      * de la app y con el que el receptor puede -o no- abrir un chat, sujeto a
      * la privacidad de esa persona, que se comprueba al abrirlo y no ahora.
      */
+    /**
+     * Lo que queda en el chat cuando termina una llamada.
+     *
+     * ## NUNCA viaja
+     *
+     * Esta es la diferencia con todas las demas cargas, y es deliberada: cada
+     * telefono escribe la suya cuando la llamada termina de su lado. No se
+     * manda ningun sobre.
+     *
+     * Tres razones, en orden de peso:
+     *
+     *  1. **Los dos lados ya saben todo lo que hace falta.** La duracion, si
+     *     hubo video y quien llamo estan en el estado local de la llamada.
+     *     Mandar un sobre para contar algo que el otro ya sabe es trabajo y
+     *     superficie por nada.
+     *  2. **Quien no contesto no puede recibir un sobre a tiempo.** Una
+     *     llamada perdida tiene que aparecer en el chat de quien estaba sin
+     *     señal, y ese es justo el caso en que un sobre no llega.
+     *  3. **Nadie puede inventar tu historial de llamadas.** Por eso
+     *     `ClaseContenido.LLAMADA` NO esta en `VALIDAS`: si alguien la metiera
+     *     en un sobre, el servidor lo rechaza con un 400. Un registro de
+     *     llamadas que se puede falsificar desde afuera vale menos que ninguno.
+     *
+     * El costo, dicho: las duraciones de los dos lados pueden diferir en uno o
+     * dos segundos, porque cada uno cuenta desde que conecto lo suyo. Es lo
+     * que hacen las apps que uno usa todos los dias, y nadie lo nota.
+     */
+    @Serializable
+    data class ResumenLlamada(
+        val conVideo: Boolean,
+        /** La inicie yo. Decide la flecha y de que lado va la burbuja. */
+        val saliente: Boolean,
+        /** El de `EstadoLlamada.motivoFin`. Vacio si termino normal. */
+        val motivoFin: String = "",
+        /** Cuanto duro CONECTADA. Cero es "nunca llego a conectar". */
+        val segundos: Long = 0,
+    ) : Carga
+
     @Serializable
     data class Contacto(
         val username: String,
@@ -740,6 +778,16 @@ object ClaseContenido {
 
     const val CONTACTO = "contacto"
     const val ENCUESTA = "encuesta"
+
+    /**
+     * El rastro de una llamada terminada.
+     *
+     * Fuera de [VALIDAS] a proposito: se escribe SOLO en el telefono y no
+     * viaja. Ver `Carga.ResumenLlamada`. Si alguien la metiera en un sobre, el
+     * servidor devuelve 400 — que es lo que impide que a nadie le inventen un
+     * historial de llamadas desde afuera.
+     */
+    const val LLAMADA = "llamada"
     const val EVENTO = "evento"
     const val VOTO = "voto"
 
@@ -895,4 +943,77 @@ object DuracionUbicacion {
      * semana, no para defenderse de nadie.
      */
     fun valida(ms: Long) = ms in OPCIONES
+}
+
+/**
+ * Como se lee una llamada terminada: un titulo, un detalle y si fue perdida.
+ *
+ * Aqui y no en la pantalla porque es la unica parte de esto que se puede
+ * probar sin un telefono: son reglas, no dibujo. Y hay mas casos de los que
+ * parece — cuatro motivos por dos lados, mas el caso normal.
+ */
+data class LlamadaEnElChat(
+    val titulo: String,
+    val detalle: String,
+    /**
+     * Para pintarla distinto. Una llamada perdida que se ve igual que una
+     * contestada obliga a leer el detalle para saber si hay algo que devolver,
+     * y es la unica de la lista que pide una accion.
+     */
+    val perdida: Boolean,
+)
+
+fun llamadaEnElChat(
+    conVideo: Boolean,
+    saliente: Boolean,
+    motivoFin: String,
+    segundos: Long,
+): LlamadaEnElChat {
+    val que = if (conVideo) "Videollamada" else "Llamada"
+
+    // Conecto: lo unico que importa es cuanto duro. El motivo del final da
+    // igual —colgar es como terminan todas— y "Llamada · 5:32 · terminada"
+    // solo seria mas larga.
+    if (segundos > 0) {
+        return LlamadaEnElChat(que, duracionLegible(segundos), perdida = false)
+    }
+
+    // No conecto. Aqui el motivo ES la noticia, y NO es el mismo de los dos
+    // lados: "no contesto" y "perdida" son el mismo hecho contado por quien
+    // llamo y por quien no atendio.
+    return if (saliente) {
+        when (motivoFin) {
+            "rechazada" -> LlamadaEnElChat(que, "Rechazada", perdida = false)
+            "sin_respuesta" -> LlamadaEnElChat(que, "Sin respuesta", perdida = false)
+            "ocupado" -> LlamadaEnElChat(que, "Ocupado", perdida = false)
+            "cancelada" -> LlamadaEnElChat(que, "Cancelada", perdida = false)
+            "fallo_red" -> LlamadaEnElChat(que, "Se corto la conexion", perdida = false)
+            else -> LlamadaEnElChat(que, "No se establecio", perdida = false)
+        }
+    } else {
+        when (motivoFin) {
+            // La rechace yo: no hay nada que devolver, asi que no va en rojo.
+            "rechazada" -> LlamadaEnElChat("$que rechazada", "", perdida = false)
+            "fallo_red" -> LlamadaEnElChat(que, "Se corto la conexion", perdida = false)
+            // Todo lo demas sin contestar es una perdida, incluida la que el
+            // otro cancelo antes de que diera tiempo a atender. Para quien la
+            // recibe son el mismo hecho: sono y no llego a hablar.
+            else -> LlamadaEnElChat("$que perdida", "", perdida = true)
+        }
+    }
+}
+
+/**
+ * Una duracion como la escribe un telefono: `0:07`, `5:32`, `1:04:09`.
+ *
+ * Los minutos llevan cero a la izquierda **solo si hay horas**. Sin esa regla
+ * una llamada de cinco minutos y medio se lee "05:32", que parece una hora
+ * empezada y no una duracion.
+ */
+fun duracionLegible(segundos: Long): String {
+    val s = if (segundos < 0) 0 else segundos
+    val h = s / 3600
+    val m = (s % 3600) / 60
+    val sec = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
 }
