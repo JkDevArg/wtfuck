@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -18,6 +20,45 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+    }
+
+    /**
+     * La firma de release, desde un archivo que NO esta en el repositorio.
+     *
+     * Un APK sin firmar no se instala en ningun telefono, asi que sin esto la
+     * variante de release solo sirve para comprobar que compila.
+     *
+     * `keystore.properties` y el `.jks` van fuera de git a proposito. La clave
+     * de firma es lo que demuestra que una actualizacion viene de quien hizo
+     * la app: quien la tenga puede publicar una version modificada que los
+     * telefonos aceptan como legitima. Y **no se puede rotar**: Android
+     * rechaza una actualizacion firmada con otra clave, asi que perderla
+     * obliga a publicar la app como si fuera otra y a que todo el mundo la
+     * reinstale a mano.
+     *
+     * Si el archivo no esta, la release se compila SIN firmar en vez de
+     * fallar: asi se puede verificar que R8 no rompio nada sin tener las
+     * llaves a mano.
+     */
+    val firma = rootProject.file("keystore.properties")
+    val datosFirma = Properties().apply {
+        if (firma.exists()) firma.inputStream().use { load(it) }
+    }
+
+    signingConfigs {
+        if (firma.exists()) {
+            create("publicacion") {
+                storeFile = rootProject.file(datosFirma.getProperty("storeFile"))
+                storePassword = datosFirma.getProperty("storePassword")
+                keyAlias = datosFirma.getProperty("keyAlias")
+                keyPassword = datosFirma.getProperty("keyPassword")
+                // v2 y v3 ademas de v1: v1 sola la rechazan los Android
+                // nuevos, y v2 sola no permite rotar la clave mas adelante.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
     }
 
     buildTypes {
@@ -69,11 +110,31 @@ android {
         release {
             // Los dos ABIs que existen en telefonos reales. x86 de 32 bits no
             // existe en telefonos y x86_64 solo en emuladores.
-            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+            //
+            // Se puede pedir otro —`-Pabi=x86_64`— y hace falta: un release
+            // que compila y revienta al arrancar es peor que uno que no
+            // compila, y la unica forma de comprobar que R8 no borro nada que
+            // el codigo nativo busca por nombre es EJECUTARLO. Sin esto, la
+            // primera ejecucion de una release seria en el telefono de
+            // alguien.
+            val abiRelease = (project.findProperty("abi") as String?)
+                ?: "arm64-v8a,armeabi-v7a"
+            ndk { abiFilters += abiRelease.split(",").map { it.trim() } }
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "SERVIDOR", "\"https://api.wtfuck.com\"")
-            buildConfigField("String", "SERVIDOR_WS", "\"wss://api.wtfuck.com\"")
+            if (firma.exists()) signingConfig = signingConfigs.getByName("publicacion")
+
+            // El dominio se puede cambiar sin tocar este archivo:
+            //
+            //   ./gradlew :app:assembleRelease -Papi=api.miempresa.com
+            //
+            // Hace falta porque quien despliegue esto no va a usar el dominio
+            // de aqui, y obligarle a editar el build para cambiar un nombre es
+            // como se acaba con un repositorio lleno de cambios locales que
+            // nadie puede fusionar.
+            val api = (project.findProperty("api") as String?) ?: "api.wtfuck.com"
+            buildConfigField("String", "SERVIDOR", "\"https://$api\"")
+            buildConfigField("String", "SERVIDOR_WS", "\"wss://$api\"")
             buildConfigField(
                 "String", "MAPA_BALDOSAS",
                 "\"https://tile.openstreetmap.org/{z}/{x}/{y}.png\"",

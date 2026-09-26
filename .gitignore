@@ -24,3 +24,9 @@ app/build/
 server/build/
 protocol/build/
 /**/tmp[0-9a-z_]*
+
+# La clave de firma de la app. Quien la tenga puede publicar una actualizacion
+# que los telefonos aceptan como legitima, y NO se puede rotar.
+keystore.properties
+*.jks
+*.keystore
