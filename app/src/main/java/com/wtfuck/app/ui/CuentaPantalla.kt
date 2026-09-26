@@ -125,23 +125,50 @@ fun CuentaPantalla(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
+            // Sin servidor, lo que NO depende de el se sigue viendo.
+            //
+            // Antes esta pantalla era todo o nada: si la peticion fallaba, se
+            // vaciaba entera y quedaba un error con un boton de reintentar.
+            // Pero la mitad de lo que hay aqui NO le pide nada al servidor —el
+            // vinculo con el hardware de ESTE aparato, el bloqueo de la app—
+            // y desaparecia por una llamada de red que no tenia nada que ver.
+            //
+            // Es ademas cuando mas falta hace: quien mira "Cuenta y seguridad"
+            // sin conexion puede estar justamente comprobando si le pasa algo
+            // raro al telefono.
             if (e == null) {
-                // Antes esto era UNA linea de texto gris en una pantalla
-                // vacia, sin icono y sin salida. Se leia como que la app
-                // estaba rota, y encima no era cierto que no se pudiera hacer
-                // nada: el fallo casi siempre es de red y se reintenta.
                 EstadoDeError(
                     titulo = "No se pudo cargar tu cuenta",
-                    detalle = "Revisa tu conexión y vuelve a intentarlo. Tus mensajes " +
-                        "siguen guardados en este aparato.",
+                    detalle = "Revisa tu conexión y vuelve a intentarlo. Lo de este aparato " +
+                        "se ve igual: no depende del servidor.",
                     onReintentar = {
                         ambito.launch {
                             cargando = true
                             estado = app.repo.estadoCuenta()
+                            sesiones = app.repo.sesiones()
                             cargando = false
                         }
                     },
                 )
+                Spacer(Modifier.height(20.dp))
+
+                // Lo local, tal cual, sin nada que lo tape.
+                Seccion("Este aparato", Icons.Filled.Lock)
+                TarjetaHardware(LocalContext.current)
+                Divisor()
+                BloqueoDeLaApp()
+                Divisor()
+                Seccion("Mis dispositivos", Icons.Filled.PhoneAndroid)
+                Text(
+                    "Cada dispositivo es una copia más de tus mensajes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextoSecundario,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onDispositivos,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cian),
+                ) { Text("Ver mis dispositivos") }
                 return@Column
             }
 
