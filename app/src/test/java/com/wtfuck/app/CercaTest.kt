@@ -1,9 +1,11 @@
 package com.wtfuck.app
 
+import com.wtfuck.protocol.ClaseBt
 import com.wtfuck.protocol.MensajeCerca
 import com.wtfuck.protocol.TipoCifrado
 import com.wtfuck.protocol.Trama
 import com.wtfuck.protocol.aceptable
+import com.wtfuck.protocol.valeLaPenaIntentar
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -82,6 +84,47 @@ class CercaTest {
         // desconocido— es como un tipo nuevo se cuela sin que nadie lo decida.
         for (t in listOf(-1, 1, 4, 5, 6, 8, 99, Int.MAX_VALUE, Int.MIN_VALUE)) {
             assertFalse("tipo $t", aceptable(t, haySesion = true))
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // A quien se le toca la puerta
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `a los audifonos no se les toca la puerta`() {
+        // El defecto que el emulador NO podia encontrar: alli la lista de
+        // emparejados esta vacia, asi que el bucle no tocaba nada y todo
+        // parecia bien. En un telefono de verdad esa lista son los audifonos,
+        // el carro y el reloj, y un `connect()` de RFCOMM contra un enlace de
+        // audio en uso se oye — nadie relacionaria el corte con una app de
+        // mensajeria.
+        assertFalse(valeLaPenaIntentar(ClaseBt.AUDIO_VIDEO))
+        assertFalse(valeLaPenaIntentar(ClaseBt.VESTIBLE))
+    }
+
+    @Test
+    fun `a un telefono si`() {
+        assertTrue(valeLaPenaIntentar(ClaseBt.TELEFONO))
+        // Las tablets se anuncian como computadora y son destino legitimo.
+        assertTrue(valeLaPenaIntentar(ClaseBt.COMPUTADORA))
+    }
+
+    @Test
+    fun `el que no declara categoria se intenta igual`() {
+        // Es el unico caso donde equivocarse por NO intentar seria peor: un
+        // telefono que no declara su clase quedaria fuera para siempre y nadie
+        // sabria por que.
+        assertTrue(valeLaPenaIntentar(ClaseBt.SIN_CATEGORIA))
+    }
+
+    @Test
+    fun `lo demas se descarta sin abrir un socket`() {
+        for (c in listOf(
+            ClaseBt.RED, ClaseBt.PERIFERICO, ClaseBt.IMAGEN,
+            ClaseBt.JUGUETE, ClaseBt.SALUD, 0x0000, -1, 0x9999,
+        )) {
+            assertFalse("clase $c", valeLaPenaIntentar(c))
         }
     }
 

@@ -7,8 +7,10 @@ import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.util.Log
+import com.wtfuck.protocol.ClaseBt
 import com.wtfuck.protocol.MensajeCerca
 import com.wtfuck.protocol.Transporte
+import com.wtfuck.protocol.valeLaPenaIntentar
 import com.wtfuck.protocol.Trama
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -232,9 +234,21 @@ class TransporteCerca(
             // teléfonos ya se conocen del sistema, esto conecta en un segundo.
             for (d in runCatching { a.bondedDevices }.getOrNull().orEmpty()) {
                 if (_estado.value != Estado.ESCUCHANDO) return
+                // Los audifonos, el carro y el reloj se descartan ANTES de
+                // abrir un socket. Ver `valeLaPenaIntentar`: un `connect()` de
+                // RFCOMM contra un enlace de audio en uso se oye, y nadie
+                // relacionaria el corte con una app de mensajeria.
+                val clase = runCatching { d.bluetoothClass?.majorDeviceClass }
+                    .getOrNull() ?: ClaseBt.SIN_CATEGORIA
+                if (!valeLaPenaIntentar(clase)) continue
                 if (intentar(d)) return
             }
-            kotlinx.coroutines.delay(5_000)
+            // Quince y no cinco: cada vuelta abre un socket por candidato. En
+            // un telefono con varios emparejados, cada cinco segundos es
+            // radio encendida y bateria por nada, y el caso de uso —dos
+            // personas que se acaban de sentar juntas— tolera de sobra
+            // quince.
+            kotlinx.coroutines.delay(15_000)
         }
     }
 

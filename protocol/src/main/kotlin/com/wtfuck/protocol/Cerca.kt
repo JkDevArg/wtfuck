@@ -190,3 +190,61 @@ fun aceptable(tipo: Int, haySesion: Boolean): Boolean = when (tipo) {
     TipoCifrado.PLANO -> false
     else -> false
 }
+
+/**
+ * Las clases mayores de aparato Bluetooth que importan aqui.
+ *
+ * Son los mismos numeros que `android.bluetooth.BluetoothClass.Device.Major`,
+ * copiados para que esto viva en el modulo del protocolo —Kotlin puro— y se
+ * pueda probar sin un emulador. Son constantes del estandar, no de Android: no
+ * cambian.
+ */
+object ClaseBt {
+    const val COMPUTADORA = 0x0100
+    const val TELEFONO = 0x0200
+    const val RED = 0x0300
+    const val AUDIO_VIDEO = 0x0400
+    const val PERIFERICO = 0x0500
+    const val IMAGEN = 0x0600
+    const val VESTIBLE = 0x0700
+    const val JUGUETE = 0x0800
+    const val SALUD = 0x0900
+    const val SIN_CATEGORIA = 0x1F00
+}
+
+/**
+ * Si vale la pena intentar un enlace con un aparato ya emparejado.
+ *
+ * ## El defecto que esto arregla, y por que el emulador no podia verlo
+ *
+ * La busqueda recorre los emparejados del sistema cada pocos segundos. En un
+ * emulador esa lista esta VACIA —`Bonded devices: 0`, las radios virtuales
+ * estan aisladas— asi que el bucle no tocaba nada y todo parecia bien.
+ *
+ * En un telefono de verdad esa lista son los audifonos, el carro, el reloj, el
+ * parlante. Intentarles un `connect()` de RFCOMM cada pocos segundos le pega a
+ * un enlace de audio que esta en uso: corta, cambia de perfil o directamente
+ * se oye. Nadie relacionaria eso con una app de mensajeria.
+ *
+ * ## Que se deja pasar
+ *
+ * Telefonos, computadoras (por las tablets) y los que no declaran categoria.
+ * Todo lo demas se descarta **sin abrir un socket**, que es lo que evita el
+ * dano: un audifono no va a tener esta app corriendo, asi que el intento no
+ * podia salir bien de todos modos — solo molestar.
+ *
+ * No es una comprobacion de seguridad y no se usa como tal: quien quiera
+ * mentir sobre su clase puede. Es para no romper el audio de quien enciende
+ * esto, que es un problema distinto y mas probable.
+ */
+fun valeLaPenaIntentar(claseMayor: Int): Boolean = when (claseMayor) {
+    ClaseBt.TELEFONO -> true
+    // Las tablets se anuncian como computadora, y una tablet con la app es un
+    // destino legitimo.
+    ClaseBt.COMPUTADORA -> true
+    // Sin categoria: se intenta. Es el unico caso donde equivocarse por no
+    // intentar seria peor que por intentar — un telefono que no declara su
+    // clase quedaria fuera para siempre y nadie sabria por que.
+    ClaseBt.SIN_CATEGORIA -> true
+    else -> false
+}

@@ -191,12 +191,37 @@ radios virtuales están aisladas entre sí**. Dos emuladores no se ven.
 
 5. **Apagar no rompe nada.** Sin `FATAL` en logcat y el proceso vivo en los dos.
 
+### Lo que sólo apareció al instalarlo en un teléfono de verdad
+
+**`buscar()` le tocaba la puerta a los audífonos.** El bucle recorría *todos*
+los aparatos emparejados del sistema cada 5 segundos y les intentaba un
+`connect()` de RFCOMM.
+
+En el emulador eso era inofensivo y por eso pasó: `Bonded devices: 0`, no hay
+nada que recorrer. En un teléfono real esa lista son los audífonos, el carro,
+el reloj y el parlante — y un `connect()` contra un enlace de audio en uso se
+oye. Nadie habría relacionado el corte del audio con una app de mensajería.
+
+Arreglado con `valeLaPenaIntentar` (en `protocol/Cerca.kt`, puro y probable):
+se descartan **antes de abrir un socket** los que no son teléfono, computadora
+—por las tablets— ni "sin categoría". No es una comprobación de seguridad y no
+se usa como tal: quien quiera mentir sobre su clase puede. Es para no romperle
+el audio a quien enciende esto, que es un problema distinto y más probable.
+
+De paso el intervalo pasó de 5 s a 15 s: cada vuelta abre un socket por
+candidato, y dos personas que se acaban de sentar juntas toleran quince
+segundos de sobra.
+
+4 defectos más inyectados sobre el filtro, 4 cazados (`i`–`l`).
+
 ### No se verificó, y hace falta hardware
 
 - Que dos teléfonos **se encuentren**. `dumpsys bluetooth_manager` reporta
   `Bonded devices: 0` en los dos emuladores: las radios virtuales están
   aisladas, así que el descubrimiento nunca devuelve nada.
-- El saludo, el enlace, y **un sobre cruzando el aire**.
+- El saludo, el enlace, y **un sobre cruzando el aire**. Hacen falta DOS
+  teléfonos reales con la app: con uno solo el descubrimiento corre pero no
+  hay nadie del otro lado.
 
 Eso son dos teléfonos de verdad con la app instalada. Todo lo demás —el marco,
 la regla de aceptación, la prioridad, el camino de recepción— está probado o
