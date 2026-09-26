@@ -90,12 +90,27 @@ Te pregunta tres cosas y genera el resto. **No escribas secretos a mano**: una
 clave pensada por una persona tiene la entropía de una persona.
 
 El script comprueba solo que no quedó nada pendiente, y lo dice. Si ya lo
-ejecutaste con una versión anterior se niega a pisar lo que hay; como todavía
-no hay datos que perder, bórralo y empieza de nuevo:
+ejecutaste con una versión anterior se niega a pisar lo que hay; bórralo y
+empieza de nuevo:
 
 ```bash
 rm -f .env.produccion && git pull && bash despliegue/preparar.sh
 ```
+
+> **Si ya habías levantado los contenedores antes, borra también sus
+> volúmenes.** Regenerar el `.env` crea contraseñas nuevas, y **Postgres graba
+> la suya la primera vez que inicializa su volumen y nunca más**: cambiar
+> `POSTGRES_PASSWORD` después no hace nada. El servidor entra en bucle de
+> reinicio con
+> `FATAL: password authentication failed for user "wtfuck"`.
+>
+> ```bash
+> docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml down
+> docker volume rm wtfuck_pgdata wtfuck_redisdatos
+> ```
+>
+> Sólo mientras no haya cuentas creadas, claro. Después de eso ese comando
+> borra la base de verdad.
 
 ---
 
@@ -315,6 +330,26 @@ Con la app abierta llega todo; cerrada, no suena. Ver
 **El modo cerca** necesita dos teléfonos reales.
 
 ---
+
+## Los cuatro fallos que dan el mismo síntoma
+
+Cuatro veces durante el primer montaje de esto, Compose dijo `unhealthy` o el
+servidor entró en bucle, y **ninguna vez la causa estaba donde apuntaba el
+mensaje**. La regla que sale de ahí:
+
+> `docker compose ps` dice **qué** contenedor falla. `docker logs <nombre>`
+> dice **por qué**. El primero nunca basta.
+
+| Lo que se ve | Dónde estaba de verdad |
+|---|---|
+| `almacen is unhealthy` | el chequeo no aceptaba el 403 del S3 |
+| `almacen is unhealthy` | `/datos` sin permiso de escritura para el uid 1000 |
+| `almacen is unhealthy` | `s3.json` en root:600, ilegible para el uid 1000 |
+| `servidor Restarting (1)` | Postgres con la contraseña del volumen anterior |
+
+En los tres primeros el contenedor **ni llegaba a levantar**, así que ningún
+chequeo de salud podía pasar. El motivo salía siempre en `docker logs`, en una
+línea que empieza por `F`.
 
 ## Si algo se rompe
 
