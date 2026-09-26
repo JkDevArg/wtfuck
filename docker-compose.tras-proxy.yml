@@ -132,10 +132,21 @@ services:
       # del anfitrion trae hasta aqui.
       - "127.0.0.1:9000:9000"
     healthcheck:
-      # `wget` y no `mc`: la imagen de SeaweedFS no trae el cliente de MinIO.
-      # Un 403 del S3 sin credenciales ya demuestra que responde, y `wget -q`
-      # devuelve 0 con cualquier respuesta HTTP.
-      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:9000/"]
+      # Se comprueba que el S3 CONTESTO con HTTP, no que devolviera 200.
+      #
+      # Sin credenciales la raiz responde 403, y eso ya demuestra que el
+      # servicio esta vivo. El `wget -q -O-` que habia aqui antes daba por
+      # muerto al contenedor en ese caso: BusyBox devuelve distinto de cero
+      # ante cualquier respuesta de error, asi que el almacen nunca llegaba a
+      # `healthy` y el servidor se quedaba esperandolo para siempre.
+      #
+      # Lo escribi mirando `curl -w "%{http_code}"`, que devuelve 0 pase lo
+      # que pase, y de ahi salio la suposicion equivocada.
+      #
+      # Comprobado en la imagen, en los dos sentidos: da 0 contra el S3 vivo
+      # y falla contra un puerto donde no hay nadie. Un chequeo que no puede
+      # fallar no comprueba nada.
+      test: ["CMD-SHELL", "wget -O- http://127.0.0.1:9000/ 2>&1 | grep -q HTTP"]
       interval: 15s
       timeout: 5s
       retries: 10
