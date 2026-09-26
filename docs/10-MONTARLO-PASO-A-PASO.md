@@ -1,0 +1,296 @@
+# Montarlo paso a paso
+
+Para una VPS que **ya tiene CloudPanel y Docker**, con otras cosas corriendo.
+
+Al final: el servidor en internet y el APK instalado en tu teléfono.
+
+Cada paso tiene una **comprobación**. Si la comprobación no da lo que dice,
+no sigas al siguiente — el error se arrastra y el síntoma aparece tres pasos
+después, donde no se parece a su causa.
+
+---
+
+## Antes de empezar
+
+Dos comandos en la VPS, para saber con qué cuentas:
+
+```bash
+free -h && df -h / && docker ps --format "{{.Names}}\t{{.Ports}}"
+```
+
+Lo que hay que mirar:
+
+- **RAM libre.** Vas a añadir un JVM, un Postgres, un Redis y un MinIO. Con
+  menos de **3 GB libres** esto va a competir con tu CTF y el que pierda va a
+  ser el que más memoria pida en ese momento, no el que menos importe.
+- **Disco.** MinIO guarda los adjuntos. 20 GB libres para empezar.
+- **Puertos.** Los tuyos son 8085 y 8090. Esto usa `8300` y `9000`, los dos
+  **sólo en 127.0.0.1**. No chocan.
+
+> Tu `ctfnew-db` y `ctfnew-cache` no publican puertos al exterior, así que
+> tampoco hay conflicto ahí. Esto levanta **su propio** Postgres y su propio
+> Redis: no se tocan con los del CTF y no comparten datos.
+
+---
+
+## Paso 1 — Los DNS
+
+En el panel de tu dominio, dos registros **A** apuntando a la IP de la VPS:
+
+```
+apiwtf.hackl4bs.com     A    <IP-DE-TU-VPS>
+mediawtf.hackl4bs.com   A    <IP-DE-TU-VPS>
+```
+
+**Comprobación** (desde tu PC, no desde la VPS):
+
+```bash
+nslookup apiwtf.hackl4bs.com
+nslookup mediawtf.hackl4bs.com
+```
+
+Los dos tienen que devolver la IP de la VPS. Si no, **espera** — puede tardar
+de minutos a un par de horas. Let's Encrypt necesita esto resuelto, y si lo
+intentas antes te quedas sin intentos: hay un límite de 5 fallos por hora.
+
+---
+
+## Paso 2 — Subir el código
+
+**Desde tu PC** (Git Bash), no desde la VPS:
+
+```bash
+cd /g/PROYECTOS/wtfuck
+git archive --format=tar.gz -o /tmp/wtfuck.tar.gz HEAD
+scp /tmp/wtfuck.tar.gz root@<IP-DE-TU-VPS>:/opt/
+```
+
+`git archive` manda **sólo lo que está en git**: sin `build/`, sin `.env`, sin
+la clave de firma. Copiar la carpeta entera con `scp -r` son varios GB de
+resultados de compilación y, peor, arrastra secretos locales.
+
+**En la VPS:**
+
+```bash
+mkdir -p /opt/wtfuck && tar -xzf /opt/wtfuck.tar.gz -C /opt/wtfuck && cd /opt/wtfuck
+```
+
+**Comprobación:**
+
+```bash
+ls docker-compose.tras-proxy.yml Dockerfile despliegue/
+```
+
+Los tres tienen que existir.
+
+---
+
+## Paso 3 — Los secretos
+
+```bash
+cd /opt/wtfuck && bash despliegue/preparar.sh
+```
+
+Te pregunta tres cosas y genera el resto. **No escribas secretos a mano**: una
+clave pensada por una persona tiene la entropía de una persona.
+
+**Comprobación:**
+
+```bash
+grep -c CAMBIAR despliegue/turnserver.conf
+```
+
+Tiene que decir **0**. Si dice otra cosa, el script no llegó al final.
+
+---
+
+## Paso 4 — Levantarlo
+
+```bash
+cd /opt/wtfuck && docker compose -f docker-compose.tras-proxy.yml up -d --build
+```
+
+La primera vez compila el servidor dentro de Docker: **tarda entre 5 y 15
+minutos** y parece colgado. No lo es.
+
+**Comprobación:**
+
+```bash
+docker compose -f docker-compose.tras-proxy.yml ps
+```
+
+`wtfuck-db-1`, `wtfuck-redis-1` y `wtfuck-minio-1` tienen que decir
+**`healthy`**, y `wtfuck-servidor-1` **`Up`**. Después:
+
+```bash
+curl -s http://127.0.0.1:8300/salud
+```
+
+Si responde, el servidor está vivo. Si no:
+
+```bash
+docker compose -f docker-compose.tras-proxy.yml logs servidor --tail 50
+```
+
+En ese log tienen que aparecer las migraciones aplicándose. Es la señal de que
+la base está bien conectada.
+
+---
+
+## Paso 5 — CloudPanel
+
+Dos sitios, cada uno de tipo **Reverse Proxy**:
+
+| Site | Domain | Reverse Proxy URL |
+|---|---|---|
+| 1 | `apiwtf.hackl4bs.com` | `http://127.0.0.1:8300` |
+| 2 | `mediawtf.hackl4bs.com` | `http://127.0.0.1:9000` |
+
+En cada uno: **SSL/TLS → Let's Encrypt → Install**.
+
+**Comprobación** (desde tu PC):
+
+```bash
+curl -s https://apiwtf.hackl4bs.com/salud
+```
+
+Tiene que responder lo mismo que el `curl` de la VPS, ahora con HTTPS.
+
+---
+
+## Paso 6 — La configuración del proxy
+
+Esto es lo que más cuesta si se salta, así que va aparte.
+
+En CloudPanel, para **cada** sitio: **Vhost → Vhost Editor**. Copia los bloques
+de [`despliegue/nginx-tras-panel.conf`](../despliegue/nginx-tras-panel.conf)
+dentro del `server { ... }` del 443, reemplazando el `location /` que
+CloudPanel puso.
+
+Después:
+
+```bash
+nginx -t && systemctl reload nginx
+```
+
+`nginx -t` tiene que decir `syntax is ok`. Si no, **no recargues**: nginx se
+queda con la configuración anterior y tu CTF sigue funcionando. Si recargas con
+error, se cae todo.
+
+### Por qué cada línea
+
+| Si falta | Qué ves |
+|---|---|
+| `Upgrade` / `Connection` | los mensajes se quedan "enviando" **para siempre**, sin ningún error en ningún log |
+| `X-Forwarded-For` | todo se registra como `127.0.0.1`; cinco personas fallando la contraseña bloquean a la sexta |
+| `Host $host` en **medios** | 403 en el almacén: el texto va bien y **sólo** fallan fotos, vídeos y audios |
+| `client_max_body_size 0` | 413 en cualquier foto: el defecto de nginx es **1 MB** |
+
+Los cuatro dan síntomas que no se parecen a su causa. Por eso están escritos.
+
+---
+
+## Paso 7 — El cortafuegos (las llamadas)
+
+```bash
+ufw allow 3478/tcp
+ufw allow 3478/udp
+ufw allow 49160:49200/udp
+ufw status | grep -E "3478|49160"
+```
+
+**Y en el panel de tu proveedor** (Hetzner, DigitalOcean, Contabo…) si tiene
+cortafuegos propio: **los mismos puertos, otra vez**. Tener uno abierto y el
+otro cerrado es el caso más común.
+
+Ese rango UDP es lo que se olvida siempre, y el síntoma es **una llamada que se
+queda conectando para siempre sin ningún error**.
+
+**Comprobación:**
+
+```bash
+docker logs wtfuck-coturn-1 --tail 20
+```
+
+Tiene que decir `Listener opened on : 3478` y **no** errores de bind.
+
+---
+
+## Paso 8 — El APK
+
+**En tu PC:**
+
+```bash
+keytool -genkeypair -v -keystore wtfuck-publicacion.jks -alias publicacion -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Guarda ese `.jks` y su contraseña **fuera de tu PC**. No se puede rotar: quien
+lo pierda no puede volver a actualizar la app nunca.
+
+Copia `keystore.properties.ejemplo` a `keystore.properties` y rellénalo. Luego:
+
+```bash
+cd /g/PROYECTOS/wtfuck
+./gradlew :app:assembleRelease -Papi=apiwtf.hackl4bs.com -Pabi=arm64-v8a
+```
+
+**Comprobación:**
+
+```bash
+ls -la app/build/outputs/apk/release/
+```
+
+Tiene que salir `app-release.apk` (sin el `-unsigned`). Si sale con
+`-unsigned`, `keystore.properties` no se está leyendo.
+
+**Instalarlo:**
+
+```bash
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+---
+
+## Paso 9 — Que funcione
+
+Abre la app y **regístrate**. Es la prueba de fuego: registrarse toca el
+servidor, la base, el vínculo de hardware y la generación de claves.
+
+Después, en este orden — cada uno prueba una capa distinta:
+
+| Prueba | Qué comprueba |
+|---|---|
+| Registrarte | servidor + base + claves |
+| Mandarte un mensaje a ti mismo desde otro aparato | el WebSocket (paso 6) |
+| Mandar una **foto** | el almacén y el `Host` del proxy |
+| Una **llamada** entre dos aparatos | coturn (paso 7) |
+
+Si el texto va y las fotos no, es el paso 6. Si todo va y la llamada se queda
+conectando, es el paso 7. Esa correspondencia es a propósito.
+
+---
+
+## Lo que NO va a funcionar todavía, y no es un fallo
+
+**Las notificaciones con la app cerrada.** Hace falta Firebase (`WTFUCK_FCM_*`).
+Con la app abierta llega todo; cerrada, no suena. Ver
+[`09-DESPLIEGUE.md`](09-DESPLIEGUE.md), "Push: encenderlo".
+
+**El modo cerca** necesita dos teléfonos reales.
+
+---
+
+## Si algo se rompe
+
+```bash
+docker compose -f docker-compose.tras-proxy.yml logs --tail 100
+docker compose -f docker-compose.tras-proxy.yml restart servidor
+```
+
+Y para empezar de cero **borrando los datos** — cuidado, esto borra cuentas:
+
+```bash
+docker compose -f docker-compose.tras-proxy.yml down -v
+```
+
+Sin `-v` para y no borra nada: es lo que quieres el 90 % de las veces.

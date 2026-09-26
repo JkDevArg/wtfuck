@@ -123,15 +123,21 @@ services:
       PGPASSWORD: ${DB_PASS}
     volumes:
       - ./copias:/copias
-    # Un pg_dump diario con 14 dias de retencion. Que RESTAURARLO funcione es
-    # otra cosa y no se puede automatizar: hay que probarlo a mano una vez.
-    command: >
-      sh -c 'while true; do
-        pg_dump -h db -U wtfuck -d wtfuck -Fc
-          -f /copias/wtfuck-$$(date +%%Y%%m%%d-%%H%%M).dump 2>&1 || true;
-        find /copias -name "wtfuck-*.dump" -mtime +14 -delete 2>/dev/null || true;
-        sleep 86400;
-      done'
+    # Un pg_dump diario con 14 dias de retencion. Identico al del compose de
+    # produccion, que ya esta probado: el `%Y` lleva UN solo porcentaje —con
+    # dos, Compose lo deja literal y los respaldos se llaman `wtfuck-%%Y%%m%%d`.
+    #
+    # Que RESTAURARLO funcione es otra cosa y no se puede automatizar: hay que
+    # probarlo a mano una vez, y anotar cuando.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          f=/copias/wtfuck-$$(date +%Y%m%d-%H%M).sql.gz
+          pg_dump -h db -U wtfuck wtfuck | gzip > "$$f" && echo "copia: $$f"
+          find /copias -name 'wtfuck-*.sql.gz' -mtime +14 -delete
+          sleep 86400
+        done
     depends_on:
       db:
         condition: service_healthy
