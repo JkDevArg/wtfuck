@@ -535,6 +535,19 @@ r = await get('/v1/panel/usuarios?q=a', jefe.t);
 ck('una letra no alcanza para buscar: seria un listado de la plataforma', (r.b.usuarios || []).length === 0,
    String((r.b.usuarios || []).length));
 
+// La caja vacia NO es una busqueda vacia: es la vista de los ultimos registros,
+// para que quien administra vea a quien acaba de entrar sin adivinar un nombre.
+r = await get('/v1/panel/usuarios?q=', jefe.t);
+const recientes = r.b.usuarios || [];
+ck('la caja vacia trae los ultimos registros', r.s === 200 && recientes.length > 0,
+   String(r.s) + ' ' + recientes.length);
+ck('y no mas de diez', recientes.length <= 10, String(recientes.length));
+// Del mas nuevo al mas viejo: es lo que hace util la vista. Si viniera por
+// nombre, "los ultimos 10" no serian los ultimos, serian diez cualquiera.
+const ordenados = recientes.every((u, i) => i === 0 || recientes[i - 1].creadoEn >= u.creadoEn);
+ck('ordenados del mas nuevo al mas viejo', ordenados,
+   recientes.map((u) => u.creadoEn).join(' '));
+
 console.log('\n=== lo que el panel NO puede hacer ===');
 r = await get(`/v1/panel/usuarios?q=${acosa.user.slice(0, 4)}`, jefe.t);
 ck('la ficha de una persona no incluye ni un mensaje',

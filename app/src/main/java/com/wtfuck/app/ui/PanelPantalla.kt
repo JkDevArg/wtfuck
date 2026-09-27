@@ -103,15 +103,21 @@ fun PanelPantalla(
 
     LaunchedEffect(Unit) { recargar() }
 
-    // Espera antes de buscar, igual que en los canales: sin esto, escribir un
-    // nombre son ocho consultas para ver una.
+    // Con la caja vacia se ven los ultimos registros; al escribir, se busca.
+    //
+    // El `delay` solo aplica a la busqueda: sin el, escribir un nombre son ocho
+    // consultas para ver una. La carga de recientes va directa —es una sola,
+    // al abrir— y una letra suelta no pide nada (el servidor la rechaza igual).
     LaunchedEffect(consulta) {
-        if (consulta.trim().length < 2) {
-            personas = emptyList()
-            return@LaunchedEffect
+        val q = consulta.trim()
+        when {
+            q.isEmpty() -> personas = app.repo.buscarUsuariosPanel("")
+            q.length < 2 -> personas = emptyList()
+            else -> {
+                kotlinx.coroutines.delay(350)
+                personas = app.repo.buscarUsuariosPanel(q)
+            }
         }
-        kotlinx.coroutines.delay(350)
-        personas = app.repo.buscarUsuariosPanel(consulta)
     }
 
     Scaffold(
@@ -232,10 +238,12 @@ fun PanelPantalla(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        // El limite es del servidor, y el motivo conviene que
-                        // se lea: con una letra esto seria el listado completo
-                        // de la plataforma disfrazado de busqueda.
-                        "Hacen falta al menos dos letras.",
+                        // Con la caja vacia se ve una vista de recientes; al
+                        // escribir, se busca. Con una letra no pasa nada, y el
+                        // motivo conviene que se lea: un prefijo de un caracter
+                        // seria el listado completo disfrazado de busqueda.
+                        if (consulta.isBlank()) "Últimos 10 registros. Escribe un usuario para buscar."
+                        else "Hacen falta al menos dos letras.",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextoTerciario,
                     )
@@ -247,10 +255,14 @@ fun PanelPantalla(
                     Spacer(Modifier.height(8.dp))
                 }
 
-                if (personas.isEmpty() && consulta.trim().length >= 2) {
+                if (personas.isEmpty()) {
                     item {
                         Text(
-                            "Nadie con ese nombre.",
+                            when {
+                                consulta.trim().length >= 2 -> "Nadie con ese nombre."
+                                consulta.isBlank() -> "Todavía no hay nadie registrado."
+                                else -> ""
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextoTerciario,
                         )

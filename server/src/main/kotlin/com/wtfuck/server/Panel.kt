@@ -187,15 +187,26 @@ object Panel {
     }
 
     /**
-     * Buscar personas.
+     * Buscar personas, o —con la caja vacia— ver los ultimos registros.
      *
-     * Exige al menos dos caracteres: con uno, esto seria un listado completo de
-     * la plataforma disfrazado de busqueda.
+     * Tres modos, segun lo que se escriba:
+     *
+     *  - **Vacio**: los ULTIMOS 10 que se registraron, del mas nuevo al mas
+     *    viejo. Es lo primero que quiere ver quien administra —quien acaba de
+     *    entrar— sin tener que adivinar un nombre. Es una vista acotada y fija,
+     *    no un volcado: por eso no reabre el agujero que cerraba la regla de
+     *    las dos letras.
+     *  - **Una letra**: nada. Un prefijo de un caracter SI seria el listado
+     *    completo de la plataforma disfrazado de busqueda, y eso es lo que no
+     *    se quiere. La caja vacia da 10; una letra, cero; con dos ya se busca.
+     *  - **Dos o mas**: busqueda por prefijo, ordenada por nombre.
      */
     fun usuarios(yo: Auth, consulta: String, limite: Int = 50): List<UsuarioPanel> = Db.query { c ->
         Moderacion.exigirStaff(c, yo.usuarioId)
         val q = consulta.trim().removePrefix("@").lowercase()
-        if (q.length < 2) return@query emptyList()
+        // Exactamente un caracter: ni lista ni busca. Ver el porque arriba.
+        if (q.length == 1) return@query emptyList()
+        val buscando = q.length >= 2
 
         c.prepareStatement(
             """SELECT u.username,
@@ -211,12 +222,16 @@ object Panel {
                       (SELECT count(*) FROM denuncia d WHERE d.objetivo_usuario_id = u.id),
                       (SELECT count(*) FROM denuncia d WHERE d.denunciante_id = u.id)
                FROM usuario u
-               WHERE u.username LIKE ? || '%'
-               ORDER BY u.username
+               ${if (buscando) "WHERE u.username LIKE ? || '%'" else ""}
+               ORDER BY ${if (buscando) "u.username" else "u.creado_en DESC"}
                LIMIT ?"""
         ).use { st ->
-            st.setString(1, q)
-            st.setInt(2, limite.coerceIn(1, 100))
+            // Los indices cambian con el modo: buscando, el LIKE es el 1 y el
+            // limite el 2; en la vista de recientes no hay LIKE y el limite es
+            // el 1. La vista de recientes va fija a 10, lo que pidio quien la usa.
+            var i = 1
+            if (buscando) st.setString(i++, q)
+            st.setInt(i, if (buscando) limite.coerceIn(1, 100) else 10)
             st.executeQuery().use { rs ->
                 rs.mapear {
                     val suspendido = it.getBoolean(4)
