@@ -123,8 +123,25 @@ android {
             // (aunque ping y nc desde el shell si pasen). El tunel de adb es
             // inmune a esa diferencia y funciona igual en todos los AVDs.
             //   adb -s <serial> reverse tcp:8088 tcp:8088
-            buildConfigField("String", "SERVIDOR", "\"http://127.0.0.1:8088\"")
-            buildConfigField("String", "SERVIDOR_WS", "\"ws://127.0.0.1:8088\"")
+            // Por defecto el debug habla con el servidor local por el tunel de
+            // adb. Pero con `-Papi=` se le puede apuntar a un servidor de
+            // verdad —util para probar contra produccion desde un emulador—:
+            //
+            //   ./gradlew :app:assembleDebug -Papi=apiwtf.hackl4bs.com
+            //
+            // Ahi pasa a https/wss, porque un servidor real no habla en claro.
+            // OJO: esto NO saltea el device-binding. El emulador solo acredita
+            // hardware "de software", y un servidor de produccion con
+            // WTFUCK_PERMITIR_SOFTWARE_DEV=false rechaza el registro igual. Solo
+            // sirve para VER que conecta, no para registrarse contra prod.
+            val apiDebug = project.findProperty("api") as? String
+            if (apiDebug.isNullOrBlank()) {
+                buildConfigField("String", "SERVIDOR", "\"http://127.0.0.1:8088\"")
+                buildConfigField("String", "SERVIDOR_WS", "\"ws://127.0.0.1:8088\"")
+            } else {
+                buildConfigField("String", "SERVIDOR", "\"https://$apiDebug\"")
+                buildConfigField("String", "SERVIDOR_WS", "\"wss://$apiDebug\"")
+            }
             // El emulador no tiene TEE: sin esto no se podria probar nada.
             // De donde salen las baldosas del mapa.
             //
