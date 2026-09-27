@@ -18,6 +18,11 @@ compileSdk = "37"
 targetSdk = "37"
 minSdk = "26"
 buildTools = "37.0.0"
+# El NDK trae `llvm-strip`, que es lo que quita los simbolos de depuracion de
+# las bibliotecas nativas al compilar en release. SIN el, AGP no puede
+# strippear y deja `libsignal_jni.so` a 70 MB (viene asi de la dependencia):
+# el APK entero pasaba de 162 MB por eso. Con strip cae a una fraccion.
+ndk = "28.2.13676358"
 
 # --- servidor ---
 ktor = "3.5.2"

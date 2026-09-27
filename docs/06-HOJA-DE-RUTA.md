@@ -6832,3 +6832,50 @@ sola prueba, la del downgrade. Restaurado, las 10 en verde.
 **Lo que NO está verificado:** la instalación real. Consulta, descarga, huella
 y política están probadas; `PackageInstaller` entregando el APK necesita dos
 versiones firmadas con la misma clave y un teléfono de verdad.
+
+---
+
+# v0.3 · Peso del APK
+
+El APK pesaba **162 MB**. Casi todo eran simbolos de depuracion que ningun
+telefono usa.
+
+## El diagnostico
+
+156 de los 162 MB eran bibliotecas nativas, y una sola se llevaba la mayoria:
+
+```
+70.6 MB  libsignal_jni.so   (arm64)
+```
+
+libsignal la publica ASI, con simbolos de depuracion. AGP quita esos simbolos
+en release —la tarea `stripReleaseDebugSymbols`— pero **solo si encuentra el
+NDK**, que es de donde sale `llvm-strip`. No estaba instalado. Sin el, AGP deja
+las .so tal cual y solo AVISA, y ese aviso se perdio entre el ruido del build.
+
+Es el mismo patron que ya mordio tres veces en este proyecto: el build
+"funciona" y se salta un paso en silencio. Aqui el paso saltado pesaba 120 MB.
+
+## El arreglo
+
+Una linea: `ndkVersion` en `build.gradle.kts`, apuntando a un NDK instalado.
+Con eso el strip corre.
+
+```
+libsignal_jni.so   70.6 MB  ->  6.4 MB     (11x)
+APK arm64          162 MB   ->  26 MB      (6x)
+APK arm64+armeabi  162 MB   ->  38 MB
+```
+
+## Verificado ejecutando, no solo midiendo
+
+Strippear toca los binarios, asi que no se dio por bueno midiendo el tamano.
+Se instalo el APK strippeado en el emulador y se registro una cuenta: libsignal
+cargo (`libsignal_jni.so ... ok` en el log) y genero **100 prekeys unicas, 1
+firmada y 1 Kyber**, que el servidor acepto. El strip quita simbolos, no codigo.
+
+## Lo que exige a partir de ahora
+
+Compilar el APK necesita el NDK instalado (`sdkmanager "ndk;28.2.13676358"`).
+No en el servidor —ahi no se compila la app— solo en la maquina que arma el
+APK. Documentado en el paso 8 de la guia.

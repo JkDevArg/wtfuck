@@ -290,12 +290,27 @@ keytool -genkeypair -v -keystore wtfuck-publicacion.jks -alias publicacion -keya
 Guarda ese `.jks` y su contraseña **fuera de tu PC**. No se puede rotar: quien
 lo pierda no puede volver a actualizar la app nunca.
 
-Copia `keystore.properties.ejemplo` a `keystore.properties` y rellénalo. Luego:
+Copia `keystore.properties.ejemplo` a `keystore.properties` y rellénalo.
+
+**Hace falta el NDK** (solo para compilar, no en el servidor). Sin él, las
+bibliotecas nativas salen sin strippear y el APK pesa 162 MB en vez de ~40. Se
+instala una vez:
+
+```bash
+sdkmanager "ndk;28.2.13676358"
+```
+
+Luego:
 
 ```bash
 cd /g/PROYECTOS/wtfuck
 ./gradlew :app:assembleRelease -Papi=apiwtf.hackl4bs.com -Pabi=arm64-v8a
 ```
+
+`-Pabi=arm64-v8a` deja el APK en **~26 MB** (el 99% de los teléfonos actuales).
+Sin `-Pabi` incluye también `armeabi-v7a` (teléfonos de 32 bits, pre-2018) y
+pesa **~38 MB** — más grande, pero no deja fuera a nadie. Tú eliges según a
+quién reparte.
 
 **Comprobación:**
 

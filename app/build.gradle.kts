@@ -12,6 +12,20 @@ android {
     compileSdk = libs.versions.compileSdk.get().toInt()
     buildToolsVersion = libs.versions.buildTools.get()
 
+    // El NDK existe SOLO para strippear las bibliotecas nativas en release.
+    //
+    // No compilamos nada en C/C++: las .so vienen de libsignal, WebRTC y
+    // SQLCipher. Pero libsignal publica `libsignal_jni.so` con simbolos de
+    // depuracion —70 MB en arm64, 65 en armeabi— y sin NDK, AGP no tiene con
+    // que quitarlos: deja las .so tal cual y solo AVISA. Ese aviso se perdio
+    // entre el ruido del build, y el APK salia a 162 MB, casi todo simbolos
+    // que ningun telefono usa.
+    //
+    // Con esto presente, la tarea `stripReleaseDebugSymbols` corre y las deja
+    // en una fraccion. Es el mismo patron que ya mordio en este proyecto: el
+    // build "funciona" y se salta un paso en silencio.
+    ndkVersion = libs.versions.ndk.get()
+
     defaultConfig {
         applicationId = "com.wtfuck.app"
         minSdk = libs.versions.minSdk.get().toInt()
