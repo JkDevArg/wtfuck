@@ -88,6 +88,58 @@ data class InvitacionResp(
     val nota: String,
 )
 
+/**
+ * La version publicada, para que la app sepa si esta vieja.
+ *
+ * ## Por que esto existe
+ *
+ * El APK se reparte fuera de una tienda, asi que nadie avisa de que hay una
+ * version nueva: quien lo instalo se queda en la que bajo hasta que vuelve a
+ * la pagina por su cuenta. En la practica eso significa que no actualiza.
+ *
+ * ## Publica y sin autenticar, a proposito
+ *
+ * Tiene que contestarle a una app que **todavia no puede entrar**. Si un
+ * cambio de protocolo deja fuera a las versiones viejas, la respuesta correcta
+ * para esa app es "actualizate", y no puede depender de un login que ya no le
+ * funciona. Lo que se publica —numero de version y donde bajarla— es lo mismo
+ * que hay en la pagina de descarga.
+ */
+@Serializable
+data class VersionResp(
+    /**
+     * El `versionCode` publicado. **0 = este servidor no publica ninguna**, y
+     * entonces la app no hace nada.
+     *
+     * Apagado por defecto por la misma razon que las invitaciones: actualizar
+     * el servidor no puede encenderle a nadie un mecanismo que descarga e
+     * instala cosas sin que lo haya pedido.
+     */
+    val versionCode: Int = 0,
+    val versionName: String = "",
+    /** De donde se baja el APK. Tiene que ser https. */
+    val url: String = "",
+    /**
+     * SHA-256 del archivo, en hexadecimal.
+     *
+     * No es la defensa principal —esa es la firma, que comprueba Android— pero
+     * evita instalar una descarga corrupta o cortada, que es el caso comun.
+     */
+    val sha256: String = "",
+    /**
+     * Por debajo de este `versionCode` la app no puede seguir funcionando.
+     *
+     * Sirve para un cambio de protocolo que rompe a los clientes viejos: en
+     * vez de que fallen de formas raras, se les dice claramente que tienen que
+     * actualizar. 0 = ninguna version queda obsoleta.
+     */
+    val minima: Int = 0,
+    /** Que cambio. Se muestra tal cual. */
+    val notas: String = "",
+)
+
+const val RUTA_VERSION = "/v1/version"
+
 @Serializable
 data class SesionReq(
     val username: String,

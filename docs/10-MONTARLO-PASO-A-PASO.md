@@ -381,6 +381,75 @@ grep WTFUCK_PROPIETARIO .env.produccion
 
 ---
 
+## Publicar una versión nueva
+
+La app avisa sola cuando hay una versión más nueva, la descarga y deja la
+instalación en **un toque**. No lo hace por magia: hay que decírselo al
+servidor.
+
+### 1 · Compila subiendo el número
+
+```bash
+./gradlew :app:assembleRelease -Papi=TU-DOMINIO -Pabi=arm64-v8a -PversionCode=2 -PversionName=0.2.0
+```
+
+`-Pversion` es lo único que Android mira para saber si un APK es más nuevo que
+el instalado. **Tiene que subir en cada publicación y no puede bajar nunca.**
+Si no sube, el instalador no actualiza — y no da ningún error que lo explique.
+
+### 2 · Prepara la descarga
+
+```bash
+bash despliegue/publicar-apk.sh
+```
+
+Al final imprime el bloque de variables **ya relleno**, con la huella de ese
+archivo exacto.
+
+### 3 · Sube el APK y pega las variables
+
+```bash
+scp despliegue/descarga/* root@TU-VPS:/home/hackl4bs/htdocs/hackl4bs.com/wtfuck/
+```
+
+Pega las cuatro `WTFUCK_APK_*` en `.env.produccion` y reinicia:
+
+```bash
+cd /opt/wtfuck && docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml up -d --force-recreate servidor
+```
+
+**El reinicio es parte del mecanismo, no un efecto secundario.** Corta todos
+los sockets, los teléfonos reconectan, y en esa reconexión preguntan por la
+versión. Por eso no hace falta ningún push.
+
+### Lo que no se puede hacer, y no es un fallo
+
+**Nadie puede instalar una app en silencio en Android** salvo que el teléfono
+esté administrado o la app venga preinstalada de fábrica. Android va a enseñar
+su diálogo de confirmación siempre. Lo que se automatiza es enterarse y
+descargar; decidir, no.
+
+### Si quieres forzar a actualizar
+
+`WTFUCK_APK_MINIMA=N` marca como obsoleta cualquier versión por debajo de `N`:
+esas ven un aviso que no se puede cerrar. Es para cuando un cambio de protocolo
+rompe a los clientes viejos de verdad — no para empujar una versión.
+
+> Ponerla **mayor** que `WTFUCK_APK_VERSION` dejaría a todo el mundo fuera,
+> incluida la que acabas de subir. El servidor la recorta solo, pero conviene
+> no depender de eso.
+
+### Comprobarlo
+
+```bash
+curl -s https://TU-DOMINIO/v1/version
+```
+
+Tiene que devolver el `versionCode` que subiste y una `url` con `https`. La app
+se niega a descargar por http.
+
+---
+
 ## Los cuatro fallos que dan el mismo síntoma
 
 Cuatro veces durante el primer montaje de esto, Compose dijo `unhealthy` o el

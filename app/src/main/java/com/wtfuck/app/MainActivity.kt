@@ -24,6 +24,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.wtfuck.app.ui.AvisoDeActualizacion
 import com.wtfuck.app.ui.InvitacionesPantalla
 import com.wtfuck.app.ui.ComunidadesPantalla
 import com.wtfuck.app.ui.ChatPantalla
@@ -318,6 +319,10 @@ private fun Raiz() {
             // se suelta: si no, la lista quedaria escondida detras de un chat
             // que nadie pidio abrir a pantalla completa.
             LaunchedEffect(ancho) { if (!ancho) elegido = null }
+
+            // Va aqui y no en cada panel: con dos paneles se dibujan los dos,
+            // y el aviso saldria duplicado.
+            AvisoDeActualizacion()
 
             val lista = @Composable {
                 Inicio(

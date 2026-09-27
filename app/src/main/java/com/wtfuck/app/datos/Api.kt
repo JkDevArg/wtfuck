@@ -244,6 +244,55 @@ class ApiCliente(private val sesion: Sesion) {
             .also { sesion.guardar(it) }
 
     /**
+     * La version publicada del APK. Sin autenticar.
+     *
+     * Tiene que funcionar en una app tan vieja que ya no puede entrar: si un
+     * cambio de protocolo la dejo fuera, "actualizate" es justo la respuesta
+     * que necesita, y no puede depender de un login que ya no le sirve.
+     */
+    suspend fun versionPublicada(): VersionResp =
+        pedir(RUTA_VERSION, "GET", null, false)
+
+    /**
+     * Baja un archivo a disco, informando del avance.
+     *
+     * Usa el cliente del almacen -minutos de timeout, no 30 segundos-: un APK
+     * son decenas de megas y en una red mala el cliente de API lo cortaria
+     * siempre, justo en los telefonos donde mas falta hace poder actualizar.
+     *
+     * La URL se comprueba aqui ademas de en quien llama. Es la unica funcion
+     * de esta clase que escribe en disco lo que diga una direccion que viene
+     * del servidor, asi que el `https` no puede depender de que el de arriba
+     * se acuerde.
+     */
+    suspend fun descargarA(url: String, destino: File, progreso: (Int) -> Unit = {}) =
+        withContext(Dispatchers.IO) {
+            require(url.startsWith("https://")) { "La descarga tiene que ir por https." }
+            val r = httpAlmacen.newCall(Request.Builder().url(url).get().build()).execute()
+            r.use {
+                if (!it.isSuccessful) throw ApiError(it.code, "No se pudo descargar.")
+                val cuerpo = it.body ?: throw ApiError(it.code, "Respuesta vacia.")
+                val total = cuerpo.contentLength()
+                destino.outputStream().use { salida ->
+                    cuerpo.byteStream().use { entrada ->
+                        val buf = ByteArray(64 * 1024)
+                        var hechos = 0L
+                        while (true) {
+                            val n = entrada.read(buf)
+                            if (n <= 0) break
+                            salida.write(buf, 0, n)
+                            hechos += n
+                            // Solo si se sabe cuanto pesa: sin
+                            // `Content-Length` un porcentaje seria inventado,
+                            // y una barra que miente es peor que ninguna.
+                            if (total > 0) progreso(((hechos * 100) / total).toInt())
+                        }
+                    }
+                }
+            }
+        }
+
+    /**
      * Si este servidor pide invitacion, preguntado ANTES del formulario.
      *
      * Sin autenticar, porque quien lo pregunta todavia no tiene cuenta: ese es

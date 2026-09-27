@@ -37,6 +37,14 @@ esac
 VERSION=$(date +%Y%m%d)
 NOMBRE="wtfuck-$VERSION.apk"
 
+# El `versionCode` del APK, que es lo unico que Android mira para decidir si
+# una version es mas nueva que la instalada. Se LEE del archivo en vez de
+# escribirlo a mano aqui: un numero copiado se desincroniza del APK en la
+# primera prisa, y entonces el servidor anuncia una version que no existe —
+# los telefonos descargan, la huella cuadra, y el instalador la rechaza por no
+# ser mas nueva. El sintoma es "la actualizacion no hace nada".
+CODIGO=""
+
 mkdir -p "$SALIDA"
 cp "$APK" "$SALIDA/$NOMBRE"
 
@@ -76,6 +84,22 @@ if [ -z "$CERT" ]; then
   echo "       La pagina saldra sin la huella del certificado. La del archivo si esta."
 fi
 
+# El versionCode, con la misma tolerancia que el certificado: si no se puede
+# leer, se avisa y se sigue. La pagina de descarga no lo necesita; el bloque
+# de variables del servidor si, y ahi es donde se dice que falta.
+if [ -d "$SDK/build-tools" ]; then
+  AAPT=$(find "$SDK/build-tools" \( -name aapt2.exe -o -name aapt2 \)     -not -path "*/lib/*" 2>/dev/null | sort -r | head -1 || true)
+  if [ -n "$AAPT" ]; then
+    CODIGO=$("$AAPT" dump badging "$SALIDA/$NOMBRE" 2>/dev/null |
+      grep -oE "versionCode='[0-9]+'" | head -1 | grep -oE "[0-9]+" || true)
+  fi
+fi
+if [ -z "$CODIGO" ]; then
+  echo "AVISO: no pude leer el versionCode del APK."
+  echo "       Ponlo a mano en WTFUCK_APK_VERSION mas abajo."
+  CODIGO="PONLO-A-MANO"
+fi
+
 sed -e "s|@NOMBRE@|$NOMBRE|g" \
     -e "s|@HUELLA@|$HUELLA|g" \
     -e "s|@CERT@|$CERT|g" \
@@ -92,3 +116,35 @@ echo "Huella del certificado: $CERT"
 echo
 echo "Subelo al sitio estatico:"
 echo "  scp $SALIDA/* root@TU-VPS:/home/hackl4bs/htdocs/hackl4bs.com/wtfuck/"
+echo
+
+# ---------------------------------------------------------------------------
+#  Y lo que hace que la gente se entere de que existe
+# ---------------------------------------------------------------------------
+#
+# Subir el APK no actualiza a nadie: quien lo tiene instalado se queda en su
+# version hasta que vuelve a la pagina por su cuenta, o sea casi nunca. Estas
+# cuatro variables son las que hacen que la app lo pregunte sola.
+#
+# Se imprimen ya rellenas, con la huella de ESTE archivo, porque el paso donde
+# se falla es justo ese: una huella copiada de la publicacion anterior hace
+# que ninguna descarga cuadre y la actualizacion no funcione para nadie, sin
+# ningun error visible en el servidor.
+URL_PUBLICA="https://hackl4bs.com/wtfuck/$NOMBRE"
+cat <<FIN
+Para que la app avise sola, pega esto en .env.produccion del servidor
+y reinicialo (el reinicio es lo que hace que los clientes se enteren:
+reconectan y preguntan):
+
+WTFUCK_APK_VERSION=$CODIGO
+WTFUCK_APK_NOMBRE=$VERSION
+WTFUCK_APK_URL=$URL_PUBLICA
+WTFUCK_APK_SHA256=$HUELLA
+
+Comprueba la URL antes de pegarla: tiene que ser donde acabas de subir el
+archivo, y por https. La app se niega a bajar nada por http.
+
+Y OJO con el versionCode: si no subio respecto a la version anterior,
+Android no la va a tomar como actualizacion. Se sube al compilar:
+  ./gradlew :app:assembleRelease -PversionCode=N -PversionName=0.N.0
+FIN

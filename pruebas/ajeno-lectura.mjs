@@ -300,6 +300,11 @@ const EXENTAS_LECTURA = [
   // registrarse; lo que evita es rellenar el formulario entero para que lo
   // rechacen al final por un campo que no se sabia que existia.
   ['/v1/registro/modo', 'publica a proposito: la pregunta quien aun no tiene cuenta'],
+  // Publica, y tiene que serlo: le contesta a una app tan vieja que ya no
+  // puede entrar. Si un cambio de protocolo la dejo fuera, "actualizate" es
+  // justo lo que necesita oir, y detras de un login que ya no le funciona no
+  // lo oiria nunca. Lo que publica es lo mismo que la pagina de descarga.
+  ['/v1/version', 'publica a proposito: tiene que contestarle a una app que ya no puede entrar'],
 ];
 
 console.log('\n=== ninguna ruta de lectura queda sin mirar ===');

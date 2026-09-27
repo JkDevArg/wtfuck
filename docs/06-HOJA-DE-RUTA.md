@@ -6766,3 +6766,69 @@ los dos bloqueos de arranque y lo que cada prueba sí demuestra.
 
 **2000 pruebas en verde**: 1544 de integración en 37 suites, 369 JUnit de app
 y 87 de servidor.
+
+---
+
+# Módulo BD · Actualización desde la app
+
+Que la gente se entere de que hay una versión nueva, y que instalarla sea un
+toque en vez de una excursión de cinco pasos por el navegador y el gestor de
+archivos.
+
+## Lo primero, porque condiciona el resto: no se puede instalar en silencio
+
+Una app normal **no puede actualizarse sola** en Android. Hace falta ser
+*device owner* —un teléfono administrado, que se enrola con un borrado de
+fábrica— o app de sistema firmada con la clave de la plataforma. Un APK que la
+gente baja de una página no es ninguna de las dos.
+
+No es una limitación de esta implementación: es el techo del sistema, y es un
+techo razonable. Una app que pudiera instalarse sola en silencio es justo la
+que nadie querría tener.
+
+Lo que sí se puede es todo lo demás: enterarse, descargar en segundo plano, y
+dejar **un toque** en el diálogo del sistema. Es lo que hacen el APK directo de
+Signal, el de Telegram y F-Droid.
+
+## Esto es un canal de ejecución remota de código
+
+Un mecanismo de actualización dice, visto de frente: *"servidor, dime qué
+binario instalo"*. En una app cuya premisa es que el servidor es un buzón tonto
+en el que no se confía, eso sería una contradicción.
+
+Lo que la cierra es que **Android rechaza una actualización firmada con otra
+clave**: el ancla de confianza es el keystore, no el servidor. Un servidor
+comprometido no puede inyectar código propio.
+
+Lo que Android no tapa es el **downgrade** —servir una versión antigua y
+legítima, con un fallo ya arreglado— y de eso se defiende el cliente:
+`versionCode > instalada`, con `>` y no `!=`. Una diferencia de un carácter que
+es toda la defensa, y por eso está en un objeto sin `Context` que se prueba en
+JUnit normal.
+
+## Por qué no hace falta un push
+
+Publicar exige reiniciar el servidor. Un reinicio corta todos los sockets, los
+clientes reconectan, y en la reconexión preguntan. Los que estaban cerrados
+preguntan al abrir. Entre las dos cosas no queda nadie fuera — sin Firebase,
+que además no está configurado, y sin contarle a Google cada build.
+
+## El defecto que llevaba ahí desde el primer commit
+
+`versionCode = 1`, nunca subido. Con eso **ninguna** actualización funciona:
+dos builds con el mismo número son la misma versión para Android, y el
+instalador no actualiza sin dar ningún error que lo explique. Ahora sale de
+`-PversionCode=N`, y `publicar-apk.sh` lo lee del APK con `aapt2` en vez de que
+nadie lo escriba a mano.
+
+### Evidencias
+
+[`docs/evidencias/actualizacion/`](evidencias/actualizacion/) — el techo de
+Android, la defensa contra el downgrade, y el paso que queda sin verificar.
+
+**El defecto inyectado:** cambiar `>` por `!=` en la política hace fallar una
+sola prueba, la del downgrade. Restaurado, las 10 en verde.
+
+**Lo que NO está verificado:** la instalación real. Consulta, descarga, huella
+y política están probadas; `PackageInstaller` entregando el APK necesita dos
+versiones firmadas con la misma clave y un teléfono de verdad.

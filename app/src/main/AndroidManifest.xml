@@ -4,6 +4,21 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Para poder ofrecer la actualizacion sin mandar a nadie al navegador.
+
+      El APK se reparte fuera de una tienda, asi que nadie avisa de que hay
+      algo nuevo: quien lo instalo se queda en esa version hasta que vuelve a
+      la pagina por su cuenta, o sea, casi nunca.
+
+      Esto NO instala nada en silencio — Android no se lo permite a una app
+      normal, hace falta ser device owner o app de sistema. Lo que permite es
+      que la descarga ocurra en segundo plano y que quede UN toque en el
+      dialogo del sistema, en vez de bajar con el navegador, buscar el archivo
+      y volver a pelearse con el permiso de origenes desconocidos.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Notas de voz y llamadas. Se pide en el momento, no al abrir la app. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Modulo K: videollamadas. -->

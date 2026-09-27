@@ -465,6 +465,16 @@ class Repositorio(
         }
     }
 
+    /**
+     * Cada vez que el socket (re)conecta.
+     *
+     * Se expone para que la interfaz pueda volver a preguntar por la version
+     * publicada: publicar una exige reiniciar el servidor, un reinicio corta
+     * todos los sockets, y esta es la senal que llega justo despues. Es lo que
+     * hace innecesario un push para avisar de una actualizacion.
+     */
+    val reconectado get() = socket.conectado
+
     fun detener() {
         colectores?.cancel()
         colectores = null

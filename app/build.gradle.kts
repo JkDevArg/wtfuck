@@ -16,8 +16,31 @@ android {
         applicationId = "com.wtfuck.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        // La version, que se puede subir sin editar este archivo:
+        //
+        //   ./gradlew :app:assembleRelease -PversionCode=3 -PversionName=0.3.0
+        //
+        // Los nombres NO son `-Pversion` y `-PversionNombre`, que es lo que se
+        // escribio primero: `version` ya es una propiedad de Gradle -vale
+        // "unspecified" si nadie la pone- asi que `findProperty("version")`
+        // devuelve eso y no lo que uno cree. Funcionaba de casualidad, porque
+        // "unspecified" no es un numero y caia al valor por defecto; el dia
+        // que algo pusiera un objeto de version ahi, el cast reventaria la
+        // compilacion con un error que no menciona ninguna de estas lineas.
+        //
+        // ## Por que esto importa mas de lo que parece
+        //
+        // `versionCode` estuvo clavado en 1 durante todo el desarrollo, y con
+        // eso NINGUNA actualizacion funciona: Android compara este numero para
+        // decidir si un APK es mas nuevo que el instalado, y dos builds con el
+        // mismo numero son la misma version para el sistema. El instalador no
+        // se queja de nada raro — simplemente no actualiza, o pide desinstalar
+        // primero, que en una app de mensajeria significa perder el historial.
+        //
+        // Tiene que subir en CADA publicacion y no puede bajar nunca. Es lo
+        // unico que el telefono mira para no dejarse poner una version vieja.
+        versionCode = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("versionName") as? String) ?: "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     }

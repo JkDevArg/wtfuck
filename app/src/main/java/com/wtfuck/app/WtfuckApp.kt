@@ -33,6 +33,9 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
 
     val sesion by lazy { Sesion(this) }
     val api by lazy { ApiCliente(sesion) }
+
+    /** Avisa de que hay una version nueva y la deja lista para instalar. */
+    val actualizador by lazy { Actualizador(this, api) }
     val base by lazy { BaseLocal.crear(this) }
     val socket by lazy { Socket(ambito) }
     val archivos by lazy { ArchivosLocales(this) }

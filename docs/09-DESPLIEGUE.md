@@ -500,6 +500,42 @@ y se arranca el servidor con `WTFUCK_FCM_OAUTH=http://localhost:8399/token` y
 comprueba el formato del aviso, incluido lo que importa: que **no lleve
 contenido**.
 
+### Actualizaciones: anunciar una versión
+
+Cuatro variables, y `despliegue/publicar-apk.sh` las imprime ya rellenas
+después de compilar:
+
+```bash
+WTFUCK_APK_VERSION=2                                    # el versionCode del APK
+WTFUCK_APK_NOMBRE=0.2.0                                 # lo que ve la gente
+WTFUCK_APK_URL=https://tu-dominio/wtfuck/wtfuck-2.apk   # https obligatorio
+WTFUCK_APK_SHA256=<64 hex>                              # del archivo exacto
+WTFUCK_APK_MINIMA=0                                     # opcional; ver abajo
+WTFUCK_APK_NOTAS=""                                     # opcional
+```
+
+Sin `WTFUCK_APK_VERSION` el endpoint contesta apagado y la app no hace nada.
+
+**El reinicio del servidor es parte del mecanismo.** Corta los sockets, los
+teléfonos reconectan y en la reconexión preguntan por la versión. Por eso no
+hace falta ningún push para avisar.
+
+`WTFUCK_APK_MINIMA=N` marca obsoleta cualquier versión por debajo de `N`: esas
+ven un aviso que no se puede cerrar. Es para un cambio de protocolo que rompe
+a los clientes viejos de verdad, no para empujar una versión. El servidor la
+recorta a la publicada, porque ponerla más alta dejaría a todo el mundo fuera
+—incluida la que se acaba de subir— y eso no se puede diagnosticar desde el
+teléfono.
+
+**Android no deja instalar nada en silencio.** Ni esto ni ninguna otra app que
+no venga preinstalada. Lo que se automatiza es enterarse y descargar; el
+diálogo de confirmación lo pone el sistema y no se puede saltar. Ver
+[`docs/evidencias/actualizacion/`](evidencias/actualizacion/).
+
+```bash
+curl -s https://TU-DOMINIO/v1/version
+```
+
 ---
 
 ## Lo que todavía no está, para no llevarse una sorpresa

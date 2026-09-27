@@ -456,6 +456,12 @@ fun Application.modulo() {
         // Publico y antes del formulario. Ver `Invitaciones.modo`.
         get(RUTA_REGISTRO_MODO) { call.respond(Invitaciones.modo()) }
 
+        // Sin autenticar, y es lo importante de esta ruta: tiene que poder
+        // contestarle a una app tan vieja que ya no puede entrar. Si un
+        // cambio de protocolo la deja fuera, la respuesta que necesita es
+        // "actualizate", y no puede depender de un login que ya no funciona.
+        get(RUTA_VERSION) { call.respond(Actualizacion.publicada()) }
+
         post(RUTA_REGISTRO) {
             val resp = Repo.registrar(
                 call.receive(), call.ipCliente(), call.request.headers["User-Agent"],
