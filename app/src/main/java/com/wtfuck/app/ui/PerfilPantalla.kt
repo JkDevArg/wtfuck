@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.DeveloperMode
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Storage
@@ -118,6 +119,7 @@ fun PerfilPantalla(
     onAlmacenamiento: () -> Unit,
     onMiCuenta: () -> Unit,
     onPanel: () -> Unit,
+    onNovedades: () -> Unit,
     onSeguridad: () -> Unit,
     onLlamadas: () -> Unit,
     onNotificaciones: () -> Unit,
@@ -463,12 +465,18 @@ fun PerfilPantalla(
                 )
             }
 
-            // El panel solo se MUESTRA si soy staff. Quien autoriza sigue
-            // siendo el servidor en cada peticion: esto solo evita ofrecer una
-            // puerta que va a dar 404.
-            if (nivelStaff > 0) {
-                Spacer(Modifier.height(18.dp))
-                SeccionAjustes("Plataforma") {
+            // La seccion "Plataforma" siempre aparece, pero su contenido cambia
+            // con quien mira:
+            //
+            //  - "Novedades" la ve TODO EL MUNDO: un registro de cambios que solo
+            //    viera el staff no cumpliria su unico proposito, que es contarle
+            //    a quien usa la app que cambio en la version que acaba de tener.
+            //  - "Moderacion" solo si soy staff. Quien autoriza sigue siendo el
+            //    servidor en cada peticion; esto solo evita ofrecer una puerta
+            //    que daria 404.
+            Spacer(Modifier.height(18.dp))
+            SeccionAjustes("Plataforma") {
+                if (nivelStaff > 0) {
                     FilaAjuste(
                         icono = Icons.Filled.Shield,
                         titulo = "Moderacion",
@@ -478,10 +486,16 @@ fun PerfilPantalla(
                             else -> "Moderador"
                         },
                         tinte = Ambar,
-                        conDivisor = false,
                         onClick = onPanel,
                     )
                 }
+                FilaAjuste(
+                    icono = Icons.Filled.NewReleases,
+                    titulo = "Novedades",
+                    detalle = "Qué cambió en cada versión",
+                    conDivisor = false,
+                    onClick = onNovedades,
+                )
             }
 
             Spacer(Modifier.height(18.dp))

@@ -26,6 +26,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.wtfuck.app.ui.AvisoDeActualizacion
 import com.wtfuck.app.ui.InvitacionesPantalla
+import com.wtfuck.app.ui.NovedadesPantalla
 import com.wtfuck.app.ui.ComunidadesPantalla
 import com.wtfuck.app.ui.ChatPantalla
 import com.wtfuck.app.ui.CompartidoPantalla
@@ -333,6 +334,7 @@ private fun Raiz() {
                     onAlmacenamiento = { nav.navigate("almacenamiento") },
                     onMiCuenta = { nav.navigate("mi-cuenta") },
                     onPanel = { nav.navigate("panel") },
+                    onNovedades = { nav.navigate("novedades") },
                     onSeguridad = { nav.navigate("seguridad") },
                     onAbrirEnMensaje = { id, m -> nav.navigate("chat/$id?m=$m") },
                     onLlamadas = { nav.navigate("llamadas") },
@@ -444,6 +446,10 @@ private fun Raiz() {
 
         composable("invitaciones") {
             InvitacionesPantalla(onAtras = { nav.popBackStack() })
+        }
+
+        composable("novedades") {
+            NovedadesPantalla(onAtras = { nav.popBackStack() })
         }
 
         composable("limites") {
