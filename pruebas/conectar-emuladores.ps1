@@ -62,4 +62,4 @@ foreach ($d in $dispositivos) {
 Write-Host ''
 Write-Host "Listo. Servidor en :$PuertoServidor, almacen en :9000."
 Write-Host 'Si las fotos siguen sin subir, comproba que el contenedor de MinIO este arriba:'
-Write-Host '  docker compose up -d minio'
+Write-Host '  docker compose up -d almacen'

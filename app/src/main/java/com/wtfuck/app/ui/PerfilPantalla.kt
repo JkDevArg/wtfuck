@@ -497,7 +497,22 @@ fun PerfilPantalla(
                 )
             }
 
-            Spacer(Modifier.height(28.dp))
+            // La version, al fondo del todo.
+            //
+            // Va aqui y no en un "Acerca de" aparte porque es lo primero que
+            // se pregunta cuando algo falla -"que version tienes"- y el sitio
+            // donde la gente ya baja a mirar es el final del perfil. Centrada
+            // y en gris: esta para cuando se busca, no para leerse sola.
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "wtfuck ${com.wtfuck.app.BuildConfig.VERSION_NAME} (${com.wtfuck.app.BuildConfig.VERSION_CODE})",
+                color = TextoTerciario,
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(24.dp))
             Spacer(Modifier.height(pad.calculateBottomPadding()))
         }
     }
