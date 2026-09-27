@@ -61,12 +61,29 @@ TAMANO=$(du -h "$SALIDA/$NOMBRE" | cut -f1)
 # La huella del certificado es util pero no imprescindible; la del archivo si.
 # Que falte la primera no puede impedir que se genere la pagina.
 CERT=""
-SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
-# En Windows la variable trae barras invertidas —`G:\Android\Sdk`— y en Git
-# Bash eso no es una ruta: el `find` no encuentra nada y la pagina salia sin
-# la huella del certificado, avisando de que faltaba ANDROID_HOME cuando la
-# variable estaba puesta. El aviso mentia y mandaba a mirar donde no era.
+# Donde esta el SDK. Se busca en varios sitios porque este script corre en Git
+# Bash, donde ANDROID_HOME casi nunca esta puesto —lo pone env.ps1, pero solo
+# para PowerShell—. Sin encontrarlo, antes el versionCode salia como
+# "PONLO-A-MANO", que apaga las actualizaciones si se pega entero.
+#
+#   1. ANDROID_HOME / ANDROID_SDK_ROOT del entorno, si estan.
+#   2. sdk.dir de local.properties, donde Gradle lo tiene apuntado.
+#   3. Rutas tipicas, incluida cualquier unidad de Windows (el SDK de este
+#      equipo vive en G:\Android\Sdk, fuera del home).
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [ -z "$SDK" ] && [ -f local.properties ]; then
+  SDK=$(grep -E "^sdk.dir=" local.properties | head -1 | cut -d= -f2-)
+fi
+# En Windows la variable y local.properties traen barras invertidas —G:\Android
+# o G:\\Android— y en Git Bash eso no es una ruta.
 SDK="${SDK//\\//}"
+if [ ! -d "$SDK/build-tools" ]; then
+  for cand in "$HOME/Android/Sdk" "${LOCALAPPDATA:-}/Android/Sdk" \
+              /?/Android/Sdk /?/Users/*/AppData/Local/Android/Sdk; do
+    c="${cand//\\//}"
+    [ -d "$c/build-tools" ] && { SDK="$c"; break; }
+  done
+fi
 if [ -d "$SDK/build-tools" ]; then
   # `-name apksigner*` cogia el `lib/apksigner.jar`, que no es ejecutable.
   # Se busca el lanzador: `.bat` en Windows, sin extension en el resto, y de
@@ -94,10 +111,33 @@ if [ -d "$SDK/build-tools" ]; then
       grep -oE "versionCode='[0-9]+'" | head -1 | grep -oE "[0-9]+" || true)
   fi
 fi
+# Respaldo sin SDK: AGP escribe `output-metadata.json` junto al APK, con el
+# versionCode y el versionName dentro. No necesita aapt ni ANDROID_HOME, asi
+# que cubre justo el caso de correr esto en Git Bash sin el SDK en el entorno.
+META=app/build/outputs/apk/release/output-metadata.json
+if [ -z "$CODIGO" ] && [ -f "$META" ]; then
+  CODIGO=$(grep -oE '"versionCode"[: ]+[0-9]+' "$META" | grep -oE '[0-9]+' | head -1)
+fi
+NOMBRE_VER=""
+if [ -f "$META" ]; then
+  NOMBRE_VER=$(grep -oE '"versionName"[: ]+"[^"]*"' "$META" | sed -E 's/.*"([^"]*)"$/\1/' | head -1)
+fi
+# El nombre visible: el versionName si se pudo leer, si no la fecha. Nunca el
+# versionCode a secas, que es un numero interno.
+[ -n "$NOMBRE_VER" ] && VERSION_VISIBLE="$NOMBRE_VER" || VERSION_VISIBLE="$VERSION"
 if [ -z "$CODIGO" ]; then
-  echo "AVISO: no pude leer el versionCode del APK."
-  echo "       Ponlo a mano en WTFUCK_APK_VERSION mas abajo."
-  CODIGO="PONLO-A-MANO"
+  # Sin versionCode NO se imprime un bloque pegable: un valor de relleno aqui
+  # se pega entero y apaga las actualizaciones sin que nadie lo note. Mejor
+  # parar y decir como sacarlo.
+  echo
+  echo "ERROR: no pude leer el versionCode del APK (ni por aapt ni por"
+  echo "       output-metadata.json). El APK esta en $SALIDA/$NOMBRE, pero"
+  echo "       NO imprimo el bloque del servidor: pegar un versionCode a medias"
+  echo "       apaga las actualizaciones en silencio."
+  echo
+  echo "       Sacalo con:  unzip -p \"$SALIDA/$NOMBRE\" AndroidManifest.xml | strings | grep -A1 versionCode"
+  echo "       o recompila y vuelve a correr esto."
+  exit 1
 fi
 
 sed -e "s|@NOMBRE@|$NOMBRE|g" \
@@ -137,7 +177,7 @@ y reinicialo (el reinicio es lo que hace que los clientes se enteren:
 reconectan y preguntan):
 
 WTFUCK_APK_VERSION=$CODIGO
-WTFUCK_APK_NOMBRE=$VERSION
+WTFUCK_APK_NOMBRE=$VERSION_VISIBLE
 WTFUCK_APK_URL=$URL_PUBLICA
 WTFUCK_APK_SHA256=$HUELLA
 
