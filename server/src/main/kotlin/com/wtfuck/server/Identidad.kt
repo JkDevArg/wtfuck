@@ -370,6 +370,20 @@ object Identidad {
         val dueno = canjear(c, hash, PropositoCodigo.RECUPERAR_CUENTA, req.codigo)
         if (dueno != id) throw ErrorNegocio(403, "Ese codigo no es de esta cuenta.")
 
+        // El segundo factor tambien AQUI, y va despues de canjear el codigo a
+        // proposito: asi no se puede usar esta ruta para averiguar si una
+        // cuenta tiene dos pasos sin tener antes el SMS.
+        //
+        // Sin esta linea el SMS puenteaba el TOTP por completo: esta funcion
+        // cambia la contrasena y cierra TODAS las sesiones, asi que quien
+        // controlara el numero -un cambio de SIM- lo hacia con el segundo
+        // factor encendido y sin tocarlo. El segundo factor existe para que
+        // tener el numero no alcance.
+        //
+        // No deja fuera a quien perdio el telefono con la app de codigos:
+        // `exigirSegundoFactor` acepta tambien un codigo de respaldo.
+        exigirSegundoFactor(c, id, req.totp)
+
         c.prepareStatement("UPDATE usuario SET password_hash = ? WHERE id = ?").use { st ->
             st.setString(1, Cripto.hashPassword(req.passwordNueva))
             st.setObject(2, id)

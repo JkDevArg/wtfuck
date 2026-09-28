@@ -202,6 +202,22 @@ data class RecuperarReq(
     val telefono: String,
     val codigo: String,
     val passwordNueva: String,
+    /**
+     * TOTP o codigo de respaldo, si la cuenta tiene dos pasos activado.
+     *
+     * ## Por que la recuperacion tambien lo pide
+     *
+     * Porque si no, **el SMS puentea el segundo factor**. La recuperacion
+     * cambia la contrasena y cierra todas las sesiones, asi que quien controle
+     * el numero -un cambio de SIM, un operador con un empleado comprado- podia
+     * hacer eso con el TOTP encendido y sin tocarlo. El segundo factor existe
+     * justamente para que tener el numero no alcance; una ruta de recuperacion
+     * que lo salta lo anula por completo.
+     *
+     * No deja fuera a quien perdio el telefono: `exigirSegundoFactor` acepta
+     * tambien un **codigo de respaldo**, que es para lo que se emiten.
+     */
+    val totp: String? = null,
 )
 
 // ============================================================

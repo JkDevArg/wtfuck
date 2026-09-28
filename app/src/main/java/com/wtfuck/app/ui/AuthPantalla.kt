@@ -426,6 +426,18 @@ private fun DialogoRecuperar(
     var error by remember { mutableStateOf<String?>(null) }
     var deprueba by remember { mutableStateOf<String?>(null) }
 
+    /**
+     * El codigo de dos pasos, solo si la cuenta lo tiene.
+     *
+     * No se pregunta de entrada: la mayoria no tiene dos pasos, y un campo mas
+     * en una pantalla que ya pide cuatro cosas solo estorba. Aparece cuando el
+     * servidor responde que hace falta -un 401 despues de canjear el SMS-, y
+     * entonces se reintenta con el MISMO codigo del SMS: el servidor deshace la
+     * transaccion al rechazar, asi que el SMS no se quemo.
+     */
+    var pideDosPasos by remember { mutableStateOf(false) }
+    var totp by remember { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = { if (!trabajando) onCerrar() },
         containerColor = BgElev,
@@ -515,6 +527,27 @@ private fun DialogoRecuperar(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
+
+                    // Solo cuando el servidor dijo que hace falta. Ver
+                    // `pideDosPasos`.
+                    if (pideDosPasos) {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = totp,
+                            onValueChange = { totp = it.filter { c -> !c.isWhitespace() } },
+                            label = { Text("Código de dos pasos") },
+                            singleLine = true,
+                            supportingText = {
+                                Text(
+                                    "El de tu app de autenticación, o uno de respaldo si " +
+                                        "perdiste el teléfono.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextoTerciario,
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
 
                 error?.let {
@@ -547,9 +580,22 @@ private fun DialogoRecuperar(
                         } else {
                             app.repo.recuperarCuenta(
                                 usuario.trim().lowercase(), telefono.trim(), codigo, claveNueva,
+                                totp = totp.trim().takeIf { it.isNotEmpty() },
                             )
                                 .onSuccess { onRecuperada() }
-                                .onFailure { error = it.message }
+                                .onFailure { e ->
+                                    // 401 aqui no es "mal codigo": es "esta
+                                    // cuenta tiene dos pasos y no lo mandaste".
+                                    // Se abre el campo en vez de dar un error
+                                    // que no dice que hacer.
+                                    if (e is ApiError && e.codigo == 401 && !pideDosPasos) {
+                                        pideDosPasos = true
+                                        error = "Esta cuenta tiene verificación en dos pasos. " +
+                                            "Escribe el código de tu app, o uno de respaldo."
+                                    } else {
+                                        error = e.message
+                                    }
+                                }
                         }
                         trabajando = false
                     }

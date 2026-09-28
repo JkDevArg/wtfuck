@@ -165,9 +165,37 @@ data class ChatFila(
     }
 }
 
+/**
+ * ## Los indices, y por que son estos
+ *
+ * Esta tabla es la mas grande de la app y la que mas se escribe. Room
+ * **reinvalida toda consulta que la toque en cada escritura**, asi que un
+ * `Flow` sin indice no cuesta una vez: cuesta una vez por mensaje recibido.
+ *
+ * La pantalla principal tenia tres de esos a la vez -el tamano de la cola, el
+ * de los fallidos y las conversaciones con fallidos-, todos filtrando por
+ * `estado` sin indice. O sea **tres escaneos completos de la tabla por cada
+ * mensaje que entra**, y creciendo con el historial.
+ *
+ *  - `(conversacionId, creadoEn)`: abrir un chat y ordenarlo.
+ *  - `(esMio, estado)`: la cola de salida y los fallidos. Compuesto y en ese
+ *    orden porque todas esas consultas filtran por los dos, empezando por
+ *    `esMio`.
+ *  - `expiraEn`: el barrido de temporales, que corre al abrir la app y cada
+ *    chat. `historia` ya tenia el suyo para lo mismo; aqui faltaba.
+ *  - `adjuntoEstado`: recuperar subidas interrumpidas al arrancar.
+ *
+ * No se indexa `rutaLocal` -solo la mira la pantalla de almacenamiento, a
+ * mano- ni `oculto`, que casi siempre vale lo mismo y no separa nada.
+ */
 @Entity(
     tableName = "mensaje",
-    indices = [Index(value = ["conversacionId", "creadoEn"])],
+    indices = [
+        Index(value = ["conversacionId", "creadoEn"]),
+        Index(value = ["esMio", "estado"], name = "mensaje_cola"),
+        Index(value = ["expiraEn"], name = "mensaje_vence"),
+        Index(value = ["adjuntoEstado"], name = "mensaje_adjunto_estado"),
+    ],
 )
 data class MensajeEnt(
     @PrimaryKey val id: String,
@@ -1180,7 +1208,7 @@ interface ChatDao {
         EmojiUsoEnt::class,
         AjusteLocalEnt::class,
     ],
-    version = 20,
+    version = 21,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1200,6 +1228,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
+                    DE_20_A_21,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1359,6 +1388,32 @@ abstract class BaseLocal : RoomDatabase() {
          * decodificandola, y ninguna migracion deberia abrir mil archivos de
          * audio.
          */
+        /**
+         * Los indices que faltaban en `mensaje`. Ver el KDoc de [MensajeEnt].
+         *
+         * No cambia ni una columna: solo crea indices. Es una migracion barata
+         * y hace falta igual, porque los `indices` de la anotacion solo se
+         * aplican al CREAR la tabla — en una base que ya existe, declararlos
+         * sin migracion no crea nada y Room falla la validacion del esquema.
+         *
+         * `IF NOT EXISTS` porque una base recien creada por la version 21 ya
+         * los trae de la anotacion, y esta migracion tambien corre en el salto
+         * desde cualquier version anterior.
+         */
+        private val DE_20_A_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS mensaje_cola ON mensaje (esMio, estado)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS mensaje_vence ON mensaje (expiraEn)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS mensaje_adjunto_estado ON mensaje (adjuntoEstado)"
+                )
+            }
+        }
+
         /**
          * El temporizador de mensajes, que antes no llegaba a este telefono.
          *

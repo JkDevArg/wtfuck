@@ -130,11 +130,20 @@ psql(`UPDATE conversacion SET creada_en = now() - interval '1 hour', ` +
 ck('quedan participantes antes de barrer',
    Number(psql(`SELECT count(*) FROM participante WHERE conversacion_id='${TEMP}'`)) > 0);
 
-// El barrido corre cada 10 s en el servidor.
-await new Promise((res) => setTimeout(res, 12000));
+// El barrido corre cada 10 s en el servidor: se SONDEA en vez de dormir 12 s.
+//
+// Antes era un `setTimeout` de 12 s y fallaba de vez en cuando —solo en la
+// corrida completa, nunca al correr esta suite sola—. Con el servidor cargado
+// por las 37 suites anteriores, el barrido se atrasa lo justo para pasarse de
+// los 12 s. Una prueba intermitente es peor que ninguna: ensena a ignorar los
+// fallos, y el dia que este falle de verdad nadie va a mirar.
+let borrada = false;
+for (let i = 0; i < 30 && !borrada; i++) {
+  await new Promise((res) => setTimeout(res, 1000));
+  borrada = psql(`SELECT count(*) FROM conversacion WHERE id='${TEMP}'`) === '0';
+}
 
-ck('la conversacion ya no esta',
-   psql(`SELECT count(*) FROM conversacion WHERE id='${TEMP}'`) === '0');
+ck('la conversacion ya no esta', borrada);
 ck('ni sus participantes: el borrado arrastra lo suyo',
    psql(`SELECT count(*) FROM participante WHERE conversacion_id='${TEMP}'`) === '0');
 ck('y la conversacion normal sigue entera',

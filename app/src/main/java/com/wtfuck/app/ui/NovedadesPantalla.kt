@@ -104,6 +104,9 @@ object Novedades {
                 Cambio(TipoCambio.SEGURIDAD, "Los mensajes temporales ahora se borran de verdad en los DOS teléfonos. Antes desaparecían solo del tuyo y se quedaban en el de la otra persona. Si usaste esta función antes de esta versión, esos mensajes siguen en el otro teléfono."),
                 Cambio(TipoCambio.NUEVO, "Mensajes temporales en chats de dos: antes solo se podían activar en grupos, y solo por un administrador."),
                 Cambio(TipoCambio.MEJORA, "El temporizador ahora se ve: sale junto al nombre en el chat, dice en cuánto está, y queda escrito en la conversación cuando alguien lo cambia."),
+                Cambio(TipoCambio.SEGURIDAD, "Recuperar la cuenta por SMS ahora pide tambien el codigo de dos pasos. Antes el SMS lo saltaba: quien se quedara con tu numero podia cambiarte la contrasena y cerrarte todas las sesiones con el segundo factor puesto."),
+                Cambio(TipoCambio.ARREGLO, "La app ya no puede reenviar el mismo mensaje dos veces al reconectarse."),
+                Cambio(TipoCambio.MEJORA, "La lista de chats va mas suelta con historiales grandes."),
             ),
         ),
         NotasVersion(

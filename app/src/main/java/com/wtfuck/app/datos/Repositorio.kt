@@ -13,6 +13,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -3019,13 +3021,22 @@ class Repositorio(
             )
         }
 
+    /**
+     * Cambia la contrasena con el codigo del SMS.
+     *
+     * `totp` solo hace falta si la cuenta tiene dos pasos activado, y el
+     * servidor lo pide **despues** de canjear el SMS: primero se manda sin el,
+     * y si responde 401 la pantalla lo pregunta. Asi no hay que preguntarle un
+     * codigo de dos pasos a la mayoria, que no lo tiene.
+     */
     suspend fun recuperarCuenta(
         username: String,
         telefono: String,
         codigo: String,
         passwordNueva: String,
+        totp: String? = null,
     ): Result<Unit> = runCatching {
-        api.recuperarCuenta(RecuperarReq(username, telefono, codigo, passwordNueva))
+        api.recuperarCuenta(RecuperarReq(username, telefono, codigo, passwordNueva, totp))
     }
 
     suspend fun iniciarTotp(): Result<TotpIniciado> = runCatching { api.iniciarTotp() }
@@ -4041,10 +4052,41 @@ class Repositorio(
     suspend fun descartarFallido(mensajeId: String) = dao.borrarMensaje(mensajeId)
 
     /**
+     * Candado del despacho. Ver [despachar].
+     *
+     * `Mutex` y no un `Boolean`: con un flag, dos corrutinas pueden leerlo en
+     * `false` antes de que ninguna lo ponga en `true`. Es el mismo error que se
+     * evita en el servidor consumiendo el codigo de respaldo con el UPDATE
+     * mismo en vez de leer-y-despues-marcar.
+     */
+    private val candadoDespacho = Mutex()
+
+    /**
      * Recorre la cola y entrega por el primer transporte disponible.
      * Si ninguno lo esta, los mensajes se quedan PENDIENTE sin perderse.
+     *
+     * ## Por que va con candado
+     *
+     * Porque la cola se selecciona por `estado = 'PENDIENTE'` y **no se marca
+     * en vuelo**. Dos invocaciones a la vez recorren la MISMA lista y registran
+     * y entregan los mismos sobres dos veces. Y pasa de verdad: hay ocho
+     * llamadores, y al menos dos son `launch` hermanos del mismo ambito -el
+     * `collect` de la reconexion y el manejo de `sinCopia`-, asi que una
+     * reconexion mientras se completan copias los dispara juntos.
+     *
+     * El sintoma no se parece a la causa: el receptor descarta el duplicado por
+     * el id -`OnConflictStrategy.IGNORE`, ver el `filas != -1L`-, asi que no se
+     * ve un mensaje repetido. Se ve como trabajo de mas, cupo del servidor
+     * gastado al doble y, en un grupo, claves de emisor confirmadas por un
+     * envio que la otra corrutina ya estaba haciendo.
+     *
+     * `withLock` y no "salir si esta ocupado": si otra vuelta ya esta en curso,
+     * lo correcto es esperarla y volver a mirar la cola. Salir en silencio
+     * dejaria sin despachar justo lo que se acaba de encolar.
      */
-    suspend fun despachar() {
+    suspend fun despachar() = candadoDespacho.withLock { despacharSinCandado() }
+
+    private suspend fun despacharSinCandado() {
         val pendientes = dao.cola()
         if (pendientes.isEmpty()) return
 

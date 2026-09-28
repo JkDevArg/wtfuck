@@ -395,10 +395,37 @@ r = await post('/v1/cuenta/recuperar', null, {
 ck('una contrasena nueva demasiado corta se rechaza', r.s === 400, String(r.s));
 
 const CLAVE_NUEVA = 'clave-nueva-larga-456';
+
+// El SMS NO puentea el segundo factor.
+//
+// Esta comprobacion antes decia lo contrario: pedia 204 aqui, sin mandar TOTP,
+// con el 2FA de Ana encendido. O sea que la prueba CERTIFICABA el agujero.
+//
+// Por que importa: `recuperar` cambia la contrasena y cierra todas las
+// sesiones. Quien controlara el numero -un cambio de SIM- hacia eso con el
+// segundo factor puesto y sin tocarlo. El segundo factor existe justamente
+// para que tener el numero no alcance.
 r = await post('/v1/cuenta/recuperar', null, {
   username: ana.user, telefono: TEL_ANA, codigo: COD_REC, passwordNueva: CLAVE_NUEVA,
 });
-ck('se recupera la cuenta', r.s === 204, String(r.s) + JSON.stringify(r.b).slice(0, 90));
+ck('sin el segundo factor NO se recupera, aunque el SMS sea correcto', r.s === 401,
+   String(r.s) + JSON.stringify(r.b).slice(0, 90));
+
+// Y el codigo del SMS sigue sirviendo: el rechazo deshace la transaccion, asi
+// que canjearlo no lo quemo. Sin esto habria que pedir otro SMS por cada
+// intento, y la defensa se pagaria con una pantalla que no se puede usar.
+r = await post('/v1/cuenta/recuperar', null, {
+  username: ana.user, telefono: TEL_ANA, codigo: COD_REC, passwordNueva: CLAVE_NUEVA,
+  totp: 'malo',
+});
+ck('con un segundo factor invalido tampoco', r.s === 401, String(r.s));
+
+r = await post('/v1/cuenta/recuperar', null, {
+  username: ana.user, telefono: TEL_ANA, codigo: COD_REC, passwordNueva: CLAVE_NUEVA,
+  totp: totp(SECRETO),
+});
+ck('con el SMS y el segundo factor si se recupera -y el SMS no se habia quemado-',
+   r.s === 204, String(r.s) + JSON.stringify(r.b).slice(0, 90));
 
 r = await get('/v1/cuenta', ana.t);
 ck('recuperar CIERRA todas las sesiones: si te la robaron, el cambio tiene que servir',
