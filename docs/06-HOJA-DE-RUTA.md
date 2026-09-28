@@ -6879,3 +6879,35 @@ firmada y 1 Kyber**, que el servidor acepto. El strip quita simbolos, no codigo.
 Compilar el APK necesita el NDK instalado (`sdkmanager "ndk;28.2.13676358"`).
 No en el servidor —ahi no se compila la app— solo en la maquina que arma el
 APK. Documentado en el paso 8 de la guia.
+
+---
+
+# Publicar en un comando · despliegue/lanzar.sh
+
+Publicar una version del APK eran cinco pasos a mano —compilar, generar la
+pagina, subir el APK, subir el index.html, editar el .env y reiniciar— y cada
+uno con su forma de fallar en silencio: un versionCode que no sube, una huella
+que no cuadra, el index.html que se queda con la version vieja.
+
+`lanzar.sh <versionName>` los hace todos, y cierra los agujeros:
+
+- **El versionCode sale del servidor**, no de un contador local. Se pregunta a
+  `/v1/version` cual esta publicado y se usa el siguiente. Un contador en un
+  archivo se desincroniza en cuanto compilas dos veces o clonas en otra
+  maquina; el servidor no.
+- **La huella y el index.html se generan juntos** (via publicar-apk.sh) y se
+  suben juntos, asi que la pagina nunca muestra una huella que no es la del APK
+  que sirve.
+- **Pide confirmacion** antes de tocar el VPS: muestra que sube y a donde.
+- **Avisa si falta el changelog**: si la version que lanzas no esta en
+  NovedadesPantalla.kt, para y pregunta. El script no inventa que cambio para
+  el usuario.
+
+La config del VPS (host, docroot, dominios) vive en `despliegue/despliegue.conf`,
+fuera de git. Hay plantilla en `despliegue.conf.ejemplo`.
+
+Con `--con-servidor` ademas hace `git pull` + reconstruccion del contenedor en
+el VPS, para cuando cambio codigo del servidor y no solo el APK.
+
+Probado la mitad local (consulta de version, build, pagina, confirmacion); el
+scp/ssh los corre quien despliega, contra su propio VPS.

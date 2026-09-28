@@ -402,6 +402,57 @@ La app avisa sola cuando hay una versión más nueva, la descarga y deja la
 instalación en **un toque**. No lo hace por magia: hay que decírselo al
 servidor.
 
+### La forma fácil: un solo comando
+
+Antes esto eran cinco pasos a mano (compilar, generar la página, subir el APK,
+subir el `index.html`, editar el `.env` y reiniciar). Ahora hay un script que
+lo hace todo:
+
+```bash
+bash despliegue/lanzar.sh 0.5.0
+```
+
+La primera vez, copia la config y pon el host de tu VPS:
+
+```bash
+cp despliegue/despliegue.conf.ejemplo despliegue/despliegue.conf
+# edita despliegue/despliegue.conf: VPS_SSH="root@tu-servidor"
+```
+
+Qué hace `lanzar.sh`, en orden:
+
+1. Le pregunta al servidor **qué versionCode está publicado** y usa el
+   siguiente. No hay contador local que se desincronice: el servidor es la
+   fuente de verdad.
+2. Compila el APK de release firmado, con ese número y el nombre que le pasas.
+3. Genera la página de descarga y la huella (llama a `publicar-apk.sh`).
+4. **Te muestra qué va a subir y pide confirmación.** Nada sale sin tu ok.
+5. Sube el APK y el `index.html`, actualiza las 4 variables `WTFUCK_APK_*` en el
+   `.env.produccion` y reinicia el servidor.
+6. Comprueba que el servidor ya anuncia la versión nueva.
+
+Si además cambiaste **código del servidor** (algo en `server/`), añade
+`--con-servidor` y hará `git pull` + reconstrucción del contenedor en el VPS:
+
+```bash
+bash despliegue/lanzar.sh 0.5.0 --con-servidor
+```
+
+**Antes de lanzar, escribe el changelog** en
+[`NovedadesPantalla.kt`](../app/src/main/java/com/wtfuck/app/ui/NovedadesPantalla.kt):
+el script no puede inventar qué cambió para el usuario, y te avisa si la versión
+que lanzas no está en las Novedades.
+
+> Necesita el NDK instalado (`sdkmanager "ndk;28.2.13676358"`) y `keystore.properties`
+> con la clave de firma. Los dos ya están en tu equipo.
+
+---
+
+### La forma manual, paso a paso
+
+Si prefieres controlar cada paso, o el script falla, esto es lo que hace por
+dentro.
+
 ### 1 · Compila subiendo el número
 
 ```bash

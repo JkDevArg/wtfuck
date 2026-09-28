@@ -1,0 +1,38 @@
+# Configuracion de despliegue para lanzar.sh
+#
+# Copia este archivo a `despliegue.conf` (sin .ejemplo) y rellena los valores.
+# `despliegue.conf` NO va a git: lleva el host de tu servidor y rutas propias.
+#
+#   cp despliegue/despliegue.conf.ejemplo despliegue/despliegue.conf
+#   # edita despliegue/despliegue.conf
+#   bash despliegue/lanzar.sh 0.5.0
+
+# Como llegar al VPS por SSH. Lo que pondrias despues de `ssh`.
+#   ej: root@123.45.67.89   o   root@hackl4bs.com
+VPS_SSH="root@TU-VPS"
+
+# Carpeta del sitio estatico donde vive el APK y el index.html (el docroot que
+# sirve el dominio de descarga). Ahi se suben con scp.
+#   ej: /home/hackl4bs/htdocs/hackl4bs.com
+DOCROOT="/home/hackl4bs/htdocs/hackl4bs.com"
+
+# El dominio (https) desde donde se DESCARGA el APK. Es la base de
+# WTFUCK_APK_URL. Sin barra final.
+#   ej: https://hackl4bs.com
+DOMINIO_DESCARGA="https://hackl4bs.com"
+
+# El dominio de la API (sin https://). Se hornea en el APK y se usa para
+# preguntarle al servidor que version esta publicada.
+#   ej: apiwtf.hackl4bs.com
+DOMINIO_API="apiwtf.hackl4bs.com"
+
+# Carpeta del proyecto en el VPS (donde esta el .env.produccion y el compose).
+#   ej: /opt/wtfuck
+OPT_DIR="/opt/wtfuck"
+
+# El compose de produccion, relativo a OPT_DIR.
+COMPOSE="docker-compose.tras-proxy.yml"
+
+# Los ABIs del APK. arm64-v8a cubre el 99% de los telefonos y pesa la mitad.
+# Pon "arm64-v8a,armeabi-v7a" si necesitas incluir telefonos de 32 bits.
+ABIS="arm64-v8a"

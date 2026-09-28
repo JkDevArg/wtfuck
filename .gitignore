@@ -41,3 +41,6 @@ despliegue/s3.json
 # Lo que genera despliegue/publicar-apk.sh: el APK pesa 90 MB y se
 # reconstruye en cada version. No va a git.
 despliegue/descarga/
+
+# Config de despliegue: lleva host del VPS y rutas propias.
+despliegue/despliegue.conf
