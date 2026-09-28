@@ -26,6 +26,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.wtfuck.app.ui.AvisoDeActualizacion
 import com.wtfuck.app.ui.InvitacionesPantalla
+import com.wtfuck.app.ui.CopiaSeguridadPantalla
 import com.wtfuck.app.ui.NovedadesPantalla
 import com.wtfuck.app.ui.ComunidadesPantalla
 import com.wtfuck.app.ui.ChatPantalla
@@ -335,6 +336,7 @@ private fun Raiz() {
                     onMiCuenta = { nav.navigate("mi-cuenta") },
                     onPanel = { nav.navigate("panel") },
                     onNovedades = { nav.navigate("novedades") },
+                    onCopiaSeguridad = { nav.navigate("copia-seguridad") },
                     onSeguridad = { nav.navigate("seguridad") },
                     onAbrirEnMensaje = { id, m -> nav.navigate("chat/$id?m=$m") },
                     onLlamadas = { nav.navigate("llamadas") },
@@ -450,6 +452,10 @@ private fun Raiz() {
 
         composable("novedades") {
             NovedadesPantalla(onAtras = { nav.popBackStack() })
+        }
+
+        composable("copia-seguridad") {
+            CopiaSeguridadPantalla(onAtras = { nav.popBackStack() })
         }
 
         composable("limites") {

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.DeveloperMode
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Verified
@@ -120,6 +121,7 @@ fun PerfilPantalla(
     onMiCuenta: () -> Unit,
     onPanel: () -> Unit,
     onNovedades: () -> Unit,
+    onCopiaSeguridad: () -> Unit,
     onSeguridad: () -> Unit,
     onLlamadas: () -> Unit,
     onNotificaciones: () -> Unit,
@@ -460,8 +462,14 @@ fun PerfilPantalla(
                     icono = Icons.Filled.Storage,
                     titulo = "Almacenamiento y datos",
                     detalle = "Descarga automatica, calidad, espacio usado",
-                    conDivisor = false,
                     onClick = onAlmacenamiento,
+                )
+                FilaAjuste(
+                    icono = Icons.Filled.Backup,
+                    titulo = "Copia de seguridad",
+                    detalle = "Guarda tus chats cifrados para no perderlos",
+                    conDivisor = false,
+                    onClick = onCopiaSeguridad,
                 )
             }
 

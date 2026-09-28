@@ -2739,6 +2739,94 @@ class Repositorio(
     }
 
     // ============================================================
+    //  Copia de seguridad cifrada (exportar / restaurar)
+    // ============================================================
+
+    /**
+     * Arma el respaldo del historial local: todas las conversaciones con sus
+     * mensajes de texto. Reusa la misma forma que la sincronizacion entre
+     * dispositivos (MensajeHistorico).
+     *
+     * Se dejan fuera los mensajes de sistema, los retirados y los vacios. Los
+     * adjuntos no van en v1 -pesan y viven como archivos aparte-; se respalda el
+     * texto, que es lo que de verdad se pierde y no se recupera de otro lado.
+     */
+    private suspend fun armarRespaldo(): CopiaSeguridad.Respaldo {
+        val convs = dao.idsLocales().mapNotNull { convId ->
+            val c = dao.conversacion(convId) ?: return@mapNotNull null
+            val mensajes = dao.todosLosMensajes(convId)
+                .filter { !it.esSistema && !it.retirado && it.texto.isNotBlank() }
+                .map {
+                    com.wtfuck.protocol.MensajeHistorico(
+                        id = it.id, autor = it.autor, esMio = it.esMio,
+                        texto = it.texto, creadoEn = it.creadoEn,
+                    )
+                }
+            if (mensajes.isEmpty()) return@mapNotNull null
+            CopiaSeguridad.ConversacionRespaldo(
+                id = c.id, tipo = c.tipo, nombre = c.nombre,
+                participantes = c.participantes, mensajes = mensajes,
+            )
+        }
+        return CopiaSeguridad.Respaldo(
+            creado = System.currentTimeMillis(),
+            cuenta = sesion.username.orEmpty(),
+            conversaciones = convs,
+        )
+    }
+
+    /** Bytes de la copia cifrada, listos para escribir al archivo que elija la persona. */
+    suspend fun exportarCopia(frase: CharArray): ByteArray {
+        val respaldo = armarRespaldo()
+        val json = jsonApp.encodeToString(CopiaSeguridad.Respaldo.serializer(), respaldo)
+        return CopiaSeguridad.cifrar(json.toByteArray(), frase)
+    }
+
+    /** Lo que se le cuenta a la persona tras restaurar. */
+    data class ResumenRestauracion(val mensajes: Int, val conversaciones: Int, val cuenta: String)
+
+    /**
+     * Restaura una copia. Descifra, y por cada conversacion guarda los mensajes
+     * que aun no estaban.
+     *
+     * Si la conversacion no existe localmente todavia se crea una fila minima
+     * para que los mensajes tengan donde vivir; la membresia y las claves las
+     * completa la sincronizacion normal. guardarMensaje es un upsert por id, asi
+     * que restaurar dos veces no duplica nada.
+     */
+    suspend fun restaurarCopia(bytes: ByteArray, frase: CharArray): Result<ResumenRestauracion> {
+        val claro = CopiaSeguridad.descifrar(bytes, frase).getOrElse { return Result.failure(it) }
+        val respaldo = runCatching {
+            jsonApp.decodeFromString(CopiaSeguridad.Respaldo.serializer(), String(claro))
+        }.getOrElse { return Result.failure(CopiaSeguridad.ErrorCopia(CopiaSeguridad.Fallo.FORMATO)) }
+
+        var mensajes = 0
+        for (conv in respaldo.conversaciones) {
+            if (dao.conversacion(conv.id) == null) {
+                dao.guardarConversacion(
+                    ConversacionEnt(
+                        id = conv.id, tipo = conv.tipo, nombre = conv.nombre,
+                        participantes = conv.participantes,
+                    )
+                )
+            }
+            for (m in conv.mensajes) {
+                dao.guardarMensaje(
+                    MensajeEnt(
+                        id = m.id, conversacionId = conv.id, autor = m.autor,
+                        esMio = m.esMio, texto = m.texto, creadoEn = m.creadoEn,
+                        estado = if (m.esMio) EstadoEnvio.ENTREGADO.name else EstadoEnvio.LEIDO.name,
+                    )
+                )
+                mensajes++
+            }
+        }
+        return Result.success(
+            ResumenRestauracion(mensajes, respaldo.conversaciones.size, respaldo.cuenta)
+        )
+    }
+
+    // ============================================================
     //  Modulo I: identidad y cuenta
     // ============================================================
 

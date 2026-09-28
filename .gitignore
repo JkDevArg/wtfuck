@@ -44,3 +44,6 @@ despliegue/descarga/
 
 # Config de despliegue: lleva host del VPS y rutas propias.
 despliegue/despliegue.conf
+
+# Firebase: no se usa el plugin google-services; la config va por el servidor en runtime.
+google-services.json

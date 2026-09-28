@@ -65,6 +65,7 @@ fun Inicio(
     onMiCuenta: () -> Unit,
     onPanel: () -> Unit,
     onNovedades: () -> Unit,
+    onCopiaSeguridad: () -> Unit,
     onSeguridad: () -> Unit,
     /** Abrir un chat saltando a un mensaje: lo pide el aviso de "no se envio". */
     onAbrirEnMensaje: (conversacionId: String, mensajeId: String) -> Unit,
@@ -172,6 +173,7 @@ fun Inicio(
                     onMiCuenta = onMiCuenta,
                     onPanel = onPanel,
                     onNovedades = onNovedades,
+                    onCopiaSeguridad = onCopiaSeguridad,
                     onSeguridad = onSeguridad,
                     onLlamadas = onLlamadas,
                     onNotificaciones = onNotificaciones,

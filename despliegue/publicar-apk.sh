@@ -170,7 +170,7 @@ echo
 # se falla es justo ese: una huella copiada de la publicacion anterior hace
 # que ninguna descarga cuadre y la actualizacion no funcione para nadie, sin
 # ningun error visible en el servidor.
-URL_PUBLICA="https://hackl4bs.com/wtfuck/$NOMBRE"
+URL_PUBLICA="https://hackl4bs.com/$NOMBRE"
 cat <<FIN
 Para que la app avise sola, pega esto en .env.produccion del servidor
 y reinicialo (el reinicio es lo que hace que los clientes se enteren:

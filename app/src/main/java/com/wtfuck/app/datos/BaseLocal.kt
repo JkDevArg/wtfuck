@@ -805,6 +805,12 @@ interface ChatDao {
     @Query("SELECT * FROM mensaje WHERE conversacionId = :conv AND oculto = 0 ORDER BY creadoEn ASC")
     fun mensajes(conv: String): Flow<List<MensajeEnt>>
 
+    // Todos los mensajes de una conversacion, de una vez (no un Flow): lo usa la
+    // copia de seguridad para exportar el historial completo, no solo lo que se
+    // ve en pantalla.
+    @Query("SELECT * FROM mensaje WHERE conversacionId = :conv AND oculto = 0 ORDER BY creadoEn ASC")
+    suspend fun todosLosMensajes(conv: String): List<MensajeEnt>
+
     /**
      * M.3 · Buscar dentro de una conversacion.
      *
