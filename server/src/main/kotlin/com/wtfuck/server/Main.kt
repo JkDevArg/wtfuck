@@ -1573,7 +1573,13 @@ fun Application.modulo() {
 
         put("$RUTA_CONVERSACIONES/{id}/temporales") {
             val yo = call.autenticar()
-            Mensajes.configurarTemporales(yo, call.idRuta(), call.receive<TemporalesReq>().segundos)
+            val avisos = Mensajes.configurarTemporales(
+                yo, call.idRuta(), call.receive<TemporalesReq>().segundos,
+            )
+            // Fuera de la transaccion, como el resto: el otro lado necesita
+            // enterarse para poder CUMPLIR el temporizador -es su cliente el
+            // que borra sus mensajes-, no solo para dibujarlo.
+            avisos.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
             call.respond(HttpStatusCode.NoContent)
         }
 

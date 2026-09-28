@@ -19,6 +19,20 @@ data class Auth(
     val sesionId: UUID,
 )
 
+/**
+ * Los datos de la conversacion misma, los que no dependen de quien pregunta.
+ *
+ * Era un `Triple` y dejo de caber al sumarle el temporizador. Con nombres se
+ * lee `meta.temporalesSegundos` en vez de `meta.fourth`, que es el punto en que
+ * una tupla deja de ayudar.
+ */
+private data class MetaConv(
+    val tipo: String,
+    val nombre: String?,
+    val expiraEn: Long,
+    val temporalesSegundos: Int?,
+)
+
 /** Rol y preferencias del usuario que consulta, dentro de una conversacion. */
 private data class MiEstado(
     val rol: String,
@@ -1291,12 +1305,24 @@ object Repo {
     private fun resumen(c: Connection, conv: UUID, yo: UUID): ConversacionResumen? {
         val meta = c.prepareStatement(
             """SELECT tipo, nombre,
-                      coalesce(extract(epoch FROM expira_en) * 1000, 0)
+                      coalesce(extract(epoch FROM expira_en) * 1000, 0),
+                      temporales_segundos
                  FROM conversacion WHERE id = ?"""
         ).use { st ->
             st.setObject(1, conv)
             st.executeQuery().use { rs ->
-                rs.primero { Triple(it.getString(1), it.getString(2), it.getDouble(3).toLong()) }
+                rs.primero {
+                    MetaConv(
+                        tipo = it.getString(1),
+                        nombre = it.getString(2),
+                        expiraEn = it.getDouble(3).toLong(),
+                        // `getInt` devuelve 0 para NULL, y 0 no es un valor
+                        // valido de este campo: hay que preguntar por el NULL
+                        // aparte o "permanentes" se convertiria en "cero
+                        // segundos".
+                        temporalesSegundos = it.getObject(4) as? Int,
+                    )
+                }
             }
         } ?: return null
 
@@ -1355,18 +1381,22 @@ object Repo {
         // canal recien creado, donde todavia no hay nadie mas, aparecia en la
         // lista de chats como "(sin participantes)". El nombre del canal estaba
         // ahi al lado, sin usar.
-        val nombre = when (meta.first) {
-            "grupo" -> meta.second ?: "Grupo"
-            "canal" -> meta.second ?: "Canal"
+        val nombre = when (meta.tipo) {
+            "grupo" -> meta.nombre ?: "Grupo"
+            "canal" -> meta.nombre ?: "Canal"
             else -> otros.firstOrNull()?.username ?: "(sin participantes)"
         }
         return ConversacionResumen(
             id = conv.toString(),
-            tipo = meta.first,
+            tipo = meta.tipo,
             // Viaja en cada listado, no solo al crear: un aparato que se
             // sincroniza por primera vez tiene que enterarse igual de que ese
             // chat vence, y es el unico sitio por el que puede llegarle.
-            expiraEn = meta.third,
+            expiraEn = meta.expiraEn,
+            // Lo mismo, y por un motivo mas fuerte: quien recibe necesita el
+            // temporizador para BORRAR sus copias. Ver
+            // `ConversacionResumen.temporalesSegundos`.
+            temporalesSegundos = meta.temporalesSegundos,
             nombre = nombre,
             participantes = otros,
             miRol = mio.rol,

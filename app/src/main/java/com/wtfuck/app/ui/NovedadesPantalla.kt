@@ -95,6 +95,15 @@ object Novedades {
             cambios = listOf(
                 Cambio(TipoCambio.NUEVO, "Copia de seguridad cifrada: guarda tus chats con sus fotos en un archivo con una frase, y recupéralos si cambias o pierdes el teléfono."),
                 Cambio(TipoCambio.MEJORA, "La app te recuerda cuándo hiciste la última copia de seguridad, para que no se te pase."),
+                // Se declara como SEGURIDAD y no como ARREGLO a proposito:
+                // quien uso los mensajes temporales antes de esta version creyo
+                // que se borraban en los dos telefonos y solo se borraban en el
+                // suyo. Eso no es un detalle que se arregla, es algo que la
+                // persona necesita saber para decidir si tiene que borrar una
+                // conversacion a mano.
+                Cambio(TipoCambio.SEGURIDAD, "Los mensajes temporales ahora se borran de verdad en los DOS teléfonos. Antes desaparecían solo del tuyo y se quedaban en el de la otra persona. Si usaste esta función antes de esta versión, esos mensajes siguen en el otro teléfono."),
+                Cambio(TipoCambio.NUEVO, "Mensajes temporales en chats de dos: antes solo se podían activar en grupos, y solo por un administrador."),
+                Cambio(TipoCambio.MEJORA, "El temporizador ahora se ve: sale junto al nombre en el chat, dice en cuánto está, y queda escrito en la conversación cuando alguien lo cambia."),
             ),
         ),
         NotasVersion(

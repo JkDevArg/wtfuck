@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.ui.theme.*
@@ -69,6 +70,18 @@ fun GrupoPantalla(
     var agregando by remember { mutableStateOf(false) }
     var editandoInfo by remember { mutableStateOf(false) }
     var confirmarSalir by remember { mutableStateOf(false) }
+    var eligiendoTemporales by remember { mutableStateOf(false) }
+
+    /**
+     * El temporizador de mensajes del grupo, en segundos. `0` = permanentes.
+     *
+     * Sale de la base local y no de la configuracion del grupo que se pide por
+     * red: es el mismo dato que dibuja el reloj de la cabecera del chat, y si
+     * saliera de dos sitios distintos podrian discrepar. El `Flow` ademas lo
+     * repinta solo cuando otro participante lo cambia.
+     */
+    val temporales by app.repo.temporalesFlow(conversacionId)
+        .collectAsStateWithLifecycle(initialValue = 0)
 
     // Mi jerarquia sale de la lista de miembros: es la misma que usa el servidor.
     val miUsuario = app.sesion.username.orEmpty()
@@ -245,7 +258,9 @@ fun GrupoPantalla(
                 // esa pantalla decia "en grupos se verifica desde la lista de
                 // miembros", que era una promesa que nadie cumplia.
                 Seccion("Seguridad")
-                FilaAccion("Verificar cifrado", Icons.Filled.VerifiedUser, onVerificarCifrado)
+                // `onClick` por nombre: con `habilitada` en medio, pasarlo
+                // suelto lo colaba como el booleano.
+                FilaAccion("Verificar cifrado", Icons.Filled.VerifiedUser, onClick = onVerificarCifrado)
 
                 // --- enlace de invitacion ---------------------------------
                 Seccion("Enlace de invitacion")
@@ -286,26 +301,22 @@ fun GrupoPantalla(
             }
 
             // --- mensajes temporales --------------------------------------
-            if (puedoAdministrar) {
-                Seccion("Mensajes temporales")
-                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
-                    listOf("Off" to null, "1 dia" to 86_400, "1 semana" to 604_800).forEach { (etq, segs) ->
-                        OutlinedButton(
-                            onClick = {
-                                ambito.launch {
-                                    runCatching { app.repo.configurarTemporales(conversacionId, segs) }
-                                        .onFailure { aviso = it.message }
-                                }
-                            },
-                            modifier = Modifier.padding(end = 8.dp),
-                        ) {
-                            Icon(Icons.Filled.Timer, null, Modifier.size(15.dp), tint = Cian)
-                            Spacer(Modifier.width(5.dp))
-                            Text(etq, color = TextoPrimario, fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
+            //
+            // Una FILA que dice como esta, no tres botones sueltos. Los botones
+            // no marcaban el valor puesto -no habia de donde sacarlo- y un
+            // control de privacidad que no dice su estado invita a creer que
+            // esta encendido cuando no lo esta.
+            //
+            // Se muestra a todo el mundo y solo se puede TOCAR con permiso: que
+            // los mensajes de este grupo se borren solos es algo que le pasa a
+            // los mensajes de cualquiera, no un ajuste privado de quien manda.
+            Seccion("Mensajes temporales")
+            FilaAccion(
+                if (temporales > 0) DuracionMensaje.texto(temporales).replaceFirstChar { it.uppercase() }
+                else "Desactivado",
+                Icons.Filled.Timer,
+                habilitada = puedoAdministrar,
+            ) { eligiendoTemporales = true }
 
             // --- miembros -------------------------------------------------
             Seccion("Miembros")
@@ -484,6 +495,20 @@ fun GrupoPantalla(
             confirmButton = { TextButton(onClick = { aviso = null }) { Text("Entendido", color = Cian) } },
         )
     }
+
+    if (eligiendoTemporales) {
+        DialogoTemporales(
+            actual = temporales,
+            onElegir = { segundos ->
+                eligiendoTemporales = false
+                ambito.launch {
+                    runCatching { app.repo.configurarTemporales(conversacionId, segundos) }
+                        .onFailure { aviso = it.message }
+                }
+            },
+            onCerrar = { eligiendoTemporales = false },
+        )
+    }
 }
 
 private fun guardar(
@@ -538,14 +563,31 @@ private fun Interruptor(titulo: String, detalle: String, valor: Boolean, onCambi
 }
 
 @Composable
-private fun FilaAccion(texto: String, icono: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+private fun FilaAccion(
+    texto: String,
+    icono: androidx.compose.ui.graphics.vector.ImageVector,
+    /**
+     * `false` deja la fila VISIBLE pero apagada, en vez de esconderla.
+     *
+     * Es la diferencia entre "esto no existe" y "esto existe y no lo decides
+     * tu". Para el temporizador de mensajes importa: quien no lo administra
+     * tiene que poder VER que esta puesto -le afecta a sus mensajes- aunque no
+     * pueda cambiarlo.
+     */
+    habilitada: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val color = if (habilitada) Cian else TextoSecundario
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = habilitada, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icono, null, tint = Cian, modifier = Modifier.size(21.dp))
+        Icon(icono, null, tint = color, modifier = Modifier.size(21.dp))
         Spacer(Modifier.width(18.dp))
-        Text(texto, style = MaterialTheme.typography.bodyLarge, color = Cian)
+        Text(texto, style = MaterialTheme.typography.bodyLarge, color = color)
     }
 }
 

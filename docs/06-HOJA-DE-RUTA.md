@@ -6911,3 +6911,89 @@ el VPS, para cuando cambio codigo del servidor y no solo el APK.
 
 Probado la mitad local (consulta de version, build, pagina, confirmacion); el
 scp/ssh los corre quien despliega, contra su propio VPS.
+
+---
+
+# Mensajes temporales · una promesa que se cumplía a medias
+
+No es un módulo nuevo. Es un defecto que llevaba ahí desde que la función
+existe, y que no se veía porque **no fallaba**.
+
+## El síntoma
+
+La app ofrecía mensajes que se borran solos. Lo que hacía:
+
+> El mensaje temporal desaparecía del teléfono de quien lo escribió, y se
+> quedaba para siempre en el de quien lo leyó.
+
+Sin error, sin aviso, sin nada en los registros.
+
+## La causa
+
+`PUT /v1/conversaciones/{id}/temporales` era de **solo escritura**. Se podía
+encender el temporizador y ningún cliente podía leerlo: `temporales_segundos`
+vivía en la tabla y no salía en ninguna respuesta.
+
+Así que el único que se enteraba del vencimiento era el emisor —se lo devolvía
+el registro de su propio mensaje—. Quien recibía no tenía de dónde sacarlo y
+guardaba su copia como permanente.
+
+Del mismo hueco salían otros dos defectos: los botones del grupo no podían
+mostrar el valor actual (tres botones, ninguno marcado), y no se podía activar
+en un chat de dos, porque exigía `grupo.editar_info` y en una directa ambos son
+`miembro`.
+
+## Quién puede hacerlo cumplir
+
+El servidor **no**. No tiene el mensaje: entrega el sobre y lo olvida — eso es
+el buzón tonto. El único que puede borrar una copia es el teléfono que la tiene.
+
+Así que el arreglo no es "que el servidor borre", es **que el otro teléfono se
+entere**: el temporizador viaja con la conversación, el cambio se avisa por
+evento, y cada cliente pone el vencimiento a su copia al guardarla.
+
+### Por qué no viaja en la entrega del sobre
+
+Se consideró y se descartó por dos razones concretas: el sobre se empuja por el
+socket mientras el metadato se registra por HTTP —en ese momento el vencimiento
+puede no existir todavía—, y el servidor **borra los metadatos vencidos**, así
+que un teléfono apagado una semana recibiría un vencimiento nulo justo para el
+mensaje más viejo.
+
+## El tope contra un reloj mentiroso
+
+La cuenta arranca en `creadoEn`, el reloj de quien escribió. Un emisor con la
+hora adelantada haría que su mensaje "de un minuto" viviera días en el teléfono
+ajeno. Se topa con `ahora + plazo`: nadie estira el plazo más allá de lo que
+aceptó el teléfono que borra. Al revés no se corrige — un mensaje que llega
+tarde ya es viejo, y equivocarse del lado de borrar es el lado correcto.
+
+## Por qué el mínimo es 1 minuto
+
+Se intentó bajarlo a 30 segundos, como Signal. El `CHECK temporales_valido` de
+la V6 lo rechazó, y **el límite tenía razón en esta app**: el transporte es un
+buzón que reentrega, un sobre puede quedar encolado minutos, y el vencimiento
+cuenta desde que se escribió. Con 30 segundos ese mensaje llega ya vencido y
+desaparece antes de que nadie lo vea: no es un mensaje que se borra pronto, es
+un mensaje que no llega.
+
+## El bug que sólo podía encontrar una prueba de integración
+
+Al correr la suite: **500** al guardar el temporizador. El `CHECK
+tipo_evento_valido` de `evento_pendiente` valida el tipo contra una lista
+cerrada y no conocía `conversacion_temporales`.
+
+La defensa funcionó como debía: un tipo de evento nuevo no se entrega en
+silencio. Arreglado en `V42`. El código compilaba, la lógica era correcta y la
+base dijo no — eso no lo ve ninguna prueba unitaria.
+
+## Verificado
+
+`TemporalesTest` (13 pruebas: el tope del reloj, el desborde del plazo de 90
+días, el mensaje que llega tarde), `pruebas/temporales.mjs` (49 comprobaciones
+contra servidor y Postgres reales) y **las 38 suites de integración: 1580 pasan,
+0 fallan**.
+
+Sin verificar: el borrado on-device con dos teléfonos. Requiere dos aparatos y
+esperar el plazo; el emulador de esta máquina está corrupto. Detalle en
+`docs/evidencias/mensajes-temporales/`.

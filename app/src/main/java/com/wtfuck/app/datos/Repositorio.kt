@@ -364,6 +364,46 @@ class Repositorio(
     /** Borra los temporales vencidos. Se llama al abrir la app y cada chat. */
     suspend fun limpiarVencidos() = dao.borrarVencidos(System.currentTimeMillis())
 
+    /**
+     * Cuando vence un mensaje de esta conversacion. `0` = nunca.
+     *
+     * ## Por que lo calcula el cliente y no viene del servidor
+     *
+     * Porque **el servidor no puede hacerlo cumplir**. No tiene el mensaje: lo
+     * entrega y borra el sobre. El unico que puede borrar esta copia es este
+     * telefono, asi que este telefono es el que tiene que saber cuando.
+     *
+     * Podria haber viajado en la entrega, y se descarto por dos motivos. Uno:
+     * el sobre se empuja por el socket mientras el metadato se registra por
+     * HTTP, asi que en el momento del empuje el vencimiento puede no existir
+     * todavia. Dos: el servidor BORRA los metadatos vencidos, asi que un
+     * telefono que estuvo apagado una semana recibiria un vencimiento nulo —y
+     * guardaria como permanente justamente el mensaje mas viejo—. El
+     * temporizador de la conversacion, en cambio, esta siempre.
+     *
+     * ## El tope contra un reloj mentiroso
+     *
+     * La cuenta arranca en `creadoEn`, que es el reloj de QUIEN ESCRIBIO. Un
+     * emisor con la hora adelantada -o que la adelanta a proposito- pondria un
+     * `creadoEn` en el futuro y su mensaje "de 30 segundos" viviria dias en el
+     * telefono ajeno. Por eso el resultado se topa con `ahora + segundos`:
+     * nadie puede estirar el plazo mas alla de lo que este telefono acepto.
+     *
+     * Al reves no se corrige: si `creadoEn` viene del pasado el mensaje vence
+     * antes, o incluso al instante. Es deliberado — un mensaje que llega tarde
+     * YA es viejo, y equivocarse del lado de borrar es el lado correcto en el
+     * que equivocarse.
+     *
+     * La cuenta vive en [Temporales], con pruebas: es la pieza que puede
+     * fallar sin que se note.
+     */
+    private suspend fun vencimientoDe(convId: String, creadoEn: Long): Long =
+        Temporales.vencimiento(
+            segundos = dao.conversacion(convId)?.temporalesSegundos ?: 0,
+            creadoEn = creadoEn,
+            ahora = System.currentTimeMillis(),
+        )
+
     // ============================================================
     //  Ciclo de vida
     // ============================================================
@@ -555,6 +595,9 @@ class Repositorio(
                 archivado = r.archivado,
                 fijado = r.fijado,
                 expiraEn = r.expiraEn,
+                // `0` cuando el servidor dice `null`: permanentes. Ver
+                // `ConversacionEnt.temporalesSegundos`.
+                temporalesSegundos = r.temporalesSegundos ?: 0,
             )
         )
     }
@@ -878,6 +921,11 @@ class Repositorio(
                         // aqui no se valida nada que no haga falta validar.
                         adjuntoOnda = adj?.onda.orEmpty(),
                         adjuntoEstado = if (adj != null) "ESPERA" else "",
+                        // El vencimiento lo pone QUIEN RECIBE, aqui. Ver
+                        // `vencimientoDe`: sin esta linea el mensaje temporal
+                        // se borraba en el telefono de quien lo escribio y se
+                        // quedaba para siempre en el de quien lo leyo.
+                        expiraEn = vencimientoDe(msg.conversacionId, msg.creadoEn),
                         especial = claseDe(carga),
                         // Se guarda la carga tal como vino, sin desarmarla en
                         // columnas: ver `MensajeEnt.especialJson`.
@@ -1071,6 +1119,27 @@ class Repositorio(
                 socket.enviar(Subida.AcuseEvento(listOf(e.eventoId)))
                 return
             }
+            // Alguien cambio el temporizador de mensajes.
+            //
+            // Se aplica EN EL ACTO y no en la proxima sincronizacion, porque
+            // hasta que este telefono lo sepa todo lo que llegue se guarda como
+            // permanente. Cada minuto de retraso es un mensaje que prometia
+            // borrarse y no lo hace.
+            //
+            // No toca los mensajes que YA estan, igual que en Signal: el
+            // temporizador rige lo que se escriba de aqui en adelante. Aplicarlo
+            // hacia atras convertiria "activar los temporales" en "borrar el
+            // historial", que es otra accion y nadie la pidio.
+            //
+            // Sigue de largo -sin `return`- para que caiga en la linea de
+            // sistema de mas abajo: que el temporizador cambio tiene que quedar
+            // ESCRITO en el chat. Es la diferencia entre una funcion de
+            // privacidad y una trampa; si se pudiera apagar en silencio, nadie
+            // podria confiar en que sigue encendido.
+            "conversacion_temporales" ->
+                dao.fijarTemporales(
+                    e.conversacionId, e.detalle.orEmpty().trim().toIntOrNull() ?: 0,
+                )
             // Me sacaron: se marca de inmediato, sin esperar la proxima
             // sincronizacion. La linea de sistema se agrega mas abajo.
             "expulsado", "sacado_grupo" -> dao.marcarFuera(e.conversacionId)
@@ -1131,6 +1200,14 @@ class Repositorio(
                         ?.let { ": " + it.trimEnd('.') + "." } ?: ".") +
                     " Se puede leer, no escribir."
             "conversacion_reabierta" -> "La plataforma reabrio esta conversacion."
+            "conversacion_temporales" ->
+                (e.detalle.orEmpty().trim().toIntOrNull() ?: 0).let { s ->
+                    if (s > 0) {
+                        "@${e.actor} puso los mensajes temporales en ${DuracionMensaje.texto(s)}"
+                    } else {
+                        "@${e.actor} desactivo los mensajes temporales"
+                    }
+                }
             else -> "Cambio en el grupo"
         }
 
@@ -3924,8 +4001,36 @@ class Repositorio(
         }
     }
 
-    suspend fun configurarTemporales(convId: String, segundos: Int?) =
+    /**
+     * Enciende o apaga el temporizador de mensajes. `null` = permanentes.
+     *
+     * Primero el servidor y despues lo local, en ese orden: si el servidor
+     * rechaza el cambio -sin permiso, sin red-, la excepcion sale antes de
+     * tocar la base y este telefono no se queda creyendo un temporizador que
+     * nadie mas tiene. Quien lo cree de mas borraria mensajes que a los demas
+     * les quedan; quien lo crea de menos guardaria los que los demas borran.
+     *
+     * El aviso `conversacion_temporales` va a los OTROS participantes, no a
+     * quien lo cambio: por eso hay que escribirlo aqui a mano.
+     */
+    suspend fun configurarTemporales(convId: String, segundos: Int?) {
         api.configurarTemporales(convId, segundos)
+        dao.fijarTemporales(convId, segundos ?: 0)
+    }
+
+    /** El temporizador de mensajes de un chat, en segundos. `0` = permanentes. */
+    suspend fun temporalesDe(convId: String): Int =
+        dao.conversacion(convId)?.temporalesSegundos ?: 0
+
+    /**
+     * Lo mismo, observable: se repinta cuando el otro lado lo cambia.
+     *
+     * `filterNotNull` no vale aqui —un chat que no esta en la base todavia
+     * tiene que emitir algo— asi que el nulo se traduce a `0`, que es
+     * "permanentes" y es el defecto correcto mientras no se sepa.
+     */
+    fun temporalesFlow(convId: String): Flow<Int> =
+        dao.conversacionFlow(convId).map { it?.temporalesSegundos ?: 0 }
 
     suspend fun reintentar(mensajeId: String) {
         dao.devolverACola(mensajeId)
@@ -3990,9 +4095,17 @@ class Repositorio(
                 Log.w(TAG, "Sin red para registrar ${m.id}")
                 return
             }
-            registro.getOrNull()?.expiraEn?.let { vence ->
-                dao.fijarVencimiento(m.id, vence)
-            }
+            // El vencimiento de MI copia.
+            //
+            // Manda lo que diga el servidor, que es quien lo sello al registrar
+            // el mensaje. Pero si no lo dice —un servidor viejo, o el metadato
+            // ya barrido— se calcula igual con el temporizador local, porque la
+            // alternativa es peor: mi copia se quedaria para siempre mientras
+            // la del otro se borra, y yo creeria que el mensaje ya no existe en
+            // ningun lado justo cuando es al reves.
+            val vence = registro.getOrNull()?.expiraEn
+                ?: vencimientoDe(m.conversacionId, m.creadoEn).takeIf { it > 0 }
+            vence?.let { dao.fijarVencimiento(m.id, it) }
 
             // Los destinos se piden ANTES de cifrar: con E2EE hay un cuerpo
             // por dispositivo y no se puede cifrar sin saber para quien.

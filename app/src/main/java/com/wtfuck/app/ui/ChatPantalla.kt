@@ -82,6 +82,7 @@ import androidx.compose.ui.semantics.semantics
 import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.ClaseAdjunto
 import com.wtfuck.protocol.ClaseContenido
+import com.wtfuck.protocol.DuracionMensaje
 import com.wtfuck.protocol.EstadoEnvio
 import com.wtfuck.protocol.FichaEmpresa
 import com.wtfuck.protocol.ReaccionAgrupada
@@ -159,6 +160,7 @@ fun ChatPantalla(
         candidatosMencion = gente.map { CandidatoMencion(it, nombres[it] ?: it) }
     }
     var menuAbierto by remember { mutableStateOf(false) }
+    var eligiendoTemporales by remember { mutableStateOf(false) }
     var accionesDe by remember { mutableStateOf<MensajeEnt?>(null) }
     var denunciando by remember { mutableStateOf<MensajeEnt?>(null) }
     var enviandoDenuncia by remember { mutableStateOf(false) }
@@ -553,21 +555,32 @@ fun ChatPantalla(
                                     presencia(it.enLinea, it.ultimaVez)
                                 }.orEmpty()
                             }
-                            Text(
-                                sub,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = when {
-                                    chat != null && !chat.soyMiembro -> Coral
-                                    conexion != EstadoConexion.CONECTADO -> Ambar
-                                    // Cian solo para "en linea". Que "ult. vez
-                                    // ayer" se pintara igual que "en linea"
-                                    // haria que el color dejara de significar
-                                    // algo.
-                                    quienEscribe != null -> Cian
-                                    sub == "en linea" -> Cian
-                                    else -> TextoTerciario
-                                },
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    sub,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = when {
+                                        chat != null && !chat.soyMiembro -> Coral
+                                        conexion != EstadoConexion.CONECTADO -> Ambar
+                                        // Cian solo para "en linea". Que "ult. vez
+                                        // ayer" se pintara igual que "en linea"
+                                        // haria que el color dejara de significar
+                                        // algo.
+                                        quienEscribe != null -> Cian
+                                        sub == "en linea" -> Cian
+                                        else -> TextoTerciario
+                                    },
+                                )
+                                // El reloj, si el temporizador esta puesto. Va
+                                // aqui —pegado al nombre, siempre visible— y no
+                                // solo dentro del menu: lo que decide si
+                                // escribir algo es saber si va a quedar, y eso
+                                // se decide mirando el chat.
+                                if ((chat?.temporalesSegundos ?: 0) > 0) {
+                                    if (sub.isNotEmpty()) Spacer(Modifier.width(6.dp))
+                                    IndicadorTemporales(chat!!.temporalesSegundos)
+                                }
+                            }
                         }
                     }
                 },
@@ -625,6 +638,30 @@ fun ChatPantalla(
 
                         OpcionMenu("Verificar cifrado", Icons.Filled.Lock, Cian) {
                             menuAbierto = false; onVerificarCifrado()
+                        }
+
+                        // El temporizador. En una directa lo puede poner
+                        // cualquiera de los dos —no es de nadie, y quien no
+                        // este de acuerdo lo apaga—; en un grupo es una regla
+                        // del grupo y la pone quien lo administra.
+                        //
+                        // En un canal no se ofrece: lo que se publica ahi es
+                        // para que la gente lo lea cuando entre, y un canal
+                        // cuyas publicaciones se borran solas no es un canal.
+                        if (chat != null && chat.soyMiembro && chat.tipo != "canal") {
+                            val puedoPonerlo =
+                                chat.tipo == "directa" || chat.miRol == "admin" || chat.miRol == "dueno"
+                            if (puedoPonerlo) {
+                                OpcionMenu(
+                                    if (chat.temporalesSegundos > 0) {
+                                        "Temporales: ${DuracionMensaje.texto(chat.temporalesSegundos)}"
+                                    } else {
+                                        "Mensajes temporales"
+                                    },
+                                    Icons.Filled.Timer,
+                                    if (chat.temporalesSegundos > 0) Cian else TextoPrimario,
+                                ) { menuAbierto = false; eligiendoTemporales = true }
+                            }
                         }
 
                         // Si ya te expulsaron no tiene sentido "salir": la
@@ -1313,6 +1350,20 @@ fun ChatPantalla(
                     Text("Cancelar", color = TextoSecundario)
                 }
             },
+        )
+    }
+
+    if (eligiendoTemporales) {
+        DialogoTemporales(
+            actual = chat?.temporalesSegundos ?: 0,
+            onElegir = { segundos ->
+                eligiendoTemporales = false
+                ambito.launch {
+                    runCatching { app.repo.configurarTemporales(conversacionId, segundos) }
+                        .onFailure { aviso = it.message }
+                }
+            },
+            onCerrar = { eligiendoTemporales = false },
         )
     }
     }

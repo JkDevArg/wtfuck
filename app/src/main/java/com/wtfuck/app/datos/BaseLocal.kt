@@ -56,6 +56,18 @@ data class ConversacionEnt(
      * adelantado lo borrara mientras el otro sigue escribiendo.
      */
     val expiraEn: Long = 0,
+    /**
+     * Segundos de vida de cada mensaje NUEVO de este chat. `0` = permanentes.
+     *
+     * No es lo mismo que [expiraEn], que borra el chat entero: esto borra cada
+     * mensaje por separado y deja el chat.
+     *
+     * Aqui se guarda porque **este telefono es el que tiene que cumplirlo**.
+     * El servidor no puede borrar el mensaje de nadie: no lo tiene. Entrega el
+     * sobre y lo olvida. Asi que el vencimiento lo pone quien recibe, con este
+     * numero, al guardar el mensaje. Ver `aplicarTemporizador`.
+     */
+    val temporalesSegundos: Int = 0,
     val marcadaNoLeida: Boolean = false,
     /**
      * Si sigo perteneciendo a esta conversacion.
@@ -101,6 +113,15 @@ data class ChatFila(
     val soyMiembro: Boolean,
     /** Cuando este chat se borra solo. `0` = nunca. Ver [ConversacionEnt]. */
     val expiraEn: Long = 0,
+    /**
+     * Temporizador de mensajes, en segundos. `0` = permanentes.
+     *
+     * Viaja en la fila de la lista, y no se lee aparte al abrir el chat, para
+     * que el reloj de la cabecera cambie SOLO cuando el otro lado lo cambia:
+     * el aviso escribe la columna y el `Flow` lo repinta. Leerlo una vez al
+     * entrar dejaria la cabecera mintiendo hasta que alguien saliera y volviera.
+     */
+    val temporalesSegundos: Int = 0,
     /** Como llamo YO a la otra persona, si la tengo agendada. Ver [titulo]. */
     val aliasContacto: String = "",
     /** Lo mismo para quien escribio el ultimo mensaje de un grupo. */
@@ -507,7 +528,7 @@ interface ChatDao {
                   m.adjuntoClase AS ultimoAdjuntoClase,
                   m.adjuntoNombre AS ultimoAdjuntoNombre,
                   c.miRol, c.miJerarquia, c.silenciadoHasta, c.archivado, c.fijado,
-                  c.marcadaNoLeida, c.soyMiembro, c.expiraEn,
+                  c.marcadaNoLeida, c.soyMiembro, c.expiraEn, c.temporalesSegundos,
                   COALESCE(k.alias, '') AS aliasContacto,
                   COALESCE(ka.alias, '') AS aliasAutor
            FROM conversacion c
@@ -725,6 +746,16 @@ interface ChatDao {
 
     @Query("SELECT * FROM conversacion WHERE id = :id")
     suspend fun conversacion(id: String): ConversacionEnt?
+
+    /**
+     * La misma fila, observable.
+     *
+     * Emite `null` mientras la conversacion no este en la base: quien la
+     * observe tiene que poder dibujar algo antes de la primera sincronizacion,
+     * y esperar en silencio se veria como una pantalla vacia.
+     */
+    @Query("SELECT * FROM conversacion WHERE id = :id")
+    fun conversacionFlow(id: String): Flow<ConversacionEnt?>
 
     /**
      * La directa que ya existe con alguien, o null.
@@ -959,6 +990,16 @@ interface ChatDao {
     suspend fun fijarVencimiento(id: String, cuando: Long)
 
     /**
+     * Cambia el temporizador de mensajes de una conversacion. `0` = permanentes.
+     *
+     * Un UPDATE de una columna y no un `guardarConversacion` completo: el aviso
+     * trae solo el temporizador, y reescribir la fila entera con lo que hubiera
+     * a mano pisaria el rol, el silencio y los no leidos con valores viejos.
+     */
+    @Query("UPDATE conversacion SET temporalesSegundos = :segundos WHERE id = :id")
+    suspend fun fijarTemporales(id: String, segundos: Int)
+
+    /**
      * Ventana de contexto alrededor de un mensaje, para denunciarlo.
      *
      * Del mas nuevo al mas viejo a proposito: el LIMIT tiene que cortar por el
@@ -1139,7 +1180,7 @@ interface ChatDao {
         EmojiUsoEnt::class,
         AjusteLocalEnt::class,
     ],
-    version = 19,
+    version = 20,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1158,7 +1199,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .openHelperFactory(factory)
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
-                    DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19,
+                    DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1318,6 +1359,24 @@ abstract class BaseLocal : RoomDatabase() {
          * decodificandola, y ninguna migracion deberia abrir mil archivos de
          * audio.
          */
+        /**
+         * El temporizador de mensajes, que antes no llegaba a este telefono.
+         *
+         * Por defecto `0` —permanentes— y es lo correcto para lo que ya estaba:
+         * hasta ahora quien recibia no borraba nada, asi que sus mensajes son
+         * permanentes de hecho. Ponerles un vencimiento retroactivo al migrar
+         * seria borrarle a alguien historial que hoy tiene, sin avisar. El
+         * temporizador empieza a contar para lo que llegue de aqui en adelante,
+         * y el valor real entra en la primera sincronizacion.
+         */
+        private val DE_19_A_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE conversacion ADD COLUMN temporalesSegundos INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
         private val DE_18_A_19 = object : Migration(18, 19) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE mensaje ADD COLUMN adjuntoOnda TEXT NOT NULL DEFAULT ''")

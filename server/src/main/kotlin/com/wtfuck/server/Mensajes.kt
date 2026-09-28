@@ -291,9 +291,52 @@ object Mensajes {
         meta to avisarATodos(c, m.conversacionId, yo, "mensaje_reaccion", "$msgId:$emoji:${req.poner}")
     }
 
-    fun configurarTemporales(yo: Auth, convId: UUID, segundos: Int?) = Db.tx { c ->
-        Autz.exigir(c, yo.usuarioId, convId, Permisos.GRUPO_EDITAR_INFO)
-        if (segundos != null && segundos !in 60..7_776_000) {
+    /**
+     * Enciende o apaga el temporizador de mensajes de una conversacion.
+     *
+     * ## Quien puede
+     *
+     * En un GRUPO o canal, quien pueda editar la informacion: es una regla del
+     * grupo, como el nombre.
+     *
+     * En un chat DIRECTO, cualquiera de los dos. Y esto habia que separarlo,
+     * porque `GRUPO_EDITAR_INFO` no lo tiene un `miembro` — que es lo que son
+     * ambos en una conversacion directa. El resultado era que el temporizador
+     * **no se podia encender en un chat de dos**, justo donde mas sentido
+     * tiene. Es tambien como se comporta Signal: en un uno-a-uno el
+     * temporizador no es de nadie, y quien no este de acuerdo lo apaga.
+     *
+     * ## Por que avisa
+     *
+     * Porque el otro lado tiene que enterarse **para poder cumplirlo**: es su
+     * cliente el que borra sus propios mensajes. Sin el aviso solo se enteraria
+     * en la siguiente sincronizacion, y hasta entonces lo que llegara se
+     * guardaria como permanente.
+     */
+    fun configurarTemporales(
+        yo: Auth,
+        convId: UUID,
+        segundos: Int?,
+    ): List<Pair<UUID, Bajada.Evento>> = Db.tx { c ->
+        val tipo = c.prepareStatement("SELECT tipo FROM conversacion WHERE id = ?").use { st ->
+            st.setObject(1, convId)
+            st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+        } ?: throw ErrorNegocio(404, "Esa conversacion no existe.")
+
+        if (tipo == "directa") {
+            // Participar es el unico requisito, pero hay que EXIGIRLO: sin esto
+            // cualquiera con el id podria cambiarle el temporizador a un chat
+            // ajeno.
+            Autz.exigir(c, yo.usuarioId, convId, Permisos.MSG_ENVIAR)
+        } else {
+            Autz.exigir(c, yo.usuarioId, convId, Permisos.GRUPO_EDITAR_INFO)
+        }
+
+        // El rango vive en el protocolo y no repetido aqui: el cliente valida
+        // con el MISMO objeto, asi que no puede ofrecer un plazo que esto
+        // rechace. La base lo vuelve a comprobar con el CHECK
+        // `temporales_valido`, que es la ultima palabra.
+        if (!DuracionMensaje.valida(segundos)) {
             throw ErrorNegocio(400, "El tiempo debe estar entre 1 minuto y 90 dias.")
         }
         c.prepareStatement("UPDATE conversacion SET temporales_segundos = ? WHERE id = ?").use { st ->
@@ -303,6 +346,8 @@ object Mensajes {
         }
         Autz.auditar(c, yo.usuarioId, "conversacion.temporales", "conversacion", convId, null,
             """{"segundos":${segundos ?: "null"}}""")
+
+        avisarATodos(c, convId, yo, "conversacion_temporales", (segundos ?: 0).toString())
     }
 
     /** Borra los metadatos de mensajes vencidos. Lo llama un barrido periodico. */

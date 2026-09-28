@@ -512,6 +512,84 @@ object DuracionChat {
     fun valida(ms: Long): Boolean = ms == 0L || ms in OPCIONES
 }
 
+/**
+ * Cuanto vive cada MENSAJE de un chat con temporizador.
+ *
+ * Distinto de [DuracionChat]: alli se borra la conversacion entera en una
+ * fecha; aqui cada mensaje se borra a los N segundos de escrito y el chat
+ * sigue. Ver `ConversacionResumen.temporalesSegundos`.
+ *
+ * ## Por que esta lista y no el rango del servidor
+ *
+ * El servidor acepta cualquier valor entre 60 s y 90 dias: es su limite de
+ * cordura, y tiene que seguir aceptando lo que ya haya guardado. Esta lista es
+ * lo que la interfaz OFRECE, y es mas corta a proposito, por lo mismo que en
+ * [DuracionChat]: un campo libre invita a poner noventa dias, y un mensaje que
+ * se borra en noventa dias no es un mensaje temporal.
+ *
+ * Los valores son los de Signal, que es el reparto que la gente ya conoce.
+ */
+object DuracionMensaje {
+    const val MINUTO_1 = 60
+    const val MINUTOS_5 = 5 * 60
+    const val HORA_1 = 3_600
+    const val HORAS_8 = 8 * 3_600
+    const val DIA_1 = 24 * 3_600
+    const val SEMANA_1 = 7 * 24 * 3_600
+    const val SEMANAS_4 = 28 * 24 * 3_600
+
+    val OPCIONES = listOf(
+        MINUTO_1, MINUTOS_5, HORA_1, HORAS_8, DIA_1, SEMANA_1, SEMANAS_4,
+    )
+
+    /**
+     * El rango que acepta el servidor. [OPCIONES] es un subconjunto.
+     *
+     * ## Por que el piso es un minuto y no treinta segundos
+     *
+     * Signal ofrece treinta segundos y aqui se intento copiarlo. La base lo
+     * rechazo —el CHECK `temporales_valido` exige 60 desde la V6— y al mirar
+     * por que, el limite resulto tener razon **en esta app**: el transporte es
+     * un buzon que reentrega. Un sobre puede quedar encolado minutos si el
+     * telefono destino esta apagado, y el vencimiento se cuenta desde que se
+     * escribio. Con treinta segundos, un mensaje asi llega YA VENCIDO y el
+     * barrido se lo lleva antes de que nadie lo vea: no es un mensaje que se
+     * borra pronto, es un mensaje que no llega, y sin explicacion.
+     *
+     * Con un minuto el caso sigue existiendo pero deja de ser el normal. Bajar
+     * el piso pedia ademas reescribir un CHECK ya aplicado en produccion, y no
+     * valia la pena por un plazo que funciona mal aqui.
+     */
+    val RANGO = 60..7_776_000
+
+    /** `null` —permanentes— tambien vale. */
+    fun valida(segundos: Int?): Boolean = segundos == null || segundos in RANGO
+
+    /**
+     * El plazo en palabras: "1 dia", "4 semanas", "30 segundos".
+     *
+     * Vive aqui, y no en la pantalla, porque hay DOS sitios que lo escriben y
+     * tienen que decir lo mismo: el selector del chat y la linea de sistema
+     * que queda escrita cuando alguien cambia el temporizador. Si cada uno lo
+     * formateara a su manera, el chat diria "1 dia" y el aviso "24 horas"
+     * sobre el mismo numero.
+     *
+     * Acepta cualquier valor del [RANGO] y no solo los de [OPCIONES]: un chat
+     * configurado por una version anterior -o por otro cliente- puede traer
+     * algo que ya no se ofrece, y hay que poder escribirlo igual.
+     */
+    fun texto(segundos: Int): String = when {
+        segundos <= 0 -> "desactivado"
+        segundos < 60 -> "$segundos segundos"
+        segundos < 3_600 -> plural(segundos / 60, "minuto")
+        segundos < 24 * 3_600 -> plural(segundos / 3_600, "hora")
+        segundos % (7 * 24 * 3_600) == 0 -> plural(segundos / (7 * 24 * 3_600), "semana")
+        else -> plural(segundos / (24 * 3_600), "dia")
+    }
+
+    private fun plural(n: Int, unidad: String) = if (n == 1) "1 $unidad" else "$n ${unidad}s"
+}
+
 @Serializable
 data class ConversacionResumen(
     val id: String,
@@ -534,6 +612,31 @@ data class ConversacionResumen(
      * estuvo apagado empezaria a contar desde que se entero.
      */
     val expiraEn: Long = 0,
+    /**
+     * Segundos de vida de CADA mensaje nuevo de este chat. `null` = permanentes.
+     *
+     * No confundir con [expiraEn], que borra el chat entero en una fecha. Esto
+     * es el temporizador por mensaje: cada uno se borra a los N segundos de
+     * haberse escrito, y el chat sigue.
+     *
+     * ## Por que viaja en el listado
+     *
+     * Porque antes **no viajaba**, y eso rompia la funcion en silencio. La
+     * ruta `PUT /conversaciones/{id}/temporales` era de solo escritura: se
+     * podia encender el temporizador, pero ningun cliente podia leerlo. Las
+     * consecuencias, las dos malas:
+     *
+     *  1. **Quien recibia no borraba nada.** Solo el emisor se enteraba del
+     *     vencimiento -se lo devolvia el registro de su propio mensaje-, asi
+     *     que el mensaje temporal desaparecia de SU telefono y se quedaba para
+     *     siempre en el del otro. La app prometia una cosa y hacia la mitad.
+     *  2. **La interfaz no podia decir como estaba.** Los botones del grupo no
+     *     mostraban el valor actual porque no habia de donde sacarlo.
+     *
+     * Ahora viaja con la conversacion, como `expiraEn`, y por el mismo motivo:
+     * un aparato que se sincroniza por primera vez tiene que enterarse igual.
+     */
+    val temporalesSegundos: Int? = null,
     /**
      * Si esta conversacion todavia es una solicitud sin decidir.
      *

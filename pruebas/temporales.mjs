@@ -148,5 +148,108 @@ const eventos = psql(
 );
 ck('quedo un aviso de conversacion vencida', Number(eventos) > 0, eventos);
 
+// ============================================================
+//  El temporizador POR MENSAJE
+// ============================================================
+//
+// Otra cosa que el plazo del chat: alli se borra la conversacion entera en una
+// fecha; aqui cada mensaje se borra a los N segundos y el chat sigue.
+//
+// Esto estaba roto a medias y no se notaba. La ruta era de SOLO ESCRITURA: se
+// podia encender el temporizador y ningun cliente podia leerlo. Consecuencia:
+// solo el emisor se enteraba del vencimiento -se lo devolvia el registro de su
+// propio mensaje-, asi que el mensaje temporal desaparecia de SU telefono y se
+// quedaba para siempre en el del otro. La app prometia una cosa y hacia la
+// mitad, sin error ni aviso. Estas pruebas cubren el camino por el que quien
+// recibe se entera.
+
+console.log('\n=== el temporizador por mensaje se puede LEER ===');
+r = await call('PUT', `/v1/conversaciones/${NORMAL}/temporales`, ana.t, { segundos: DIA / 1000 });
+ck('se puede encender en una directa', r.s === 204, String(r.s) + JSON.stringify(r.b ?? ''));
+
+r = await call('GET', '/v1/conversaciones', ana.t);
+let vistoN = (r.b ?? []).find((c) => c.id === NORMAL);
+ck('y vuelve en MI listado', vistoN?.temporalesSegundos === DIA / 1000,
+   JSON.stringify(vistoN?.temporalesSegundos));
+
+// Este es el que faltaba. Sin el, quien recibe no tiene de donde sacar el
+// plazo, y su copia del mensaje se guarda como permanente.
+r = await call('GET', '/v1/conversaciones', beto.t);
+vistoN = (r.b ?? []).find((c) => c.id === NORMAL);
+ck('y en el del OTRO, que es quien tiene que borrar su copia',
+   vistoN?.temporalesSegundos === DIA / 1000, JSON.stringify(vistoN?.temporalesSegundos));
+
+console.log('\n=== en una directa lo pone cualquiera de los dos ===');
+// Antes exigia `grupo.editar_info`, que un `miembro` no tiene — y en una
+// directa los dos son miembros. O sea: no se podia encender en un chat de dos,
+// justo donde mas sentido tiene.
+r = await call('PUT', `/v1/conversaciones/${NORMAL}/temporales`, beto.t, { segundos: 3600 });
+ck('el otro tambien puede cambiarlo', r.s === 204, String(r.s) + JSON.stringify(r.b ?? ''));
+r = await call('GET', '/v1/conversaciones', ana.t);
+ck('y el cambio se ve', (r.b ?? []).find((c) => c.id === NORMAL)?.temporalesSegundos === 3600);
+
+console.log('\n=== y se avisa al otro lado ===');
+// Hace falta para que lo CUMPLA, no solo para dibujarlo: hasta que su telefono
+// lo sepa, todo lo que llegue se guarda como permanente.
+ck('quedo un aviso de cambio de temporizador',
+   Number(psql(`SELECT count(*) FROM evento_pendiente WHERE tipo='conversacion_temporales'`)) > 0);
+
+console.log('\n=== se puede apagar ===');
+r = await call('PUT', `/v1/conversaciones/${NORMAL}/temporales`, ana.t, { segundos: null });
+ck('apagarlo responde 204', r.s === 204, String(r.s));
+r = await call('GET', '/v1/conversaciones', ana.t);
+vistoN = (r.b ?? []).find((c) => c.id === NORMAL);
+ck('y vuelve como nulo, no como cero',
+   vistoN?.temporalesSegundos === null || vistoN?.temporalesSegundos === undefined,
+   JSON.stringify(vistoN?.temporalesSegundos));
+ck('y en la base queda NULL',
+   psql(`SELECT temporales_segundos IS NULL FROM conversacion WHERE id='${NORMAL}'`) === 't');
+
+console.log('\n=== el plazo se valida ===');
+for (const malo of [0, 30, 59, -5, 7776001]) {
+  r = await call('PUT', `/v1/conversaciones/${NORMAL}/temporales`, ana.t, { segundos: malo });
+  ck(`se rechaza un plazo de ${malo} s`, r.s === 400, String(r.s));
+}
+for (const bueno of [60, 300, 3600, 86400, 604800, 7776000]) {
+  r = await call('PUT', `/v1/conversaciones/${NORMAL}/temporales`, ana.t, { segundos: bueno });
+  ck(`se acepta un plazo de ${bueno} s`, r.s === 204, String(r.s));
+}
+
+console.log('\n=== un ajeno no puede tocarlo ===');
+// La regla nueva para las directas es "participar basta", y hay que comprobar
+// que sigue siendo una REGLA: sin esto, cualquiera con el id del chat podria
+// cambiarle el temporizador a una conversacion que no es suya.
+const carla = await reg('tc');
+r = await call('PUT', `/v1/conversaciones/${NORMAL}/temporales`, carla.t, { segundos: 3600 });
+ck('un tercero recibe 403 o 404, no 204', r.s === 403 || r.s === 404, String(r.s));
+r = await call('GET', '/v1/conversaciones', ana.t);
+ck('y el plazo no cambio',
+   (r.b ?? []).find((c) => c.id === NORMAL)?.temporalesSegundos === 7776000,
+   JSON.stringify((r.b ?? []).find((c) => c.id === NORMAL)?.temporalesSegundos));
+
+console.log('\n=== en un grupo sigue siendo cosa de quien administra ===');
+r = await call('POST', '/v1/conversaciones/grupo', ana.t, {
+  nombre: 'Con reloj', usernames: [beto.user],
+});
+const GRUPO2 = r.b?.id;
+r = await call('PUT', `/v1/conversaciones/${GRUPO2}/temporales`, ana.t, { segundos: 86400 });
+ck('quien lo creo puede', r.s === 204, String(r.s));
+r = await call('PUT', `/v1/conversaciones/${GRUPO2}/temporales`, beto.t, { segundos: 30 });
+ck('un miembro raso no', r.s === 403, String(r.s));
+r = await call('GET', '/v1/conversaciones', beto.t);
+ck('pero SI lo ve: le afecta a sus mensajes',
+   (r.b ?? []).find((c) => c.id === GRUPO2)?.temporalesSegundos === 86400,
+   JSON.stringify((r.b ?? []).find((c) => c.id === GRUPO2)?.temporalesSegundos));
+
+console.log('\n=== y el mensaje registrado sale con su vencimiento ===');
+r = await call('POST', '/v1/mensajes', ana.t, {
+  mensajeId: crypto.randomUUID(), conversacionId: GRUPO2,
+});
+ck('el registro devuelve expiraEn', r.s === 200 && r.b?.expiraEn > Date.now(),
+   String(r.s) + ' ' + JSON.stringify(r.b?.expiraEn));
+ck('y esta en la base',
+   psql(`SELECT count(*) FROM mensaje_meta WHERE conversacion_id='${GRUPO2}' ` +
+        `AND expira_en IS NOT NULL`) === '1');
+
 console.log(`\n=== ${ok} pasan, ${fail} fallan ===`);
 process.exit(fail === 0 ? 0 : 1);
