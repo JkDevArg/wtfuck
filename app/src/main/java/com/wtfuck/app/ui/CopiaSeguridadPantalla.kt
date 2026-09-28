@@ -51,27 +51,27 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
     val app = ctx.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
 
-    var exportando by remember { mutableStateOf(false) }
     var pidiendoFraseExport by remember { mutableStateOf(false) }
     var pidiendoFraseImport by remember { mutableStateOf<android.net.Uri?>(null) }
     var trabajando by remember { mutableStateOf(false) }
     var aviso by remember { mutableStateOf<String?>(null) }
 
-    // Los bytes de la copia se arman ANTES de abrir el selector de archivo,
-    // porque el selector devuelve una URI para escribir, no un momento para
-    // calcular. Se guardan aqui entre "pedir frase" y "elegir donde guardar".
-    var bytesParaGuardar by remember { mutableStateOf<ByteArray?>(null) }
+    // La frase se guarda entre "pedir frase" y "elegir donde guardar": el
+    // selector de archivo devuelve una URI, y recien entonces se escribe la
+    // copia -en streaming, para que los adjuntos no pasen por memoria-.
+    var fraseExport by remember { mutableStateOf<CharArray?>(null) }
 
     val guardarArchivo = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
-        val datos = bytesParaGuardar
-        bytesParaGuardar = null
-        if (uri == null || datos == null) { trabajando = false; return@rememberLauncherForActivityResult }
+        val frase = fraseExport
+        fraseExport = null
+        if (uri == null || frase == null) { trabajando = false; return@rememberLauncherForActivityResult }
         ambito.launch {
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
-                    ctx.contentResolver.openOutputStream(uri)?.use { it.write(datos) } ?: error("sin flujo")
+                    ctx.contentResolver.openOutputStream(uri)?.use { app.repo.exportarCopiaA(it, frase) }
+                        ?: error("sin flujo")
                 }.isSuccess
             }
             trabajando = false
@@ -141,7 +141,7 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
                     Text(
                         "• La frase no se guarda en ningún lado. Si la olvidas, la copia " +
                             "no sirve — ni el servidor ni nadie puede abrirla.\n" +
-                            "• La copia incluye el texto de tus chats, no los archivos ni fotos.\n" +
+                            "• La copia incluye el texto de tus chats y sus fotos y archivos.\n" +
                             "• Para restaurar en un teléfono nuevo, primero entra a tu cuenta.",
                         color = TextoSecundario, style = MaterialTheme.typography.bodySmall,
                     )
@@ -160,15 +160,10 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
             onFrase = { frase ->
                 pidiendoFraseExport = false
                 trabajando = true
-                ambito.launch {
-                    val bytes = withContext(Dispatchers.IO) {
-                        runCatching { app.repo.exportarCopia(frase) }.getOrNull()
-                    }
-                    if (bytes == null) { trabajando = false; aviso = "No se pudo crear la copia."; return@launch }
-                    bytesParaGuardar = bytes
-                    val nombre = "wtfuck-copia-${System.currentTimeMillis() / 1000}.wtfbackup"
-                    guardarArchivo.launch(nombre)
-                }
+                // La frase se lleva al selector de archivo; la copia se escribe
+                // en streaming cuando la persona elige donde guardar.
+                fraseExport = frase
+                guardarArchivo.launch("wtfuck-copia-${System.currentTimeMillis() / 1000}.wtfbackup")
             },
         )
     }
@@ -184,14 +179,16 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
                 pidiendoFraseImport = null
                 trabajando = true
                 ambito.launch {
-                    val bytes = withContext(Dispatchers.IO) {
-                        runCatching { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                    val r = withContext(Dispatchers.IO) {
+                        runCatching {
+                            ctx.contentResolver.openInputStream(uri)?.use { app.repo.restaurarCopiaDe(it, frase) }
+                                ?: Result.failure(CopiaSeguridad.ErrorCopia(CopiaSeguridad.Fallo.FORMATO))
+                        }.getOrElse { Result.failure(CopiaSeguridad.ErrorCopia(CopiaSeguridad.Fallo.FORMATO)) }
                     }
-                    if (bytes == null) { trabajando = false; aviso = "No se pudo leer el archivo."; return@launch }
-                    val r = withContext(Dispatchers.IO) { app.repo.restaurarCopia(bytes, frase) }
                     trabajando = false
                     r.onSuccess {
-                        aviso = "Restaurados ${it.mensajes} mensajes de ${it.conversaciones} chats."
+                        val fotos = if (it.adjuntos > 0) " y ${it.adjuntos} archivos" else ""
+                        aviso = "Restaurados ${it.mensajes} mensajes$fotos de ${it.conversaciones} chats."
                     }.onFailure { e ->
                         aviso = when ((e as? CopiaSeguridad.ErrorCopia)?.fallo) {
                             CopiaSeguridad.Fallo.FORMATO -> "Ese archivo no es una copia de wtfuck."

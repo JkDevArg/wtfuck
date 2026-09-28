@@ -1,6 +1,5 @@
 package com.wtfuck.app.datos
 
-import com.wtfuck.protocol.MensajeHistorico
 import kotlinx.serialization.Serializable
 import java.nio.ByteBuffer
 import java.security.SecureRandom
@@ -38,20 +37,50 @@ import javax.crypto.spec.SecretKeySpec
  */
 object CopiaSeguridad {
 
-    // El contenido de la copia. Reusa MensajeHistorico -el mismo que viaja al
-    // sincronizar entre dispositivos- para no tener dos formas de decir lo mismo.
+    // El adjunto de un mensaje, si lo tiene y su archivo se incluyo en la copia.
+    // La `llave` es la del CifradorArchivo con que se cifro el archivo dentro del
+    // zip: vive AQUI, en el manifiesto, que va cifrado con la frase. Sin la
+    // frase no hay manifiesto, sin manifiesto no hay llaves, y los archivos del
+    // zip son bytes opacos. Es el mismo cifrado de sobre que usa la app para los
+    // adjuntos normales.
+    @Serializable
+    data class AdjuntoRespaldo(
+        val clase: String,
+        val mime: String,
+        val nombre: String,
+        val bytes: Long,
+        val ancho: Int = 0,
+        val alto: Int = 0,
+        val duracionMs: Int = 0,
+        val claveB64: String,
+        val nonceB64: String,
+    )
+
+    @Serializable
+    data class MensajeRespaldo(
+        val id: String,
+        val autor: String,
+        val esMio: Boolean,
+        val texto: String,
+        val creadoEn: Long,
+        // null = mensaje de solo texto, o el archivo ya no estaba en el telefono.
+        val adjunto: AdjuntoRespaldo? = null,
+    )
+
     @Serializable
     data class ConversacionRespaldo(
         val id: String,
         val tipo: String,
         val nombre: String,
         val participantes: String,
-        val mensajes: List<MensajeHistorico>,
+        val mensajes: List<MensajeRespaldo>,
     )
 
     @Serializable
     data class Respaldo(
-        val version: Int = 1,
+        // 2 desde que la copia puede llevar adjuntos. Una copia v1 (solo texto)
+        // se sigue leyendo: no tiene adjuntos y ya esta.
+        val version: Int = 2,
         val creado: Long,
         // Para AVISAR si se importa en una cuenta distinta a la que lo creo. No
         // lo impide -a veces es lo que se quiere- pero lo dice.

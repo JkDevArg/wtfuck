@@ -12,11 +12,30 @@ y el nuevo a la vez"; **no** resuelve "se me rompió y no tengo otro". Para eso
 está esto: un archivo cifrado que la persona guarda donde quiera y restaura en
 un teléfono nuevo.
 
-## Qué incluye (v1)
+## Qué incluye
 
-El **texto** de los chats: por cada conversación, sus mensajes (id, autor, si es
-mío, texto, fecha). No incluye archivos ni fotos —pesan y viven aparte— ni los
-mensajes de sistema, retirados o vacíos, que son ruido al restaurar.
+El **texto** de los chats y sus **fotos y archivos** (v2). Por cada
+conversación, sus mensajes (id, autor, si es mío, texto, fecha) y, si el
+mensaje tenía un adjunto con el archivo aún en el teléfono, ese archivo. No van
+los mensajes de sistema, retirados o vacíos, que son ruido al restaurar.
+
+### Cómo caben las fotos sin cripto artesanal ni OOM
+
+Cifrado de **sobre**, el mismo que la app ya usa para adjuntos: cada archivo se
+cifra con su propia clave (`CifradorArchivo`, AES-GCM en streaming, una etiqueta
+por archivo — nada de un GCM gigante en memoria ni streaming a mano). Esas
+llaves viven en el **manifiesto**, que va cifrado con la frase. Todo se empaqueta
+en un ZIP:
+
+```
+copia.wtfbackup (zip)
+  manifiesto        <- JSON del historial + llaves, cifrado con la frase
+  m/<mensajeId>     <- cada adjunto, cifrado con su llave (que esta en el manifiesto)
+```
+
+Sin la frase no hay manifiesto; sin manifiesto no hay llaves; los `m/*` son
+bytes opacos. Exportar e importar van en streaming (cada archivo de a uno), asi
+que una biblioteca de fotos grande no revienta el proceso.
 
 ## La cripto — dónde y por qué así
 

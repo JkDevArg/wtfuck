@@ -2741,89 +2741,175 @@ class Repositorio(
     // ============================================================
     //  Copia de seguridad cifrada (exportar / restaurar)
     // ============================================================
-
-    /**
-     * Arma el respaldo del historial local: todas las conversaciones con sus
-     * mensajes de texto. Reusa la misma forma que la sincronizacion entre
-     * dispositivos (MensajeHistorico).
-     *
-     * Se dejan fuera los mensajes de sistema, los retirados y los vacios. Los
-     * adjuntos no van en v1 -pesan y viven como archivos aparte-; se respalda el
-     * texto, que es lo que de verdad se pierde y no se recupera de otro lado.
-     */
-    private suspend fun armarRespaldo(): CopiaSeguridad.Respaldo {
-        val convs = dao.idsLocales().mapNotNull { convId ->
-            val c = dao.conversacion(convId) ?: return@mapNotNull null
-            val mensajes = dao.todosLosMensajes(convId)
-                .filter { !it.esSistema && !it.retirado && it.texto.isNotBlank() }
-                .map {
-                    com.wtfuck.protocol.MensajeHistorico(
-                        id = it.id, autor = it.autor, esMio = it.esMio,
-                        texto = it.texto, creadoEn = it.creadoEn,
-                    )
-                }
-            if (mensajes.isEmpty()) return@mapNotNull null
-            CopiaSeguridad.ConversacionRespaldo(
-                id = c.id, tipo = c.tipo, nombre = c.nombre,
-                participantes = c.participantes, mensajes = mensajes,
-            )
-        }
-        return CopiaSeguridad.Respaldo(
-            creado = System.currentTimeMillis(),
-            cuenta = sesion.username.orEmpty(),
-            conversaciones = convs,
-        )
-    }
-
-    /** Bytes de la copia cifrada, listos para escribir al archivo que elija la persona. */
-    suspend fun exportarCopia(frase: CharArray): ByteArray {
-        val respaldo = armarRespaldo()
-        val json = jsonApp.encodeToString(CopiaSeguridad.Respaldo.serializer(), respaldo)
-        return CopiaSeguridad.cifrar(json.toByteArray(), frase)
-    }
+    //
+    // Formato v2: un ZIP con
+    //   - "manifiesto": el JSON del historial, cifrado con la frase
+    //     (CopiaSeguridad). Lleva, por cada adjunto incluido, la LLAVE del
+    //     archivo.
+    //   - "m/<mensajeId>": cada adjunto, cifrado con su propia llave
+    //     (CifradorArchivo, streaming, GCM por archivo).
+    //
+    // Es cifrado de sobre, el mismo que la app ya usa para adjuntos: sin la
+    // frase no hay manifiesto, sin manifiesto no hay llaves, y los archivos del
+    // zip son ruido. Nada de cripto en streaming artesanal: cada pieza es un
+    // AES-GCM cerrado, con su etiqueta.
 
     /** Lo que se le cuenta a la persona tras restaurar. */
-    data class ResumenRestauracion(val mensajes: Int, val conversaciones: Int, val cuenta: String)
+    data class ResumenRestauracion(
+        val mensajes: Int, val conversaciones: Int, val adjuntos: Int, val cuenta: String,
+    )
 
     /**
-     * Restaura una copia. Descifra, y por cada conversacion guarda los mensajes
-     * que aun no estaban.
-     *
-     * Si la conversacion no existe localmente todavia se crea una fila minima
-     * para que los mensajes tengan donde vivir; la membresia y las claves las
-     * completa la sincronizacion normal. guardarMensaje es un upsert por id, asi
-     * que restaurar dos veces no duplica nada.
+     * Escribe la copia cifrada -texto y adjuntos- directo al flujo de salida
+     * (el archivo que eligio la persona). En streaming: los adjuntos pasan de a
+     * uno, nunca todos en memoria.
      */
-    suspend fun restaurarCopia(bytes: ByteArray, frase: CharArray): Result<ResumenRestauracion> {
-        val claro = CopiaSeguridad.descifrar(bytes, frase).getOrElse { return Result.failure(it) }
-        val respaldo = runCatching {
-            jsonApp.decodeFromString(CopiaSeguridad.Respaldo.serializer(), String(claro))
-        }.getOrElse { return Result.failure(CopiaSeguridad.ErrorCopia(CopiaSeguridad.Fallo.FORMATO)) }
+    suspend fun exportarCopiaA(salida: java.io.OutputStream, frase: CharArray) {
+        val convs = mutableListOf<CopiaSeguridad.ConversacionRespaldo>()
+        java.util.zip.ZipOutputStream(salida.buffered()).use { zip ->
+            for (convId in dao.idsLocales()) {
+                val c = dao.conversacion(convId) ?: continue
+                val mensajes = mutableListOf<CopiaSeguridad.MensajeRespaldo>()
+                for (m in dao.todosLosMensajes(convId)) {
+                    if (m.esSistema || m.retirado) continue
+                    if (m.texto.isBlank() && m.adjuntoId == null) continue
 
-        var mensajes = 0
-        for (conv in respaldo.conversaciones) {
-            if (dao.conversacion(conv.id) == null) {
-                dao.guardarConversacion(
-                    ConversacionEnt(
-                        id = conv.id, tipo = conv.tipo, nombre = conv.nombre,
-                        participantes = conv.participantes,
+                    var adj: CopiaSeguridad.AdjuntoRespaldo? = null
+                    if (m.adjuntoId != null && m.adjuntoNombre.isNotBlank()) {
+                        val f = archivos.archivoDe(m.id, m.adjuntoNombre)
+                        if (f.exists()) {
+                            // Se cifra a un temporal y de ahi al zip: CifradorArchivo
+                            // escribe a un File, y el temporal se borra enseguida.
+                            val tmp = java.io.File(contexto.cacheDir, "bkp-${m.id}.enc")
+                            val llave = runCatching {
+                                CifradorArchivo.cifrarA(f.inputStream(), tmp)
+                            }.getOrNull()
+                            if (llave != null) {
+                                zip.putNextEntry(java.util.zip.ZipEntry("m/${m.id}"))
+                                tmp.inputStream().use { it.copyTo(zip, 64 * 1024) }
+                                zip.closeEntry()
+                                adj = CopiaSeguridad.AdjuntoRespaldo(
+                                    clase = m.adjuntoClase, mime = m.adjuntoMime,
+                                    nombre = m.adjuntoNombre, bytes = m.adjuntoBytes,
+                                    ancho = m.adjuntoAncho, alto = m.adjuntoAlto,
+                                    duracionMs = m.adjuntoDuracionMs,
+                                    claveB64 = llave.claveB64, nonceB64 = llave.nonceB64,
+                                )
+                            }
+                            tmp.delete()
+                        }
+                    }
+                    mensajes += CopiaSeguridad.MensajeRespaldo(
+                        id = m.id, autor = m.autor, esMio = m.esMio,
+                        texto = m.texto, creadoEn = m.creadoEn, adjunto = adj,
                     )
-                )
-            }
-            for (m in conv.mensajes) {
-                dao.guardarMensaje(
-                    MensajeEnt(
-                        id = m.id, conversacionId = conv.id, autor = m.autor,
-                        esMio = m.esMio, texto = m.texto, creadoEn = m.creadoEn,
-                        estado = if (m.esMio) EstadoEnvio.ENTREGADO.name else EstadoEnvio.LEIDO.name,
+                }
+                if (mensajes.isNotEmpty()) {
+                    convs += CopiaSeguridad.ConversacionRespaldo(
+                        id = c.id, tipo = c.tipo, nombre = c.nombre,
+                        participantes = c.participantes, mensajes = mensajes,
                     )
-                )
-                mensajes++
+                }
             }
+
+            // El manifiesto va AL FINAL: ya tiene todas las llaves de los
+            // adjuntos que se escribieron arriba. Cifrado con la frase.
+            val respaldo = CopiaSeguridad.Respaldo(
+                creado = System.currentTimeMillis(),
+                cuenta = sesion.username.orEmpty(),
+                conversaciones = convs,
+            )
+            val json = jsonApp.encodeToString(CopiaSeguridad.Respaldo.serializer(), respaldo)
+            zip.putNextEntry(java.util.zip.ZipEntry("manifiesto"))
+            zip.write(CopiaSeguridad.cifrar(json.toByteArray(), frase))
+            zip.closeEntry()
         }
-        return Result.success(
-            ResumenRestauracion(mensajes, respaldo.conversaciones.size, respaldo.cuenta)
-        )
+    }
+
+    /**
+     * Restaura desde el flujo de una copia. Se vuelca a un temporal para poder
+     * leer el zip con acceso aleatorio (el manifiesto primero, los adjuntos
+     * despues). guardarMensaje es un upsert por id: restaurar dos veces no
+     * duplica.
+     */
+    suspend fun restaurarCopiaDe(entrada: java.io.InputStream, frase: CharArray): Result<ResumenRestauracion> {
+        val tempZip = java.io.File(contexto.cacheDir, "restaurar-${System.currentTimeMillis()}.zip")
+        try {
+            entrada.use { ent -> tempZip.outputStream().use { ent.copyTo(it, 64 * 1024) } }
+
+            java.util.zip.ZipFile(tempZip).use { zf ->
+                val man = zf.getEntry("manifiesto")
+                    ?: return Result.failure(CopiaSeguridad.ErrorCopia(CopiaSeguridad.Fallo.FORMATO))
+                val enc = zf.getInputStream(man).use { it.readBytes() }
+                val json = CopiaSeguridad.descifrar(enc, frase).getOrElse { return Result.failure(it) }
+                val respaldo = runCatching {
+                    jsonApp.decodeFromString(CopiaSeguridad.Respaldo.serializer(), String(json))
+                }.getOrElse {
+                    return Result.failure(CopiaSeguridad.ErrorCopia(CopiaSeguridad.Fallo.FORMATO))
+                }
+
+                var mensajes = 0
+                var adjuntos = 0
+                for (conv in respaldo.conversaciones) {
+                    if (dao.conversacion(conv.id) == null) {
+                        dao.guardarConversacion(
+                            ConversacionEnt(
+                                id = conv.id, tipo = conv.tipo, nombre = conv.nombre,
+                                participantes = conv.participantes,
+                            )
+                        )
+                    }
+                    for (m in conv.mensajes) {
+                        var rutaLocal: String? = null
+                        var estado = ""
+                        val a = m.adjunto
+                        if (a != null) {
+                            val e = zf.getEntry("m/${m.id}")
+                            if (e != null) {
+                                val destino = archivos.archivoDe(m.id, a.nombre)
+                                val ok = CifradorArchivo.descifrarA(
+                                    zf.getInputStream(e),
+                                    CifradorArchivo.Llave(a.claveB64, a.nonceB64),
+                                    destino,
+                                )
+                                if (ok) {
+                                    rutaLocal = destino.absolutePath
+                                    estado = "LISTO"
+                                    adjuntos++
+                                }
+                            }
+                        }
+                        dao.guardarMensaje(
+                            MensajeEnt(
+                                id = m.id, conversacionId = conv.id, autor = m.autor,
+                                esMio = m.esMio, texto = m.texto, creadoEn = m.creadoEn,
+                                estado = if (m.esMio) EstadoEnvio.ENTREGADO.name else EstadoEnvio.LEIDO.name,
+                                // Si el adjunto se restauro, el mensaje queda como uno con
+                                // archivo LISTO y su ruta local; si no, solo texto.
+                                adjuntoId = if (rutaLocal != null) m.id else null,
+                                adjuntoClase = a?.clase ?: "",
+                                adjuntoMime = a?.mime ?: "",
+                                adjuntoNombre = a?.nombre ?: "",
+                                adjuntoBytes = a?.bytes ?: 0,
+                                adjuntoAncho = a?.ancho ?: 0,
+                                adjuntoAlto = a?.alto ?: 0,
+                                adjuntoDuracionMs = a?.duracionMs ?: 0,
+                                rutaLocal = rutaLocal,
+                                adjuntoEstado = estado,
+                            )
+                        )
+                        mensajes++
+                    }
+                }
+                return Result.success(
+                    ResumenRestauracion(mensajes, respaldo.conversaciones.size, adjuntos, respaldo.cuenta)
+                )
+            }
+        } catch (e: Exception) {
+            return Result.failure(CopiaSeguridad.ErrorCopia(CopiaSeguridad.Fallo.FORMATO))
+        } finally {
+            tempZip.delete()
+        }
     }
 
     // ============================================================
