@@ -114,6 +114,20 @@ class Repositorio(
     private val socket: Socket,
     private val sesion: Sesion,
     private val cifrador: Cifrador,
+    /**
+     * El almacen criptografico, solo para la COPIA DE SEGURIDAD.
+     *
+     * El repositorio no hace cripto -de eso se encarga `cifrador`- y esta es
+     * la excepcion declarada: la copia tiene que poder guardar y devolver la
+     * identidad Signal, y eso es leer y escribir una fila, no cifrar.
+     *
+     * Podria haber ido detras de `Cifrador`, y no se hizo porque
+     * `CifradorPlano` -el de desarrollo- no tiene identidad ninguna, y la
+     * interfaz habria ganado dos metodos que una de sus dos implementaciones
+     * no puede cumplir. Con el DAO directo, "no hay identidad" es simplemente
+     * una fila que no existe.
+     */
+    private val signalDao: SignalDao,
     private val archivos: ArchivosLocales,
     private val ajustes: Ajustes,
     private val ambito: CoroutineScope,
@@ -2836,14 +2850,130 @@ class Repositorio(
     /** Lo que se le cuenta a la persona tras restaurar. */
     data class ResumenRestauracion(
         val mensajes: Int, val conversaciones: Int, val adjuntos: Int, val cuenta: String,
-    )
+        /** Que paso con la identidad Signal. Ver [Identidad]. */
+        val identidad: Identidad = Identidad.NO_VENIA,
+    ) {
+        /**
+         * Hay que decirlo con precision porque cada caso pide otra cosa de la
+         * persona, y el mas importante -`CODIGO_NO_ABRE`- es el que se puede
+         * arreglar todavia si se avisa a tiempo.
+         */
+        enum class Identidad {
+            /** Copia v1/v2, o hecha sin codigo. No hay nada que restaurar. */
+            NO_VENIA,
+            /** Venia y se restauro: los contactos NO veran que la clave cambio. */
+            RESTAURADA,
+            /** Venia, pero no se dio ningun codigo. */
+            SIN_CODIGO,
+            /** Venia y el codigo dado no la abre. Probablemente es de otra cuenta. */
+            CODIGO_NO_ABRE,
+            /** Ya habia una identidad distinta en este telefono y se dejo la de aqui. */
+            YA_HABIA_OTRA,
+        }
+    }
+
+    /**
+     * La identidad Signal sellada para meterla en la copia, o `null`.
+     *
+     * Devuelve `null` -y la copia sale sin identidad- en tres casos, todos
+     * normales: no se dio codigo, el codigo esta mal escrito, o este telefono
+     * todavia no tiene identidad (pasa con `CifradorPlano`, el de desarrollo).
+     * Ninguno es un error que deba abortar la copia: perder los mensajes por
+     * no poder guardar la identidad seria el peor cambio posible.
+     */
+    private suspend fun identidadSellada(codigo: String?): CopiaSeguridad.IdentidadRespaldo? {
+        val limpio = codigo?.let { CodigoRecuperacion.normalizar(it) } ?: return null
+        val mia = withContext(Dispatchers.IO) { signalDao.identidadPropia() } ?: return null
+        return CopiaSeguridad.sellarIdentidad(
+            CopiaSeguridad.IdentidadClara(
+                parClavesB64 = Base64Util.enc(mia.parClaves),
+                registrationId = mia.registrationId,
+                proximoPreKeyId = mia.proximoPreKeyId,
+                proximoFirmadaId = mia.proximoFirmadaId,
+                proximoKyberId = mia.proximoKyberId,
+            ),
+            CodigoRecuperacion.claveDeIdentidad(limpio),
+        )
+    }
+
+    /**
+     * Devuelve la identidad Signal de la copia a este telefono.
+     *
+     * ## Por que NO pisa una identidad distinta que ya este en uso
+     *
+     * Porque seria destructivo y silencioso. Si este telefono ya hablo con
+     * alguien, tiene sesiones montadas sobre su identidad actual; cambiarla
+     * por debajo las deja invalidas -los mensajes que lleguen no se van a
+     * poder abrir- y ademas a todos los contactos les salta el aviso de clave
+     * cambiada. Restaurar una copia sobre una cuenta que ya funciona es un
+     * caso REAL -la gente restaura para recuperar mensajes viejos- y no tiene
+     * por que costar la identidad.
+     *
+     * Asi que solo se escribe cuando no hay ninguna, o cuando la que hay es
+     * exactamente la misma. En los demas casos se informa y se deja la de
+     * aqui: el escenario que esta funcion existe para servir -un telefono
+     * nuevo, recien registrado- cae siempre en el primer caso.
+     *
+     * ## Lo que se resetea al restaurarla
+     *
+     * `publicadoEn = 0`, para que este aparato vuelva a publicar sus prekeys.
+     * Las de la copia son del telefono viejo y el servidor puede haberlas
+     * entregado ya; sin republicar, nadie podria abrir una sesion nueva.
+     */
+    private suspend fun restaurarIdentidad(
+        sellada: CopiaSeguridad.IdentidadRespaldo?,
+        codigo: String?,
+    ): ResumenRestauracion.Identidad = withContext(Dispatchers.IO) {
+        if (sellada == null) return@withContext ResumenRestauracion.Identidad.NO_VENIA
+        val limpio = codigo?.let { CodigoRecuperacion.normalizar(it) }
+            ?: return@withContext ResumenRestauracion.Identidad.SIN_CODIGO
+
+        val clara = CopiaSeguridad.abrirIdentidad(
+            sellada, CodigoRecuperacion.claveDeIdentidad(limpio),
+        ) ?: return@withContext ResumenRestauracion.Identidad.CODIGO_NO_ABRE
+
+        val par = runCatching { Base64Util.dec(clara.parClavesB64) }.getOrNull()
+            ?: return@withContext ResumenRestauracion.Identidad.CODIGO_NO_ABRE
+
+        signalDao.identidadPropia()?.let { actual ->
+            if (!actual.parClaves.contentEquals(par)) {
+                return@withContext ResumenRestauracion.Identidad.YA_HABIA_OTRA
+            }
+            // La misma que ya esta: no se toca nada y se cuenta como puesta,
+            // que es lo que la persona quiere saber.
+            return@withContext ResumenRestauracion.Identidad.RESTAURADA
+        }
+
+        signalDao.guardarIdentidadPropia(
+            IdentidadPropiaEnt(
+                parClaves = par,
+                registrationId = clara.registrationId,
+                publicadoEn = 0,
+                proximoPreKeyId = clara.proximoPreKeyId,
+                proximoFirmadaId = clara.proximoFirmadaId,
+                proximoKyberId = clara.proximoKyberId,
+            )
+        )
+        Log.i(TAG, "Identidad restaurada desde la copia")
+        ResumenRestauracion.Identidad.RESTAURADA
+    }
 
     /**
      * Escribe la copia cifrada -texto y adjuntos- directo al flujo de salida
      * (el archivo que eligio la persona). En streaming: los adjuntos pasan de a
      * uno, nunca todos en memoria.
+     *
+     * @param codigo el codigo de recuperacion. Si se da, la copia incluye la
+     *   identidad Signal sellada con el; si no, la copia sale sin identidad y
+     *   restaurarla en otro telefono cambiara la huella de la persona. No es
+     *   obligatorio a proposito: quien no tenga el codigo a mano igual deberia
+     *   poder guardar sus mensajes.
      */
-    suspend fun exportarCopiaA(salida: java.io.OutputStream, frase: CharArray) {
+    suspend fun exportarCopiaA(
+        salida: java.io.OutputStream,
+        frase: CharArray,
+        codigo: String? = null,
+    ) {
         val convs = mutableListOf<CopiaSeguridad.ConversacionRespaldo>()
         java.util.zip.ZipOutputStream(salida.buffered()).use { zip ->
             for (convId in dao.idsLocales()) {
@@ -2897,6 +3027,7 @@ class Repositorio(
                 creado = System.currentTimeMillis(),
                 cuenta = sesion.username.orEmpty(),
                 conversaciones = convs,
+                identidad = identidadSellada(codigo),
             )
             val json = jsonApp.encodeToString(CopiaSeguridad.Respaldo.serializer(), respaldo)
             zip.putNextEntry(java.util.zip.ZipEntry("manifiesto"))
@@ -2911,7 +3042,16 @@ class Repositorio(
      * despues). guardarMensaje es un upsert por id: restaurar dos veces no
      * duplica.
      */
-    suspend fun restaurarCopiaDe(entrada: java.io.InputStream, frase: CharArray): Result<ResumenRestauracion> {
+    suspend fun restaurarCopiaDe(
+        entrada: java.io.InputStream,
+        frase: CharArray,
+        /**
+         * El codigo de recuperacion, si se tiene. Sin el se restauran los
+         * mensajes igual; lo que no vuelve es la identidad, y entonces a los
+         * contactos les saltara el aviso de que la clave cambio.
+         */
+        codigo: String? = null,
+    ): Result<ResumenRestauracion> {
         val tempZip = java.io.File(contexto.cacheDir, "restaurar-${System.currentTimeMillis()}.zip")
         try {
             entrada.use { ent -> tempZip.outputStream().use { ent.copyTo(it, 64 * 1024) } }
@@ -2981,7 +3121,12 @@ class Repositorio(
                     }
                 }
                 return Result.success(
-                    ResumenRestauracion(mensajes, respaldo.conversaciones.size, adjuntos, respaldo.cuenta)
+                    ResumenRestauracion(
+                        mensajes, respaldo.conversaciones.size, adjuntos, respaldo.cuenta,
+                        // La identidad, al final: si algo de arriba fallara,
+                        // mejor no haber tocado la cripto de este telefono.
+                        identidad = restaurarIdentidad(respaldo.identidad, codigo),
+                    )
                 )
             }
         } catch (e: Exception) {

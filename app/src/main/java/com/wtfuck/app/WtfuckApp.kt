@@ -73,6 +73,7 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
             socket = socket,
             sesion = sesion,
             cifrador = cifrador,
+            signalDao = base.signalDao(),
             archivos = archivos,
             ajustes = ajustes,
             ambito = ambito,
