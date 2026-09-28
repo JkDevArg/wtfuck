@@ -57,6 +57,15 @@ android {
         versionName = (project.findProperty("versionName") as? String) ?: "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Cert pinning, OPT-IN. Vacio = sin pinning (validacion de CA normal).
+        // Se activa al compilar, con los pines separados por coma:
+        //   -Ppin=<pin-leaf>,<pin-respaldo>
+        // Va en defaultConfig para que valga en debug y release; en debug se
+        // deja vacio salvo que se pase a proposito (localhost no tiene cert que
+        // pinear). Ver datos/Pinning.kt y el porque es opt-in (riesgo de brick).
+        val pines = (project.findProperty("pin") as? String).orEmpty().replace("\"", "")
+        buildConfigField("String", "PIN_HASHES", "\"$pines\"")
+
     }
 
     /**

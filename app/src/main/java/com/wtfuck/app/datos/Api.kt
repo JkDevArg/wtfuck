@@ -162,12 +162,13 @@ class Sesion(ctx: Context) {
 
 class ApiCliente(private val sesion: Sesion) {
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        // Sin reintentos automaticos: la cola de salida decide cuando reintentar.
-        .retryOnConnectionFailure(false)
-        .build()
+    private val http = Pinning.aplicar(
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            // Sin reintentos automaticos: la cola de salida decide cuando reintentar.
+            .retryOnConnectionFailure(false)
+    ).build()
 
     /**
      * Cliente aparte para el almacen de archivos.

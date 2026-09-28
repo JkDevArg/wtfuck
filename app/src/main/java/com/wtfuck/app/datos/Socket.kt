@@ -26,13 +26,14 @@ class Socket(private val ambito: CoroutineScope) {
 
     private val TAG = "Socket"
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        // El servidor manda ping cada 20s. 40s de lectura detecta la caida
-        // sin castigar una red lenta.
-        .readTimeout(40, TimeUnit.SECONDS)
-        .pingInterval(20, TimeUnit.SECONDS)
-        .build()
+    private val http = Pinning.aplicar(
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            // El servidor manda ping cada 20s. 40s de lectura detecta la caida
+            // sin castigar una red lenta.
+            .readTimeout(40, TimeUnit.SECONDS)
+            .pingInterval(20, TimeUnit.SECONDS)
+    ).build()
 
     private val _estado = MutableStateFlow(EstadoConexion.DESCONECTADO)
     val estado = _estado.asStateFlow()
