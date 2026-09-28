@@ -55,6 +55,7 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
     var pidiendoFraseImport by remember { mutableStateOf<android.net.Uri?>(null) }
     var trabajando by remember { mutableStateOf(false) }
     var aviso by remember { mutableStateOf<String?>(null) }
+    var ultimaCopia by remember { mutableStateOf(app.ajustes.ultimaCopia) }
 
     // La frase se guarda entre "pedir frase" y "elegir donde guardar": el
     // selector de archivo devuelve una URI, y recien entonces se escribe la
@@ -75,6 +76,8 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
                 }.isSuccess
             }
             trabajando = false
+            if (ok) app.ajustes.ultimaCopia = System.currentTimeMillis()
+            ultimaCopia = app.ajustes.ultimaCopia
             aviso = if (ok) "Copia guardada. Guárdala bien y no olvides la frase."
                     else "No se pudo escribir el archivo."
         }
@@ -106,6 +109,32 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
                     "Una copia cifrada te deja recuperarlos en otro teléfono.",
                 color = TextoSecundario, style = MaterialTheme.typography.bodyMedium,
             )
+            Spacer(Modifier.height(16.dp))
+
+            // Cuándo fue la última copia. Ámbar cuando nunca o hace mucho: la
+            // copia es manual, y sin este recordatorio se olvida hasta que ya es
+            // tarde. No molesta con un banner global; vive donde se actúa.
+            val dias = if (ultimaCopia == 0L) -1
+                       else ((System.currentTimeMillis() - ultimaCopia) / 86_400_000L).toInt()
+            val vieja = dias < 0 || dias >= 30
+            Surface(
+                color = (if (vieja) Ambar else Cian).copy(alpha = 0.10f),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    when {
+                        dias < 0 -> "Nunca has hecho una copia. Es buen momento para la primera."
+                        dias == 0 -> "Última copia: hoy."
+                        dias == 1 -> "Última copia: ayer."
+                        dias < 30 -> "Última copia: hace $dias días."
+                        else -> "Última copia: hace $dias días. Conviene hacer una nueva."
+                    },
+                    color = if (vieja) Ambar else TextoSecundario,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
             Spacer(Modifier.height(20.dp))
 
             Tarjeta(

@@ -49,6 +49,16 @@ class Ajustes(private val ctx: Context) {
         get() = p.getBoolean("solo_wifi", true)
         set(v) = p.edit().putBoolean("solo_wifi", v).apply()
 
+    /**
+     * Cuando se hizo la ultima copia de seguridad (epoch ms). 0 = nunca.
+     *
+     * La copia es manual y se olvida; una copia que nadie hace no protege
+     * nada. Esto deja saber cuanto hace de la ultima para poder recordarlo.
+     */
+    var ultimaCopia: Long
+        get() = p.getLong("ultima_copia", 0)
+        set(v) = p.edit().putLong("ultima_copia", v).apply()
+
     var calidadImagen: CalidadImagen
         get() = runCatching { CalidadImagen.valueOf(p.getString("calidad", null) ?: "") }
             .getOrDefault(CalidadImagen.ALTA)

@@ -94,6 +94,7 @@ object Novedades {
             fecha = "27/09/2026",
             cambios = listOf(
                 Cambio(TipoCambio.NUEVO, "Copia de seguridad cifrada: guarda tus chats con sus fotos en un archivo con una frase, y recupéralos si cambias o pierdes el teléfono."),
+                Cambio(TipoCambio.MEJORA, "La app te recuerda cuándo hiciste la última copia de seguridad, para que no se te pase."),
             ),
         ),
         NotasVersion(

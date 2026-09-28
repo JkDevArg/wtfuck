@@ -464,10 +464,21 @@ fun PerfilPantalla(
                     detalle = "Descarga automatica, calidad, espacio usado",
                     onClick = onAlmacenamiento,
                 )
+                // El detalle avisa en ambar cuando la copia esta vencida o no
+                // existe: es el recordatorio que llega sin tener que entrar.
+                val copiaDias = app.ajustes.ultimaCopia.let {
+                    if (it == 0L) -1 else ((System.currentTimeMillis() - it) / 86_400_000L).toInt()
+                }
+                val copiaVencida = copiaDias < 0 || copiaDias >= 30
                 FilaAjuste(
                     icono = Icons.Filled.Backup,
                     titulo = "Copia de seguridad",
-                    detalle = "Guarda tus chats cifrados para no perderlos",
+                    detalle = when {
+                        copiaDias < 0 -> "Nunca has hecho una copia"
+                        copiaDias >= 30 -> "Última: hace $copiaDias días — conviene una nueva"
+                        else -> "Guarda tus chats cifrados para no perderlos"
+                    },
+                    tinte = if (copiaVencida) Ambar else Cian,
                     conDivisor = false,
                     onClick = onCopiaSeguridad,
                 )
