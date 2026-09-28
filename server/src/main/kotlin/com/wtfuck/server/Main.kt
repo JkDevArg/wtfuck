@@ -1064,6 +1064,54 @@ fun Application.modulo() {
             call.respond(HttpStatusCode.NoContent)
         }
 
+        // El codigo de recuperacion: la unica salida cuando se pierde el
+        // telefono. Ver docs/evidencias/codigo-de-recuperacion/.
+        //
+        // Fijarlo pide sesion -es una decision sobre TU cuenta, desde dentro-;
+        // usarlo no puede pedirla, porque el caso entero es no poder entrar.
+        put("$RUTA_CUENTA/recuperacion") {
+            val yo = call.autenticar()
+            Identidad.fijarRecuperacion(yo, call.receive(), call.ipCliente())
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        get("$RUTA_CUENTA/recuperacion") {
+            call.respond(Identidad.estadoRecuperacion(call.autenticar()))
+        }
+
+        // Da de alta un telefono NUEVO. Cuatro puertas: SMS, codigo de
+        // recuperacion, segundo factor y contrasena nueva. Ver
+        // `RecuperarDispositivoReq`.
+        //
+        // Con el MISMO limitador que el ingreso, y por el mismo motivo: es una
+        // ruta sin sesion que, si acierta, entrega una. Sin cupo, un atacante
+        // con el numero clonado podria probar codigos del SMS a ritmo de red.
+        // El codigo de recuperacion son 256 bits y no se adivina; el del SMS
+        // son seis digitos y si.
+        post("$RUTA_CUENTA/recuperar-dispositivo") {
+            val ip = call.ipCliente()
+            val req = call.receive<RecuperarDispositivoReq>()
+            val quien = req.username.lowercase().trim()
+
+            Limitador.exigirSinContar(quien, "ingreso_usuario", Limitador.FALLOS_POR_USUARIO)
+            Limitador.exigirSinContar(ip, "ingreso_ip", Limitador.FALLOS_POR_IP)
+
+            val resp = try {
+                Identidad.recuperarDispositivo(req, ip, call.request.headers["User-Agent"])
+            } catch (e: ErrorNegocio) {
+                // Cuenta como intento fallido cualquier rechazo de una PUERTA,
+                // no los errores de forma (400 por hardware desconocido o
+                // contrasena corta): esos los produce un cliente mal hecho, no
+                // alguien probando.
+                if (e.codigo == 401 || e.codigo == 403) {
+                    Limitador.anotarFallo(quien, "ingreso_usuario", Limitador.FALLOS_POR_USUARIO)
+                    Limitador.anotarFallo(ip, "ingreso_ip", Limitador.FALLOS_POR_IP)
+                }
+                throw e
+            }
+            call.respond(resp)
+        }
+
         get(RUTA_CUENTA) {
             call.respond(Identidad.estado(call.autenticar()))
         }

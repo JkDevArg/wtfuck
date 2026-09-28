@@ -401,6 +401,224 @@ object Identidad {
     }
 
     // ============================================================
+    //  El codigo de recuperacion
+    // ============================================================
+
+    /**
+     * Fija -o rota- el codigo de recuperacion.
+     *
+     * Lo que llega es el VERIFICADOR, no el codigo: ver `FijarRecuperacionReq`.
+     * Y se guarda hasheado con el mismo hash que las contrasenas, asi que una
+     * fuga de la base tampoco entrega el verificador.
+     *
+     * Pide la contrasena y el segundo factor porque fijar uno nuevo **invalida
+     * el anterior**: sin eso, quien se sentara un momento en una sesion abierta
+     * ajena podria dejar la cuenta con un codigo suyo y quedarse con la unica
+     * salida que tiene su dueno.
+     */
+    fun fijarRecuperacion(yo: Auth, req: FijarRecuperacionReq, ip: String) = Db.tx { c ->
+        val hash = c.prepareStatement("SELECT password_hash FROM usuario WHERE id = ?").use { st ->
+            st.setObject(1, yo.usuarioId)
+            st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+        } ?: throw ErrorNegocio(404, "No existe la cuenta.")
+
+        if (!Cripto.verificarPassword(req.password, hash)) {
+            throw ErrorNegocio(401, "La contrasena no es correcta.")
+        }
+        exigirSegundoFactor(c, yo.usuarioId, req.totp)
+
+        val verificador = runCatching { Base64Util.dec(req.verificadorB64) }.getOrNull()
+        // 32 bytes: lo que produce el HKDF del cliente. Un verificador corto
+        // seria un cliente roto -o alguien probando- y guardarlo dejaria una
+        // cuenta con una salida mas debil de lo que su dueno cree tener.
+        if (verificador == null || verificador.size != 32) {
+            throw ErrorNegocio(400, "El verificador de recuperacion no es valido.")
+        }
+
+        c.prepareStatement(
+            "UPDATE usuario SET recuperacion_hash = ?, recuperacion_fijado_en = now() WHERE id = ?"
+        ).use { st ->
+            st.setString(1, Cripto.hashPassword(Base64Util.enc(verificador)))
+            st.setObject(2, yo.usuarioId)
+            st.executeUpdate()
+        }
+
+        Seguridad.anotar(c, yo.usuarioId, "recuperacion_fijada", ip = ip)
+        Autz.auditar(c, yo.usuarioId, "cuenta.recuperacion_fijada", "usuario", yo.usuarioId)
+        Unit
+    }
+
+    /** Si la cuenta tiene codigo, y de cuando es. */
+    fun estadoRecuperacion(yo: Auth): EstadoRecuperacion = Db.query { c ->
+        c.prepareStatement(
+            """SELECT recuperacion_hash IS NOT NULL,
+                      coalesce(extract(epoch FROM recuperacion_fijado_en) * 1000, 0)
+                 FROM usuario WHERE id = ?"""
+        ).use { st ->
+            st.setObject(1, yo.usuarioId)
+            st.executeQuery().use { rs ->
+                rs.primero { EstadoRecuperacion(it.getBoolean(1), it.getDouble(2).toLong()) }
+            }
+        } ?: EstadoRecuperacion(false)
+    }
+
+    /**
+     * Da de alta un telefono NUEVO con el codigo de recuperacion.
+     *
+     * Esto hace justo lo que el atado al hardware existe para impedir, asi que
+     * se paga con cuatro puertas. Ver `RecuperarDispositivoReq` para el detalle
+     * de contra quien protege cada una.
+     *
+     * ## El orden de las comprobaciones no es casual
+     *
+     * Primero el SMS, y solo despues el verificador y el segundo factor. Asi
+     * esta ruta **no es un oraculo**: sin tener el numero no se puede averiguar
+     * si una cuenta tiene codigo de recuperacion configurado, ni si tiene dos
+     * pasos activado.
+     *
+     * Y todo dentro de una transaccion: si algo falla al final, el codigo del
+     * SMS **no se quema** y la persona puede reintentar con el mismo. Es la
+     * misma propiedad que se comprobo al exigir el segundo factor en
+     * [recuperar].
+     */
+    fun recuperarDispositivo(
+        req: RecuperarDispositivoReq,
+        ip: String?,
+        agente: String?,
+    ): SesionResp = Db.tx { c ->
+        if (req.passwordNueva.length < 10) {
+            throw ErrorNegocio(400, "La contrasena nueva necesita al menos 10 caracteres.")
+        }
+        if (req.hardwareNivel !in setOf("STRONGBOX", "TEE", "SOFTWARE_DEV")) {
+            throw ErrorNegocio(400, "Nivel de hardware desconocido.")
+        }
+        if (req.hardwareNivel == "SOFTWARE_DEV" && !Config.permitirSoftwareDev) {
+            throw ErrorNegocio(403, "Este dispositivo no puede acreditar hardware seguro.")
+        }
+
+        val e164 = SmsFactory.exigirTelefono(req.telefono)
+        val hashTel = hashTelefono(e164)
+        val user = req.username.trim().lowercase()
+
+        val id = c.prepareStatement(
+            "SELECT id FROM usuario WHERE username = ? AND telefono_hash = ?"
+        ).use { st ->
+            st.setString(1, user); st.setBytes(2, hashTel)
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+        } ?: throw ErrorNegocio(400, "El codigo no existe o ya vencio. Pide uno nuevo.")
+
+        // Puerta 1: el SMS. Va primero para que esta ruta no sirva de oraculo.
+        val dueno = canjear(c, hashTel, PropositoCodigo.RECUPERAR_CUENTA, req.codigo)
+        if (dueno != id) throw ErrorNegocio(403, "Ese codigo no es de esta cuenta.")
+
+        // Puerta 2: el codigo de recuperacion.
+        val guardado = c.prepareStatement(
+            "SELECT recuperacion_hash FROM usuario WHERE id = ?"
+        ).use { st ->
+            st.setObject(1, id)
+            st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+        } ?: throw ErrorNegocio(
+            403,
+            "Esta cuenta no tiene codigo de recuperacion. Solo se puede entrar " +
+                "desde un dispositivo ya vinculado.",
+        )
+        val verificador = runCatching { Base64Util.dec(req.verificadorB64) }.getOrNull()
+        if (verificador == null || !Cripto.verificarPassword(Base64Util.enc(verificador), guardado)) {
+            throw ErrorNegocio(403, "El codigo de recuperacion no es correcto.")
+        }
+
+        // Puerta 3: el segundo factor, si lo hay.
+        exigirSegundoFactor(c, id, req.totp)
+
+        val hwHash = Base64Util.dec(req.hardwareHash)
+        // Un hardware, una cuenta — la misma regla que en el registro. Si este
+        // aparato ya es de OTRA cuenta, esto no es una recuperacion.
+        c.prepareStatement(
+            """SELECT 1 FROM dispositivo
+               WHERE hardware_hash = ? AND revocado_en IS NULL AND usuario_id <> ?"""
+        ).use { st ->
+            st.setBytes(1, hwHash); st.setObject(2, id)
+            st.executeQuery().use {
+                if (it.next()) throw ErrorNegocio(409, "Este dispositivo ya tiene otra cuenta.")
+            }
+        }
+
+        // Puerta 4: contrasena nueva, y fuera todo lo viejo.
+        //
+        // Se revocan TODOS los aparatos, no solo las sesiones. El escenario es
+        // "perdi el telefono": dejarlo vinculado seria dejar dentro justo al
+        // que puede tenerlo en la mano. Quien tenga otro aparato legitimo lo
+        // vuelve a vincular desde este, que es el camino normal.
+        c.prepareStatement("UPDATE usuario SET password_hash = ? WHERE id = ?").use { st ->
+            st.setString(1, Cripto.hashPassword(req.passwordNueva))
+            st.setObject(2, id)
+            st.executeUpdate()
+        }
+        val cerradas = revocarTodas(c, id, salvo = null, porQuien = id)
+        val revocados = c.prepareStatement(
+            """UPDATE dispositivo SET revocado_en = now()
+               WHERE usuario_id = ? AND revocado_en IS NULL AND hardware_hash <> ?"""
+        ).use { st ->
+            st.setObject(1, id); st.setBytes(2, hwHash)
+            st.executeUpdate()
+        }
+
+        // El aparato. Si este mismo hardware ya estaba -alguien reinstalando en
+        // el telefono de siempre- se reusa la fila en vez de crear otra: el
+        // indice unico parcial de `hardware_hash` no admite dos vivas.
+        val identidad = Base64Util.dec(req.identidadPub)
+        val yaEstaba = c.prepareStatement(
+            "SELECT id FROM dispositivo WHERE usuario_id = ? AND hardware_hash = ? AND revocado_en IS NULL"
+        ).use { st ->
+            st.setObject(1, id); st.setBytes(2, hwHash)
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+        }
+        val dispositivoId = if (yaEstaba != null) {
+            c.prepareStatement(
+                """UPDATE dispositivo
+                   SET etiqueta = ?, identidad_pub = ?, hardware_nivel = ?, principal = true
+                   WHERE id = ?"""
+            ).use { st ->
+                st.setString(1, req.etiquetaDispositivo.take(64))
+                st.setBytes(2, identidad)
+                st.setString(3, req.hardwareNivel)
+                st.setObject(4, yaEstaba)
+                st.executeUpdate()
+            }
+            yaEstaba
+        } else {
+            c.prepareStatement(
+                """INSERT INTO dispositivo
+                     (usuario_id, etiqueta, identidad_pub, hardware_hash, hardware_nivel, principal)
+                   VALUES (?, ?, ?, ?, ?, true) RETURNING id"""
+            ).use { st ->
+                st.setObject(1, id)
+                st.setString(2, req.etiquetaDispositivo.take(64))
+                st.setBytes(3, identidad)
+                st.setBytes(4, hwHash)
+                st.setString(5, req.hardwareNivel)
+                st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
+            }
+        }
+
+        // El codigo usado NO se invalida aqui.
+        //
+        // Tentaba hacerlo -de un solo uso suena mas seguro- y seria peor: si la
+        // persona se queda a medias, vuelve a estar bloqueada y sin salida. Lo
+        // que se hace es anotarlo, y la pantalla ofrece rotarlo al entrar.
+        Seguridad.anotar(
+            c, id, "recuperacion_usada", ip = ip, agente = agente,
+            detalle = """{"sesiones_cerradas":$cerradas,"dispositivos_revocados":$revocados}""",
+        )
+        Autz.auditar(c, id, "cuenta.recuperada_en_otro_aparato", "usuario", id)
+
+        SesionResp(
+            Repo.emitirTokenPara(c, dispositivoId, ip, agente),
+            id.toString(), dispositivoId.toString(), user,
+        )
+    }
+
+    // ============================================================
     //  I.5 · Sesiones
     // ============================================================
 

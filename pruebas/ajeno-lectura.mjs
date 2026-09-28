@@ -269,6 +269,10 @@ const EXENTAS_LECTURA = [
   ['/v1/adjuntos/uso', 'mi propio consumo'],
   ['/v1/cuenta', 'mi propia cuenta'],
   ['/v1/cuenta/tipo', 'mi propio tipo de cuenta'],
+  // Solo dice SI hay codigo y de cuando es, nunca el verificador — eso lo
+  // comprueba recuperacion.mjs con "el verificador no vuelve por ninguna
+  // parte". Y siempre es el de quien pregunta: no admite id.
+  ['/v1/cuenta/recuperacion', 'mi propio codigo de recuperacion'],
   ['/v1/sesiones', 'mis propias sesiones'],
   ['/v1/dispositivos', 'mis propios aparatos'],
   ['/v1/contactos', 'mis propios contactos'],

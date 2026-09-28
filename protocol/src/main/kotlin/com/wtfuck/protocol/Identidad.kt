@@ -221,6 +221,107 @@ data class RecuperarReq(
 )
 
 // ============================================================
+//  El codigo de recuperacion
+// ============================================================
+
+/**
+ * Fija -o rota- el codigo de recuperacion de la cuenta. Pide sesion.
+ *
+ * ## Que viaja y que no
+ *
+ * **El codigo NUNCA viaja.** Lo genera el telefono, se lo muestra a la
+ * persona para que lo escriba en papel, y de ahi deriva dos claves
+ * independientes con HKDF y etiquetas distintas:
+ *
+ * ```
+ *   codigo --HKDF("wtfuck/copia/identidad/v1")--> cifra la identidad Signal
+ *   codigo --HKDF("wtfuck/servidor/verificador/v1")--> [verificadorB64]
+ * ```
+ *
+ * Aqui viaja solo el segundo, y el servidor lo guarda **hasheado**. De lo que
+ * el servidor tiene no se llega a la clave de la identidad: HKDF no es
+ * invertible y las etiquetas producen salidas independientes. Por eso una
+ * fuga de la base del servidor no permite descifrar la identidad de nadie ni
+ * teniendo tambien el archivo de la copia.
+ */
+@Serializable
+data class FijarRecuperacionReq(
+    /** Base64 del verificador derivado. Nunca el codigo. */
+    val verificadorB64: String,
+    /**
+     * La contrasena actual.
+     *
+     * Fijar un codigo nuevo INVALIDA el anterior, asi que quien se siente un
+     * momento en una sesion abierta ajena podria dejar la cuenta con un
+     * codigo suyo y quedarse con la unica salida. Pedir la contrasena lo
+     * impide. Es la misma razon por la que cambiarla se pide dos veces.
+     */
+    val password: String,
+    /** TOTP o codigo de respaldo, si la cuenta tiene dos pasos. */
+    val totp: String? = null,
+)
+
+/** Lo que se sabe del codigo de recuperacion de la cuenta. */
+@Serializable
+data class EstadoRecuperacion(
+    val configurado: Boolean,
+    /** Cuando se fijo, en epoch ms. `0` si no hay. */
+    val fijadoEn: Long = 0,
+)
+
+/**
+ * Recupera la cuenta EN UN TELEFONO NUEVO. No pide sesion: es justo el caso
+ * en que no se puede tener una.
+ *
+ * ## Las cuatro puertas, y por que cada una
+ *
+ * Esta ruta hace lo que el atado al hardware existe para impedir —dar de alta
+ * un aparato que nadie autorizo desde dentro—, asi que se paga caro a
+ * proposito:
+ *
+ * | Puerta | Contra quien |
+ * |---|---|
+ * | Codigo del SMS | Quien encontro el papel pero no controla el numero |
+ * | Codigo de recuperacion | Quien te clono la SIM pero no tiene el papel |
+ * | Segundo factor | Los dos anteriores a la vez, si esta activado |
+ * | Contrasena nueva | Cierra las sesiones viejas: si te robaron el telefono, deja de valer |
+ *
+ * El SMS **no sobra** aunque parezca el factor debil. Sin el, quien entrara a
+ * tu casa y encontrara el papel con el codigo, sabiendo tu usuario, entraria:
+ * un secreto en papel tiene un modelo de robo muy distinto al de una clave.
+ *
+ * ## Que le pasa a los aparatos viejos
+ *
+ * Se revocan todos. El escenario es "perdi el telefono": dejarlo vivo seria
+ * dejar dentro justo al que puede tenerlo. Y este aparato queda como
+ * PRINCIPAL, porque despues de esto es el unico que hay.
+ *
+ * ## El orden importa en el telefono
+ *
+ * Conviene **restaurar la copia antes** de llamar aqui: asi `identidadPub` es
+ * la identidad de siempre y a los contactos no les salta el aviso de clave
+ * cambiada. Si se llama antes, la cuenta se recupera igual pero con identidad
+ * nueva. La pantalla lo dice.
+ */
+@Serializable
+data class RecuperarDispositivoReq(
+    val username: String,
+    /** El numero verificado, como lo escriba la persona. */
+    val telefono: String,
+    /** El del SMS. */
+    val codigo: String,
+    /** Base64 del verificador derivado del codigo de recuperacion. */
+    val verificadorB64: String,
+    val passwordNueva: String,
+    val totp: String? = null,
+    // --- el aparato nuevo, igual que en el registro ---
+    val etiquetaDispositivo: String,
+    val identidadPub: String,
+    val hardwareHash: String,
+    val hardwareNivel: String,
+)
+
+// ============================================================
 //  2FA (TOTP)
 // ============================================================
 

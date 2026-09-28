@@ -1,6 +1,6 @@
 # Código de recuperación · la salida para "perdí el teléfono"
 
-Estado: **etapas 1 y 2 hechas.** Faltan la 3 (servidor) y la 4 (pantallas).
+Estado: **etapas 1, 2 y 3 hechas.** Falta la 4 (pantallas).
 
 ---
 
@@ -159,11 +159,95 @@ la persona:
 
 ---
 
+---
+
+## El servidor (etapa 3)
+
+### Las cuatro puertas
+
+`POST /v1/cuenta/recuperar-dispositivo` hace **exactamente lo que el atado al
+hardware existe para impedir**: dar de alta un aparato que nadie autorizó desde
+dentro. Así que se paga caro, a propósito:
+
+| Puerta | Contra quién |
+|---|---|
+| Código del SMS | Quien encontró el papel pero no controla el número |
+| Código de recuperación | Quien te clonó la SIM pero no tiene el papel |
+| Segundo factor | Los dos anteriores a la vez, si está activado |
+| Contraseña nueva | Cierra las sesiones viejas: si te robaron el teléfono, deja de valer |
+
+**El SMS no sobra aunque parezca el factor débil.** Sin él, quien entrara a tu
+casa y encontrara el papel, sabiendo tu usuario, entraría: un secreto en papel
+tiene un modelo de robo muy distinto al de una contraseña.
+
+### El orden de las comprobaciones no es casual
+
+Primero el SMS, y solo después el verificador y el segundo factor. Así la ruta
+**no es un oráculo**: sin tener el número no se puede averiguar si una cuenta
+tiene código de recuperación configurado ni si tiene dos pasos. Está probado:
+
+```
+PASA  y la respuesta no delata si el codigo de recuperacion era bueno
+```
+
+### Un rechazo no quema el código del SMS
+
+Todo corre dentro de `Db.tx`, que hace `rollback`. Sin esto haría falta un SMS
+nuevo por cada intento y la pantalla sería inusable — la misma propiedad que se
+verificó al exigir el segundo factor en `recuperar`.
+
+```
+PASA  el SMS aguanto los dos intentos fallidos sin quemarse
+```
+
+### Decisiones que podrían haber ido al revés
+
+- **Se revocan TODOS los aparatos, no solo las sesiones.** El escenario es
+  "perdí el teléfono": dejarlo vinculado sería dejar dentro justo al que puede
+  tenerlo en la mano. Quien tenga otro aparato legítimo lo vuelve a vincular
+  desde este, que es el camino normal.
+- **El código NO es de un solo uso.** Tentaba —suena más seguro— y sería peor:
+  si la persona se queda a medias, vuelve a estar bloqueada y sin salida. Se
+  anota el uso y la pantalla ofrecerá rotarlo al entrar.
+- **Fijar el código pide la contraseña**, porque fijar uno nuevo invalida el
+  anterior: sin eso, quien se sentara un momento en una sesión abierta ajena
+  podría dejar la cuenta con un código suyo y quedarse con la única salida.
+- **Se reutiliza la fila del dispositivo** si el mismo hardware ya estaba
+  (alguien reinstalando en el teléfono de siempre): el índice único parcial de
+  `hardware_hash` no admite dos vivas.
+- **Mismo limitador de ritmo que el ingreso.** Es una ruta sin sesión que, si
+  acierta, entrega una. El código de recuperación son 256 bits y no se adivina;
+  el del SMS son seis dígitos y sí.
+
+### El hueco que tenía mi propia suite
+
+La primera versión de `recuperacion.mjs` pasaba 33/33 **sin probar la puerta 3**:
+ninguna cuenta de prueba tenía 2FA, así que esa puerta nunca se tocaba. Una
+puerta que no se prueba es una puerta que no se sabe si cierra. Añadidas siete
+comprobaciones, incluida la que importa para el caso real:
+
+```
+PASA  un codigo de RESPALDO sirve: quien perdio el telefono perdio el autenticador
+```
+
+### Lo que encontró la auditoría de rutas
+
+`ajeno-lectura.mjs` falló con `/v1/cuenta/recuperacion`: exige que **cada ruta
+esté cubierta o eximida con motivo escrito**. Funcionó como debe — una ruta
+nueva no pasa desapercibida. Eximida con su razón: solo dice *si* hay código y
+de cuándo, nunca el verificador, y siempre es el de quien pregunta.
+
+---
+
 ## Los archivos
 
 | Archivo | Qué hace |
 |---|---|
 | [`CodigoRecuperacion.kt`](../../../app/src/main/java/com/wtfuck/app/datos/CodigoRecuperacion.kt) | **Nuevo.** Generación, control, normalización y las dos claves |
+| [`V43__codigo_de_recuperacion.sql`](../../../server/src/main/resources/db/V43__codigo_de_recuperacion.sql) | **Nueva.** `recuperacion_hash` + los dos eventos de seguridad |
+| [`Identidad.kt` (servidor)](../../../server/src/main/kotlin/com/wtfuck/server/Identidad.kt) | `fijarRecuperacion`, `estadoRecuperacion`, `recuperarDispositivo` |
+| [`Main.kt`](../../../server/src/main/kotlin/com/wtfuck/server/Main.kt) | Las tres rutas, con limitador de ritmo en la pública |
+| [`recuperacion.mjs`](../../../pruebas/recuperacion.mjs) | **Nueva.** 40 comprobaciones, la mayoría de lo que debe fallar |
 | [`CopiaSeguridad.kt`](../../../app/src/main/java/com/wtfuck/app/datos/CopiaSeguridad.kt) | Formato v3: `IdentidadRespaldo`, `sellarIdentidad`, `abrirIdentidad` |
 | [`Repositorio.kt`](../../../app/src/main/java/com/wtfuck/app/datos/Repositorio.kt) | `identidadSellada` y `restaurarIdentidad`; el código entra en export e import |
 | [`WtfuckApp.kt`](../../../app/src/main/java/com/wtfuck/app/WtfuckApp.kt) | Inyecta `SignalDao` en el repositorio |
@@ -174,24 +258,36 @@ la persona:
 |---|---|
 | `CodigoRecuperacionTest` | ✅ 15 pruebas |
 | `IdentidadEnLaCopiaTest` | ✅ 13 pruebas |
-| Suite unitaria del app | ✅ **426 pruebas, 0 fallos** |
+| `recuperacion.mjs` | ✅ **40 comprobaciones** contra servidor y Postgres reales |
+| Suite unitaria del app | ✅ 426 pruebas, 0 fallos |
+| **39 suites de integración** | ✅ **1622 pasan, 0 fallan** |
+| `:server:test` | ✅ |
 
-Las dos que cubren el fallo diferido —el que no se nota hasta el día que ya no
-tiene arreglo—:
+Las tres que cubren fallos que no se notarían hasta que ya no tienen arreglo:
 
 ```
-PASA  lo que se genera se acepta            (2000 códigos)
-PASA  lo que se sella se abre con el mismo código   (200 identidades)
+PASA  lo que se genera se acepta                     (2000 códigos)
+PASA  lo que se sella se abre con el mismo código    (200 identidades)
+PASA  el telefono nuevo NO puede entrar por las buenas   (la línea base)
 ```
+
+Esa última es la que da sentido a todo el módulo: si no diera 403, no habría
+nada que arreglar.
 
 ## Lo que NO está verificado
 
-- **Nada de esto es usable todavía.** Falta la etapa 3 (que el servidor guarde
-  el verificador y acepte vincular un teléfono con él) y la 4 (mostrar el
-  código al registrarse, pedirlo al hacer y restaurar la copia). Hasta
-  entonces, `CodigoRecuperacion` no lo genera nadie.
+- **Todavía no es usable para nadie.** Falta la etapa 4: mostrar el código al
+  registrarse, pedirlo al hacer y restaurar la copia, y la pantalla de
+  "recuperar en un teléfono nuevo". Hasta entonces las rutas existen y
+  funcionan, pero ninguna pantalla las llama.
 - **El sellado se prueba con una identidad de mentira** (64 bytes de azar), no
   con un `IdentityKeyPair` real de libsignal. Se prueba el sobre, no libsignal
-  — que es lo correcto para una prueba unitaria, pero conviene decirlo.
-- **Sin prueba on-device** del ciclo completo: exportar en un teléfono,
-  restaurar en otro, y comprobar que la huella de seguridad no cambió.
+  — correcto para una prueba unitaria, pero conviene decirlo.
+- **Sin prueba on-device del ciclo completo**: exportar en un teléfono,
+  restaurar en otro, recuperar la cuenta y comprobar que la huella de seguridad
+  **no cambió** para los contactos. Es la comprobación que de verdad cierra
+  esto, y pide dos aparatos.
+- **El HKDF del cliente y el de la prueba se escribieron dos veces a
+  propósito** (Kotlin y JavaScript, independientes) y coinciden. Eso valida la
+  derivación mucho mejor que importar la misma función en los dos sitios — pero
+  ninguno se ha contrastado contra un vector de prueba oficial de RFC 5869.
