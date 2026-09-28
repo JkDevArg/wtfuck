@@ -115,7 +115,9 @@ fun ChatPantalla(
 
     val mensajes by app.repo.mensajes(conversacionId).collectAsStateWithLifecycle(emptyList())
     val fijados by app.repo.fijados(conversacionId).collectAsStateWithLifecycle(emptyList())
-    val conexion by app.repo.estadoConexion.collectAsStateWithLifecycle()
+    // Con gracia, igual que la lista de chats: el reenganche al desbloquear el
+    // telefono no debe pintar "sin conexion" en el subtitulo por un segundo.
+    val conexion = estadoConGracia(app.repo.estadoConexion.collectAsStateWithLifecycle().value)
     val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
     val chat = chats.firstOrNull { it.id == conversacionId }
 

@@ -130,7 +130,9 @@ fun ChatsPantalla(
     val archivados by app.repo.archivadas.collectAsStateWithLifecycle(emptyList())
     val nArchivados by app.repo.cuantosArchivados.collectAsStateWithLifecycle(0)
     val chats = if (verArchivados) archivados else activos
-    val conexion by app.repo.estadoConexion.collectAsStateWithLifecycle()
+    // Con gracia: una caida no se anuncia hasta que dura un par de segundos, asi
+    // el reenganche normal al desbloquear el telefono no parpadea "sin conexion".
+    val conexion = estadoConGracia(app.repo.estadoConexion.collectAsStateWithLifecycle().value)
     val enCola by app.repo.tamanoCola.collectAsStateWithLifecycle(0)
     val fallidos by app.repo.tamanoFallidos.collectAsStateWithLifecycle(0)
     val convsConFallidos by app.repo.conversacionesConFallidos

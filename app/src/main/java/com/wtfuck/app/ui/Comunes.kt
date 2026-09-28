@@ -713,3 +713,44 @@ fun VisorDeFoto(url: String?, titulo: String, onCerrar: () -> Unit) {
         }
     }
 }
+
+/**
+ * El estado de conexion, pero con un respiro antes de anunciar una caida.
+ *
+ * ## El problema que resuelve
+ *
+ * Al desbloquear el telefono, Android habia suspendido la app y con ella el
+ * WebSocket: el estado real pasa a DESCONECTADO, reconecta en un segundo, y
+ * vuelve a CONECTADO. Sin esto, ese segundo pinta la barra de "sin conexion" y
+ * el usuario ve un parpadeo rojo cada vez que abre la app, que NO significa
+ * nada -no hay nada roto, es el reenganche normal-.
+ *
+ * ## Como
+ *
+ * CONECTADO se refleja al instante: en cuanto el cable vuelve, la barra
+ * desaparece sin demora. Una caida, en cambio, espera [graciaMs] antes de
+ * mostrarse; si reconecta dentro de ese margen -el caso de despertar el
+ * telefono-, no se llega a ver. Si de verdad no hay red, pasado el margen la
+ * barra aparece igual.
+ *
+ * Arranca optimista en CONECTADO para que, incluso si la pantalla se recrea
+ * estando el socket a medio reenganchar, no parpadee en el primer fotograma.
+ */
+@Composable
+fun estadoConGracia(
+    real: com.wtfuck.app.datos.EstadoConexion,
+    graciaMs: Long = 2500,
+): com.wtfuck.app.datos.EstadoConexion {
+    val mostrado = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(com.wtfuck.app.datos.EstadoConexion.CONECTADO)
+    }
+    LaunchedEffect(real) {
+        if (real == com.wtfuck.app.datos.EstadoConexion.CONECTADO) {
+            mostrado.value = real
+        } else {
+            kotlinx.coroutines.delay(graciaMs)
+            mostrado.value = real
+        }
+    }
+    return mostrado.value
+}
