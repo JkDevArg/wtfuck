@@ -392,6 +392,46 @@ Eso último es una propiedad de diseño y hay que decirla en voz alta: **una cop
 de la base no permite reconstruir las conversaciones.** Ni para un respaldo, ni
 para un requerimiento judicial, ni para un administrador curioso.
 
+#### Cómo, en la práctica: restic
+
+Hay dos scripts listos. Usan **restic**, que cifra y deduplica solo, maneja la
+rotación y puede escribir a un destino remoto.
+
+```bash
+sudo apt-get install -y restic
+cp despliegue/backup.conf.ejemplo despliegue/backup.conf
+# edita despliegue/backup.conf: RESTIC_REPOSITORY, RESTIC_PASSWORD, retención
+```
+
+**Un backup por día**, con cron:
+
+```bash
+sudo crontab -e
+# agrega (ajusta la ruta):
+0 3 * * *  cd /opt/wtfuck && bash despliegue/backup-db.sh >> /var/log/wtfuck-backup.log 2>&1
+```
+
+**Restaurar** (pisa la base actual; pide confirmar):
+
+```bash
+bash despliegue/restaurar-db.sh
+```
+
+Dos avisos que no son opcionales:
+
+- **La clave del repositorio (`RESTIC_PASSWORD`) protege todo el backup.** Si se
+  pierde, el backup no se abre. Guárdala **aparte del servidor**.
+- **Un repositorio local muere con el VPS.** Para que el backup sirva ante "se
+  murió el servidor", el `RESTIC_REPOSITORY` tiene que estar **fuera** del VPS
+  (Backblaze B2, otro servidor por SFTP, S3). El local solo cubre "borré algo
+  sin querer".
+
+> **MinIO/almacén** (los adjuntos cifrados) es su propio volumen; restic también
+> puede respaldar esa carpeta, pero estos scripts cubren la base, que es lo
+> crítico e irrecuperable. Los adjuntos, además, siguen cifrados en el
+> almacén: una copia de ese volumen no revela nada sin las claves, que están en
+> los mensajes de los teléfonos.
+
 ### Escalar a más de una instancia
 
 Las sesiones del WebSocket viven en la memoria de cada proceso. Con una

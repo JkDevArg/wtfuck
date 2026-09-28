@@ -1,0 +1,39 @@
+# Configuracion de los backups del servidor. NO va a git.
+#
+#   cp despliegue/backup.conf.ejemplo despliegue/backup.conf
+#   # edita despliegue/backup.conf
+#
+# restic cifra y deduplica solo; estas variables le dicen DONDE guardar y con
+# QUE clave. La clave protege TODO el backup: si se pierde, el backup no se
+# puede abrir (igual que la frase de la copia del telefono). Guardala aparte.
+
+# El repositorio de restic. Puede ser local o remoto.
+#   local:        /var/backups/wtfuck
+#   Backblaze B2: b2:mi-bucket:wtfuck
+#   otro server:  sftp:usuario@host:/ruta
+#   S3:           s3:s3.amazonaws.com/mi-bucket
+#
+# OJO: un repositorio LOCAL muere con el VPS. Para que el backup sirva de
+# verdad ante "se murio el servidor", tiene que estar FUERA del VPS (B2, otro
+# server, S3). El local sirve solo contra "borre algo sin querer".
+export RESTIC_REPOSITORY="/var/backups/wtfuck"
+
+# La clave del repositorio. Larga y aleatoria. Si el repo es remoto, esta clave
+# es lo unico que impide que quien tenga acceso al bucket lea los datos.
+export RESTIC_PASSWORD="cambia-esto-por-algo-largo-y-aleatorio"
+
+# Credenciales del backend remoto, si aplica. Ejemplos (descomenta lo que uses):
+# export B2_ACCOUNT_ID="..."
+# export B2_ACCOUNT_KEY="..."
+# export AWS_ACCESS_KEY_ID="..."
+# export AWS_SECRET_ACCESS_KEY="..."
+
+# Nombre del contenedor de Postgres (el del compose de produccion).
+DB_CONTAINER="wtfuck-db-1"
+DB_USER="wtfuck"
+DB_NAME="wtfuck"
+
+# Cuanto historial conservar. restic borra lo que sobre y libera espacio.
+KEEP_DAILY=7
+KEEP_WEEKLY=4
+KEEP_MONTHLY=6

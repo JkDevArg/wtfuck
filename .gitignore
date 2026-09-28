@@ -47,3 +47,6 @@ despliegue/despliegue.conf
 
 # Firebase: no se usa el plugin google-services; la config va por el servidor en runtime.
 google-services.json
+
+# Backups: config con la clave del repositorio.
+despliegue/backup.conf
