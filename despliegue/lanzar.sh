@@ -109,32 +109,60 @@ echo "    url:    $URL"
 # ------------------------------------------------------------------
 #  4 y 5. Lo que toca el servidor. Con confirmacion.
 # ------------------------------------------------------------------
+# Como se eleva a root en el VPS. Vacio si entras como root; "sudo" si entras
+# como un usuario normal (ubuntu) que necesita sudo para docker y para escribir
+# en /opt y en el docroot. Un `sudo su` no sirve aqui -abre un shell
+# interactivo- ; lo que hace falta es correr los comandos CON sudo.
+SUDO="${SUDO:-}"
+
+RECREA="up -d --force-recreate servidor"
+[ "$CON_SERVIDOR" = 1 ] && RECREA="up -d --build servidor"
+
 echo
-echo "Voy a SUBIR al servidor y REINICIARLO:"
-echo "  scp  $NOMBRE_ARCHIVO + index.html  ->  $VPS_SSH:$DOCROOT/"
+echo "Voy a SUBIR al servidor y REINICIARLO (conectando como $VPS_SSH${SUDO:+, con $SUDO}):"
+echo "  APK + index.html  ->  $DOCROOT/"
 echo "  .env WTFUCK_APK_VERSION=$CODE, NOMBRE=$VERSION_NOMBRE, URL, SHA256"
 [ "$CON_SERVIDOR" = 1 ] && echo "  y RECONSTRUIR el servidor (--con-servidor)" \
                         || echo "  y reiniciar el servidor (sin reconstruir)"
 read -rp "Continuar? [s/N] " r
 [ "$r" = "s" ] || [ "$r" = "S" ] || { echo "Cancelado. El APK quedo en despliegue/descarga/."; exit 0; }
 
-echo "==> Subiendo APK y pagina..."
-scp "$APK" despliegue/descarga/index.html "$VPS_SSH:$DOCROOT/"
+# Los archivos van primero a /tmp, que `ubuntu` SI puede escribir; de ahi los
+# mueve root a su sitio. Subirlos directo al docroot fallaria: esa carpeta es
+# de root o del usuario del sitio, no de quien entra por SSH.
+echo "==> Subiendo APK y pagina a /tmp del servidor..."
+scp "$APK" despliegue/descarga/index.html "$VPS_SSH:/tmp/"
 
-echo "==> Actualizando el .env del servidor y reiniciando..."
-# `git pull` primero SOLO si se pidio reconstruir: el codigo nuevo del servidor
-# ya tiene que estar en el VPS para que --build lo tome. Si es solo APK, no hace
-# falta tocar el codigo del servidor.
-RECREA="up -d --force-recreate servidor"
-[ "$CON_SERVIDOR" = 1 ] && RECREA="up -d --build servidor"
-# Se borran las lineas WTFUCK_APK_* viejas y se anaden las nuevas: asi no se
-# duplican ni quedan mezcladas con las de una publicacion anterior.
-ssh "$VPS_SSH" "cd '$OPT_DIR' && \
-  { [ $CON_SERVIDOR = 1 ] && git pull || true; } && \
-  sed -i '/^WTFUCK_APK_/d' .env.produccion && \
-  printf 'WTFUCK_APK_VERSION=%s\nWTFUCK_APK_NOMBRE=%s\nWTFUCK_APK_URL=%s\nWTFUCK_APK_SHA256=%s\n' \
-    '$CODE' '$VERSION_NOMBRE' '$URL' '$SHA' >> .env.produccion && \
-  docker compose --env-file .env.produccion -f '$COMPOSE' $RECREA"
+# El resto se arma como un script y se corre de una sola vez bajo sudo. Asi se
+# evita pelear con las comillas anidadas de meter sudo en cada linea, y todo lo
+# que toca root -mover al docroot, editar el .env, reiniciar- pasa junto.
+#
+# Ojo: el script remoto corre como ROOT, asi que `~` seria /root; por eso los
+# archivos se referencian desde /tmp y no desde el home.
+echo "==> Aplicando en el servidor (mover, .env, reiniciar)..."
+REMOTO=$(cat <<REMOTE
+set -e
+mv /tmp/$NOMBRE_ARCHIVO /tmp/index.html "$DOCROOT"/
+chmod 644 "$DOCROOT/$NOMBRE_ARCHIVO" "$DOCROOT/index.html"
+# El dueno del docroot, para que el servidor web lo pueda leer como el resto.
+chown --reference="$DOCROOT" "$DOCROOT/$NOMBRE_ARCHIVO" "$DOCROOT/index.html" 2>/dev/null || true
+cd "$OPT_DIR"
+$([ "$CON_SERVIDOR" = 1 ] && echo 'git pull')
+# Se borran las WTFUCK_APK_* viejas y se anaden las nuevas: ni duplicados ni
+# mezcla con una publicacion anterior.
+sed -i '/^WTFUCK_APK_/d' .env.produccion
+cat >> .env.produccion <<VARS
+WTFUCK_APK_VERSION=$CODE
+WTFUCK_APK_NOMBRE=$VERSION_NOMBRE
+WTFUCK_APK_URL=$URL
+WTFUCK_APK_SHA256=$SHA
+VARS
+docker compose --env-file .env.produccion -f "$COMPOSE" $RECREA
+REMOTE
+)
+# Se manda por la entrada estandar y se corre con bash -s bajo sudo: nada queda
+# escrito en el disco del servidor.
+printf '%s\n' "$REMOTO" | ssh "$VPS_SSH" "$SUDO bash -s"
 
 # ------------------------------------------------------------------
 #  6. Comprobar

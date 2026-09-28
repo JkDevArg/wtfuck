@@ -8,8 +8,18 @@
 #   bash despliegue/lanzar.sh 0.5.0
 
 # Como llegar al VPS por SSH. Lo que pondrias despues de `ssh`.
-#   ej: root@123.45.67.89   o   root@hackl4bs.com
-VPS_SSH="root@TU-VPS"
+#   ej: root@123.45.67.89   o   ubuntu@hackl4bs.com
+VPS_SSH="ubuntu@TU-VPS"
+
+# Como elevar a root en el VPS.
+#   - Vacio ("")   si entras directamente como root.
+#   - "sudo"       si entras como un usuario normal (ubuntu) que necesita sudo
+#                  para docker y para escribir en /opt y en el docroot.
+# NOTA: con "sudo" hace falta sudo SIN contrasena (NOPASSWD) para ese usuario,
+# porque el script no es interactivo. Las imagenes de nube (AWS, etc.) ya traen
+# al usuario `ubuntu` con NOPASSWD. Un `sudo su` a mano NO sirve aqui: abre un
+# shell y el script no puede escribir en el.
+SUDO="sudo"
 
 # Carpeta del sitio estatico donde vive el APK y el index.html (el docroot que
 # sirve el dominio de descarga). Ahi se suben con scp.
