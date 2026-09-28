@@ -82,9 +82,19 @@ fi
 #  1. El siguiente versionCode, preguntando al servidor
 # ------------------------------------------------------------------
 echo "==> Preguntando al servidor la version publicada..."
-ACTUAL=$(curl -s -m 15 "https://$DOMINIO_API/v1/version" |
-  grep -oE '"versionCode"[: ]*[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
-ACTUAL=${ACTUAL:-0}
+command -v curl >/dev/null 2>&1 || { echo "ERROR: falta 'curl' para preguntar la version."; exit 1; }
+# Se guarda la respuesta entera para distinguir "el servidor dice 0" (nuevo, y
+# 0 es una respuesta valida -> siguiente 1) de "no hubo respuesta" (curl fallo o
+# el servidor no contesta). En el segundo caso NO se adivina: publicar un
+# versionCode inventado seria un downgrade que Android rechaza, en silencio.
+RESP=$(curl -s -m 15 "https://$DOMINIO_API/v1/version" || true)
+ACTUAL=$(printf '%s' "$RESP" | grep -oE '"versionCode"[: ]*[0-9]+' | grep -oE '[0-9]+' | head -1)
+if [ -z "$ACTUAL" ]; then
+  echo "ERROR: no pude leer la version de https://$DOMINIO_API/v1/version"
+  echo "       respuesta: ${RESP:0:100}"
+  echo "       Revisa que el servidor responda antes de publicar."
+  exit 1
+fi
 CODE=$((ACTUAL + 1))
 echo "    publicado: $ACTUAL  ->  nuevo: $CODE ($VERSION_NOMBRE)"
 
@@ -97,15 +107,40 @@ echo "    publicado: $ACTUAL  ->  nuevo: $CODE ($VERSION_NOMBRE)"
 # gradle.properties (org.gradle.java.home); se toma de ahi para no repetir la
 # ruta ni depender de como este el entorno.
 if ! command -v java >/dev/null 2>&1 && [ -z "${JAVA_HOME:-}" ]; then
-  JH=$(grep -E '^org\.gradle\.java\.home=' gradle.properties 2>/dev/null | head -1 | cut -d= -f2-)
-  # gradle.properties escapa los `:` como `\:` (formato .properties de Java).
-  # Se quitan los backslashes para que sea una ruta que el shell entienda.
-  JH="${JH//'\'/}"
-  if [ -n "$JH" ] && { [ -x "$JH/bin/java" ] || [ -x "$JH/bin/java.exe" ]; }; then
+  # El JDK que fija gradle.properties es la primera opcion (es el que usa Gradle
+  # para compilar). Se desescapa con `tr`: el `\:` del formato .properties, y de
+  # paso cualquier \r si el archivo quedara con fin de linea de Windows. Se usa
+  # `tr` y no la expansion ${//} porque esa se porta distinto segun la bash.
+  # Solo se quita el backslash del escape `\:`. Nada de `\r` en el tr: el `tr`
+  # de MSYS lo interpreta como la letra 'r' y se comeria las erres de la ruta
+  # ("Program" -> "Pogam"). El archivo es LF; si algun dia trae CR, el fallback
+  # de abajo encuentra el JDK igual.
+  PROP=$(grep -E '^org\.gradle\.java\.home=' gradle.properties 2>/dev/null |
+         head -1 | cut -d= -f2- | tr -d '\\' 2>/dev/null)
+  # Se prueba esa y, si no esta, ubicaciones habituales de JDK en Windows. Al
+  # lanzador de gradlew le sirve CUALQUIER JDK para arrancar; la version exacta
+  # de compilacion la sigue mandando gradle.properties. Con `-e` (existe) y no
+  # `-x` (ejecutable): el bit de ejecucion bajo "Program Files" no es fiable en
+  # MSYS, pero si el java.exe esta, corre.
+  JH=""
+  for c in "$PROP" \
+           "/c/Program Files/Java/"jdk-21* \
+           "/c/Program Files/Java/"jdk* \
+           "/c/Program Files/Microsoft/"jdk* \
+           "/c/Program Files/Eclipse Adoptium/"jdk* \
+           "/c/Program Files/Zulu/"zulu* \
+           "/c/Program Files/Android/Android Studio/jbr"; do
+    if [ -n "$c" ] && { [ -e "$c/bin/java.exe" ] || [ -e "$c/bin/java" ]; }; then
+      JH="$c"; break
+    fi
+  done
+  if [ -n "$JH" ]; then
     export JAVA_HOME="$JH"
-    echo "    (Java no estaba en el entorno; usando el de gradle.properties: $JH)"
+    echo "    (Java no estaba en el entorno; usando: $JH)"
   else
-    echo "ERROR: no encuentro Java. Instala un JDK 21 o define JAVA_HOME."
+    echo "ERROR: no encuentro un JDK. Define JAVA_HOME, o instala JDK 21, o"
+    echo "       corrige org.gradle.java.home en gradle.properties."
+    echo "       (probe: '$PROP' y las rutas tipicas bajo C:/Program Files)"
     exit 1
   fi
 fi
