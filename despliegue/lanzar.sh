@@ -91,6 +91,25 @@ echo "    publicado: $ACTUAL  ->  nuevo: $CODE ($VERSION_NOMBRE)"
 # ------------------------------------------------------------------
 #  2 y 3. Compilar y generar la pagina de descarga
 # ------------------------------------------------------------------
+# El lanzador de gradlew necesita Java para arrancar, ANTES de leer
+# gradle.properties. En Git Bash a veces no hay ni JAVA_HOME ni `java` en el
+# PATH -eso lo pone env.ps1, y solo en PowerShell-. El JDK ya esta declarado en
+# gradle.properties (org.gradle.java.home); se toma de ahi para no repetir la
+# ruta ni depender de como este el entorno.
+if ! command -v java >/dev/null 2>&1 && [ -z "${JAVA_HOME:-}" ]; then
+  JH=$(grep -E '^org\.gradle\.java\.home=' gradle.properties 2>/dev/null | head -1 | cut -d= -f2-)
+  # gradle.properties escapa los `:` como `\:` (formato .properties de Java).
+  # Se quitan los backslashes para que sea una ruta que el shell entienda.
+  JH="${JH//'\'/}"
+  if [ -n "$JH" ] && { [ -x "$JH/bin/java" ] || [ -x "$JH/bin/java.exe" ]; }; then
+    export JAVA_HOME="$JH"
+    echo "    (Java no estaba en el entorno; usando el de gradle.properties: $JH)"
+  else
+    echo "ERROR: no encuentro Java. Instala un JDK 21 o define JAVA_HOME."
+    exit 1
+  fi
+fi
+
 echo "==> Compilando el APK de release..."
 ./gradlew :app:assembleRelease \
   -Papi="$DOMINIO_API" -PversionCode="$CODE" -PversionName="$VERSION_NOMBRE" -Pabi="$ABIS" -q
