@@ -2,8 +2,12 @@
 #
 # Publicar una version nueva del APK en UN comando.
 #
-#   bash despliegue/lanzar.sh 0.5.0
-#   bash despliegue/lanzar.sh 0.5.0 --con-servidor   # si cambio codigo del servidor
+#   bash despliegue/lanzar.sh 0.5.1                   # mejora pequena: sube el ultimo
+#   bash despliegue/lanzar.sh 0.6.0 --con-servidor    # mejora grande o cambio del servidor
+#
+# Como numerar (semver): mejora pequena sube el ULTIMO numero (0.5.0 -> 0.5.1);
+# mejora grande sube el DEL MEDIO y el ultimo vuelve a 0 (0.5.3 -> 0.6.0). El
+# versionCode interno lo sube el script solo, sin importar el nombre.
 #
 # Hace, en orden, lo que antes eran cinco pasos a mano:
 #

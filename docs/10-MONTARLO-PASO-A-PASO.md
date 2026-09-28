@@ -402,6 +402,19 @@ La app avisa sola cuando hay una versión más nueva, la descarga y deja la
 instalación en **un toque**. No lo hace por magia: hay que decírselo al
 servidor.
 
+### Cómo numerar las versiones (semver)
+
+El número tiene tres partes: **MAYOR.MENOR.PARCHE** (ej. `0.5.1`).
+
+- **Mejora pequeña** (un arreglo, un pulido): sube el **último**. `0.5.0 → 0.5.1`.
+- **Mejora grande** (una función nueva, algo que se nota mucho): sube el **del
+  medio** y el último vuelve a 0. `0.5.3 → 0.6.0`.
+- El primer número se queda en `0.x` hasta que la app se dé por terminada; ahí
+  pasa a `1.0.0`.
+
+El `versionCode` (el número interno que Android compara) lo maneja `lanzar.sh`
+solo: siempre sube de a uno, sin importar el `versionName`.
+
 ### La forma fácil: un solo comando
 
 Antes esto eran cinco pasos a mano (compilar, generar la página, subir el APK,

@@ -74,9 +74,28 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
  *
  * Al agregar una version: se anota ARRIBA, con la fecha del dia que se publica,
  * y en frases de lo que la persona NOTA —no de lo que se toco por dentro—.
+ *
+ * ## Como numerar (semver)
+ *
+ * El numero tiene tres partes: MAYOR.MENOR.PARCHE (p.ej. 0.5.1).
+ *
+ *  - **Mejora pequena** —un arreglo, un pulido, un detalle—: sube el ULTIMO.
+ *    0.5.0 -> 0.5.1 -> 0.5.2.
+ *  - **Mejora grande** —una funcion nueva, un cambio que se nota mucho—: sube
+ *    el DEL MEDIO y el ultimo vuelve a 0. 0.5.3 -> 0.6.0.
+ *
+ * El primer numero (0.x) se queda en 0 hasta que la app se considere
+ * terminada; ahi pasa a 1.0.0.
  */
 object Novedades {
     val historial: List<NotasVersion> = listOf(
+        NotasVersion(
+            version = "0.5.1",
+            fecha = "27/09/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.MEJORA, "Al desbloquear el teléfono, la app ya no muestra por un momento un aviso de \"sin conexión\" que desaparece solo."),
+            ),
+        ),
         NotasVersion(
             version = "0.5.0",
             fecha = "27/09/2026",
