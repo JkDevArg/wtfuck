@@ -584,6 +584,58 @@ fun PerfilPantalla(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
                     )
+
+                    HorizontalDivider(
+                        color = Slate.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(vertical = 14.dp),
+                    )
+
+                    Text("Color de acento", color = TextoPrimario)
+                    Spacer(Modifier.height(10.dp))
+                    // Círculos y no una lista con nombres: el color ES la
+                    // etiqueta. Leer "violeta" para elegir un color es dar un
+                    // rodeo por las palabras.
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        val enClaro = claroAhora(app.ajustes.tema)
+                        Paleta.entries.forEach { pal ->
+                            val elegida = app.ajustes.paleta == pal
+                            Box(
+                                Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(pal.muestra(enClaro))
+                                    // El borde marca la elegida. Va del color
+                                    // del texto y no del acento: sobre su
+                                    // propio color no se veria.
+                                    .border(
+                                        width = if (elegida) 3.dp else 0.dp,
+                                        color = if (elegida) TextoPrimario else Color.Transparent,
+                                        shape = CircleShape,
+                                    )
+                                    .clickable { app.ajustes.fijarPaleta(pal) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (elegida) {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        pal.etiqueta,
+                                        tint = pal.tinta(enClaro),
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Solo cambia el color principal. El ámbar de \"pendiente\" y el " +
+                            "coral de \"error\" no se tocan: son significado, no decoración.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
                 }
             },
             confirmButton = {

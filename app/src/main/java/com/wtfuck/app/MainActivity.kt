@@ -92,7 +92,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         aplicarPrivacidadDeRecientes(app)
 
         setContent {
-            WtfuckTheme(tema = app.ajustes.tema) {
+            WtfuckTheme(tema = app.ajustes.tema, paletaElegida = app.ajustes.paleta) {
                 PedirPermisoNotificaciones()
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Raiz()

@@ -27,6 +27,20 @@ enum class Tema(val etiqueta: String) {
 }
 
 /**
+ * Si con este ajuste se esta pintando en claro.
+ *
+ * Lo necesita el selector de acento: tiene que ensenar cada color **como se
+ * va a ver**, y cada paleta tiene dos versiones. Mostrar la oscura en un tema
+ * claro haria elegir un color y recibir otro.
+ */
+@Composable
+fun claroAhora(tema: Tema): Boolean = when (tema) {
+    Tema.CLARO -> true
+    Tema.OSCURO -> false
+    Tema.SISTEMA -> !isSystemInDarkTheme()
+}
+
+/**
  * La tipografia de marca (Rajdhani / Barlow / IBM Plex Mono) todavia no esta
  * empaquetada: faltan los archivos de fuente. Se usa la del sistema para no
  * prometer una identidad que el APK no lleva. Al agregar los .ttf en res/font,
@@ -59,6 +73,7 @@ val estiloHuella = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp
 @Composable
 fun WtfuckTheme(
     tema: Tema = Tema.SISTEMA,
+    paletaElegida: Paleta = Paleta.CIAN,
     contenido: @Composable () -> Unit,
 ) {
     val delSistema = isSystemInDarkTheme()
@@ -68,8 +83,16 @@ fun WtfuckTheme(
         Tema.SISTEMA -> !delSistema
     }
     claro = esClaro
+    paleta = paletaElegida
 
-    val esquema = remember(esClaro) {
+    // La paleta va en la CLAVE del remember, no solo asignada arriba.
+    //
+    // Sin ella, cambiar de acento no recalcularia el esquema de Material:
+    // los tokens propios -que son getters- cambiarian al instante y los
+    // componentes de Material3 se quedarian con el color viejo. El resultado
+    // seria media pantalla en el color nuevo y media en el anterior, que
+    // parece un fallo de pintado y es un remember mal cerrado.
+    val esquema = remember(esClaro, paletaElegida) {
         if (esClaro) {
             lightColorScheme(
                 primary = Cian,

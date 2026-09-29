@@ -118,6 +118,7 @@ object Novedades {
                 Cambio(TipoCambio.MEJORA, "Si un video o un archivo no cabe, se avisa ANTES de enviarlo y con los dos numeros -lo que pesa y el limite-, en vez de dejar un mensaje en rojo."),
                 Cambio(TipoCambio.NUEVO, "Exportar una conversacion a un archivo de texto, desde el menu del chat. Los mensajes temporales NO se exportan: quien los escribio pidio que no quedaran guardados."),
                 Cambio(TipoCambio.NUEVO, "Buscar en TODOS los chats a la vez desde el buscador de la lista: ya no hace falta acordarse de en que conversacion se dijo algo."),
+                Cambio(TipoCambio.NUEVO, "Puedes elegir el color de la app: seis acentos en Perfil > Apariencia. El ambar de \"pendiente\" y el coral de \"error\" no cambian, porque son significado y no decoracion."),
             ),
         ),
         NotasVersion(

@@ -6,6 +6,7 @@ import android.net.NetworkCapabilities
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.wtfuck.app.ui.theme.Paleta
 import com.wtfuck.app.ui.theme.Tema
 import com.wtfuck.protocol.ClaseAdjunto
 
@@ -172,6 +173,29 @@ class Ajustes(private val ctx: Context) {
     fun fijarTema(t: Tema) {
         tema = t
         p.edit().putString("tema", t.name).apply()
+    }
+
+    /**
+     * El color de acento. Ver `Paleta`.
+     *
+     * `mutableStateOf` como el tema, y por lo mismo: se lee desde la
+     * composicion y tiene que repintar al cambiar. Un `SharedPreferences`
+     * pelado cambiaria el valor y dejaria la pantalla con el color viejo
+     * hasta la siguiente recomposicion por otro motivo.
+     *
+     * Ante un valor que no se reconoce -una paleta de una version futura, o
+     * una preferencia corrupta- se cae a CIAN en vez de reventar: el color de
+     * la app no es sitio para una excepcion.
+     */
+    var paleta by mutableStateOf(
+        runCatching { Paleta.valueOf(p.getString("paleta", null) ?: "") }
+            .getOrDefault(Paleta.CIAN)
+    )
+        private set
+
+    fun fijarPaleta(nueva: Paleta) {
+        paleta = nueva
+        p.edit().putString("paleta", nueva.name).apply()
     }
 
     fun enWifi(): Boolean {

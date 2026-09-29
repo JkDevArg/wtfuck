@@ -63,6 +63,55 @@ class ContrasteBurbujaTest {
         assertTrue("contraste $r, hace falta 4.5:1", r >= 4.5)
     }
 
+    /**
+     * TODAS las paletas de acento, en los dos temas.
+     *
+     * La razon de que las paletas sean una lista cerrada y no un selector de
+     * color esta aqui: cada entrada pasa por la misma medida que tenia el
+     * acento unico. Quien agregue una paleta eligiendo el color a ojo se
+     * entera al correr las pruebas, no cuando alguien no pueda leer su propia
+     * burbuja.
+     *
+     * Se comprueban las cuatro combinaciones de cada paleta:
+     *
+     *  - el acento sobre la superficie, en oscuro y en claro (se usa como
+     *    texto e icono, asi que le toca el 4.5:1 de texto y no el 3:1 de
+     *    componente);
+     *  - la tinta sobre el acento, en oscuro y en claro (la burbuja propia).
+     */
+    @Test
+    fun `cada paleta se lee en los dos temas`() {
+        val supOscura = Color(0xFF161D1D)
+        val supClara = Color(0xFFFFFFFF)
+        val fallos = mutableListOf<String>()
+
+        for (p in com.wtfuck.app.ui.theme.Paleta.entries) {
+            val medidas = listOf(
+                "acento sobre superficie oscura" to contraste(p.muestra(false), supOscura),
+                "tinta sobre el acento oscuro" to contraste(p.tinta(false), p.muestra(false)),
+                "acento sobre superficie clara" to contraste(p.muestra(true), supClara),
+                "tinta sobre el acento claro" to contraste(p.tinta(true), p.muestra(true)),
+            )
+            for ((que, r) in medidas) {
+                if (r < 4.5) fallos += "${p.name}: $que da %.2f".format(r)
+            }
+        }
+        assertTrue(
+            "paletas que no llegan a 4.5:1 ->\n" + fallos.joinToString("\n"),
+            fallos.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `hay mas de una paleta y la primera es la de siempre`() {
+        // Si alguien deja una sola, el selector sobra. Y CIAN tiene que ser
+        // la primera: es el defecto, y cambiarlo le cambiaria el color a todo
+        // el mundo en una actualizacion.
+        val todas = com.wtfuck.app.ui.theme.Paleta.entries
+        assertTrue("solo hay una paleta", todas.size > 1)
+        assertTrue("la primera deberia ser CIAN", todas.first().name == "CIAN")
+    }
+
     @Test
     fun `el color por defecto NO se lee sobre el cian`() {
         // Esta es la prueba que importa: fija que el color por defecto es una

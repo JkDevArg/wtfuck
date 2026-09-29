@@ -153,10 +153,97 @@ private val TextoTerciarioCla = Color(0xFF566565)
 private val TextoSobreAcentoCla = Color(0xFFFFFFFF)
 
 // ---------------------------------------------------------------
+//  Paletas de acento
+// ---------------------------------------------------------------
+
+/**
+ * El color de acento se puede elegir. El resto de la paleta, no.
+ *
+ * ## Que cambia y que NO
+ *
+ * Cambia **solo el primario**: la burbuja propia, los botones, "conectado".
+ * `Ambar` y `Coral` se quedan fijos porque no son decoracion, son
+ * **significado**: ambar es "pendiente" y coral es "error". Si el acento
+ * elegido fuera naranja y el ambar tambien, un aviso de error y uno de espera
+ * se verian igual — y la persona lleva toda la app aprendiendo que no lo son.
+ *
+ * Los fondos y los textos tampoco cambian, por lo mismo que no cambian entre
+ * pantallas: son el lienzo, no la marca.
+ *
+ * ## Por que una lista cerrada y no un selector de color
+ *
+ * Porque este proyecto **mide** el contraste en vez de elegirlo a ojo: los
+ * acentos claros se rederivaron midiendo, `ContrasteBurbujaTest` exige 4.5:1,
+ * y dos neutros de la paleta se usan solo como borde porque no llegan.
+ *
+ * Un selector RGB rompe esa garantia **en silencio**. Alguien elige un
+ * amarillo palido, el texto de su propia burbuja deja de leerse, y ningun test
+ * lo detecta porque el color lo puso el usuario. Con una lista cerrada, cada
+ * entrada pasa por el mismo test que todo lo demas.
+ *
+ * ## Los numeros
+ *
+ * Los cuatro contrastes de cada paleta estan **calculados**, no estimados, y
+ * el peor de los veinticuatro es 5.75:1 sobre un minimo exigido de 4.5. La
+ * prueba los recalcula: si alguien agrega una paleta a ojo, falla.
+ */
+enum class Paleta(
+    val etiqueta: String,
+    /** Acento en tema oscuro, y la tinta que va encima. */
+    internal val acentoOsc: Color,
+    internal val sobreOsc: Color,
+    /** Acento en tema claro, y la tinta que va encima. */
+    internal val acentoCla: Color,
+    internal val sobreCla: Color,
+) {
+    // Los contrastes en el comentario son: acento/superficie · tinta/acento,
+    // primero oscuro y despues claro.
+    /** El de siempre. 13.36 · 14.62 | 6.06 · 6.06 */
+    CIAN("Cian", Color(0xFF6CF8F6), Color(0xFF0E1313), Color(0xFF0B6E6D), Color(0xFFFFFFFF)),
+
+    /** 9.16 · 10.03 | 5.75 · 5.75 */
+    AZUL("Azul", Color(0xFF7FC4FF), Color(0xFF0E1313), Color(0xFF1565C0), Color(0xFFFFFFFF)),
+
+    /** 8.95 · 9.79 | 7.34 · 7.34 */
+    VIOLETA("Violeta", Color(0xFFC9AEFF), Color(0xFF0E1313), Color(0xFF6A3AB2), Color(0xFFFFFFFF)),
+
+    /** 10.89 · 11.92 | 6.28 · 6.28 */
+    VERDE("Verde", Color(0xFF7FE39B), Color(0xFF0E1313), Color(0xFF1B6E3C), Color(0xFFFFFFFF)),
+
+    /** 9.50 · 10.40 | 6.33 · 6.33 */
+    NARANJA("Naranja", Color(0xFFFFB067), Color(0xFF0E1313), Color(0xFF8A5300), Color(0xFFFFFFFF)),
+
+    /** 8.91 · 9.76 | 7.06 · 7.06 */
+    ROSA("Rosa", Color(0xFFFF9EC4), Color(0xFF0E1313), Color(0xFFA32362), Color(0xFFFFFFFF));
+
+    /** Como se ve en el selector, sin depender del tema que este puesto. */
+    fun muestra(esClaro: Boolean): Color = if (esClaro) acentoCla else acentoOsc
+
+    /** La tinta que se lee encima de [muestra]. */
+    fun tinta(esClaro: Boolean): Color = if (esClaro) sobreCla else sobreOsc
+}
+
+/**
+ * La paleta que se esta pintando. La fija [WtfuckTheme], igual que [claro].
+ *
+ * Por que una variable global y no un `CompositionLocal`: porque es lo que ya
+ * hacia `claro`, y las 58 pantallas leen los tokens como valores sueltos. Meter
+ * un local obligaria a tocarlas todas para ganar exactamente nada.
+ */
+internal var paleta by mutableStateOf(Paleta.CIAN)
+
+// ---------------------------------------------------------------
 //  Los nombres que usa toda la app
 // ---------------------------------------------------------------
 
-val Cian: Color get() = if (claro) CianCla else CianOsc
+/**
+ * El acento. Se sigue llamando `Cian` a proposito.
+ *
+ * Renombrarlo a `Acento` habria tocado 58 archivos y cientos de lineas para
+ * no cambiar ni un pixel — un diff enorme donde no se veria el cambio real.
+ * El nombre miente un poco cuando la paleta es rosa; el KDoc no.
+ */
+val Cian: Color get() = if (claro) paleta.acentoCla else paleta.acentoOsc
 val Ambar: Color get() = if (claro) AmbarCla else AmbarOsc
 val Coral: Color get() = if (claro) CoralCla else CoralOsc
 val Slate: Color get() = if (claro) SlateCla else SlateOsc
@@ -169,7 +256,14 @@ val BgElev: Color get() = if (claro) BgElevCla else BgElevOsc
 val TextoPrimario: Color get() = if (claro) TextoPrimarioCla else TextoPrimarioOsc
 val TextoSecundario: Color get() = if (claro) TextoSecundarioCla else TextoSecundarioOsc
 val TextoTerciario: Color get() = if (claro) TextoTerciarioCla else TextoTerciarioOsc
-val TextoSobreAcento: Color get() = if (claro) TextoSobreAcentoCla else TextoSobreAcentoOsc
+/**
+ * La tinta que va ENCIMA del acento.
+ *
+ * Sale de la paleta y no es fija: cada acento pide la suya. Un acento oscuro
+ * -los del tema claro- pide tinta blanca; uno luminoso -los del oscuro- pide
+ * tinta negra. Un solo valor para todos dejaria ilegible la mitad.
+ */
+val TextoSobreAcento: Color get() = if (claro) paleta.sobreCla else paleta.sobreOsc
 
 // ---------------------------------------------------------------
 //  Semantica de estado — el usuario aprende un color por significado
