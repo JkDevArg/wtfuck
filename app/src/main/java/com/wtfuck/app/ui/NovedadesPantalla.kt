@@ -116,6 +116,7 @@ object Novedades {
                 Cambio(TipoCambio.NUEVO, "Nuevo ajuste para bloquear capturas de pantalla dentro de la app. Apagado por defecto: hay motivos legitimos para capturar una conversacion propia."),
                 Cambio(TipoCambio.ARREGLO, "En Android anterior al 13, la pantalla decia que con el bloqueo activo la app salia en blanco en recientes, y no era cierto. Ahora lo dice claro y ofrece como taparla."),
                 Cambio(TipoCambio.MEJORA, "Si un video o un archivo no cabe, se avisa ANTES de enviarlo y con los dos numeros -lo que pesa y el limite-, en vez de dejar un mensaje en rojo."),
+                Cambio(TipoCambio.NUEVO, "Exportar una conversacion a un archivo de texto, desde el menu del chat. Los mensajes temporales NO se exportan: quien los escribio pidio que no quedaran guardados."),
             ),
         ),
         NotasVersion(

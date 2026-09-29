@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
@@ -161,6 +162,7 @@ fun ChatPantalla(
     }
     var menuAbierto by remember { mutableStateOf(false) }
     var eligiendoTemporales by remember { mutableStateOf(false) }
+    var confirmarExportar by remember { mutableStateOf(false) }
     var accionesDe by remember { mutableStateOf<MensajeEnt?>(null) }
     var denunciando by remember { mutableStateOf<MensajeEnt?>(null) }
     var enviandoDenuncia by remember { mutableStateOf(false) }
@@ -296,6 +298,27 @@ fun ChatPantalla(
     // El selector de fotos del sistema no necesita permiso de almacenamiento:
     // devuelve solo lo que la persona eligio. Pedir READ_MEDIA_IMAGES para esto
     // seria pedir acceso a la galeria entera sin motivo.
+    // Exportar la conversacion en claro. El selector del sistema decide donde
+    // se guarda: esta app no elige por la persona donde deja un archivo sin
+    // cifrar con sus conversaciones dentro.
+    val guardarExport = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        ambito.launch {
+            runCatching {
+                contexto.contentResolver.openOutputStream(uri)?.use {
+                    app.repo.exportarChatA(conversacionId, it)
+                } ?: error("sin flujo")
+            }.onSuccess { r ->
+                val omitidos = if (r.temporalesOmitidos > 0) {
+                    " Se dejaron fuera ${r.temporalesOmitidos} mensajes temporales."
+                } else ""
+                aviso = "Exportados ${r.incluidos} mensajes.$omitidos"
+            }.onFailure { aviso = "No se pudo exportar: ${it.message}" }
+        }
+    }
+
     val elegirMedia = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -634,6 +657,10 @@ fun ChatPantalla(
                         OpcionMenu("Vaciar chat", Icons.Filled.DeleteSweep) {
                             menuAbierto = false
                             ambito.launch { app.repo.vaciarChat(conversacionId) }
+                        }
+
+                        OpcionMenu("Exportar conversación", Icons.Filled.Description) {
+                            menuAbierto = false; confirmarExportar = true
                         }
 
                         OpcionMenu("Verificar cifrado", Icons.Filled.Lock, Cian) {
@@ -1347,6 +1374,67 @@ fun ChatPantalla(
             },
             dismissButton = {
                 TextButton(onClick = { confirmarSalir = false }) {
+                    Text("Cancelar", color = TextoSecundario)
+                }
+            },
+        )
+    }
+
+    if (confirmarExportar) {
+        AlertDialog(
+            onDismissRequest = { confirmarExportar = false },
+            containerColor = BgElev,
+            title = { Text("Exportar conversación", color = TextoPrimario) },
+            text = {
+                Column {
+                    Text(
+                        "Se guarda un archivo de texto con los mensajes de este chat.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    // Lo importante va en ámbar y ANTES del botón. Este archivo
+                    // deshace a propósito lo que hace el resto de la app, y la
+                    // persona tiene que saberlo mientras decide, no después.
+                    Surface(
+                        color = Ambar.copy(alpha = 0.10f),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        // Una línea por aviso, cada una su Text. Se lee mejor
+                        // que un párrafo con viñetas dentro, y de paso evita
+                        // un literal con saltos escapados.
+                        Column(Modifier.padding(12.dp)) {
+                            listOf(
+                                "• El archivo NO va cifrado: quien lo abra lo lee.",
+                                "• Incluye lo que escribió la otra persona, y ella no se entera.",
+                                "• Los mensajes temporales NO se exportan: quien los escribió " +
+                                    "pidió que no quedaran.",
+                                "• Las fotos y archivos no van, solo su nombre.",
+                            ).forEach {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Ambar,
+                                    modifier = Modifier.padding(vertical = 2.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmarExportar = false
+                    guardarExport.launch(
+                        com.wtfuck.app.datos.ExportarChat.nombreSugerido(
+                            chat?.titulo.orEmpty(), System.currentTimeMillis(),
+                        )
+                    )
+                }) { Text("Elegir dónde guardar", color = Cian) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmarExportar = false }) {
                     Text("Cancelar", color = TextoSecundario)
                 }
             },

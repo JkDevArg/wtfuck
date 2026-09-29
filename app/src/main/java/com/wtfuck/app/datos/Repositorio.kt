@@ -377,6 +377,43 @@ class Repositorio(
     fun mensajes(convId: String): Flow<List<MensajeEnt>> = dao.mensajes(convId)
     fun fijados(convId: String): Flow<List<MensajeEnt>> = dao.fijados(convId)
 
+    /**
+     * Escribe la conversacion en claro al flujo que eligio la persona.
+     *
+     * Devuelve el resumen para poder decir cuantos mensajes salieron y
+     * -sobre todo- **cuantos temporales se dejaron fuera**. Ver
+     * [ExportarChat], donde esta el por que.
+     *
+     * Antes de llamar aqui se barren los vencidos: exportar un mensaje que ya
+     * tenia que haber desaparecido, solo porque nadie abrio el chat desde que
+     * vencio, seria colarlo por la puerta de atras.
+     */
+    suspend fun exportarChatA(
+        convId: String,
+        salida: java.io.OutputStream,
+    ): ExportarChat.Resumen = withContext(Dispatchers.IO) {
+        dao.borrarVencidos(System.currentTimeMillis())
+
+        val conv = dao.conversacion(convId)
+        val mensajes = dao.todosLosMensajes(convId)
+        // Los nombres que YO les puse: es como los reconozco. Si el chat se usa
+        // como prueba, el username sigue estando en la cabecera del titulo.
+        val gente = mensajes.map { it.autor }.filter { it.isNotBlank() }.distinct()
+        val alias = if (gente.isEmpty()) emptyMap() else runCatching {
+            nombresDeLibreta(gente)
+        }.getOrDefault(emptyMap())
+
+        val out = ExportarChat.construir(
+            titulo = conv?.nombreMostrado?.takeIf { it.isNotBlank() }
+                ?: conv?.nombre.orEmpty().ifEmpty { "(sin nombre)" },
+            mensajes = mensajes,
+            cuando = System.currentTimeMillis(),
+            alias = alias,
+        )
+        salida.bufferedWriter().use { it.write(out.texto) }
+        out.resumen
+    }
+
     /** Borra los temporales vencidos. Se llama al abrir la app y cada chat. */
     suspend fun limpiarVencidos() = dao.borrarVencidos(System.currentTimeMillis())
 
