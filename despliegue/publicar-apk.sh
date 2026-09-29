@@ -155,7 +155,17 @@ echo "Huella del archivo:     $HUELLA"
 echo "Huella del certificado: $CERT"
 echo
 echo "Subelo al sitio estatico:"
-echo "  scp $SALIDA/* root@TU-VPS:/home/hackl4bs/htdocs/hackl4bs.com/wtfuck/"
+# Al DOCROOT, no a una subcarpeta: la URL que se genera abajo apunta a la raiz
+# del dominio. Esta linea decia `/wtfuck/` y no cuadraban — el archivo acababa
+# en un sitio y la URL anunciada en otro, asi que la descarga daba 404 y la
+# actualizacion no funcionaba para nadie, sin ningun error en el servidor.
+#
+# Y se nombran los DOS archivos en vez de `*`: la carpeta guarda tambien los
+# APK de publicaciones anteriores, y un `*` los sube todos —26 MB cada uno— y
+# deja versiones viejas colgando del sitio.
+echo "  scp $SALIDA/$NOMBRE $SALIDA/index.html TU-USUARIO@TU-VPS:/tmp/"
+echo "  # y en el VPS, con sudo, moverlos al docroot:"
+echo "  #   sudo mv /tmp/$NOMBRE /tmp/index.html /home/hackl4bs/htdocs/hackl4bs.com/"
 echo
 
 # ---------------------------------------------------------------------------

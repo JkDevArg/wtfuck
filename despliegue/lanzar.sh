@@ -122,6 +122,31 @@ if [ -z "$ACTUAL" ]; then
   exit 1
 fi
 CODE=$((ACTUAL + 1))
+
+# El contador del servidor PUEDE IR HACIA ATRAS, y eso rompe la actualizacion
+# en silencio.
+#
+# Paso de verdad: se limpiaron las WTFUCK_APK_* del .env y `/v1/version` volvio
+# a decir 0. El siguiente lanzamiento publico un versionCode mas BAJO que el ya
+# instalado en los telefonos, y `hayQueBajar` lo rechazo -correctamente: es la
+# defensa contra un servidor que ofrece una version vieja-. Resultado: el
+# servidor anunciaba la version nueva, la pagina de descarga estaba bien, y a
+# nadie le salia el aviso. Ningun error en ningun sitio.
+#
+# Asi que el numero sale del MAXIMO entre lo que dice el servidor y una marca
+# local que solo sube nunca baja. La marca esta versionada -no en .gitignore-
+# para que sobreviva a clonar el repo en otra maquina, que era la objecion
+# original a llevar un contador local.
+MARCA=despliegue/ultimo-versioncode
+ULTIMO=$(cat "$MARCA" 2>/dev/null || echo 0)
+case "$ULTIMO" in ''|*[!0-9]*) ULTIMO=0 ;; esac
+if [ "$CODE" -le "$ULTIMO" ]; then
+  echo "    AVISO: el servidor dice $ACTUAL, pero ya se publico el $ULTIMO."
+  echo "           Se usa $((ULTIMO + 1)): un numero mas bajo que el instalado"
+  echo "           no se ofrece como actualizacion, y no avisaria de nada."
+  CODE=$((ULTIMO + 1))
+fi
+
 echo "    publicado: $ACTUAL  ->  nuevo: $CODE ($VERSION_NOMBRE)"
 
 # ------------------------------------------------------------------
@@ -252,6 +277,11 @@ sleep 4
 PUB=$(curl -s -m 15 "https://$DOMINIO_API/v1/version" |
   grep -oE '"versionCode"[: ]*[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
 if [ "$PUB" = "$CODE" ]; then
+  # La marca se escribe SOLO al confirmar que el servidor la anuncia. Si se
+  # escribiera antes, un fallo a mitad dejaria el contador adelantado y se
+  # perderia un numero en cada intento fallido.
+  printf '%s
+' "$CODE" > "$MARCA"
   echo "LISTO. Publicada la $VERSION_NOMBRE (versionCode $CODE)."
   echo "Los telefonos la veran al abrir la app o al reconectar."
 else

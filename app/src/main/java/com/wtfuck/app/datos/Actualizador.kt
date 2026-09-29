@@ -100,8 +100,20 @@ class Actualizador(private val ctx: Context, private val api: ApiCliente) {
     private fun tocaPreguntar(): Boolean =
         System.currentTimeMillis() - prefs.getLong("ultima", 0) > CADA_MS
 
-    /** Se llama cuando el socket reconecta: ahí es donde llega una publicación. */
-    suspend fun alReconectar(): VersionResp? = consultar()
+    /**
+     * Se llama cuando el socket reconecta: ahí es donde llega una publicación.
+     *
+     * **Fuerza la consulta**, saltándose el límite de [CADA_MS]. Antes no lo
+     * hacía, y eso vaciaba de sentido a esta función: el comentario prometía
+     * enterarse al reconectar y el límite de seis horas lo impedía. Se publicaba
+     * una versión y la gente tardaba hasta seis horas en verla, aunque hubiera
+     * abierto la app diez veces.
+     *
+     * No castiga al servidor: reconectar no es frecuente —el socket aguanta
+     * abierto— y la respuesta es un JSON de cuatro campos. Es muchísimo menos
+     * tráfico que el primer mensaje que se manda después de esa reconexión.
+     */
+    suspend fun alReconectar(): VersionResp? = consultar(forzar = true)
 
     fun hayQueBajar(v: VersionResp): Boolean = PoliticaActualizacion.hayQueBajar(v, instalada)
 
