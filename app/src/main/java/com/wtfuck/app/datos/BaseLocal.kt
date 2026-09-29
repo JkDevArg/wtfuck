@@ -80,6 +80,36 @@ data class ConversacionEnt(
 )
 
 /**
+ * Un mensaje encontrado por la busqueda global, con de que chat viene.
+ *
+ * Lleva los datos de la conversacion pegados para que la lista de resultados
+ * se pueda dibujar sin una consulta por fila: un resultado que no dice de que
+ * chat es no sirve de nada, y resolverlo despues serian 200 consultas.
+ */
+data class ResultadoBusqueda(
+    val id: String,
+    val conversacionId: String,
+    val autor: String,
+    val esMio: Boolean,
+    val texto: String,
+    val creadoEn: Long,
+    val tipo: String,
+    val nombre: String,
+    val nombreMostrado: String,
+    val avatarUsername: String,
+    val avatarVersion: Long,
+    val aliasContacto: String,
+) {
+    /** Como se llama el chat, con las mismas reglas que la lista. */
+    val titulo: String
+        get() = when {
+            aliasContacto.isNotBlank() -> aliasContacto
+            nombreMostrado.isNotBlank() && tipo == "directa" -> nombreMostrado
+            else -> nombre
+        }
+}
+
+/**
  * Una fila de la lista de chats.
  *
  * El ultimo mensaje NO se copia a `conversacion`: se lee con un JOIN. Asi el
@@ -895,6 +925,42 @@ interface ChatDao {
            ORDER BY creadoEn DESC LIMIT 200"""
     )
     suspend fun buscarEn(conv: String, q: String): List<MensajeEnt>
+
+    /**
+     * Buscar en TODAS las conversaciones.
+     *
+     * Misma semantica que [buscarEn] a proposito -mismo `LIKE`, mismo
+     * `ESCAPE`, mismo limite, mismo orden-: dos buscadores con reglas
+     * distintas en la misma app confunden mas que uno que falta. Quien busca
+     * "100%" espera lo mismo aqui que dentro de un chat.
+     *
+     * ## Lo unico que cambia: los mensajes de sistema quedan fuera
+     *
+     * Dentro de un chat, un "te agrego a este grupo" es contexto util y son
+     * cuatro lineas. En global, ese texto se repite en CADA grupo, asi que
+     * buscar una palabra comun devolveria la misma linea generada veinte veces
+     * y enterraria lo que alguien escribio de verdad.
+     *
+     * ## Por que no hay indice que ayude
+     *
+     * `LIKE '%x%'` empieza con comodin, y ningun indice de SQLite sirve para
+     * eso: es un recorrido de la tabla se ponga lo que se ponga. Con decenas
+     * de miles de filas y un `LIMIT 200` sobre una accion que la persona pide
+     * a mano, es aceptable; en millones haria falta FTS, que es la misma
+     * cuenta que ya se hizo para la busqueda dentro del chat.
+     */
+    @Query(
+        """SELECT m.id, m.conversacionId, m.autor, m.esMio, m.texto, m.creadoEn,
+                  c.tipo, c.nombre, c.nombreMostrado, c.avatarUsername, c.avatarVersion,
+                  COALESCE(k.alias, '') AS aliasContacto
+           FROM mensaje m
+             JOIN conversacion c ON c.id = m.conversacionId
+             LEFT JOIN contacto k ON c.tipo = 'directa' AND k.username = c.nombre
+           WHERE m.oculto = 0 AND m.retirado = 0 AND m.esSistema = 0
+             AND m.texto LIKE '%' || :q || '%' ESCAPE '\'
+           ORDER BY m.creadoEn DESC LIMIT 200"""
+    )
+    suspend fun buscarEnTodo(q: String): List<ResultadoBusqueda>
 
     /** Cuantos mensajes hay arriba de uno dado: la posicion a la que saltar. */
     @Query(

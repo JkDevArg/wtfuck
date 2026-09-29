@@ -1703,17 +1703,48 @@ class Repositorio(
 
     /** M.3 · Buscar dentro de una conversacion. Ver `ChatDao.buscarEn`. */
     suspend fun buscarEnChat(convId: String, consulta: String): List<MensajeEnt> {
-        val q = consulta.trim()
-        if (q.length < 2) return emptyList()
-        // `_` y `%` son comodines de LIKE: sin escaparlos, buscar "100%" o
-        // "a_b" devolveria cualquier cosa.
-        val escapado = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        val escapado = paraLike(consulta) ?: return emptyList()
         // No se deja propagar: buscar es una comodidad, y una consulta que
         // falle tiene que devolver "sin resultados", no cerrar la app. Paso
         // exactamente eso con un `ESCAPE` de dos caracteres.
         return runCatching { dao.buscarEn(convId, escapado) }
             .onFailure { Log.w(TAG, "Fallo la busqueda en $convId: ${it.message}") }
             .getOrDefault(emptyList())
+    }
+
+    /**
+     * Buscar en TODO el historial de este telefono.
+     *
+     * Solo aqui se puede: el servidor guarda sobres opacos y no podria
+     * ofrecerlo ni queriendo. Es la misma razon por la que el panel de
+     * administracion no busca mensajes.
+     */
+    suspend fun buscarEnTodo(consulta: String): List<ResultadoBusqueda> {
+        val escapado = paraLike(consulta) ?: return emptyList()
+        return runCatching { dao.buscarEnTodo(escapado) }
+            .onFailure { Log.w(TAG, "Fallo la busqueda global: ${it.message}") }
+            .getOrDefault(emptyList())
+    }
+
+    /**
+     * Prepara una consulta para `LIKE`, o `null` si no vale la pena buscarla.
+     *
+     * Compartida por las dos busquedas a proposito. Estaba escrita dentro de
+     * `buscarEnChat`, y al agregar la global la tentacion era copiarla: dos
+     * copias de un escapado son como una de las dos se queda sin arreglar el
+     * dia que aparezca el tercer comodin.
+     *
+     * `_` y `%` son comodines: sin escaparlos, buscar "100%" o "a_b"
+     * devolveria cualquier cosa. La barra se escapa PRIMERO — si no, volveria
+     * a escapar las barras que acaban de anadir los otros dos reemplazos.
+     *
+     * Menos de dos caracteres no se busca: una sola letra devuelve el
+     * historial entero recortado a 200, que no es un resultado sino ruido.
+     */
+    private fun paraLike(consulta: String): String? {
+        val q = consulta.trim()
+        if (q.length < 2) return null
+        return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     }
 
     /** La posicion de un mensaje en la lista, para saltar a el desde la busqueda. */

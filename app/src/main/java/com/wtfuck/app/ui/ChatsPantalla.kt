@@ -59,6 +59,7 @@ import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.datos.TransporteCerca
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.datos.ChatFila
+import com.wtfuck.app.datos.ResultadoBusqueda
 import com.wtfuck.app.datos.EstadoConexion
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -216,6 +217,32 @@ fun ChatsPantalla(
                 it.nombre.contains(busqueda, true) ||
                 it.ultimoTexto.orEmpty().contains(busqueda, true)
         }
+    }
+
+    /**
+     * Mensajes que coinciden, de TODOS los chats.
+     *
+     * Con rebote de 250 ms: la consulta recorre la tabla entera -`LIKE '%x%'`
+     * no puede usar indice- y lanzarla en cada tecla haria una busqueda
+     * completa por letra escrita.
+     *
+     * Se relanza tambien al cambiar `chats` NO: solo depende de la consulta.
+     * Un mensaje nuevo mientras se busca no deberia reordenar los resultados
+     * bajo el dedo.
+     */
+    var resultados by remember { mutableStateOf<List<ResultadoBusqueda>>(emptyList()) }
+    var buscandoMensajes by remember { mutableStateOf(false) }
+    LaunchedEffect(busqueda) {
+        val q = busqueda.trim()
+        if (q.length < 2) {
+            resultados = emptyList()
+            buscandoMensajes = false
+            return@LaunchedEffect
+        }
+        buscandoMensajes = true
+        kotlinx.coroutines.delay(250)
+        resultados = app.repo.buscarEnTodo(q)
+        buscandoMensajes = false
     }
 
     // Los chats marcados, como objetos. Se resuelve una vez y no por boton: la
@@ -458,7 +485,10 @@ fun ChatsPantalla(
                 "Todavía no tienes conversaciones",
                 "Toca Nuevo, abajo, y escribe el usuario de alguien.",
             )
-            busqueda.isNotBlank() && visibles.isEmpty() -> Vacio(
+            // Tambien hay que mirar los MENSAJES: buscar una palabra que solo
+            // esta dentro de una conversacion no es "sin resultados".
+            busqueda.isNotBlank() && visibles.isEmpty() && resultados.isEmpty() &&
+                !buscandoMensajes -> Vacio(
                 "Sin resultados",
                 "Nada coincide con \"$busqueda\".",
             )
@@ -504,6 +534,11 @@ fun ChatsPantalla(
                         HorizontalDivider(color = Slate.copy(alpha = 0.25f))
                     }
                 }
+                // Cabecera solo cuando hay busqueda Y ademas hay mensajes:
+                // poner "Chats" siempre anadiria ruido a la pantalla normal.
+                if (busqueda.isNotBlank() && resultados.isNotEmpty() && visibles.isNotEmpty()) {
+                    item { Encabezado("Chats") }
+                }
                 items(visibles, key = { it.id }) { c ->
                     FilaChat(
                         c,
@@ -527,6 +562,36 @@ fun ChatsPantalla(
                         color = Slate.copy(alpha = 0.25f),
                         modifier = Modifier.padding(start = 78.dp),
                     )
+                }
+
+                // --- mensajes encontrados en cualquier chat ---------------
+                if (resultados.isNotEmpty()) {
+                    item { Encabezado("Mensajes") }
+                    items(resultados, key = { "m-" + it.id }) { r ->
+                        FilaResultado(
+                            r = r,
+                            consulta = busqueda,
+                            miUsuario = app.sesion.username.orEmpty(),
+                            onClick = { onAbrirEnMensaje(r.conversacionId, r.id) },
+                        )
+                        HorizontalDivider(
+                            color = Slate.copy(alpha = 0.25f),
+                            modifier = Modifier.padding(start = 78.dp),
+                        )
+                    }
+                    if (resultados.size >= 200) {
+                        // El limite de la consulta. Decirlo es la diferencia
+                        // entre "no hay mas" y "hay mas, afina la busqueda".
+                        item {
+                            Text(
+                                "Se muestran los 200 mensajes más recientes. Escribe algo " +
+                                    "más concreto para acotar.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextoTerciario,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1591,4 +1656,100 @@ internal fun etiquetaDuracionChat(ms: Long): String = when (ms) {
     DuracionChat.HORAS_24 -> "24 h"
     DuracionChat.DIAS_7 -> "7 días"
     else -> "${ms / 3_600_000} h"
+}
+
+/** Separador de sección en la lista de resultados. */
+@Composable
+private fun Encabezado(texto: String) {
+    Text(
+        texto.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = TextoTerciario,
+        letterSpacing = 1.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp),
+    )
+}
+
+/**
+ * Un mensaje encontrado, con de qué chat viene.
+ *
+ * ## Por qué se recorta el texto alrededor de lo buscado
+ *
+ * Porque un mensaje largo mostrado desde el principio puede no enseñar la
+ * palabra que se buscó: la lista diría "coincide" y la persona no vería
+ * dónde. Se centra el fragmento en la coincidencia, con puntos suspensivos
+ * cuando se corta por delante.
+ */
+@Composable
+private fun FilaResultado(
+    r: ResultadoBusqueda,
+    consulta: String,
+    miUsuario: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AvatarDeChat(
+            nombre = r.titulo,
+            url = ApiCliente.urlImagen(r.avatarUsername, "avatar", r.avatarVersion),
+            clase = claseDeTipo(r.tipo),
+            tamano = 46.dp,
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    r.titulo,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = TextoPrimario,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    horaCorta(r.creadoEn),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextoTerciario,
+                )
+            }
+            Spacer(Modifier.height(2.dp))
+            // En un grupo hace falta saber QUIÉN lo dijo; en una directa el
+            // título ya lo dice y repetirlo es ruido.
+            val quien = when {
+                r.esMio -> "Tú: "
+                r.tipo == "grupo" -> "${r.autor}: "
+                else -> ""
+            }
+            Text(
+                quien + fragmento(r.texto, consulta),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextoSecundario,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * Un trozo del mensaje centrado en lo que se buscó.
+ *
+ * Deja unos caracteres de contexto por delante para que la frase se entienda.
+ * Si la coincidencia está al principio —el caso normal— no recorta nada, que
+ * es mejor que anteponer unos puntos suspensivos inútiles.
+ */
+internal fun fragmento(texto: String, consulta: String, contexto: Int = 24): String {
+    val q = consulta.trim()
+    if (q.isEmpty()) return texto
+    val i = texto.indexOf(q, ignoreCase = true)
+    if (i <= contexto) return texto
+    return "…" + texto.substring(i - contexto)
 }
