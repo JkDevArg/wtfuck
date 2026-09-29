@@ -110,6 +110,7 @@ object Novedades {
                 Cambio(TipoCambio.NUEVO, "Codigo de recuperacion: si pierdes el telefono, es lo unico que te devuelve la cuenta. Creado en Cuenta, se anota en papel. Antes, perder el telefono era perder la cuenta para siempre."),
                 Cambio(TipoCambio.NUEVO, "La copia de seguridad puede llevar tu identidad cifrada. Al restaurarla en otro telefono conservas tu numero de seguridad y a tus contactos no les salta ninguna alarma."),
                 Cambio(TipoCambio.ARREGLO, "La pantalla de copia de seguridad decia que para restaurar en un telefono nuevo habia que entrar primero a la cuenta, y en un telefono nuevo no se podia entrar. Ahora dice lo que hace falta de verdad."),
+                Cambio(TipoCambio.MEJORA, "Si la app se cierra sola, guarda un informe en tu telefono y te ofrece enviarlo. No lleva el texto de tus chats ni tu usuario, y puedes leerlo entero antes de decidir."),
             ),
         ),
         NotasVersion(

@@ -25,6 +25,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.wtfuck.app.ui.AvisoDeActualizacion
+import com.wtfuck.app.ui.AvisoDeFallo
 import com.wtfuck.app.ui.InvitacionesPantalla
 import com.wtfuck.app.ui.CopiaSeguridadPantalla
 import com.wtfuck.app.ui.NovedadesPantalla
@@ -325,6 +326,10 @@ private fun Raiz() {
             // Va aqui y no en cada panel: con dos paneles se dibujan los dos,
             // y el aviso saldria duplicado.
             AvisoDeActualizacion()
+            // Despues del de actualizacion a proposito: si la app se cerro
+            // por un fallo que la version nueva ya arregla, lo util es
+            // actualizar, no mandar el informe.
+            AvisoDeFallo()
 
             val lista = @Composable {
                 Inicio(

@@ -124,8 +124,29 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
             .build()
     }
 
+    /**
+     * El cazador de cierres inesperados.
+     *
+     * Se instala LO PRIMERO en `onCreate`, antes de que nada mas pueda
+     * reventar: el arranque -abrir SQLCipher, leer el Keystore- es justo donde
+     * un fallo deja a la persona sin poder entrar Y sin poder contar por que.
+     */
+    val fallos: CazadorDeFallos by lazy {
+        CazadorDeFallos(
+            carpeta = CazadorDeFallos.carpetaDe(this),
+            version = BuildConfig.VERSION_NAME,
+            modelo = android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL,
+            android = android.os.Build.VERSION.SDK_INT.toString(),
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
+
+        // Antes que NADA: lo que se instale despues no cubre lo que pase
+        // mientras tanto.
+        fallos.instalar()
+
         Notificaciones.crearCanales(this)
 
         // Firebase se inicializa con lo que haya en disco, ANTES de pedirle
