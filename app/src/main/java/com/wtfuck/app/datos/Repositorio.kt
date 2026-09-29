@@ -2295,6 +2295,24 @@ class Repositorio(
         val mensajeId = UUID.randomUUID().toString()
         val original = archivos.datosDe(uri, clase)
 
+        // El limite, ANTES de crear el mensaje.
+        //
+        // Se comprobaba dentro de `subirAdjunto`, cuando la burbuja ya estaba
+        // en el chat: la persona veia un mensaje rojo de "fallo" en vez de un
+        // "no cabe" a tiempo. Con 64 MB de tope y un minuto de 4K pasando de
+        // 300, es el camino normal, no el raro.
+        //
+        // La comprobacion de `subirAdjunto` se queda igual: una imagen se
+        // recomprime despues de esto y podria seguir sin caber, y ademas dos
+        // guardias en un limite de red nunca sobran.
+        if (clase != ClaseAdjunto.IMAGEN) {
+            val v = CabeAdjunto.evaluar(original.bytes, clase)
+            if (!v.cabe) {
+                _rechazos.tryEmit(CabeAdjunto.aviso(v, clase))
+                return
+            }
+        }
+
         // Una foto se reduce ANTES de cifrar: ahorra datos de quien envia, de
         // quien recibe y cuota en el almacen, los tres de una vez.
         var fuente = uri

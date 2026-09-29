@@ -50,6 +50,32 @@ class Ajustes(private val ctx: Context) {
         set(v) = p.edit().putBoolean("solo_wifi", v).apply()
 
     /**
+     * Bloquear capturas de pantalla y grabacion. Apagado por defecto.
+     *
+     * ## Por que es un ajuste y no siempre
+     *
+     * `FLAG_SECURE` tapa la miniatura en la lista de recientes, que es un
+     * agujero real del bloqueo de la app. Pero de paso **prohibe toda captura
+     * dentro de la app**, y eso es otra decision: hay motivos legitimos para
+     * capturar una conversacion propia -guardar una direccion, enviar una
+     * prueba a alguien-. Forzarlo seria decidir por la persona algo que no
+     * pidio.
+     *
+     * ## El hueco que cierra
+     *
+     * `setRecentsScreenshotEnabled` -lo que se usa hoy para la miniatura- solo
+     * existe desde Android 13. Por debajo **no hay proteccion de la miniatura
+     * ni con el bloqueo activo**, y esa lista se ve sin desbloquear nada. Con
+     * este ajuste encendido si la hay, en cualquier version.
+     *
+     * Ese es el trato, y la pantalla lo dice en vez de esconderlo: en Android
+     * antiguo, tapar la miniatura cuesta las capturas.
+     */
+    var bloquearCapturas: Boolean
+        get() = p.getBoolean("bloquear_capturas", false)
+        set(v) = p.edit().putBoolean("bloquear_capturas", v).apply()
+
+    /**
      * Cuando se hizo la ultima copia de seguridad (epoch ms). 0 = nunca.
      *
      * La copia es manual y se olvida; una copia que nadie hace no protege

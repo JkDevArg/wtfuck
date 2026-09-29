@@ -113,6 +113,9 @@ object Novedades {
                 Cambio(TipoCambio.MEJORA, "Si la app se cierra sola, guarda un informe en tu telefono y te ofrece enviarlo. No lleva el texto de tus chats ni tu usuario, y puedes leerlo entero antes de decidir."),
                 Cambio(TipoCambio.ARREGLO, "Los mensajes escritos sin conexion ahora salen solos cuando vuelve la red, aunque hayas cerrado la app. Antes se quedaban esperando a que la volvieras a abrir."),
                 Cambio(TipoCambio.SEGURIDAD, "El codigo de recuperacion detecta mejor las erratas: antes casi la mitad de los errores en el ultimo caracter se aceptaban en silencio."),
+                Cambio(TipoCambio.NUEVO, "Nuevo ajuste para bloquear capturas de pantalla dentro de la app. Apagado por defecto: hay motivos legitimos para capturar una conversacion propia."),
+                Cambio(TipoCambio.ARREGLO, "En Android anterior al 13, la pantalla decia que con el bloqueo activo la app salia en blanco en recientes, y no era cierto. Ahora lo dice claro y ofrece como taparla."),
+                Cambio(TipoCambio.MEJORA, "Si un video o un archivo no cabe, se avisa ANTES de enviarlo y con los dos numeros -lo que pesa y el limite-, en vez de dejar un mensaje en rojo."),
             ),
         ),
         NotasVersion(

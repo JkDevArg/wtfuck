@@ -1172,11 +1172,73 @@ private fun BloqueoDeLaApp() {
                 // Es una consecuencia visible de activarlo y conviene decirla
                 // antes de que alguien se pregunte por qué su app aparece en
                 // gris en el conmutador.
-                "Con el bloqueo activo, la app sale en blanco en la lista de apps recientes.",
+                //
+                // Y en Android anterior al 13 hay que decir lo CONTRARIO: que
+                // no sale en blanco. `setRecentsScreenshotEnabled` no existe
+                // ahí, así que la miniatura queda expuesta y esa lista se ve
+                // sin desbloquear nada. Prometer una protección que no está es
+                // peor que no tenerla: quien lo cree deja de tener cuidado.
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    "Con el bloqueo activo, la app sale en blanco en la lista de apps recientes."
+                } else {
+                    "En esta versión de Android la miniatura de la app SÍ se ve en la " +
+                        "lista de recientes, sin desbloquear. Para taparla, activa " +
+                        "\"Bloquear capturas\" aquí abajo."
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    TextoTerciario
+                } else {
+                    Ambar
+                },
+            )
+        }
+    }
+
+    // --- bloquear capturas ------------------------------------------
+    //
+    // Aparte del bloqueo y no dentro: son dos decisiones distintas. Se puede
+    // querer una sin la otra, y de hecho lo normal es querer solo el bloqueo.
+    Spacer(Modifier.height(16.dp))
+    var capturas by remember { mutableStateOf(app.ajustes.bloquearCapturas) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Bloquear capturas de pantalla", color = TextoPrimario, fontSize = 15.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "El sistema no dejará capturar ni grabar la pantalla dentro de la " +
+                    "app, y la miniatura de recientes queda tapada en cualquier " +
+                    "versión de Android. No impide que te fotografíen la pantalla " +
+                    "con otro teléfono.",
                 style = MaterialTheme.typography.labelSmall,
                 color = TextoTerciario,
             )
         }
+        Spacer(Modifier.width(10.dp))
+        Switch(
+            checked = capturas,
+            onCheckedChange = {
+                capturas = it
+                app.ajustes.bloquearCapturas = it
+                // Se aplica a la ventana AHORA, no al proximo arranque.
+                //
+                // `MainActivity` lo aplica en `onStart`, y llegar aqui no pasa
+                // por `onStart`: es la misma Activity. Sin esto, alguien que
+                // enciende el ajuste y prueba a capturar lo consigue, y
+                // concluye -con razon- que el interruptor no hace nada.
+                aplicarCapturasYa(ctx, it)
+            },
+            colors = SwitchDefaults.colors(checkedTrackColor = Cian),
+        )
+    }
+    if (capturas) {
+        Spacer(Modifier.height(6.dp))
+        Text(
+            // El coste, dicho donde se decide y no después.
+            "Tú tampoco podrás capturar tus propias conversaciones.",
+            style = MaterialTheme.typography.labelSmall,
+            color = Ambar,
+        )
     }
 
     if (abierto) {
@@ -1224,5 +1286,27 @@ private fun BloqueoDeLaApp() {
                 TextButton(onClick = { abierto = false }) { Text("Cerrar", color = Cian) }
             },
         )
+    }
+}
+
+/**
+ * Aplica o quita `FLAG_SECURE` a la ventana actual en el momento.
+ *
+ * Busca la Activity subiendo por los `ContextWrapper`, que es lo que hay que
+ * hacer en Compose: `LocalContext` puede ser un contexto de tema envuelto y no
+ * la Activity directamente.
+ *
+ * Si no la encuentra no pasa nada grave: el ajuste ya esta guardado y
+ * `MainActivity.onStart` lo aplicara en la proxima vuelta al primer plano.
+ */
+private fun aplicarCapturasYa(ctx: android.content.Context, bloquear: Boolean) {
+    var actual = ctx
+    while (actual is android.content.ContextWrapper) {
+        if (actual is android.app.Activity) {
+            val bandera = android.view.WindowManager.LayoutParams.FLAG_SECURE
+            if (bloquear) actual.window.addFlags(bandera) else actual.window.clearFlags(bandera)
+            return
+        }
+        actual = actual.baseContext
     }
 }

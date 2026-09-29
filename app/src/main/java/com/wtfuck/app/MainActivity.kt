@@ -155,6 +155,21 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
      * pidio: hay motivos legitimos para capturar una conversacion propia.
      */
     private fun aplicarPrivacidadDeRecientes(app: WtfuckApp) {
+        // El ajuste manda sobre todo lo demas: quien lo enciende quiere
+        // FLAG_SECURE de verdad, con su coste -no se puede capturar- y con su
+        // beneficio -tapa la miniatura en CUALQUIER version de Android, no
+        // solo en 13 o superior-.
+        if (app.ajustes.bloquearCapturas) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            return
+        }
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+
+        // Sin el ajuste, lo de siempre: tapar la miniatura sin tocar las
+        // capturas. Solo existe desde Android 13, y por debajo la miniatura
+        // queda expuesta aunque el bloqueo este activo. No se arregla en
+        // silencio con FLAG_SECURE porque eso quitaria las capturas a quien no
+        // lo pidio; se arregla ofreciendo el ajuste, que lo dice.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             setRecentsScreenshotEnabled(!app.bloqueo.espera.activo)
         }
