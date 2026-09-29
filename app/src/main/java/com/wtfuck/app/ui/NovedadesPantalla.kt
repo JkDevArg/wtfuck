@@ -90,6 +90,17 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.6.1",
+            fecha = "29/09/2026",
+            cambios = listOf(
+                // ARREGLO y no MEJORA: para quien lo sufrio, esto no era una
+                // funcion que faltaba, era la app cerrandose en la cara.
+                Cambio(TipoCambio.ARREGLO, "Las llamadas ya no cierran la app. Pasaba solo en la version publicada -no en desarrollo- y por eso tardo en verse: el optimizador borraba unas clases que WebRTC busca al arrancar la llamada."),
+                Cambio(TipoCambio.NUEVO, "Boton \"Buscar actualizacion\" al final del perfil, para comprobar cuando quieras si hay una version nueva. Tambien te dice cuando ya tienes la ultima."),
+                Cambio(TipoCambio.MEJORA, "Si la app se cierra de golpe -sin llegar a avisar-, ahora recupera del sistema el motivo y te lo ofrece al volver a abrirla. Antes esos cierres no dejaban ningun rastro."),
+            ),
+        ),
+        NotasVersion(
             version = "0.6.0",
             fecha = "27/09/2026",
             cambios = listOf(
