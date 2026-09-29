@@ -80,7 +80,34 @@ done
 # parece en nada a la causa. Mejor pararlo aqui con el motivo escrito.
 if [ -z "${BASH_VERSION:-}" ]; then
   echo "ERROR: esto tiene que correr en bash, no en otro interprete."
-  echo "       Desde PowerShell:  bash despliegue/lanzar.sh <version>"
+  exit 1
+fi
+
+# Y que sea GIT BASH, no WSL.
+#
+# Escribir `bash` en PowerShell resuelve C:\Windows\system32ash.exe, que
+# es el lanzador de WSL. Y WSL tambien es bash, asi que la comprobacion de
+# arriba lo deja pasar tan contento.
+#
+# El problema es que dentro de WSL el disco de Windows esta en /mnt/c, no en
+# /c ni en C:/. Asi que la deteccion del JDK falla aunque la ruta sea
+# correcta, y el error que sale -"no encuentro un JDK"- no menciona WSL por
+# ningun lado. Y aunque se arreglara la ruta, seguiria mal: el keystore, el
+# adb y el gradlew.bat son de Windows.
+#
+# Git Bash tiene /c montado; WSL no. Esa es la forma mas simple de
+# distinguirlos sin depender de variables que pueden faltar.
+if [ ! -d "/c/Windows" ] && [ -d "/mnt/c/Windows" ]; then
+  echo "ERROR: esto se esta ejecutando en WSL, y tiene que ser Git Bash."
+  echo ""
+  echo "       Escribir 'bash' en PowerShell abre WSL -es el bash.exe de"
+  echo "       system32-, y ahi el disco de Windows esta en /mnt/c: no se"
+  echo "       encuentra ni el JDK, ni el keystore, ni adb."
+  echo ""
+  echo "       Abre Git Bash y corre el script desde ahi. O desde PowerShell,"
+  echo "       llamando al bash de Git por su ruta completa:"
+  echo ""
+  echo "         & 'G:\laragon\bin\git\bin\bash.exe' despliegue/lanzar.sh <version>"
   exit 1
 fi
 
