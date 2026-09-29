@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -970,21 +971,44 @@ fun ChatPantalla(
             }
         }
 
+        // El fondo va en la LISTA y no en el Scaffold: asi la barra de arriba
+        // y el compositor de abajo se quedan con el color liso de la app. Un
+        // degradado que se cuela detras de la barra de herramientas hace que
+        // los iconos pierdan el fondo constante contra el que se midieron.
         LazyColumn(
             state = lista,
-            modifier = Modifier.fillMaxSize().weight(1f),
+            modifier = Modifier
+                .fillMaxSize()
+                .weight(1f)
+                .fondoDeChat(app.ajustes.fondoChat, claroAhora(app.ajustes.tema), Cian),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
         ) {
-            items(mensajes, key = { it.id }) { m ->
+            itemsIndexed(mensajes, key = { _, m -> m.id }) { i, m ->
                 if (m.esSistema) {
                     LineaSistema(m.texto)
                 } else {
+                    // Los vecinos, para saber si este mensaje abre o cierra una
+                    // rafaga. Se calcula aqui -donde se conoce la lista- y no
+                    // dentro de la burbuja, que solo se ve a si misma.
+                    val antes = mensajes.getOrNull(i - 1)
+                    val despues = mensajes.getOrNull(i + 1)
+                    val abre = antes == null || !mismaRafaga(
+                        antes.autor, antes.creadoEn, antes.esSistema,
+                        m.autor, m.creadoEn, m.esSistema,
+                    ) || antes.esMio != m.esMio
+                    val cierra = despues == null || !mismaRafaga(
+                        m.autor, m.creadoEn, m.esSistema,
+                        despues.autor, despues.creadoEn, despues.esSistema,
+                    ) || despues.esMio != m.esMio
+
                     Burbuja(
                         m = m,
                         esGrupo = chat?.tipo == "grupo",
                         miUsuario = app.sesion.username.orEmpty(),
                         nombreDe = { u -> nombresDeGente[u] ?: u },
                         resaltado = buscando && hallazgos.getOrNull(cualHallazgo)?.id == m.id,
+                        cierraRafaga = cierra,
+                        abreRafaga = abre,
                         onReintentar = {
                             ambito.launch {
                                 // Un adjunto fallido se reintenta desde el
@@ -1490,6 +1514,15 @@ private fun Burbuja(
     nombreDe: (String) -> String,
     /** El resultado de busqueda en el que estoy parado ahora. */
     resaltado: Boolean = false,
+    /**
+     * Si este mensaje CIERRA una rafaga del mismo autor.
+     *
+     * Decide dos cosas: si lleva pico -solo el ultimo lo lleva- y cuanto
+     * espacio queda debajo. Ver `mismaRafaga`.
+     */
+    cierraRafaga: Boolean = true,
+    /** Si ABRE la rafaga. Solo el primero repite el nombre del autor. */
+    abreRafaga: Boolean = true,
     onReintentar: () -> Unit,
     onDescargar: () -> Unit,
     onAbrir: (File) -> Unit,
@@ -1561,11 +1594,10 @@ private fun Burbuja(
     // negrita, que es lo que hace `textoConMenciones` con el peso.
     val colorMencion = if (sobreAcento) TextoSobreAcento else Cian
 
-    val forma = RoundedCornerShape(
-        topStart = 16.dp, topEnd = 16.dp,
-        bottomStart = if (m.esMio) 16.dp else 4.dp,
-        bottomEnd = if (m.esMio) 4.dp else 16.dp,
-    )
+    // El pico solo en el ULTIMO de una rafaga: apunta a quien habla, y cinco
+    // seguidos parecerian cinco intervenciones en vez de una persona hablando
+    // seguido. Ver `BurbujaConPico`.
+    val forma = remember(m.esMio, cierraRafaga) { BurbujaConPico(m.esMio, cierraRafaga) }
 
     val reacciones = remember(m.reaccionesJson) { leerReacciones(m.reaccionesJson) }
 
@@ -1579,7 +1611,10 @@ private fun Burbuja(
             // dentro obligaria a cambiarle el fondo, que es justamente lo que
             // dice de quien es el mensaje.
             .background(if (resaltado) Ambar.copy(alpha = 0.16f) else Color.Transparent)
-            .padding(vertical = 3.dp),
+            // Apretado dentro de una rafaga y con aire al cerrarla. Es lo
+            // que agrupa visualmente sin dibujar ninguna caja: el ojo junta
+            // lo que esta cerca y separa lo que no.
+            .padding(top = if (abreRafaga) 5.dp else 1.dp, bottom = if (cierraRafaga) 5.dp else 1.dp),
         horizontalAlignment = if (m.esMio) Alignment.End else Alignment.Start,
     ) {
         Column(
@@ -1621,7 +1656,10 @@ private fun Burbuja(
                 }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            if (!m.esMio && esGrupo && !m.retirado) {
+            // El nombre solo en el PRIMERO de la rafaga. Repetirlo en cada
+            // mensaje de una tanda es lo que hace que un grupo activo se lea
+            // como una lista de fichas en vez de como gente hablando.
+            if (!m.esMio && esGrupo && !m.retirado && abreRafaga) {
                 Text(
                     // Sin "@" y con mi nombre para esa persona, igual que
                     // en la lista. El COLOR se sigue calculando con el

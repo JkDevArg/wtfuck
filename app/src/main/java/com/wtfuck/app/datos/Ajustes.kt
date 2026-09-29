@@ -6,6 +6,7 @@ import android.net.NetworkCapabilities
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.wtfuck.app.ui.theme.FondoChat
 import com.wtfuck.app.ui.theme.Paleta
 import com.wtfuck.app.ui.theme.Tema
 import com.wtfuck.protocol.ClaseAdjunto
@@ -192,6 +193,18 @@ class Ajustes(private val ctx: Context) {
             .getOrDefault(Paleta.CIAN)
     )
         private set
+
+    /** El fondo del chat. Ver `FondoChat`. */
+    var fondoChat by mutableStateOf(
+        runCatching { FondoChat.valueOf(p.getString("fondo_chat", null) ?: "") }
+            .getOrDefault(FondoChat.NINGUNO)
+    )
+        private set
+
+    fun fijarFondoChat(f: FondoChat) {
+        fondoChat = f
+        p.edit().putString("fondo_chat", f.name).apply()
+    }
 
     fun fijarPaleta(nueva: Paleta) {
         paleta = nueva

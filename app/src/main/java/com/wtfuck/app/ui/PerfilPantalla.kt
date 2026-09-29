@@ -636,6 +636,47 @@ fun PerfilPantalla(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
                     )
+
+                    Spacer(Modifier.height(16.dp))
+                    Text("Fondo del chat", color = TextoPrimario)
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        val enClaro2 = claroAhora(app.ajustes.tema)
+                        FondoChat.entries.forEach { f ->
+                            val puesto = app.ajustes.fondoChat == f
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(
+                                    Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(f.muestra(enClaro2, Cian))
+                                        .border(
+                                            width = if (puesto) 2.dp else 1.dp,
+                                            color = if (puesto) Cian else Slate.copy(alpha = 0.5f),
+                                            shape = RoundedCornerShape(10.dp),
+                                        )
+                                        .clickable { app.ajustes.fijarFondoChat(f) },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (puesto) {
+                                        Icon(
+                                            Icons.Filled.Check, f.etiqueta,
+                                            tint = Cian, modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    f.etiqueta,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (puesto) Cian else TextoTerciario,
+                                )
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {

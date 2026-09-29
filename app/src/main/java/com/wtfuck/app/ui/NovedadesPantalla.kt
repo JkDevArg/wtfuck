@@ -119,6 +119,8 @@ object Novedades {
                 Cambio(TipoCambio.NUEVO, "Exportar una conversacion a un archivo de texto, desde el menu del chat. Los mensajes temporales NO se exportan: quien los escribio pidio que no quedaran guardados."),
                 Cambio(TipoCambio.NUEVO, "Buscar en TODOS los chats a la vez desde el buscador de la lista: ya no hace falta acordarse de en que conversacion se dijo algo."),
                 Cambio(TipoCambio.NUEVO, "Puedes elegir el color de la app: seis acentos en Perfil > Apariencia. El ambar de \"pendiente\" y el coral de \"error\" no cambian, porque son significado y no decoracion."),
+                Cambio(TipoCambio.NUEVO, "Fondo para el chat: degradado, con tu color, o mas oscuro. Las burbujas siguen opacas, asi que el texto se lee igual de bien."),
+                Cambio(TipoCambio.MEJORA, "Las burbujas tienen pico y los mensajes seguidos de la misma persona se agrupan, en vez de verse como fichas sueltas."),
             ),
         ),
         NotasVersion(
