@@ -183,7 +183,19 @@ android {
             val abiRelease = (project.findProperty("abi") as String?)
                 ?: "arm64-v8a,armeabi-v7a"
             ndk { abiFilters += abiRelease.split(",").map { it.trim() } }
-            isMinifyEnabled = true
+            // Se puede APAGAR para diagnosticar, sin tocar este archivo:
+            //
+            //   ./gradlew :app:assembleRelease -Pminify=false
+            //
+            // Existe porque un fallo que solo pasa en release deja dos
+            // sospechosos pegados -R8 y el aparato- y no hay forma de
+            // separarlos si no se puede compilar release sin R8. Un APK asi
+            // se firma con la MISMA clave, asi que se instala encima sin
+            // perder los datos y se compara de verdad.
+            //
+            // No es para publicar: sin minificar el APK pesa mucho mas y se
+            // va con los nombres originales.
+            isMinifyEnabled = (project.findProperty("minify") as String?) != "false"
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (firma.exists()) signingConfig = signingConfigs.getByName("publicacion")
 

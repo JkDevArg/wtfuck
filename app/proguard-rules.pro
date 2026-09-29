@@ -41,6 +41,48 @@
     *;
 }
 
+# Y `org.jni_zero`, que NO esta en org.webrtc y por eso se escapaba.
+#
+# ## Como se encontro, porque el sintoma no se parece a la causa
+#
+# Una llamada cerraba la app de golpe, SOLO en release, sin dialogo de error
+# ni nada en el informe de fallos. No era una excepcion de Java sino un abort
+# nativo:
+#
+#   signal 6 (SIGABRT)
+#   Abort message: 'JNI DETECTED ERROR IN APPLICATION: java_class == null'
+#     #05 art::JNI::GetStaticMethodID(...)
+#     #06 libjingle_peerconnection_so.so
+#
+# WebRTC moderno usa JNI Zero -el generador de enlaces JNI de Chromium- y sus
+# clases viven en `org.jni_zero`. El codigo nativo las busca POR NOMBRE con
+# FindClass; R8 no ve esas referencias porque estan en C++ y no en bytecode,
+# asi que se llevo las 22 clases del paquete. FindClass devolvio null, nadie
+# lo comprobo, y GetStaticMethodID aborto el proceso.
+#
+# El `usage.txt` de la compilacion lo decia: 22 clases de org.jni_zero
+# eliminadas, 0 conservadas. La regla de org.webrtc.** estaba bien y no
+# alcanzaba.
+#
+# Confirmado con el experimento: el MISMO release compilado con
+# `-Pminify=false` aguanta la llamada sin morir en el mismo telefono.
+# `JniZeroJni` la genera el procesador de anotaciones de JNI Zero y NO viene
+# en el AAR: se referencia y no existe. Antes no se notaba porque R8 borraba
+# el paquete entero; al conservarlo, R8 avisa de la referencia rota. No hace
+# falta: WebRTC trae el .so ya compilado y no usa la generacion del lado Java.
+-dontwarn org.jni_zero.**
+
+-keep class org.jni_zero.** { *; }
+-keepclasseswithmembers class * {
+    @org.jni_zero.CalledByNative <methods>;
+}
+-keepclasseswithmembers class * {
+    @org.jni_zero.CalledByNativeUnchecked <methods>;
+}
+-keepclassmembers class * {
+    @org.jni_zero.AccessedByNative <fields>;
+}
+
 # ---------------------------------------------------------------
 #  kotlinx.serialization — el protocolo entero
 # ---------------------------------------------------------------
