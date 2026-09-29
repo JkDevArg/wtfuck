@@ -93,6 +93,8 @@ object Novedades {
             version = "0.6.1",
             fecha = "29/09/2026",
             cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "En una llamada de dos ya puedes anadir a otra persona: se crea un grupo con los tres y la llamada sigue ahi. El grupo se queda en tus chats."),
+                Cambio(TipoCambio.MEJORA, "En la llamada se ve la foto de la persona, no sus iniciales."),
                 // ARREGLO y no MEJORA: para quien lo sufrio, esto no era una
                 // funcion que faltaba, era la app cerrandose en la cara.
                 Cambio(TipoCambio.ARREGLO, "Las llamadas ya no cierran la app. Pasaba solo en la version publicada -no en desarrollo- y por eso tardo en verse: el optimizador borraba unas clases que WebRTC busca al arrancar la llamada."),

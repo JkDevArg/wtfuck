@@ -4643,6 +4643,89 @@ class Repositorio(
         duracionMs: Long = 0,
     ): String = api.crearGrupo(nombre, usernames, duracionMs).also { guardarResumen(it) }.id
 
+    /**
+     * Anade a alguien a una llamada de dos, convirtiendola en una de grupo.
+     *
+     * ## Por que no se "invita" a la llamada actual
+     *
+     * Porque una llamada pertenece a una CONVERSACION, y esa es la pieza que
+     * hace cumplir todo lo demas: el servidor autoriza llamar con
+     * `mensaje.enviar` sobre la conversacion, asi que los bloqueos, el
+     * silencio y la pertenencia se aplican a las llamadas sin codigo propio.
+     *
+     * Una llamada de dos vive en una conversacion DIRECTA, que tiene
+     * exactamente dos miembros. Meter a un tercero ahi pedia una de dos:
+     * permitir participantes fuera de la conversacion -y entonces se podria
+     * arrastrar a alguien a una llamada con una persona que lo bloqueo- o
+     * inventar un modelo de permisos propio para llamadas. Las dos son peores
+     * que crear el grupo.
+     *
+     * Asi que se crea un grupo con los tres y se llama ahi. Se nota -la
+     * llamada se corta y empieza otra- y es honesto: de verdad es otra
+     * conversacion, y va a seguir existiendo despues de colgar.
+     *
+     * ## El orden NO es casual
+     *
+     * Primero se crea el grupo, DESPUES se cuelga, y al final se llama.
+     *
+     * Al reves -colgar primero- parece mas natural y es peor: si la creacion
+     * del grupo fallara -sin red, sin permiso para agregar a esa persona- la
+     * llamada ya estaria muerta y no habria nada que recuperar. Creando
+     * primero, un fallo deja la llamada intacta y la persona solo ve un
+     * aviso.
+     *
+     * Colgar antes de llamar SI hace falta: el servidor rechaza una llamada
+     * nueva si ya estas en una (`ocupado`), asi que sin esto el `llamar` de
+     * abajo devolveria 409.
+     */
+    suspend fun ampliarLlamadaAGrupo(
+        otroUsuario: String,
+        nuevoUsuario: String,
+        conVideo: Boolean,
+    ): Result<Unit> = runCatching {
+        val nombre = nombreDeGrupoPara(listOf(otroUsuario, nuevoUsuario))
+        val convId = nuevoGrupo(nombre, listOf(otroUsuario, nuevoUsuario))
+
+        llamadas.colgar(FinLlamada.COLGADA)
+        // Un respiro para que el servidor procese el fin antes de pedir la
+        // llamada nueva. Sin esto, `ocupado` puede ver todavia la anterior y
+        // devolver 409 por una carrera de milisegundos.
+        kotlinx.coroutines.delay(600)
+
+        llamadas.llamar(convId, nombre, conVideo).getOrThrow()
+    }
+
+    /**
+     * Un nombre para el grupo que se crea al ampliar una llamada.
+     *
+     * Con los nombres de la libreta, no los usernames: el grupo va a quedar
+     * en la lista de chats y "Ana, Beto" se reconoce antes que dos arrobas.
+     *
+     * Se recorta a 64 porque es el limite del servidor, y se recorta por
+     * NOMBRES enteros y no por caracteres: "Ana, Beto y 2 mas" se lee; "Ana,
+     * Bet" parece un error.
+     */
+    private suspend fun nombreDeGrupoPara(usernames: List<String>): String {
+        val alias = runCatching { nombresDeLibreta(usernames) }.getOrDefault(emptyMap())
+        val nombres = usernames.map { alias[it] ?: it }
+        val junto = nombres.joinToString(", ")
+        return if (junto.length <= 64) junto else {
+            val primero = nombres.first().take(40)
+            "$primero y ${nombres.size - 1} mas"
+        }
+    }
+
+    /**
+     * La libreta, tal como esta en este telefono.
+     *
+     * Local y no del servidor a proposito: lo usa el selector de "anadir a la
+     * llamada", y en medio de una llamada no es momento de esperar una
+     * peticion de red que puede tardar o fallar.
+     */
+    suspend fun contactosLocales(): List<ContactoEnt> =
+        runCatching { dao.libreta().sortedBy { (it.alias.ifBlank { it.username }).lowercase() } }
+            .getOrDefault(emptyList())
+
     /** Borra el historial local de un chat. El servidor no guarda historial. */
     suspend fun vaciarChat(convId: String) {
         // Los votos primero: la consulta los busca por el id del mensaje, y si

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Mic
@@ -47,6 +48,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlin.math.roundToInt
 import com.wtfuck.app.WtfuckApp
+import com.wtfuck.app.datos.ContactoEnt
+import androidx.compose.foundation.lazy.items
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.datos.ESTADO_CAIDO
 import com.wtfuck.app.datos.ESTADO_DENTRO
@@ -108,6 +111,9 @@ fun CapaLlamada() {
      * `null` en grupos: no hay foto de grupo, y poner la de un miembro
      * cualquiera diria que la llamada es con esa persona.
      */
+    var anadiendo by remember { mutableStateOf(false) }
+    var avisoAnadir by remember { mutableStateOf<String?>(null) }
+
     val fotoDeLlamada by produceState<String?>(null, estado?.conversacionId, estado?.grupo) {
         val conv = estado?.conversacionId
         value = if (conv.isNullOrBlank()) null else {
@@ -480,6 +486,12 @@ fun CapaLlamada() {
 
                     else -> BotonesEnCurso(
                         e = e,
+                        // Solo en llamadas de dos y ya conectadas. Mientras
+                        // suena no: ampliar una llamada que la otra persona
+                        // todavia no contesto es cortarsela antes de hablar.
+                        onAnadir = if (e.grupo.isBlank() && e.fase == EstadoLlamada.Fase.EN_CURSO) {
+                            { anadiendo = true }
+                        } else null,
                         onSilenciar = servicio::silenciar,
                         onCamara = servicio::camara,
                         onAltavoz = servicio::altavoz,
@@ -548,6 +560,143 @@ fun CapaLlamada() {
             }
         }
     }
+
+    if (anadiendo) {
+        val e = estado
+        DialogoAnadirALlamada(
+            onCerrar = { anadiendo = false },
+            onElegido = { quien ->
+                anadiendo = false
+                if (e != null) {
+                    ambito.launch {
+                        app.repo.ampliarLlamadaAGrupo(
+                            otroUsuario = e.conQuien,
+                            nuevoUsuario = quien,
+                            conVideo = e.conVideo,
+                        ).onFailure {
+                            avisoAnadir = it.message ?: "No se pudo añadir a esa persona."
+                        }
+                    }
+                }
+            },
+        )
+    }
+
+    avisoAnadir?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { avisoAnadir = null },
+            containerColor = BgElev,
+            title = { Text("No se pudo añadir", color = TextoPrimario) },
+            text = {
+                Column {
+                    Text(msg, color = TextoSecundario)
+                    Spacer(Modifier.height(8.dp))
+                    // Importa decirlo: el orden del repositorio garantiza que
+                    // un fallo al crear el grupo deja la llamada intacta, y
+                    // quien ve un error da por hecho lo contrario.
+                    Text(
+                        "Tu llamada sigue en curso.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextoTerciario,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { avisoAnadir = null }) { Text("Entendido", color = Cian) }
+            },
+        )
+    }
+}
+
+/**
+ * A quien anadir a la llamada.
+ *
+ * Solo contactos de la libreta. No un campo libre de username: en medio de
+ * una llamada nadie va a teclear un @ correctamente, y equivocarse cuesta
+ * cortar la llamada para nada -porque el grupo se crea antes de colgar, pero
+ * con la persona equivocada dentro-.
+ */
+@Composable
+private fun DialogoAnadirALlamada(
+    onCerrar: () -> Unit,
+    onElegido: (String) -> Unit,
+) {
+    val app = LocalContext.current.applicationContext as WtfuckApp
+    var gente by remember { mutableStateOf<List<ContactoEnt>?>(null) }
+    LaunchedEffect(Unit) { gente = app.repo.contactosLocales() }
+
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        containerColor = BgElev,
+        title = { Text("Añadir a la llamada", color = TextoPrimario) },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp)) {
+                // Se dice ANTES de elegir, porque no es lo que la gente
+                // espera: en otras apps se anade a la misma llamada. Aqui se
+                // crea un grupo, y ese grupo se queda.
+                Surface(
+                    color = Ambar.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        "Se creará un grupo con los tres y la llamada empezará de " +
+                            "nuevo ahí. El grupo se queda en tus chats.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Ambar,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+
+                val lista = gente
+                when {
+                    lista == null -> Text("Cargando…", color = TextoTerciario)
+                    lista.isEmpty() -> Text(
+                        "No tienes contactos guardados. Añade a alguien a tu libreta primero.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoSecundario,
+                    )
+                    else -> androidx.compose.foundation.lazy.LazyColumn {
+                        items(lista, key = { it.username }) { c ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onElegido(c.username) }
+                                    .padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                AvatarDeChat(
+                                    nombre = c.alias.ifBlank { c.username },
+                                    url = null,
+                                    clase = ClaseDeChat.DIRECTA,
+                                    tamano = 36.dp,
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        c.alias.ifBlank { c.username },
+                                        color = TextoPrimario,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    if (c.alias.isNotBlank()) {
+                                        Text(
+                                            "@" + c.username,
+                                            color = TextoTerciario,
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onCerrar) { Text("Cancelar", color = TextoSecundario) }
+        },
+    )
 }
 
 /**
@@ -741,6 +890,14 @@ private fun BotonesEnCurso(
     onCamara: () -> Unit,
     onAltavoz: () -> Unit,
     onCine: () -> Unit,
+    /**
+     * Anadir a alguien. `null` lo esconde.
+     *
+     * Solo en llamadas de DOS: en una de grupo ya se eligio a quien al
+     * empezar, y la malla admite cuatro. Ofrecerlo ahi seria ofrecer algo que
+     * a veces no cabe.
+     */
+    onAnadir: (() -> Unit)? = null,
     onColgar: () -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -785,6 +942,17 @@ private fun BotonesEnCurso(
             }
         }
         Spacer(Modifier.height(28.dp))
+        onAnadir?.let {
+            Spacer(Modifier.height(10.dp))
+            // Texto y no solo icono: lo que hace no es obvio -crea un grupo y
+            // vuelve a llamar- y un icono suelto invita a tocarlo sin saber.
+            TextButton(onClick = it) {
+                Icon(Icons.Filled.PersonAdd, null, Modifier.size(18.dp), tint = Cian)
+                Spacer(Modifier.width(8.dp))
+                Text("Añadir persona", color = Cian)
+            }
+        }
+
         BotonGrande(Icons.Filled.CallEnd, "Colgar", Coral, onColgar)
     }
 }
