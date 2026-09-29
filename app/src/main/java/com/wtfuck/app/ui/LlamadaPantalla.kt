@@ -47,6 +47,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlin.math.roundToInt
 import com.wtfuck.app.WtfuckApp
+import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.datos.ESTADO_CAIDO
 import com.wtfuck.app.datos.ESTADO_DENTRO
 import com.wtfuck.app.datos.ESTADO_RECHAZO
@@ -93,6 +94,28 @@ fun CapaLlamada() {
     // Para la ventana flotante y el fondo de una llamada de dos: la unica que
     // hay. Con mas de una se dibuja la rejilla.
     val videoRemoto = videosRemotos.values.firstOrNull()
+
+    /**
+     * La foto de quien esta al otro lado, si es una llamada de dos.
+     *
+     * Sale de la conversacion que ya esta en la base local: la llamada trae
+     * su `conversacionId`, y esa fila ya guarda de quien es la foto y su
+     * version -que es el que invalida la cache cuando alguien la cambia-.
+     *
+     * Asi no hace falta tocar el protocolo de llamadas ni pedirle nada mas al
+     * servidor: el dato ya estaba, solo que nadie lo miraba desde aqui.
+     *
+     * `null` en grupos: no hay foto de grupo, y poner la de un miembro
+     * cualquiera diria que la llamada es con esa persona.
+     */
+    val fotoDeLlamada by produceState<String?>(null, estado?.conversacionId, estado?.grupo) {
+        val conv = estado?.conversacionId
+        value = if (conv.isNullOrBlank()) null else {
+            val fila = app.repo.conversacion(conv)
+            if (fila == null || fila.tipo != "directa" || fila.avatarUsername.isBlank()) null
+            else ApiCliente.urlImagen(fila.avatarUsername, "avatar", fila.avatarVersion)
+        }
+    }
     val videoLocal by servicio.videoLocal.collectAsState()
     val ambito = rememberCoroutineScope()
 
@@ -319,7 +342,17 @@ fun CapaLlamada() {
                         // fuera una persona.
                         AvatarDeChat(
                             nombre = e.conQuien,
-                            url = null,
+                            // La foto, cuando la hay. Antes iba `null` fijo y
+                            // salian siempre las iniciales, aunque la persona
+                            // tuviera foto de perfil y se viera en el chat que
+                            // acababas de cerrar para llamarla.
+                            //
+                            // En un GRUPO se queda en iniciales a proposito:
+                            // no existe foto de grupo, y `conQuien` ahi es el
+                            // nombre del grupo. Usar la foto de alguien del
+                            // grupo seria decir que la llamada es con esa
+                            // persona.
+                            url = fotoDeLlamada,
                             clase = claseDeLlamada(e),
                             tamano = 112.dp,
                         )
