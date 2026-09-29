@@ -1,6 +1,9 @@
 package com.wtfuck.app.datos
 
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import java.io.File
 
@@ -41,6 +44,16 @@ class CazadorDeFallos(
     private val carpeta: File,
     private val version: String,
     private val modelo: String,
+    /**
+     * La version de Android, como numero de API.
+     *
+     * OJO con este nombre: se llama `android` y por tanto **tapa el paquete
+     * `android`** dentro de toda la clase. Escribir `android.os.Build` aqui
+     * no compila, porque `android` es este String. Por eso arriba van los
+     * imports de `Build`, `ActivityManager` y `ApplicationExitInfo` y se usan
+     * los nombres simples. El error que da -"Unresolved reference 'os'"- no
+     * se parece en nada a la causa.
+     */
     private val android: String,
     /** Inyectable para poder probar sin tocar el reloj del sistema. */
     private val ahora: () -> Long = System::currentTimeMillis,
@@ -115,6 +128,93 @@ class CazadorDeFallos(
         val todos = informes()
         if (todos.size <= Fallos.MAXIMO) return
         todos.dropLast(Fallos.MAXIMO).forEach { runCatching { it.delete() } }
+    }
+
+    /**
+     * Lo que el SISTEMA sabe de la muerte anterior del proceso.
+     *
+     * ## El punto ciego que esto cierra
+     *
+     * [instalar] solo atrapa **excepciones de Java**. No atrapa un fallo
+     * nativo, ni un ANR, ni que el sistema mate el proceso — y en esos casos
+     * el manejador ni siquiera llega a ejecutarse. La app desaparece de golpe
+     * y no queda absolutamente nada.
+     *
+     * Paso de verdad, en una llamada: el servidor veia `POST /v1/llamadas 200
+     * OK` y 600 ms despues el socket caido, y el telefono no tenia ni un
+     * informe. Un cierre sin rastro es el peor de todos, porque no hay por
+     * donde empezar.
+     *
+     * Android SI lo sabe: desde API 30 guarda un historial de por que murio
+     * cada proceso, y para los fallos y los ANR guarda tambien la traza. Se
+     * lee al arrancar y se convierte en un informe normal.
+     *
+     * ## Por debajo de API 30 no hay nada que hacer
+     *
+     * `getHistoricalProcessExitReasons` no existe antes. No hay sustituto: lo
+     * que se perdio, se perdio. Se declara en vez de fingir que esta cubierto.
+     */
+    fun revisarMuerteAnterior(ctx: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        runCatching {
+            val am = ctx.getSystemService(ActivityManager::class.java) ?: return
+            val salidas = am.getHistoricalProcessExitReasons(ctx.packageName, 0, 5)
+            val ultima = salidas.firstOrNull() ?: return
+
+            // Solo lo anormal. Cerrar la app a mano o que el sistema la pare
+            // por memoria no es un fallo que reportar, y avisar de eso seria
+            // ruido que ensena a cerrar el aviso sin leerlo.
+            val motivo = when (ultima.reason) {
+                ApplicationExitInfo.REASON_CRASH -> "excepcion no atrapada"
+                ApplicationExitInfo.REASON_CRASH_NATIVE -> "fallo nativo"
+                ApplicationExitInfo.REASON_ANR -> "la app dejo de responder"
+                ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE ->
+                    "el sistema la paro por consumo excesivo"
+                ApplicationExitInfo.REASON_PERMISSION_CHANGE ->
+                    "cambio de permisos"
+                ApplicationExitInfo.REASON_SIGNALED ->
+                    "el sistema la mato con una senal"
+                else -> return
+            }
+
+            // No repetir el mismo. La marca es la hora de la muerte, que el
+            // sistema da en epoch ms y no se repite.
+            val marca = File(carpeta, "ultima-muerte")
+            val visto = runCatching { marca.readText().trim().toLong() }.getOrNull() ?: 0L
+            if (ultima.timestamp <= visto) return
+
+            if (!carpeta.exists()) carpeta.mkdirs()
+            val sb = StringBuilder()
+            sb.append("wtfuck ").append(version).append('\n')
+            sb.append("cuando: ").append(
+                java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                    .format(java.util.Date(ultima.timestamp))
+            ).append('\n')
+            sb.append("aparato: ").append(Fallos.sanear(modelo))
+                .append(" · Android ").append(android).append('\n')
+            sb.append("lo dice el SISTEMA, no la app\n")
+            sb.append("motivo: ").append(motivo).append('\n')
+            ultima.description?.let { sb.append("detalle: ").append(Fallos.sanear(it)).append('\n') }
+            sb.append('\n')
+
+            // Para un fallo o un ANR, Android guarda la traza. Es justo lo que
+            // falta cuando la app se muere sin poder escribir nada.
+            runCatching {
+                ultima.traceInputStream?.use { entrada ->
+                    entrada.bufferedReader().useLines { lineas ->
+                        // Con tope: una traza de ANR trae TODOS los hilos y
+                        // son miles de lineas. Las primeras son el hilo
+                        // principal, que es donde esta el problema.
+                        lineas.take(120).forEach { sb.append(Fallos.sanear(it)).append('\n') }
+                    }
+                }
+            }
+
+            File(carpeta, "fallo-${ultima.timestamp}.txt").writeText(sb.toString())
+            marca.writeText(ultima.timestamp.toString())
+            podar()
+            Log.i(TAG, "Recuperado del sistema el motivo de la muerte anterior: $motivo")
+        }.onFailure { Log.w(TAG, "no se pudo leer la muerte anterior: ${it.message}") }
     }
 
     companion object {

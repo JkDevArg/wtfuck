@@ -115,6 +115,20 @@ class Actualizador(private val ctx: Context, private val api: ApiCliente) {
      */
     suspend fun alReconectar(): VersionResp? = consultar(forzar = true)
 
+    /**
+     * Si el servidor contesto la consulta, sin mirar si hay algo nuevo.
+     *
+     * Existe para poder distinguir las DOS cosas que `consultar` devuelve como
+     * `null`: "no hay nada nuevo" y "no se pudo preguntar". Para el aviso
+     * automatico da igual -en los dos casos no se molesta a nadie-, pero el
+     * boton manual tiene que decir la verdad: mostrar "ya tienes la ultima"
+     * cuando en realidad no hubo red es mentir justo a quien vino a
+     * comprobarlo.
+     */
+    suspend fun hayServidor(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { api.versionPublicada() }.isSuccess
+    }
+
     fun hayQueBajar(v: VersionResp): Boolean = PoliticaActualizacion.hayQueBajar(v, instalada)
 
     fun estaObsoleta(v: VersionResp): Boolean = PoliticaActualizacion.estaObsoleta(v, instalada)

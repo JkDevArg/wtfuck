@@ -147,6 +147,11 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
         // mientras tanto.
         fallos.instalar()
 
+        // Y lo que el SISTEMA sepa de la muerte anterior. Cubre justo lo que
+        // el manejador no puede: fallos nativos, ANR y muertes a manos del
+        // sistema, donde la app desaparece sin llegar a escribir nada.
+        fallos.revisarMuerteAnterior(this)
+
         Notificaciones.crearCanales(this)
 
         // Firebase se inicializa con lo que haya en disco, ANTES de pedirle

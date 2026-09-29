@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.NewReleases
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Storage
@@ -149,6 +150,8 @@ fun PerfilPantalla(
     var aviso by remember { mutableStateOf<String?>(null) }
     var subiendo by remember { mutableStateOf(false) }
     var confirmandoSalida by remember { mutableStateOf(false) }
+    var buscandoVersion by remember { mutableStateOf(false) }
+    var resultadoVersion by remember { mutableStateOf<String?>(null) }
     var eligiendoTema by remember { mutableStateOf(false) }
 
     // Cuantas advertencias tengo, y si soy staff. Las dos cosas cambian lo
@@ -512,8 +515,45 @@ fun PerfilPantalla(
                     icono = Icons.Filled.NewReleases,
                     titulo = "Novedades",
                     detalle = "Qué cambió en cada versión",
-                    conDivisor = false,
                     onClick = onNovedades,
+                )
+
+                // Buscar actualización, a mano.
+                //
+                // La app ya pregunta sola al abrir y al reconectar, pero eso
+                // no se ve: quien acaba de oír que hay una versión nueva no
+                // tiene forma de comprobarlo ni de saber que ya la tiene. Un
+                // botón que responde SIEMPRE algo -"ya estás al día" también
+                // es una respuesta- convierte una duda en un hecho.
+                FilaAjuste(
+                    icono = Icons.Filled.Refresh,
+                    titulo = "Buscar actualización",
+                    detalle = when {
+                        buscandoVersion -> "Comprobando…"
+                        else -> resultadoVersion ?: "Comprueba si hay una versión nueva"
+                    },
+                    conDivisor = false,
+                    onClick = {
+                        if (!buscandoVersion) {
+                            buscandoVersion = true
+                            resultadoVersion = null
+                            ambito.launch {
+                                val v = app.actualizador.consultar(forzar = true)
+                                resultadoVersion = when {
+                                    v != null -> "Hay una versión nueva: ${v.versionName}"
+                                    // `consultar` devuelve null tanto si no hay
+                                    // nada nuevo como si fallo la red. Se
+                                    // distinguen preguntando otra vez sin
+                                    // filtrar: sin eso, quedarse sin datos se
+                                    // veria como "estas al dia", que es mentir.
+                                    app.actualizador.hayServidor() ->
+                                        "Ya tienes la última (${com.wtfuck.app.BuildConfig.VERSION_NAME})"
+                                    else -> "No se pudo comprobar. ¿Tienes conexión?"
+                                }
+                                buscandoVersion = false
+                            }
+                        }
+                    },
                 )
             }
 
