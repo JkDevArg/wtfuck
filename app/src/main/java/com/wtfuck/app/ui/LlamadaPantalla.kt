@@ -48,7 +48,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlin.math.roundToInt
 import com.wtfuck.app.WtfuckApp
-import com.wtfuck.app.datos.ContactoEnt
+import com.wtfuck.app.datos.CandidatoLlamada
 import androidx.compose.foundation.lazy.items
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.datos.ESTADO_CAIDO
@@ -208,6 +208,7 @@ fun CapaLlamada() {
     if (minimizada) {
         VentanaFlotante(
             e = e,
+            foto = fotoDeLlamada,
             videoRemoto = videoRemoto,
             onExpandir = { minimizada = false },
             onColgar = { ambito.launch { servicio.colgar() } },
@@ -564,6 +565,7 @@ fun CapaLlamada() {
     if (anadiendo) {
         val e = estado
         DialogoAnadirALlamada(
+            conQuien = e?.conQuien.orEmpty(),
             onCerrar = { anadiendo = false },
             onElegido = { quien ->
                 anadiendo = false
@@ -611,19 +613,21 @@ fun CapaLlamada() {
 /**
  * A quien anadir a la llamada.
  *
- * Solo contactos de la libreta. No un campo libre de username: en medio de
- * una llamada nadie va a teclear un @ correctamente, y equivocarse cuesta
- * cortar la llamada para nada -porque el grupo se crea antes de colgar, pero
- * con la persona equivocada dentro-.
+ * Personas con chat directo y contactos de la libreta, sin quien ya esta en
+ * la llamada. No un campo libre de username: en medio de una llamada nadie va
+ * a teclear un @ correctamente, y equivocarse cuesta cortar la llamada para
+ * nada -porque el grupo se crea antes de colgar, pero con la persona
+ * equivocada dentro-. La regla completa esta en `candidatosParaLlamada`.
  */
 @Composable
 private fun DialogoAnadirALlamada(
+    conQuien: String,
     onCerrar: () -> Unit,
     onElegido: (String) -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
-    var gente by remember { mutableStateOf<List<ContactoEnt>?>(null) }
-    LaunchedEffect(Unit) { gente = app.repo.contactosLocales() }
+    var gente by remember { mutableStateOf<List<CandidatoLlamada>?>(null) }
+    LaunchedEffect(conQuien) { gente = app.repo.candidatosParaLlamada(conQuien) }
 
     AlertDialog(
         onDismissRequest = onCerrar,
@@ -653,7 +657,7 @@ private fun DialogoAnadirALlamada(
                 when {
                     lista == null -> Text("Cargando…", color = TextoTerciario)
                     lista.isEmpty() -> Text(
-                        "No tienes contactos guardados. Añade a alguien a tu libreta primero.",
+                        "No hay nadie más a quien añadir: no tienes otros chats ni contactos guardados.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoSecundario,
                     )
@@ -667,19 +671,20 @@ private fun DialogoAnadirALlamada(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AvatarDeChat(
-                                    nombre = c.alias.ifBlank { c.username },
-                                    url = null,
+                                    nombre = c.nombre,
+                                    url = if (c.avatarUsername.isBlank()) null
+                                        else ApiCliente.urlImagen(c.avatarUsername, "avatar", c.avatarVersion),
                                     clase = ClaseDeChat.DIRECTA,
                                     tamano = 36.dp,
                                 )
                                 Spacer(Modifier.width(12.dp))
                                 Column {
                                     Text(
-                                        c.alias.ifBlank { c.username },
+                                        c.nombre,
                                         color = TextoPrimario,
                                         style = MaterialTheme.typography.bodyLarge,
                                     )
-                                    if (c.alias.isNotBlank()) {
+                                    if (!c.nombre.equals(c.username, ignoreCase = true)) {
                                         Text(
                                             "@" + c.username,
                                             color = TextoTerciario,
@@ -1199,6 +1204,8 @@ private fun VistaVideo(
 @Composable
 private fun VentanaFlotante(
     e: EstadoLlamada,
+    /** La misma que la pantalla completa: ver `fotoDeLlamada`. */
+    foto: String?,
     videoRemoto: VideoTrack?,
     onExpandir: () -> Unit,
     onColgar: () -> Unit,
@@ -1292,7 +1299,12 @@ private fun VentanaFlotante(
                 ) {
                     AvatarDeChat(
                         nombre = e.conQuien,
-                        url = null,
+                        // Estaba en `null` fijo: al arreglar la foto de la
+                        // pantalla completa quedo esta, la ventanita de
+                        // minimizar, con las iniciales. Se vio en el
+                        // emulador, con la foto de la misma persona en la
+                        // cabecera del chat de al lado.
+                        url = foto,
                         clase = claseDeLlamada(e),
                         tamano = 34.dp,
                     )

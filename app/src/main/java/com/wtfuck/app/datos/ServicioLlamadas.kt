@@ -258,9 +258,19 @@ class ServicioLlamadas(
         conQuien: String,
         conVideo: Boolean,
         invitados: List<String> = emptyList(),
-    ): Result<Unit> =
-        runCatching {
-            if (_estado.value != null) error("Ya hay una llamada en curso.")
+    ): Result<Unit> {
+        // TERMINADA no cuenta: es el segundo y medio en que la pantalla
+        // muestra "llamada finalizada" antes de cerrarse. Contarla como en
+        // curso rompia "anadir persona", que cuelga y vuelve a llamar al grupo
+        // enseguida: la llamada nueva chocaba con el cadaver de la vieja.
+        //
+        // Y FUERA del `runCatching`, a proposito: su `onFailure` limpia, y
+        // limpiar aqui colgaba la llamada que SI estaba en curso. Pulsar
+        // "llamar" en medio de una llamada te la cortaba.
+        if (_estado.value?.let { it.fase != EstadoLlamada.Fase.TERMINADA } == true) {
+            return Result.failure(IllegalStateException("Ya hay una llamada en curso."))
+        }
+        return runCatching {
 
             val creada = api.iniciarLlamada(IniciarLlamadaReq(convId, conVideo, invitados))
             turn = creada.turn
@@ -306,6 +316,7 @@ class ServicioLlamadas(
                 }
             }
         }.onFailure { limpiar(null) }
+    }
 
     /**
      * Llega una oferta. Es el timbre.
@@ -314,7 +325,14 @@ class ServicioLlamadas(
      * mismo socket y en el mismo instante que cualquier mensaje.
      */
     suspend fun ofertaEntrante(convId: String, deQuien: String, dispositivoOrigen: String, o: Carga.LlamadaOferta) {
-        val actual = _estado.value
+        // Una llamada TERMINADA es como ninguna: es el segundo y medio de
+        // "llamada finalizada" en pantalla. Contarla rechazaba como OCUPADO la
+        // llamada siguiente, en silencio. Paso con "anadir persona": quien
+        // estaba en la llamada recibia la del grupo 700 ms despues de colgar
+        // la vieja, la rechazaba sin sonar, y del otro lado salia "no entro".
+        // Es el mismo defecto que tenia el guardia de `llamar`, del lado de
+        // quien recibe.
+        val actual = _estado.value?.takeIf { it.fase != EstadoLlamada.Fase.TERMINADA }
 
         // Una oferta de la llamada en la que YA estoy no es un timbre: es otro
         // participante cerrando la malla conmigo. Se responde en el acto, sin
@@ -338,6 +356,7 @@ class ServicioLlamadas(
 
         if (actual != null && actual.llamadaId != o.llamadaId) {
             // Ocupado. Se rechaza en el acto en vez de dejar sonar las dos.
+            Log.i(TAG, "Oferta de ${o.llamadaId} rechazada: ocupado en ${actual.llamadaId}")
             runCatching {
                 enviarCifrado(convId, dispositivoOrigen, Carga.LlamadaFin(o.llamadaId, FinLlamada.OCUPADO))
             }
@@ -850,6 +869,12 @@ class ServicioLlamadas(
     }
 
     private fun limpiar(motivo: String?) {
+        // Una vez basta. Llega dos veces cuando cuelgo yo: por `colgar` y, poco
+        // despues, por el aviso de fin que devuelve el servidor. La segunda
+        // pisaba el motivo bueno ("colgada") con `null` y relanzaba el cierre
+        // diferido. Solo esta funcion pone TERMINADA, asi que si ya lo esta,
+        // todo lo de abajo ya se hizo.
+        if (_estado.value?.fase == EstadoLlamada.Fase.TERMINADA) return
         // De `conecto` y NO de `_estado.value.conectadaEn`: ese vuelve a cero
         // cuando alguien se cae, que es lo correcto para el cronometro y
         // ruinoso para la duracion. Ver la nota de `conecto`.

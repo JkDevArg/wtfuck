@@ -619,6 +619,18 @@ interface ChatDao {
     @Query("SELECT * FROM contacto")
     suspend fun libreta(): List<ContactoEnt>
 
+    /**
+     * Los chats directos, del que tuvo actividad mas reciente al mas viejo.
+     * Para el selector de "anadir a la llamada": ver `candidatosParaLlamada`.
+     */
+    @Query(
+        """SELECT c.* FROM conversacion c
+           WHERE c.tipo = 'directa'
+           ORDER BY COALESCE((SELECT MAX(m.creadoEn) FROM mensaje m
+                              WHERE m.conversacionId = c.id), 0) DESC"""
+    )
+    suspend fun directasRecientes(): List<ConversacionEnt>
+
     // ---------------------------------------------------------- stickers
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

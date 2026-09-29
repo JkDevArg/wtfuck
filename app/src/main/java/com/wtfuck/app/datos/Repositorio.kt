@@ -4411,7 +4411,26 @@ class Repositorio(
             return
         }
 
+        // Conversaciones que en esta pasada ya no pueden avanzar.
+        //
+        // El orden se respeta DENTRO de cada conversacion: si el primero de una
+        // no sale, los siguientes de esa misma esperan, o llegarian
+        // desordenados. Pero entre conversaciones no hay orden que cuidar.
+        //
+        // Antes estos casos hacian `return` y frenaban la cola entera: un
+        // contacto sin claves publicadas -una cuenta que nunca termino de
+        // arrancar, un dispositivo sin prekeys- dejaba sin salir los mensajes
+        // a TODOS los demas, y la barra se quedaba en "Enviando 2
+        // pendientes..." para siempre. Paso de verdad, en dos emuladores: el
+        // mensaje a una persona en linea no salia porque delante habia dos a
+        // una cuenta sin prekeys.
+        //
+        // Los fallos de TRANSPORTE siguen cortando todo, porque no son de una
+        // conversacion: sin red no sale ninguna.
+        val atascadas = mutableSetOf<String>()
+
         for (m in pendientes) {
+            if (m.conversacionId in atascadas) continue
             // Primero se registra el METADATO por HTTP. Es ahi donde el servidor
             // comprueba el permiso de enviar: si esta silenciado o expulsado, el
             // mensaje queda FALLIDO con un motivo legible en vez de perderse.
@@ -4469,7 +4488,8 @@ class Repositorio(
             val destinos = destinosDe(m.conversacionId)
             if (destinos == null) {
                 Log.w(TAG, "Sin destinos para ${m.conversacionId}, el mensaje espera")
-                return
+                atascadas += m.conversacionId
+                continue
             }
 
             // Si es grupo cambia el esquema de cifrado: clave de emisor en vez
@@ -4478,8 +4498,10 @@ class Repositorio(
             val copias = runCatching { cifrador.cifrar(m.conversacionId, esGrupo, destinos, cargaDe(m)) }
                 .getOrElse {
                     Log.w(TAG, "No se pudo cifrar ${m.id}: ${it.message}")
-                    return
+                    atascadas += m.conversacionId
+                    null
                 }
+                ?: continue
 
             // Una conversacion donde nadie tiene claves publicadas todavia: el
             // mensaje se queda en cola. Es lo correcto: mandarlo sin cifrar
@@ -4487,7 +4509,8 @@ class Repositorio(
             if (copias.isEmpty() && destinos.isNotEmpty()) {
                 Log.w(TAG, "Nadie con sesion en ${m.conversacionId}; ${m.id} sigue en cola")
                 _rechazos.tryEmit("Todavia no se pudo establecer el cifrado con esa persona.")
-                return
+                atascadas += m.conversacionId
+                continue
             }
 
             val sobre = Sobre(
@@ -4686,13 +4709,34 @@ class Repositorio(
         val nombre = nombreDeGrupoPara(listOf(otroUsuario, nuevoUsuario))
         val convId = nuevoGrupo(nombre, listOf(otroUsuario, nuevoUsuario))
 
-        llamadas.colgar(FinLlamada.COLGADA)
-        // Un respiro para que el servidor procese el fin antes de pedir la
-        // llamada nueva. Sin esto, `ocupado` puede ver todavia la anterior y
-        // devolver 409 por una carrera de milisegundos.
-        kotlinx.coroutines.delay(600)
+        // De aqui en adelante, en el ambito de la APP y no en el de quien llama.
+        //
+        // Quien llama es la pantalla de la llamada, y colgar la saca de la
+        // composicion: su `rememberCoroutineScope` se cancelaba durante el
+        // `delay` y la llamada nueva no se pedia nunca. Paso de verdad en dos
+        // emuladores: el grupo se creaba, la llamada vieja se colgaba (204) y
+        // despues nada, ni llamada ni aviso. Parecia que el boton cortaba la
+        // llamada sin mas.
+        //
+        // Un fallo aqui ya no puede volver por el `Result`: la pantalla que lo
+        // mostraria ya no existe. Sale por `rechazos`, que lo ensena el chat
+        // al que se vuelve al colgar.
+        ambito.launch {
+            llamadas.colgar(FinLlamada.COLGADA)
+            // Un respiro para que el servidor procese el fin antes de pedir la
+            // llamada nueva. Sin esto, `ocupado` puede ver todavia la anterior
+            // y devolver 409 por una carrera de milisegundos.
+            kotlinx.coroutines.delay(600)
 
-        llamadas.llamar(convId, nombre, conVideo).getOrThrow()
+            runCatching { llamadas.llamar(convId, nombre, conVideo).getOrThrow() }
+                .onFailure {
+                    Log.w(TAG, "Grupo creado pero la llamada no arranco: ${it.message}")
+                    _rechazos.tryEmit(
+                        "Se creó el grupo, pero la llamada no pudo empezar. Llama desde el grupo."
+                    )
+                }
+        }
+        Unit
     }
 
     /**
@@ -4725,6 +4769,19 @@ class Repositorio(
     suspend fun contactosLocales(): List<ContactoEnt> =
         runCatching { dao.libreta().sortedBy { (it.alias.ifBlank { it.username }).lowercase() } }
             .getOrDefault(emptyList())
+
+    /**
+     * A quien se puede sumar a la llamada con [enLlamada]. Local, por lo mismo
+     * que [contactosLocales]. La regla esta en `candidatosParaLlamada`.
+     */
+    suspend fun candidatosParaLlamada(enLlamada: String): List<CandidatoLlamada> =
+        runCatching {
+            candidatosParaLlamada(
+                libreta = dao.libreta(),
+                directas = dao.directasRecientes(),
+                excluir = listOf(enLlamada, sesion.username.orEmpty()),
+            )
+        }.getOrDefault(emptyList())
 
     /** Borra el historial local de un chat. El servidor no guarda historial. */
     suspend fun vaciarChat(convId: String) {
