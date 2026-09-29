@@ -253,6 +253,9 @@ dependencies {
     implementation(project(":protocol"))
 
     implementation(platform(libs.compose.bom))
+    // WorkManager: reintentar la cola de salida cuando vuelva la red, aunque
+    // la app este cerrada. Ver `ColaEnSegundoPlano`.
+    implementation(libs.androidx.work)
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)

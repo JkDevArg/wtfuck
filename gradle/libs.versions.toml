@@ -56,6 +56,7 @@ activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 navigation = "2.9.8"            # ver NOTA 5 de NetSwiss
 androidxCore = "1.19.0"
+work = "2.12.0"
 
 # --- android: persistencia y red ---
 room = "2.8.5"                  # ver NOTA 1: ultimo del grupo androidx.room
@@ -136,6 +137,7 @@ compose-material-icons-extended = { group = "androidx.compose.material", name = 
 
 # --- androidx base ---
 androidx-core               = { module = "androidx.core:core", version.ref = "androidxCore" }
+androidx-work               = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 androidx-activity-compose   = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 lifecycle-runtime-compose   = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-runtime-ktx       = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }

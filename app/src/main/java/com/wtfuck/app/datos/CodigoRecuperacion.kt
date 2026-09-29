@@ -231,11 +231,26 @@ object CodigoRecuperacion {
             bits += 5
             if (bits >= 8) {
                 bits -= 8
-                // El ultimo simbolo aporta 4 bits de relleno que no forman
+                // El ultimo simbolo aporta bits de relleno que no forman
                 // byte: sin este guard, escribirlos desbordaria el arreglo.
                 if (i < BYTES_TOTAL) out[i++] = ((acumulado shr bits) and 0xFF).toByte()
             }
         }
-        return if (i == BYTES_TOTAL) out else null
+        if (i != BYTES_TOTAL) return null
+
+        // Los bits de relleno TIENEN que ser cero, y comprobarlo no es
+        // pedanteria de formato.
+        //
+        // 17 bytes son 136 bits; 28 simbolos son 140. Sobran 4, que al
+        // generar se escriben a cero. Si no se comprobaran, esos 4 bits del
+        // ultimo simbolo darian igual: de los 31 simbolos equivocados que se
+        // pueden escribir ahi, 15 producirian los MISMOS 17 bytes, pasarian
+        // el byte de control y el codigo se daria por bueno.
+        //
+        // O sea que casi la mitad de las erratas en el ultimo caracter se
+        // aceptaban en silencio. Lo encontro la prueba que mide la tasa de
+        // deteccion: fallaba de vez en cuando, y el motivo no era el azar.
+        if (bits > 0 && (acumulado and ((1L shl bits) - 1)) != 0L) return null
+        return out
     }
 }

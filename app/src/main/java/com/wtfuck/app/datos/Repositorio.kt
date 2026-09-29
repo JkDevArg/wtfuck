@@ -4301,7 +4301,19 @@ class Repositorio(
      * lo correcto es esperarla y volver a mirar la cola. Salir en silencio
      * dejaria sin despachar justo lo que se acaba de encolar.
      */
-    suspend fun despachar() = candadoDespacho.withLock { despacharSinCandado() }
+    suspend fun despachar() = candadoDespacho.withLock {
+        despacharSinCandado()
+        // En UN solo sitio, al final y pase lo que pase dentro.
+        //
+        // `despacharSinCandado` tiene varios `return` tempranos -sin red, sin
+        // destinos, sin sesion de cifrado-, y son justo los casos en que hace
+        // falta reintentar mas tarde. Ponerlo en cada uno seria olvidarse en
+        // el proximo que se agregue; aqui se cubre solo.
+        runCatching { ColaEnSegundoPlano.ajustar(contexto, hayPendientes()) }
+    }
+
+    /** Si queda algo por salir. Lo usa el reintento en segundo plano. */
+    suspend fun hayPendientes(): Boolean = dao.cola().isNotEmpty()
 
     private suspend fun despacharSinCandado() {
         val pendientes = dao.cola()

@@ -120,3 +120,15 @@
 # nada. `SourceFile` se renombra a una constante para no filtrar rutas.
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# --- WorkManager -----------------------------------------------------
+#
+# WorkManager instancia los workers POR NOMBRE, con reflexion. R8 no ve
+# ninguna llamada al constructor y puede renombrarlo o quitarlo entero.
+#
+# La biblioteca trae sus propias reglas y probablemente baste, pero esto se
+# deja explicito a proposito: si fallara, el sintoma seria que la cola de
+# salida nunca se vacia con la app cerrada, SOLO en release, y sin ningun
+# error visible. Una linea contra un fallo que solo aparece en produccion y
+# no se parece a su causa.
+-keep class com.wtfuck.app.datos.ColaEnSegundoPlano$Repartidor { <init>(...); }

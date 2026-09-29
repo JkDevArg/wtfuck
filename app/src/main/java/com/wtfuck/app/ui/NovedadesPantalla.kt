@@ -111,6 +111,8 @@ object Novedades {
                 Cambio(TipoCambio.NUEVO, "La copia de seguridad puede llevar tu identidad cifrada. Al restaurarla en otro telefono conservas tu numero de seguridad y a tus contactos no les salta ninguna alarma."),
                 Cambio(TipoCambio.ARREGLO, "La pantalla de copia de seguridad decia que para restaurar en un telefono nuevo habia que entrar primero a la cuenta, y en un telefono nuevo no se podia entrar. Ahora dice lo que hace falta de verdad."),
                 Cambio(TipoCambio.MEJORA, "Si la app se cierra sola, guarda un informe en tu telefono y te ofrece enviarlo. No lleva el texto de tus chats ni tu usuario, y puedes leerlo entero antes de decidir."),
+                Cambio(TipoCambio.ARREGLO, "Los mensajes escritos sin conexion ahora salen solos cuando vuelve la red, aunque hayas cerrado la app. Antes se quedaban esperando a que la volvieras a abrir."),
+                Cambio(TipoCambio.SEGURIDAD, "El codigo de recuperacion detecta mejor las erratas: antes casi la mitad de los errores en el ultimo caracter se aceptaban en silencio."),
             ),
         ),
         NotasVersion(

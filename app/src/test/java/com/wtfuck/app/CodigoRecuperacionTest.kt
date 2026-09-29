@@ -126,10 +126,17 @@ class CodigoRecuperacionTest {
             val roto = limpio.substring(0, i) + otro + limpio.substring(i + 1)
             if (!CodigoRecuperacion.valido(roto)) detectadas++
         }
-        // El control es de un byte: deja pasar 1 de cada 256. Con 2000
-        // intentos se esperan unas 8 coladas; se exige >= 97% con margen.
+        // El control es de un byte: deja pasar 1 de cada 256, o sea un 0,4%.
+        // Se exige >= 99%, que deja margen para el azar pero NO para un
+        // agujero estructural.
+        //
+        // El umbral estuvo en 97% y fue un error: a ese nivel pasaba tambien
+        // con un defecto real -los 4 bits de relleno del ultimo simbolo no se
+        // comprobaban, y 15 de las 31 erratas posibles ahi se aceptaban-. La
+        // prueba fallaba de vez en cuando y parecia inestable; no lo era. Un
+        // umbral flojo convierte un fallo en ruido.
         val tasa = detectadas.toDouble() / intentos
-        assertTrue("solo detecto el ${(tasa * 100).toInt()}% de las erratas", tasa >= 0.97)
+        assertTrue("solo detecto el ${(tasa * 100).toInt()}% de las erratas", tasa >= 0.99)
     }
 
     @Test
