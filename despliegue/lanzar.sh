@@ -5,6 +5,21 @@
 #   bash despliegue/lanzar.sh 0.5.1                   # mejora pequena: sube el ultimo
 #   bash despliegue/lanzar.sh 0.6.0 --con-servidor    # mejora grande o cambio del servidor
 #
+# ## ESTO ES BASH. No lo corras desde PowerShell.
+#
+# En PowerShell, un argumento que empieza por `-` y lleva `=` se PARTE en el
+# primer punto. O sea que `-Papi=apiwtf.hackl4bs.com` le llega a Gradle como
+# dos cosas, y la segunda —`.hackl4bs.com`— la toma por el nombre de una
+# tarea:
+#
+#   Task '.hackl4bs.com' not found in root project 'wtfuck'
+#
+# El mensaje no se parece en nada a la causa, que es lo que lo hace costar una
+# tarde. En Git Bash no pasa. Si hay que lanzar a mano desde PowerShell, cada
+# `-P` va ENTRE COMILLAS:
+#
+#   .\gradlew.bat :app:assembleRelease "-Papi=apiwtf.hackl4bs.com" "-Pabi=arm64-v8a"
+#
 # Como numerar (semver): mejora pequena sube el ULTIMO numero (0.5.0 -> 0.5.1);
 # mejora grande sube el DEL MEDIO y el ultimo vuelve a 0 (0.5.3 -> 0.6.0). El
 # versionCode interno lo sube el script solo, sin importar el nombre.
@@ -57,6 +72,17 @@ for v in VPS_SSH DOCROOT DOMINIO_DESCARGA DOMINIO_API OPT_DIR COMPOSE ABIS; do
     exit 1
   fi
 done
+
+# Que esto sea BASH de verdad, y no PowerShell haciendo de bash.
+#
+# Si alguien lo corre desde PowerShell, los `-P` de Gradle se parten en el
+# primer punto y el error que sale —Task '.hackl4bs.com' not found— no se
+# parece en nada a la causa. Mejor pararlo aqui con el motivo escrito.
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "ERROR: esto tiene que correr en bash, no en otro interprete."
+  echo "       Desde PowerShell:  bash despliegue/lanzar.sh <version>"
+  exit 1
+fi
 
 VERSION_NOMBRE="${1:-}"
 if [ -z "$VERSION_NOMBRE" ]; then
@@ -147,7 +173,7 @@ fi
 
 echo "==> Compilando el APK de release..."
 ./gradlew :app:assembleRelease \
-  -Papi="$DOMINIO_API" -PversionCode="$CODE" -PversionName="$VERSION_NOMBRE" -Pabi="$ABIS" -q
+  "-Papi=$DOMINIO_API" "-PversionCode=$CODE" "-PversionName=$VERSION_NOMBRE" "-Pabi=$ABIS" -q
 
 echo "==> Generando la pagina de descarga y la huella..."
 bash despliegue/publicar-apk.sh >/dev/null
