@@ -47,6 +47,7 @@ fun AuthPantalla(onListo: () -> Unit) {
     // explica que lo que hacia falta era entrar.
     var esRegistro by rememberSaveable { mutableStateOf(app.sesion.username == null) }
     var recuperando by remember { mutableStateOf(false) }
+    var perdiElTelefono by remember { mutableStateOf(false) }
     var vinculando by remember { mutableStateOf(false) }
     // Aparte de `error` a proposito: un mensaje de exito en rojo y con un signo
     // de admiracion se lee como una falla.
@@ -314,6 +315,18 @@ fun AuthPantalla(onListo: () -> Unit) {
             Text("Vincular a una cuenta que ya tengo", color = TextoSecundario)
         }
 
+        // El cuarto camino: la cuenta existe, este aparato es nuevo, y el
+        // anterior YA NO ESTA para autorizar nada. Es el unico caso que hasta
+        // ahora no tenia salida — la cuenta se perdia para siempre.
+        //
+        // Se ofrece solo al ingresar: en el registro no hay cuenta que
+        // recuperar, y ponerlo ahi solo confundiria a quien empieza.
+        if (!esRegistro) {
+            TextButton(onClick = { perdiElTelefono = true; error = null }, enabled = !cargando) {
+                Text("Perdí mi teléfono", color = TextoSecundario)
+            }
+        }
+
         Spacer(Modifier.height(32.dp))
 
         // Transparencia deliberada: el usuario ve a que dispositivo queda atada
@@ -357,6 +370,21 @@ fun AuthPantalla(onListo: () -> Unit) {
             identidad = identidad,
             onCerrar = { vinculando = false },
             onVinculado = { vinculando = false; onListo() },
+        )
+    }
+
+    if (perdiElTelefono) {
+        DialogoRecuperarCuenta(
+            usuarioInicial = usuario,
+            identidad = identidad,
+            onCerrar = { perdiElTelefono = false },
+            onRecuperada = {
+                perdiElTelefono = false
+                // Recuperar YA deja la sesion abierta -el servidor devuelve un
+                // token-, asi que se entra directo en vez de mandar a la
+                // pantalla de ingreso a escribir la contrasena recien creada.
+                onListo()
+            },
         )
     }
 

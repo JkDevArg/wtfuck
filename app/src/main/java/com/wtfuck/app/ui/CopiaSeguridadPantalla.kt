@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.datos.CopiaSeguridad
+import com.wtfuck.app.datos.Repositorio
 import com.wtfuck.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -61,25 +62,41 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
     // selector de archivo devuelve una URI, y recien entonces se escribe la
     // copia -en streaming, para que los adjuntos no pasen por memoria-.
     var fraseExport by remember { mutableStateOf<CharArray?>(null) }
+    var codigoExport by remember { mutableStateOf<String?>(null) }
 
     val guardarArchivo = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         val frase = fraseExport
+        val conIdentidad = codigoExport != null
         fraseExport = null
         if (uri == null || frase == null) { trabajando = false; return@rememberLauncherForActivityResult }
         ambito.launch {
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
-                    ctx.contentResolver.openOutputStream(uri)?.use { app.repo.exportarCopiaA(it, frase) }
-                        ?: error("sin flujo")
+                    ctx.contentResolver.openOutputStream(uri)?.use {
+                        app.repo.exportarCopiaA(it, frase, codigoExport)
+                    } ?: error("sin flujo")
                 }.isSuccess
             }
             trabajando = false
+            codigoExport = null
             if (ok) app.ajustes.ultimaCopia = System.currentTimeMillis()
             ultimaCopia = app.ajustes.ultimaCopia
-            aviso = if (ok) "Copia guardada. Guárdala bien y no olvides la frase."
-                    else "No se pudo escribir el archivo."
+            // Se dice si lleva la identidad o no, porque cambia para que sirve
+            // la copia: sin ella se recuperan los mensajes, pero al restaurar
+            // en otro telefono a los contactos les saltara el aviso de que tu
+            // clave cambio. Es mejor saberlo ahora que descubrirlo entonces.
+            aviso = when {
+                !ok -> "No se pudo escribir el archivo."
+                conIdentidad ->
+                    "Copia guardada, con tu identidad dentro. Al restaurarla en " +
+                        "otro teléfono conservarás tu número de seguridad."
+                else ->
+                    "Copia guardada. No lleva tu identidad: si la restauras en " +
+                        "otro teléfono, a tus contactos les avisará de que tu " +
+                        "clave cambió."
+            }
         }
     }
 
@@ -168,10 +185,22 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
                     Text("Lee esto", color = Ambar, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(6.dp))
                     Text(
+                        // La última línea decía "para restaurar en un teléfono
+                        // nuevo, primero entra a tu cuenta" — y en un teléfono
+                        // nuevo NO se podía entrar: la cuenta está atada al
+                        // hardware. La pantalla mandaba a hacer algo imposible,
+                        // y quien la creyera descubría el problema el día que
+                        // ya no tenía arreglo. Ahora dice qué hace falta de
+                        // verdad, y dónde conseguirlo.
                         "• La frase no se guarda en ningún lado. Si la olvidas, la copia " +
                             "no sirve — ni el servidor ni nadie puede abrirla.\n" +
                             "• La copia incluye el texto de tus chats y sus fotos y archivos.\n" +
-                            "• Para restaurar en un teléfono nuevo, primero entra a tu cuenta.",
+                            "• Si añades tu código de recuperación, también llevará tu " +
+                            "identidad cifrada, y al restaurarla conservarás tu número de " +
+                            "seguridad.\n" +
+                            "• Para entrar en un teléfono nuevo hace falta el código de " +
+                            "recuperación. Créalo en Cuenta si aún no lo tienes: sin él, " +
+                            "esta copia no se puede restaurar en otro teléfono.",
                         color = TextoSecundario, style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -185,13 +214,19 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
             titulo = "Frase para la copia",
             confirmar = "Crear",
             pedirDosVeces = true,
+            ofrecerCodigo = true,
+            explicacionCodigo =
+                "Si lo añades, la copia llevará también tu identidad cifrada, y al " +
+                    "restaurarla en otro teléfono conservarás tu número de seguridad. " +
+                    "Sin él se guardan los mensajes igual.",
             onCerrar = { pidiendoFraseExport = false },
-            onFrase = { frase ->
+            onFrase = { frase, codigo ->
                 pidiendoFraseExport = false
                 trabajando = true
                 // La frase se lleva al selector de archivo; la copia se escribe
                 // en streaming cuando la persona elige donde guardar.
                 fraseExport = frase
+                codigoExport = codigo
                 guardarArchivo.launch("wtfuck-copia-${System.currentTimeMillis() / 1000}.wtfbackup")
             },
         )
@@ -203,21 +238,47 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
             titulo = "Frase de la copia",
             confirmar = "Restaurar",
             pedirDosVeces = false,
+            ofrecerCodigo = true,
+            explicacionCodigo =
+                "Si la copia lleva tu identidad, hace falta el código con el que " +
+                    "se guardó para recuperarla. Sin él se restauran los mensajes igual.",
             onCerrar = { pidiendoFraseImport = null },
-            onFrase = { frase ->
+            onFrase = { frase, codigo ->
                 pidiendoFraseImport = null
                 trabajando = true
                 ambito.launch {
                     val r = withContext(Dispatchers.IO) {
                         runCatching {
-                            ctx.contentResolver.openInputStream(uri)?.use { app.repo.restaurarCopiaDe(it, frase) }
+                            ctx.contentResolver.openInputStream(uri)?.use {
+                                app.repo.restaurarCopiaDe(it, frase, codigo)
+                            }
                                 ?: Result.failure(CopiaSeguridad.ErrorCopia(CopiaSeguridad.Fallo.FORMATO))
                         }.getOrElse { Result.failure(CopiaSeguridad.ErrorCopia(CopiaSeguridad.Fallo.FORMATO)) }
                     }
                     trabajando = false
                     r.onSuccess {
                         val fotos = if (it.adjuntos > 0) " y ${it.adjuntos} archivos" else ""
-                        aviso = "Restaurados ${it.mensajes} mensajes$fotos de ${it.conversaciones} chats."
+                        // Lo que paso con la identidad se dice SIEMPRE. El caso
+                        // CODIGO_NO_ABRE es el que hay que decir a tiempo:
+                        // todavia se puede reintentar con el codigo correcto, y
+                        // si no se avisa, la persona se entera cuando sus
+                        // contactos le pregunten por que les salto una alarma.
+                        val id = when (it.identidad) {
+                            Repositorio.ResumenRestauracion.Identidad.RESTAURADA ->
+                                " Tu identidad volvio: tus contactos no veran ningun aviso."
+                            Repositorio.ResumenRestauracion.Identidad.SIN_CODIGO ->
+                                " La copia trae tu identidad, pero no diste el codigo. " +
+                                    "Vuelve a restaurar con el si quieres conservar tu " +
+                                    "numero de seguridad."
+                            Repositorio.ResumenRestauracion.Identidad.CODIGO_NO_ABRE ->
+                                " Ese codigo no abre la identidad de esta copia. Los " +
+                                    "mensajes si se restauraron."
+                            Repositorio.ResumenRestauracion.Identidad.YA_HABIA_OTRA ->
+                                " Este telefono ya tenia otra identidad en uso y se " +
+                                    "respeto: cambiarla habria roto tus conversaciones."
+                            Repositorio.ResumenRestauracion.Identidad.NO_VENIA -> ""
+                        }
+                        aviso = "Restaurados ${it.mensajes} mensajes$fotos de ${it.conversaciones} chats.$id"
                     }.onFailure { e ->
                         aviso = when ((e as? CopiaSeguridad.ErrorCopia)?.fallo) {
                             CopiaSeguridad.Fallo.FORMATO -> "Ese archivo no es una copia de wtfuck."
@@ -271,11 +332,30 @@ private fun DialogoFrase(
     titulo: String,
     confirmar: String,
     pedirDosVeces: Boolean,
+    /**
+     * Si tambien se ofrece el codigo de recuperacion.
+     *
+     * Es OPCIONAL en los dos sentidos, y a proposito. Al exportar: quien no lo
+     * tenga a mano debe poder guardar sus mensajes igual — perder el historial
+     * por no encontrar un papel seria el peor cambio posible. Al restaurar: la
+     * copia puede no traerlo, y los mensajes se restauran lo mismo.
+     *
+     * Lo que se pierde sin el esta escrito en la propia pantalla, no enterrado
+     * en la documentacion.
+     */
+    ofrecerCodigo: Boolean = false,
+    explicacionCodigo: String = "",
     onCerrar: () -> Unit,
-    onFrase: (CharArray) -> Unit,
+    onFrase: (CharArray, String?) -> Unit,
 ) {
     var a by remember { mutableStateOf("") }
     var b by remember { mutableStateOf("") }
+    var codigo by remember { mutableStateOf("") }
+    // Un codigo a medio escribir bloquea el boton: es mejor que dejar seguir y
+    // que el sellado falle -o peor, que se guarde una copia SIN identidad
+    // creyendo que la lleva-.
+    val codigoMalo = ofrecerCodigo && codigo.isNotBlank() &&
+        !com.wtfuck.app.datos.CodigoRecuperacion.valido(codigo)
     // Minimo 8: una copia protegida por "1234" no esta protegida. Al exportar se
     // exige confirmar la frase, porque un error de tipeo en algo que no se ve
     // dejaria una copia que no abre y no habria como saberlo hasta necesitarla.
@@ -313,11 +393,31 @@ private fun DialogoFrase(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                if (ofrecerCodigo) {
+                    Spacer(Modifier.height(14.dp))
+                    HorizontalDivider(color = Slate.copy(alpha = 0.3f))
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        explicacionCodigo,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    CampoCodigoRecuperacion(
+                        valor = codigo,
+                        onCambio = { codigo = it },
+                        etiqueta = "Código de recuperación (opcional)",
+                        ayuda = "Puedes dejarlo en blanco.",
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(enabled = !malo, onClick = { onFrase(a.toCharArray()) }) {
-                Text(confirmar, color = if (malo) TextoTerciario else Cian)
+            TextButton(
+                enabled = !malo && !codigoMalo,
+                onClick = { onFrase(a.toCharArray(), codigo.ifBlank { null }) },
+            ) {
+                Text(confirmar, color = if (malo || codigoMalo) TextoTerciario else Cian)
             }
         },
         dismissButton = { TextButton(onClick = onCerrar) { Text("Cancelar", color = TextoSecundario) } },

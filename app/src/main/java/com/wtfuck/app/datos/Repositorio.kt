@@ -3192,6 +3192,78 @@ class Repositorio(
     suspend fun apagarTotp(password: String): Result<Unit> =
         runCatching { api.apagarTotp(password) }
 
+    // ------------------------------------------------ codigo de recuperacion
+
+    /**
+     * Fija -o rota- el codigo de recuperacion.
+     *
+     * Recibe el CODIGO y manda el VERIFICADOR: el codigo no sale de este
+     * telefono nunca. Quien llama ya lo genero con `CodigoRecuperacion.generar`
+     * y se lo mostro a la persona.
+     */
+    suspend fun fijarRecuperacion(
+        codigo: String,
+        password: String,
+        totp: String? = null,
+    ): Result<Unit> = runCatching {
+        val limpio = CodigoRecuperacion.normalizar(codigo)
+            ?: throw IllegalArgumentException("Ese código de recuperación no es válido.")
+        api.fijarRecuperacion(
+            FijarRecuperacionReq(
+                verificadorB64 = Base64Util.enc(CodigoRecuperacion.verificadorServidor(limpio)),
+                password = password,
+                totp = totp,
+            )
+        )
+    }
+
+    suspend fun estadoRecuperacion(): Result<EstadoRecuperacion> =
+        runCatching { api.estadoRecuperacion() }
+
+    /**
+     * Da de alta ESTE telefono con el codigo de recuperacion.
+     *
+     * ## El orden importa, y la pantalla lo impone
+     *
+     * Conviene **restaurar la copia antes** de llamar aqui: asi `identidadPub`
+     * es la identidad de siempre y a los contactos no les salta el aviso de
+     * clave cambiada. Si se llama antes, la cuenta se recupera igual pero con
+     * identidad nueva, y eso ya no se puede deshacer.
+     *
+     * Por eso `id.identidadPub` se lee en el momento de llamar y no antes: si
+     * la restauracion acaba de escribir la identidad de la copia, es esa la
+     * que se publica.
+     */
+    suspend fun recuperarDispositivo(
+        username: String,
+        telefono: String,
+        codigoSms: String,
+        codigoRecuperacion: String,
+        passwordNueva: String,
+        id: Hardware.Identidad,
+        etiqueta: String,
+        totp: String? = null,
+    ): Result<Unit> = runCatching {
+        val limpio = CodigoRecuperacion.normalizar(codigoRecuperacion)
+            ?: throw IllegalArgumentException("Ese código de recuperación no es válido.")
+        val antes = sesion.usuarioId
+        api.recuperarDispositivo(
+            RecuperarDispositivoReq(
+                username = username,
+                telefono = telefono,
+                codigo = codigoSms,
+                verificadorB64 = Base64Util.enc(CodigoRecuperacion.verificadorServidor(limpio)),
+                passwordNueva = passwordNueva,
+                totp = totp,
+                etiquetaDispositivo = etiqueta,
+                identidadPub = id.identidadPub,
+                hardwareHash = id.hardwareHash,
+                hardwareNivel = id.nivel,
+            )
+        )
+        limpiarSiCambioDeCuenta(antes)
+    }
+
     suspend fun pedirEliminacion(password: String, totp: String?): Result<EliminacionPedida> =
         runCatching { api.pedirEliminacion(EliminarCuentaReq(password, totp?.ifBlank { null })) }
 

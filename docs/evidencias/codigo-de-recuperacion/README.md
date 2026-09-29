@@ -1,6 +1,6 @@
 # Código de recuperación · la salida para "perdí el teléfono"
 
-Estado: **etapas 1, 2 y 3 hechas.** Falta la 4 (pantallas).
+Estado: **completo.** Las cuatro etapas.
 
 ---
 
@@ -239,6 +239,74 @@ de cuándo, nunca el verificador, y siempre es el de quien pregunta.
 
 ---
 
+## Las pantallas (etapa 4)
+
+### Aquí la interfaz *es* la seguridad
+
+El código más fuerte del mundo no sirve si la persona cierra el diálogo sin
+anotarlo. Y eso es lo que pasa por defecto: una pantalla que muestra algo y
+tiene un botón "Entendido" se cierra sin leer, siempre.
+
+Por eso el diálogo son **dos pasos**, y el segundo **hace teclear el código**:
+
+1. Se muestra en monoespaciada, con botón de copiar.
+2. Hay que escribirlo para poder guardar.
+
+No es un trámite de más: es la única forma de comprobar que el código existe
+fuera de esa pantalla. Quien lo copie y lo pegue se salta la comprobación, y se
+acepta — pegar también significa que salió de ahí.
+
+**La confirmación compara normalizado**, no como cadena: quien lo anotó en
+minúsculas o sin guiones lo escribió bien, y decirle "no coincide" sería la
+peor forma de perder la confianza en una pantalla de seguridad.
+
+### Lo que no se hace
+
+**El código no se guarda en el teléfono.** Ni en la base cifrada, ni en
+preferencias, ni en un archivo. Guardarlo ahí lo ataría al aparato que la
+persona va a perder — y entonces no sería una salida, sería un adorno.
+
+### El aviso que hay que dar antes, no después
+
+En "Perdí mi teléfono", en ámbar y antes de cualquier campo:
+
+> Si tienes copia de seguridad, restáurala **ANTES** de esto.
+
+No es un consejo de estilo. Al darse de alta, el aparato publica su identidad;
+si la copia no se restauró todavía publicará una identidad **nueva**, y a todos
+los contactos les saltará el aviso de clave cambiada. **Eso no se puede
+deshacer después.**
+
+### Los cuatro caminos de la pantalla de entrada
+
+| Camino | Cuándo |
+|---|---|
+| Ingresar | La cuenta existe y este aparato ya está vinculado |
+| Vincular | El aparato es nuevo y **el anterior sigue en la mano** para autorizar |
+| Olvidé mi contraseña | Se puede entrar pero no se recuerda la clave |
+| **Perdí mi teléfono** | El aparato es nuevo y **el anterior ya no está** |
+
+El cuarto no existía. Era el único caso sin salida.
+
+### El texto que mentía
+
+La pantalla de copia decía:
+
+> *"Para restaurar en un teléfono nuevo, primero entra a tu cuenta."*
+
+Y en un teléfono nuevo **no se podía entrar**. La pantalla mandaba a hacer algo
+imposible, y quien la creyera descubría el problema el día que ya no tenía
+arreglo. Ahora dice qué hace falta de verdad y dónde conseguirlo.
+
+### El resultado de restaurar se dice completo
+
+Los cinco casos de la identidad se traducen a una frase cada uno. El que
+importa es `CODIGO_NO_ABRE`: **todavía se puede reintentar** con el código
+correcto, y si no se avisa, la persona se entera cuando sus contactos le
+pregunten por qué les saltó una alarma.
+
+---
+
 ## Los archivos
 
 | Archivo | Qué hace |
@@ -248,6 +316,11 @@ de cuándo, nunca el verificador, y siempre es el de quien pregunta.
 | [`Identidad.kt` (servidor)](../../../server/src/main/kotlin/com/wtfuck/server/Identidad.kt) | `fijarRecuperacion`, `estadoRecuperacion`, `recuperarDispositivo` |
 | [`Main.kt`](../../../server/src/main/kotlin/com/wtfuck/server/Main.kt) | Las tres rutas, con limitador de ritmo en la pública |
 | [`recuperacion.mjs`](../../../pruebas/recuperacion.mjs) | **Nueva.** 40 comprobaciones, la mayoría de lo que debe fallar |
+| [`CodigoRecuperacionDialogo.kt`](../../../app/src/main/java/com/wtfuck/app/ui/CodigoRecuperacionDialogo.kt) | **Nuevo.** El diálogo de dos pasos y el campo reutilizable |
+| [`RecuperarCuentaDialogo.kt`](../../../app/src/main/java/com/wtfuck/app/ui/RecuperarCuentaDialogo.kt) | **Nuevo.** "Perdí mi teléfono" |
+| [`CuentaPantalla.kt`](../../../app/src/main/java/com/wtfuck/app/ui/CuentaPantalla.kt) | La sección del código, junto al 2FA |
+| [`CopiaSeguridadPantalla.kt`](../../../app/src/main/java/com/wtfuck/app/ui/CopiaSeguridadPantalla.kt) | Pide el código al hacer y restaurar; el texto que mentía, arreglado |
+| [`AuthPantalla.kt`](../../../app/src/main/java/com/wtfuck/app/ui/AuthPantalla.kt) | El cuarto camino |
 | [`CopiaSeguridad.kt`](../../../app/src/main/java/com/wtfuck/app/datos/CopiaSeguridad.kt) | Formato v3: `IdentidadRespaldo`, `sellarIdentidad`, `abrirIdentidad` |
 | [`Repositorio.kt`](../../../app/src/main/java/com/wtfuck/app/datos/Repositorio.kt) | `identidadSellada` y `restaurarIdentidad`; el código entra en export e import |
 | [`WtfuckApp.kt`](../../../app/src/main/java/com/wtfuck/app/WtfuckApp.kt) | Inyecta `SignalDao` en el repositorio |
@@ -259,7 +332,8 @@ de cuándo, nunca el verificador, y siempre es el de quien pregunta.
 | `CodigoRecuperacionTest` | ✅ 15 pruebas |
 | `IdentidadEnLaCopiaTest` | ✅ 13 pruebas |
 | `recuperacion.mjs` | ✅ **40 comprobaciones** contra servidor y Postgres reales |
-| Suite unitaria del app | ✅ 426 pruebas, 0 fallos |
+| `CodigoEnLaPantallaTest` | ✅ 6 pruebas |
+| Suite unitaria del app | ✅ **432 pruebas, 0 fallos** |
 | **39 suites de integración** | ✅ **1622 pasan, 0 fallan** |
 | `:server:test` | ✅ |
 
@@ -276,10 +350,16 @@ nada que arreglar.
 
 ## Lo que NO está verificado
 
-- **Todavía no es usable para nadie.** Falta la etapa 4: mostrar el código al
-  registrarse, pedirlo al hacer y restaurar la copia, y la pantalla de
-  "recuperar en un teléfono nuevo". Hasta entonces las rutas existen y
-  funcionan, pero ninguna pantalla las llama.
+- **Ninguna pantalla se ejecutó en un teléfono.** Compila, y la lógica que
+  consultan está probada (`CodigoEnLaPantallaTest`), pero Compose no se puede
+  probar sin pruebas instrumentadas y el emulador de esta máquina está
+  corrupto. Lo que falta ver con los ojos: que el código se lea bien en
+  pantalla, que el paso 2 no se pueda saltar, y que los avisos en ámbar salgan
+  donde deben.
+- **No se ofrece crear el código al registrarse.** Se crea desde Cuenta, y hay
+  un aviso en ámbar mientras no exista. Meterlo en el alta habría añadido un
+  paso obligatorio a una pantalla que ya pide bastante; conviene decidirlo
+  viéndolo funcionar.
 - **El sellado se prueba con una identidad de mentira** (64 bytes de azar), no
   con un `IdentityKeyPair` real de libsignal. Se prueba el sobre, no libsignal
   — correcto para una prueba unitaria, pero conviene decirlo.

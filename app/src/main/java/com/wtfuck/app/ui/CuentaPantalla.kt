@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.ChevronRight
@@ -90,10 +91,13 @@ fun CuentaPantalla(
     var activandoTotp by remember { mutableStateOf(false) }
     var eliminando by remember { mutableStateOf(false) }
     var apagandoTotp by remember { mutableStateOf(false) }
+    var creandoCodigo by remember { mutableStateOf(false) }
+    var recuperacion by remember { mutableStateOf<EstadoRecuperacion?>(null) }
 
     suspend fun recargar() {
         estado = app.repo.estadoCuenta()
         sesiones = app.repo.sesiones()
+        recuperacion = app.repo.estadoRecuperacion().getOrNull()
         cargando = false
     }
 
@@ -325,6 +329,54 @@ fun CuentaPantalla(
 
             Divisor()
 
+            // --- codigo de recuperacion ---------------------------------
+            //
+            // Va aqui, pegado al 2FA, porque son la misma clase de decision:
+            // cosas que se configuran una vez y solo importan el dia malo.
+            //
+            // El aviso en ambar cuando NO hay codigo no es alarmismo: sin el,
+            // perder el telefono es perder la cuenta de forma definitiva, y
+            // eso la gente no lo sabe hasta que le pasa. Decirlo despues seria
+            // tarde por definicion.
+            Seccion("Código de recuperación", Icons.Filled.VpnKey)
+
+            val rec = recuperacion
+            if (rec?.configurado == true) {
+                Text(
+                    "Configurado. Con él puedes recuperar tu cuenta en un teléfono nuevo.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextoPrimario,
+                )
+                if (rec.fijadoEn > 0) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Lo creaste el ${fechaLarga(rec.fijadoEn)}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = { creandoCodigo = true }) {
+                    Text("Crear uno nuevo", color = Cian)
+                }
+            } else {
+                Text(
+                    "Tu cuenta está atada a este teléfono. Sin un código de " +
+                        "recuperación, si lo pierdes NO hay forma de recuperarla: " +
+                        "ni con tu contraseña, ni con tu número, ni con una copia " +
+                        "de seguridad.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ambar,
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { creandoCodigo = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Cian, contentColor = TextoSobreAcento),
+                ) { Text("Crear el código") }
+            }
+
+            Divisor()
+
             // --- vinculo con el hardware --------------------------------
             //
             // Este bloque estaba en la pestaña de perfil, con la huella en
@@ -431,6 +483,15 @@ fun CuentaPantalla(
                 verificandoTelefono = false
                 ambito.launch { recargar() }
             },
+        )
+    }
+
+    if (creandoCodigo) {
+        DialogoCodigoRecuperacion(
+            rotando = recuperacion?.configurado == true,
+            pideTotp = estado?.totpActivado == true,
+            onCerrar = { creandoCodigo = false },
+            onListo = { creandoCodigo = false; ambito.launch { recargar() } },
         )
     }
 

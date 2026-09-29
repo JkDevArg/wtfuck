@@ -107,6 +107,9 @@ object Novedades {
                 Cambio(TipoCambio.SEGURIDAD, "Recuperar la cuenta por SMS ahora pide tambien el codigo de dos pasos. Antes el SMS lo saltaba: quien se quedara con tu numero podia cambiarte la contrasena y cerrarte todas las sesiones con el segundo factor puesto."),
                 Cambio(TipoCambio.ARREGLO, "La app ya no puede reenviar el mismo mensaje dos veces al reconectarse."),
                 Cambio(TipoCambio.MEJORA, "La lista de chats va mas suelta con historiales grandes."),
+                Cambio(TipoCambio.NUEVO, "Codigo de recuperacion: si pierdes el telefono, es lo unico que te devuelve la cuenta. Creado en Cuenta, se anota en papel. Antes, perder el telefono era perder la cuenta para siempre."),
+                Cambio(TipoCambio.NUEVO, "La copia de seguridad puede llevar tu identidad cifrada. Al restaurarla en otro telefono conservas tu numero de seguridad y a tus contactos no les salta ninguna alarma."),
+                Cambio(TipoCambio.ARREGLO, "La pantalla de copia de seguridad decia que para restaurar en un telefono nuevo habia que entrar primero a la cuenta, y en un telefono nuevo no se podia entrar. Ahora dice lo que hace falta de verdad."),
             ),
         ),
         NotasVersion(

@@ -788,6 +788,21 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun recuperarCuenta(req: RecuperarReq): Unit =
         pedir("$RUTA_CUENTA/recuperar", "POST", jsonApp.encodeToString(req), false)
 
+    // --- codigo de recuperacion ---------------------------------------
+    //
+    // Lo que viaja es el VERIFICADOR derivado, nunca el codigo. Ver
+    // `CodigoRecuperacion`.
+
+    suspend fun fijarRecuperacion(req: FijarRecuperacionReq): Unit =
+        pedir("$RUTA_CUENTA/recuperacion", "PUT", jsonApp.encodeToString(req), true)
+
+    suspend fun estadoRecuperacion(): EstadoRecuperacion =
+        pedir("$RUTA_CUENTA/recuperacion", "GET", null, true)
+
+    /** Sin sesion: es justo el caso en que no se puede tener una. */
+    suspend fun recuperarDispositivo(req: RecuperarDispositivoReq): SesionResp =
+        pedir("$RUTA_CUENTA/recuperar-dispositivo", "POST", jsonApp.encodeToString(req), false)
+
     suspend fun iniciarTotp(): TotpIniciado =
         pedir("$RUTA_CUENTA/totp", "POST", null, true)
 
