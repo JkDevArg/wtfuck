@@ -189,6 +189,7 @@ const CERRADAS = [
   { n: 'los destinos -o sea los aparatos- de una conversacion ajena',
     r: (w) => `/v1/conversaciones/${w.G}/destinos` },
   { n: 'el metadato de un mensaje ajeno', r: (w) => `/v1/mensajes/${w.M}` },
+  { n: 'a quien le llego y quien leyo un mensaje ajeno', r: (w) => `/v1/mensajes/${w.M}/info` },
   { n: 'un adjunto ajeno', r: (w) => `/v1/adjuntos/${w.ADJ}` },
   { n: 'un canal privado ajeno', r: (w) => `/v1/canales/${w.CANAL_PRIV}` },
   { n: 'las publicaciones de un canal privado ajeno', r: (w) => `/v1/canales/${w.CANAL_PRIV}/publicaciones` },

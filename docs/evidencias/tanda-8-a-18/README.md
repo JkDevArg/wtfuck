@@ -327,7 +327,50 @@ crear una carpeta nueva con ese chat ya adentro (`13c-`, `13d-`).
 `CarpetasTest`: 7 pruebas de nombres y límites. Room 27 (tablas `carpeta` y
 `carpeta_chat`).
 
+## 14. Info del mensaje en grupos
+
+En un mensaje propio de un grupo, *pulsación larga → Info* muestra quién lo
+leyó, a quién le llegó y a quién todavía no, con la hora (`14-`). En el
+emulador: "Leído · @goblin2026 hoy 17:02" y "Todavía no le llegó · @probador",
+que no está en ningún aparato.
+
+**Lo nuevo en el servidor (V46).** La lectura ya se guardaba (tabla `lectura`).
+La **entrega** no: acusar un sobre lo borra del buzón, y con él se iba el dato.
+Ahora el acuse anota en `entrega` quién recibió qué mensaje y cuándo, en la
+misma transacción que borra el sobre.
+
+- **Solo en grupos.** En una directa el doble check ya lo dice todo, y no
+  guardar es la forma más segura de no tener un dato.
+- **Solo el hecho:** quién, qué mensaje y cuándo. Dura lo que dura
+  `mensaje_meta`, y se borra con él.
+- Lo que llega a mis otros aparatos no cuenta: a mí no me "llega" lo que
+  escribí.
+
+**`GET /v1/mensajes/{id}/info`:**
+
+- **Solo para quien lo escribió.** A cualquier otro le responde 404 y no 403,
+  porque que el mensaje exista ya es un dato.
+- **Solo cuenta a quienes estaban** en el grupo cuando se mandó. Quien entró
+  después saldría para siempre como "pendiente".
+- **Lecturas recíprocas, como siempre.**
+  - Quien no comparte confirmaciones sale como *entregado* aunque haya leído, y
+    su lectura ni se guarda.
+  - Si quien pregunta las apagó, no ve ninguna, y la pantalla dice por qué en
+    vez de mostrar a todos como "no leído".
+
+`info.mjs` (**23 casos**) cubre:
+
+- entregas y lecturas;
+- a quien no comparte;
+- el 404 a otros miembros y a gente de afuera;
+- a quien entró después;
+- la reciprocidad;
+- que en una directa no se guarda nada y que lo propio no cuenta.
+
+`ajeno-lectura.mjs` exige que toda ruta de lectura nueva esté probada contra
+otra cuenta: avisó de esta y quedó cubierta (no eximida).
+
 ## Números
 
 - Unitarias: 590 → **602**, 0 fallos.
-- Integración: 1672 → **1708**, 0 fallos (suite nueva `notas.mjs`).
+- Integración: 1672 → **1733**, 0 fallos (suites nuevas `notas.mjs` e `info.mjs`).

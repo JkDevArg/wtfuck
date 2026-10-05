@@ -177,3 +177,29 @@ data class ReaccionAgrupada(
     /** Los primeros usernames, para el "tu y 3 mas". */
     val quienes: List<String> = emptyList(),
 )
+
+/**
+ * "Info del mensaje" en un grupo: a quien le llego y quien lo leyo.
+ *
+ * Solo la pide quien lo escribio. Ver `Mensajes.info` en el servidor.
+ */
+@Serializable
+data class InfoMensaje(
+    val mensajeId: String,
+    val miembros: List<EstadoEnMensaje>,
+    /**
+     * Falso si quien pregunta tiene apagadas las confirmaciones de lectura:
+     * son reciprocas, y entonces tampoco ve las de los demas. La pantalla lo
+     * dice en vez de mostrar a todos como "no leido".
+     */
+    val lecturasVisibles: Boolean = true,
+)
+
+@Serializable
+data class EstadoEnMensaje(
+    val username: String,
+    /** Cuando le llego a su primer aparato. Null = todavia no. */
+    val entregadoEn: Long? = null,
+    /** Cuando lo leyo. Null = no lo leyo, o no comparte confirmaciones. */
+    val leidoEn: Long? = null,
+)

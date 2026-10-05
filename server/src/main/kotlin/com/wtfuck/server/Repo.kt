@@ -1706,7 +1706,7 @@ object Repo {
         if (ids.isEmpty()) return emptyList()
         return Db.tx { c ->
             val arr = c.createArrayOf("uuid", ids.toTypedArray())
-            c.prepareStatement(
+            val acusados = c.prepareStatement(
                 // Se devuelve el id del MENSAJE y no el de la fila: el
                 // emisor solo conoce el suyo, y con el id derivado el
                 // "entregado" no encontraba ninguna fila que marcar.
@@ -1717,9 +1717,28 @@ object Repo {
                 st.setObject(1, dispositivoId)
                 st.setArray(2, arr)
                 st.executeQuery().use { rs ->
-                    rs.mapear { it.getObject(1, UUID::class.java) to it.getObject(2, UUID::class.java).toString() }
+                    rs.mapear { it.getObject(1, UUID::class.java) to it.getObject(2, UUID::class.java) }
                 }
             }
+            // Quien lo recibio, para "Info del mensaje". Solo en grupos y solo
+            // de mensajes ajenos: ver V46. Lo de mis otros aparatos no cuenta,
+            // a mi no me "llega" lo que escribi.
+            if (acusados.isNotEmpty()) {
+                c.prepareStatement(
+                    """INSERT INTO entrega (mensaje_id, usuario_id)
+                       SELECT m.id, d.usuario_id
+                         FROM mensaje_meta m
+                         JOIN conversacion cv ON cv.id = m.conversacion_id AND cv.tipo = 'grupo'
+                         JOIN dispositivo d ON d.id = ?
+                        WHERE m.id = ANY(?) AND m.autor_id <> d.usuario_id
+                       ON CONFLICT DO NOTHING"""
+                ).use { st ->
+                    st.setObject(1, dispositivoId)
+                    st.setArray(2, c.createArrayOf("uuid", acusados.map { it.second }.toTypedArray()))
+                    st.executeUpdate()
+                }
+            }
+            acusados.map { it.first to it.second.toString() }
         }
     }
 

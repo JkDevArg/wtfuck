@@ -272,6 +272,8 @@ private fun ChatAbierto(
     var eligiendoTemporales by remember { mutableStateOf(false) }
     var confirmarExportar by remember { mutableStateOf(false) }
     var accionesDe by remember { mutableStateOf<MensajeEnt?>(null) }
+    /** El mensaje del que se mira "Info". */
+    var infoDe by remember { mutableStateOf<String?>(null) }
     /** El mensaje que se esta por reenviar: abre "Reenviar a...". */
     var reenviando by remember { mutableStateOf<MensajeEnt?>(null) }
     /** Lo proximo que se elija en la galeria va como "ver una vez". */
@@ -1594,6 +1596,8 @@ private fun ChatAbierto(
 
     reenviando?.let { m -> HojaReenviar(m, onCerrar = { reenviando = null }) }
 
+    infoDe?.let { id -> HojaInfoMensaje(id, onCerrar = { infoDe = null }) }
+
     if (eligiendoMomento) {
         ElegirMomento(
             onElegir = { cuando ->
@@ -1641,6 +1645,11 @@ private fun ChatAbierto(
     accionesDe?.let { m ->
         HojaAccionesMensaje(
             mensaje = m,
+            // Solo lo mio, en un grupo y ya registrado en el servidor: en una
+            // directa los checks ya lo dicen todo.
+            onInfo = if (chat?.tipo == "grupo" && m.esMio && !m.retirado &&
+                m.estado != EstadoEnvio.PENDIENTE.name && m.estado != EstadoEnvio.FALLIDO.name
+            ) ({ accionesDe = null; infoDe = m.id }) else null,
             // La UI solo decide que mostrar; el servidor vuelve a comprobarlo.
             puedeFijar = (chat?.miJerarquia ?: 10) >= 50,
             puedeBorrarAjeno = (chat?.miJerarquia ?: 10) >= 50,

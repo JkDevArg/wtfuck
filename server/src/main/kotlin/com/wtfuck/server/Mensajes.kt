@@ -257,6 +257,67 @@ object Mensajes {
         leerMeta(c, mensajeId, yo.usuarioId)!!
     }
 
+    /**
+     * "Info del mensaje": a quien de un grupo le llego y quien lo leyo.
+     *
+     * Solo para quien lo escribio, y a cualquier otro un 404 y no un 403: que
+     * ese mensaje exista ya es un dato. Solo en grupos: ver V46.
+     *
+     * Cuenta a quienes estaban en el grupo cuando se mando. A quien entro
+     * despues no le llego ni le iba a llegar, y saldria para siempre como
+     * "pendiente".
+     *
+     * Las lecturas, reciprocas como siempre: si yo tengo las confirmaciones
+     * apagadas, no veo las de nadie. Y la de alguien que no las comparte nunca
+     * se guardo (`Repo.anotarLectura`).
+     */
+    fun info(yo: Auth, mensajeId: UUID): InfoMensaje = Db.query { c ->
+        val cab = c.prepareStatement(
+            """SELECT m.conversacion_id, m.autor_id, cv.tipo, m.creado_en
+                 FROM mensaje_meta m JOIN conversacion cv ON cv.id = m.conversacion_id
+                WHERE m.id = ?"""
+        ).use { st ->
+            st.setObject(1, mensajeId)
+            st.executeQuery().use { rs ->
+                rs.primero { Triple(it.getObject(1, UUID::class.java), it.getObject(2, UUID::class.java), it.getString(3)) }
+            }
+        }
+        if (cab == null || cab.second != yo.usuarioId || cab.third != "grupo") {
+            throw ErrorNegocio(404, "Ese mensaje no existe.")
+        }
+        val comparto = c.prepareStatement("SELECT priv_lectura FROM usuario WHERE id = ?").use { st ->
+            st.setObject(1, yo.usuarioId)
+            st.executeQuery().use { rs -> rs.primero { it.getBoolean(1) } } ?: true
+        }
+        val miembros = c.prepareStatement(
+            """SELECT u.username,
+                      extract(epoch FROM coalesce(e.entregado_en, l.leido_en)) * 1000,
+                      extract(epoch FROM l.leido_en) * 1000
+                 FROM participante p
+                 JOIN usuario u ON u.id = p.usuario_id
+                 JOIN mensaje_meta m ON m.id = ?
+                 LEFT JOIN entrega e ON e.mensaje_id = m.id AND e.usuario_id = p.usuario_id
+                 LEFT JOIN lectura l ON l.mensaje_id = m.id AND l.usuario_id = p.usuario_id
+                WHERE p.conversacion_id = m.conversacion_id AND p.salido_en IS NULL
+                  AND p.usuario_id <> m.autor_id AND p.unido_en <= m.creado_en
+                ORDER BY l.leido_en DESC NULLS LAST, e.entregado_en DESC NULLS LAST, u.username"""
+        ).use { st ->
+            st.setObject(1, mensajeId)
+            st.executeQuery().use { rs ->
+                rs.mapear {
+                    val entregado = (it.getObject(2) as? Number)?.toLong()
+                    val leido = (it.getObject(3) as? Number)?.toLong()
+                    EstadoEnMensaje(
+                        username = it.getString(1),
+                        entregadoEn = entregado,
+                        leidoEn = if (comparto) leido else null,
+                    )
+                }
+            }
+        }
+        InfoMensaje(mensajeId.toString(), miembros, lecturasVisibles = comparto)
+    }
+
     fun fijados(yo: Auth, convId: UUID): List<MensajeMeta> = Db.query { c ->
         Autz.exigir(c, yo.usuarioId, convId, Permisos.MIEMBRO_VER)
         c.prepareStatement(

@@ -337,6 +337,9 @@ class Repositorio(
         )
     }
 
+    /** "Info del mensaje" de uno mio en un grupo. Ver `Mensajes.info` en el servidor. */
+    suspend fun infoMensaje(id: String): InfoMensaje = api.infoMensaje(id)
+
     // --- Carpetas: ver `Carpetas` -------------------------------------------
 
     val carpetas: Flow<List<CarpetaEnt>> get() = dao.carpetas()

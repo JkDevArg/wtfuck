@@ -354,6 +354,8 @@ class ApiCliente(private val sesion: Sesion) {
 
     suspend fun notaParaMi(): ConversacionResumen = pedir(RUTA_NOTAS, "POST", null, true)
 
+    suspend fun infoMensaje(id: String): InfoMensaje = pedir("$RUTA_MENSAJES/$id/info", "GET", null, true)
+
     suspend fun crearGrupo(
         nombre: String,
         usernames: List<String>,

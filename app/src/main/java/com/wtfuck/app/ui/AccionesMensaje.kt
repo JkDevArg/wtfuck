@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -81,6 +82,8 @@ fun HojaAccionesMensaje(
     onReintentar: () -> Unit,
     onRetirar: () -> Unit,
     onDenunciar: () -> Unit,
+    /** "Info": a quien le llego y quien lo leyo. Null = no se ofrece. */
+    onInfo: (() -> Unit)? = null,
 ) {
     var confirmandoBorrado by remember { mutableStateOf(false) }
     val puedeRetirar = mensaje.esMio || puedeBorrarAjeno
@@ -134,6 +137,9 @@ fun HojaAccionesMensaje(
                 // "ver una vez".
                 if (mensaje.texto.isNotBlank()) {
                     Opcion("Copiar", Icons.Filled.ContentCopy, onClick = onCopiar)
+                }
+                if (onInfo != null) {
+                    Opcion("Info", Icons.Filled.Info, onClick = onInfo)
                 }
                 // Una encuesta o un evento son de SU chat: sus votos y sus
                 // asistentes viven ahi. Reenviados serian una copia muerta.
