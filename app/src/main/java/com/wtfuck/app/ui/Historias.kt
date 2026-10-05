@@ -1,5 +1,12 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.VideoView
@@ -345,7 +352,11 @@ fun VisorHistorias(
                 // Con foto o video el fondo es negro y no el color elegido: lo
                 // que se mira es la imagen, y un color fuerte alrededor le pelea
                 // la atencion y le cambia el aspecto.
-                .background(if (esDeMedio(actual)) Color.Black else colorDeFondo(actual.fondo))
+                // Un audio se dibuja sobre SU color: no hay foto que llene el negro.
+                .background(
+                    if (esDeMedio(actual) && actual.clase != ClaseHistoria.AUDIO) Color.Black
+                    else colorDeFondo(actual.fondo)
+                )
                 .pointerInput(actual.id, historias.size) {
                     detectTapGestures(
                         // Mantener pulsado pausa. Hace falta de verdad cuando
@@ -621,7 +632,7 @@ fun VisorHistorias(
 
 /** Si esta historia trae archivo. La clase la puso quien publico. */
 private fun esDeMedio(h: HistoriaEnt): Boolean =
-    h.clase == ClaseHistoria.IMAGEN || h.clase == ClaseHistoria.VIDEO
+    h.clase == ClaseHistoria.IMAGEN || h.clase == ClaseHistoria.VIDEO || h.clase == ClaseHistoria.AUDIO
 
 /** Si el archivo ya esta descargado y descifrado en este telefono. */
 private fun archivoListo(h: HistoriaEnt): Boolean =
@@ -636,10 +647,16 @@ private fun archivoListo(h: HistoriaEnt): Boolean =
  * tope de arriba, un numero inventado deja la pantalla clavada en una historia
  * que no avanza y sin ninguna pista de por que.
  */
-private fun duracionEnPantalla(h: HistoriaEnt): Float = when {
-    h.clase != ClaseHistoria.VIDEO -> DURACION_MS.toFloat()
-    h.adjuntoDuracionMs !in 1..TOPE_VIDEO_MS -> DURACION_MS.toFloat()
-    else -> h.adjuntoDuracionMs.toFloat().coerceAtLeast(DURACION_MS.toFloat())
+private fun duracionEnPantalla(h: HistoriaEnt): Float {
+    // Un audio, igual que un video, dura lo que dura: cortarlo a los cinco
+    // segundos seria no dejarlo escuchar. Con su propio tope.
+    val tope = when (h.clase) {
+        ClaseHistoria.VIDEO -> TOPE_VIDEO_MS
+        ClaseHistoria.AUDIO -> com.wtfuck.app.datos.AUDIO_ESTADO_MAX_MS
+        else -> return DURACION_MS.toFloat()
+    }
+    if (h.adjuntoDuracionMs !in 1..tope) return DURACION_MS.toFloat()
+    return h.adjuntoDuracionMs.toFloat().coerceAtLeast(DURACION_MS.toFloat())
 }
 
 /** Lo maximo que se le cree a la duracion declarada de un video. */
@@ -681,6 +698,9 @@ private fun MedioDeHistoria(h: HistoriaEnt, pausado: Boolean, modifier: Modifier
 
     Box(modifier, contentAlignment = Alignment.Center) {
         when {
+            h.clase == ClaseHistoria.AUDIO ->
+                AudioDeHistoria(archivo, pausado)
+
             h.clase == ClaseHistoria.VIDEO && archivo != null ->
                 VideoDeHistoria(archivo, pausado)
 
@@ -723,6 +743,54 @@ private fun MedioDeHistoria(h: HistoriaEnt, pausado: Boolean, modifier: Modifier
                 modifier = Modifier.size(52.dp),
             )
         }
+    }
+}
+
+/**
+ * Un estado de audio: el micrófono grande que late mientras suena.
+ *
+ * Con `MediaPlayer` y no con el reproductor de notas de voz del chat: aquí no
+ * hay controles —los controles de un estado son los toques de la pantalla— y
+ * hace falta exactamente esto: sonar al aparecer, pausar mientras se mantiene
+ * pulsado y callarse al pasar al siguiente.
+ */
+@Composable
+private fun AudioDeHistoria(archivo: File?, pausado: Boolean) {
+    var reproductor by remember(archivo?.path) { mutableStateOf<android.media.MediaPlayer?>(null) }
+    DisposableEffect(archivo?.path) {
+        val mp = archivo?.let { f ->
+            runCatching {
+                android.media.MediaPlayer().apply {
+                    setDataSource(f.path)
+                    setOnPreparedListener { it.start() }
+                    prepareAsync()
+                }
+            }.getOrNull()
+        }
+        reproductor = mp
+        onDispose { runCatching { mp?.release() } }
+    }
+    LaunchedEffect(pausado, reproductor) {
+        val mp = reproductor ?: return@LaunchedEffect
+        runCatching { if (pausado) mp.pause() else if (!mp.isPlaying) mp.start() }
+    }
+
+    val latido = rememberInfiniteTransition(label = "latido")
+    val escala by latido.animateFloat(
+        initialValue = 1f,
+        targetValue = if (archivo != null && !pausado) 1.12f else 1f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+        label = "escala",
+    )
+    Box(
+        Modifier
+            .size(132.dp)
+            .graphicsLayer { scaleX = escala; scaleY = escala }
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.18f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Filled.Mic, "Audio", tint = Color.White, modifier = Modifier.size(64.dp))
     }
 }
 
@@ -782,292 +850,8 @@ fun colorDeFondo(hex: String): Color {
 /** Los fondos que se ofrecen al publicar. */
 val FONDOS_HISTORIA = listOf("#0F1717", "#0B6E6D", "#8A5300", "#B3301A", "#3C4A4A")
 
-// ---------------------------------------------------------------------------
-//  El compositor
-// ---------------------------------------------------------------------------
-
-/**
- * Escribir una historia: texto con fondo de color, o una foto o un video.
- *
- * ## La vista previa es la misma pieza que el resultado
- *
- * El recuadro de arriba muestra **lo que se va a publicar**: el color elegido,
- * o la foto elegida con el texto encima como pie. Un selector que no enseña el
- * resultado obliga a publicar para ver cómo quedó, y una historia publicada no
- * se puede editar: se retira y se vuelve a hacer.
- *
- * Al elegir un archivo el selector de colores desaparece en vez de quedarse
- * apagado. No pinta nada ahí —el fondo de una foto es la foto— y un control
- * visible que no hace nada es peor que uno que no está.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun HojaPublicarHistoria(
-    /** Hay una publicacion en curso: el boton espera y no se puede tocar dos veces. */
-    publicando: Boolean = false,
-    /**
-     * Por que no salio, si no salio.
-     *
-     * Se muestra **dentro de la hoja** y no en un dialogo aparte a proposito:
-     * un dialogo obliga a cerrar la hoja para verlo, y con la hoja se iba la
-     * foto elegida y el pie escrito. El error aparece donde esta el trabajo,
-     * y el boton sigue ahi para reintentar sin rehacer nada.
-     */
-    error: String? = null,
-    onPublicar: (String, String, Uri?) -> Unit,
-    onCerrar: () -> Unit,
-) {
-    var texto by remember { mutableStateOf("") }
-    var fondo by remember { mutableStateOf(FONDOS_HISTORIA.first()) }
-    var medio by remember { mutableStateOf<Uri?>(null) }
-    val ctx = LocalContext.current
-
-    val elegir = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
-    ) { uri -> if (uri != null) medio = uri }
-
-    // La previa del archivo elegido. Es el archivo de la galeria -todavia sin
-    // copiar ni reducir-, asi que se decodifica ACOTADA: una foto de 50
-    // megapixeles entera en memoria tumba la pantalla antes de publicar nada.
-    val previa = remember(medio) {
-        medio?.let { uri ->
-            runCatching {
-                ctx.contentResolver.openInputStream(uri)?.use { flujo ->
-                    val opciones = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    BitmapFactory.decodeStream(flujo, null, opciones)?.asImageBitmap()
-                }
-            }.getOrNull()
-        }
-    }
-
-    ModalBottomSheet(
-        // **Se abre ENTERA, no a media altura.**
-        //
-        // `ModalBottomSheet` arranca "parcialmente expandido" por defecto, o
-        // sea ocupando la mitad de la pantalla, y **no desplaza su contenido**:
-        // lo que no entra simplemente no esta. En una hoja que es un
-        // formulario, lo que no entra es el boton del final, asi que la
-        // funcion entera queda inalcanzable sin que nada lo indique. Fue
-        // exactamente lo que paso al publicar una historia.
-        //
-        // Ninguna hoja de la app lo declaraba: el defecto estaba en las seis
-        // que son formularios, y solo se notaba en las mas altas.
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-
-        onDismissRequest = onCerrar,
-        containerColor = BgSurface,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },
-    ) {
-        // Con scroll y con `imePadding`, ademas de abrirse entera.
-        //
-        // Abrirse entera resuelve la pantalla en reposo; el scroll resuelve
-        // las pantallas cortas y, sobre todo, **el teclado**: al escribir el
-        // pie, el teclado se come la mitad de abajo y ahi vuelve a quedar el
-        // boton fuera. `imePadding` lo empuja y el scroll deja llegar.
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(horizontal = 18.dp)
-                .padding(bottom = 26.dp)
-        ) {
-            Text(
-                "Nueva historia",
-                color = TextoPrimario,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                // Se dice ANTES de escribir y no después: quien publica tiene
-                // que saber cuánto dura y quién lo ve mientras decide qué poner.
-                "Dura 24 horas. La ven las personas que permitas en Privacidad.",
-                color = TextoTerciario,
-                fontSize = 12.sp,
-            )
-            Spacer(Modifier.height(14.dp))
-
-            // La vista previa usa el MISMO color —o la MISMA foto— que tendrá
-            // al publicarse: un selector que no muestra el resultado obliga a
-            // publicar para ver.
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (medio != null) Color.Black else colorDeFondo(fondo)),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (previa != null) {
-                    Image(
-                        previa, null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
-                } else if (medio != null) {
-                    // Un video, o una foto que no se pudo decodificar: se dice
-                    // que hay algo elegido en vez de dejar el recuadro vacío,
-                    // que se leería como que la elección no tomó.
-                    Icon(
-                        Icons.Filled.PlayArrow, null,
-                        tint = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.size(44.dp),
-                    )
-                }
-
-                Text(
-                    texto.ifBlank { if (medio != null) "" else "Escribe algo" },
-                    color = if (texto.isBlank()) Color.White.copy(alpha = 0.45f) else Color.White,
-                    fontSize = if (medio != null) 15.sp else 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .align(if (medio != null) Alignment.BottomCenter else Alignment.Center)
-                        .padding(14.dp)
-                        .then(
-                            if (medio == null || texto.isBlank()) Modifier else Modifier
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(Color.Black.copy(alpha = 0.45f))
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ),
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                // Los colores solo cuando NO hay archivo: el fondo de una foto
-                // es la foto, y un control visible que no hace nada es peor
-                // que uno que no está.
-                if (medio == null) {
-                    FONDOS_HISTORIA.forEach { c ->
-                        Box(
-                            Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(colorDeFondo(c))
-                                .border(
-                                    width = if (c == fondo) 2.dp else 1.dp,
-                                    color = if (c == fondo) Cian else Slate.copy(alpha = 0.6f),
-                                    shape = CircleShape,
-                                )
-                                .clickable { fondo = c }
-                                .semantics { contentDescription = "Fondo de color" },
-                        )
-                    }
-                }
-
-                Spacer(Modifier.weight(1f))
-
-                if (medio == null) {
-                    IconButton(
-                        onClick = {
-                            elegir.launch(
-                                PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.ImageAndVideo
-                                )
-                            )
-                        },
-                    ) {
-                        Icon(
-                            Icons.Filled.AddPhotoAlternate,
-                            "Elegir una foto o un video",
-                            tint = Cian,
-                        )
-                    }
-                } else {
-                    TextButton(onClick = { medio = null }) {
-                        Icon(
-                            Icons.Filled.Refresh, null,
-                            tint = Cian, modifier = Modifier.size(17.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("Quitar el archivo", color = Cian, fontSize = 13.sp)
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-            OutlinedTextField(
-                value = texto,
-                onValueChange = { texto = it.take(TOPE_TEXTO_HISTORIA) },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = {
-                    Text(
-                        if (medio == null) "Qué quieres contar" else "Un pie, si quieres",
-                        color = TextoTerciario,
-                    )
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Cian, unfocusedBorderColor = Slate,
-                    focusedTextColor = TextoPrimario, unfocusedTextColor = TextoPrimario,
-                ),
-                minLines = 2,
-            )
-
-            error?.let { msg ->
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Coral.copy(alpha = 0.12f))
-                        .padding(11.dp)
-                        // Aparece despues de una espera, cuando el foco ya no
-                        // esta aqui: como region viva se anuncia sola.
-                        .semantics(mergeDescendants = true) {
-                            liveRegion = LiveRegionMode.Polite
-                            contentDescription = "No se pudo publicar. $msg"
-                        },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Filled.ErrorOutline, null,
-                        tint = Coral, modifier = Modifier.size(17.dp),
-                    )
-                    Spacer(Modifier.width(9.dp))
-                    Column {
-                        Text(msg, color = Coral, fontSize = 13.sp)
-                        Text(
-                            // Se dice que no hay que rehacer nada: es la
-                            // duda inmediata al ver un error despues de
-                            // elegir una foto y escribir un pie.
-                            "Tu foto y tu texto siguen aquí. Toca Publicar otra vez.",
-                            color = TextoTerciario,
-                            fontSize = 11.5.sp,
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-            Button(
-                // Con archivo el texto es opcional: una foto ya es la historia.
-                // Sin archivo hace falta algo que decir, o no hay historia.
-                onClick = { onPublicar(texto.trim(), fondo, medio) },
-                // Tambien apagado mientras publica: un segundo toque manda una
-                // historia mas, y subir un archivo tarda lo suficiente como
-                // para que alguien lo dude y vuelva a tocar.
-                enabled = (texto.isNotBlank() || medio != null) && !publicando,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Cian, contentColor = TextoSobreAcento,
-                ),
-            ) {
-                if (publicando) {
-                    CircularProgressIndicator(
-                        color = TextoSobreAcento,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                }
-                Text(if (publicando) "Publicando..." else "Publicar")
-            }
-        }
-    }
-}
+// El compositor de antes (HojaPublicarHistoria) se reemplazo por el editor a
+// pantalla completa: ver `EditorDeEstado`.
 
 /**
  * Los emojis de reaccion rapida.

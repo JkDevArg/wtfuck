@@ -43,7 +43,14 @@ object ClaseHistoria {
     const val IMAGEN = "imagen"
     const val VIDEO = "video"
 
-    val TODAS = listOf(TEXTO, IMAGEN, VIDEO)
+    /**
+     * Una grabacion de voz con un fondo de color. Llego con el editor de
+     * estados. Un cliente anterior no sabe dibujarla: la ve como un estado
+     * sin contenido, que es el fallo del lado seguro.
+     */
+    const val AUDIO = "audio"
+
+    val TODAS = listOf(TEXTO, IMAGEN, VIDEO, AUDIO)
 }
 
 /**

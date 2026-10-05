@@ -17,6 +17,9 @@ import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.DeleteForever
+import com.wtfuck.protocol.DIAS_GRACIA_ELIMINACION
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,7 +46,12 @@ import androidx.compose.material.icons.filled.Map
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
+fun PrivacidadPantalla(
+    onAtras: () -> Unit,
+    onExcepciones: () -> Unit,
+    /** Se pidio borrar la cuenta: las sesiones ya estan cerradas en el servidor. */
+    onCuentaBorrada: () -> Unit = {},
+) {
     // El de la app: `mapaDeTerceros` es estado de Compose y dos instancias
     // leen el mismo disco con estados distintos.
     val ajustes = (androidx.compose.ui.platform.LocalContext.current
@@ -55,6 +63,7 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
 
     var abierto by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var borrando by remember { mutableStateOf(false) }
     var cargando by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -375,6 +384,60 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 )
             }
 
+            // El directorio de Usuarios. Nace apagado y solo esto lo enciende:
+            // estar en una lista que cualquiera puede recorrer es exponerse, y
+            // eso no se presume. Ver V44.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = actual.directorio,
+                        role = Role.Switch,
+                        onValueChange = { guardar(actual.copy(directorio = it)) },
+                    )
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.Groups,
+                    null,
+                    tint = if (actual.directorio) Cian else Slate,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Aparecer en Usuarios", color = TextoPrimario)
+                    Text(
+                        "Te muestra en la lista de la pestaña Social, para que te encuentre " +
+                            "gente que no sabe tu usuario. Tu foto y tu nombre se ven según los " +
+                            "ajustes de arriba. Viene apagado.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                    // Si la busqueda esta cerrada, la lista lo respeta: solo te
+                    // ve quien te puede encontrar. Se dice, o parece que no anda.
+                    if (actual.directorio && actual.busqueda != Privacidad.TODOS) {
+                        Text(
+                            "Solo te verán quienes también pueden encontrarte por tu usuario.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Ambar,
+                        )
+                    }
+                }
+                Switch(
+                    checked = actual.directorio,
+                    onCheckedChange = null,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = TextoSobreAcento,
+                        checkedTrackColor = Cian,
+                        uncheckedThumbColor = TextoTerciario,
+                        uncheckedTrackColor = BgElev,
+                        uncheckedBorderColor = Slate,
+                    ),
+                )
+            }
+
+
 
             // La entrada a las listas va DESPUES de los ajustes: primero se
             // elige el nivel y solo entonces las listas significan algo.
@@ -500,8 +563,43 @@ fun PrivacidadPantalla(onAtras: () -> Unit, onExcepciones: () -> Unit) {
                 }
             }
 
+
+            Spacer(Modifier.height(28.dp))
+            HorizontalDivider(color = Slate.copy(alpha = 0.25f))
+
+            // Abajo de todo, donde se pidio y donde no se toca sin querer. El
+            // flujo pide confirmar varias veces: ver `DialogoEliminarCuenta`.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { borrando = true }
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.DeleteForever, null, tint = Coral, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Borrar cuenta", color = Coral)
+                    Text(
+                        "Tienes $DIAS_GRACIA_ELIMINACION días para arrepentirte: entrar de nuevo lo cancela.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+            }
+
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (borrando) {
+        FlujoBorrarCuenta(
+            onCerrar = { borrando = false },
+            onBorrada = {
+                borrando = false
+                onCuentaBorrada()
+            },
+        )
     }
 
     // El dialogo tambien depende de que haya datos: sin ellos no se abre.

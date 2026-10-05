@@ -948,8 +948,24 @@ private fun DialogoClave(
     )
 }
 
+/**
+ * El flujo entero de borrar la cuenta, para abrirlo desde cualquier pantalla
+ * (Privacidad lo pone al final de todo). Averigua solo si hace falta el
+ * segundo factor: quien lo abre no tiene por que saberlo.
+ */
 @Composable
-private fun DialogoEliminarCuenta(
+internal fun FlujoBorrarCuenta(onCerrar: () -> Unit, onBorrada: (EliminacionPedida) -> Unit) {
+    val app = LocalContext.current.applicationContext as WtfuckApp
+    val estado by produceState<EstadoCuenta?>(initialValue = null) { value = app.repo.estadoCuenta() }
+    DialogoEliminarCuenta(
+        pideTotp = estado?.totpActivado == true,
+        onCerrar = onCerrar,
+        onPedida = onBorrada,
+    )
+}
+
+@Composable
+internal fun DialogoEliminarCuenta(
     pideTotp: Boolean,
     onCerrar: () -> Unit,
     onPedida: (EliminacionPedida) -> Unit,
@@ -957,11 +973,106 @@ private fun DialogoEliminarCuenta(
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
-    var advertencias by remember { mutableStateOf<List<String>?>(null) }
+
+    /**
+     * Cuatro pasos, a proposito:
+     *
+     *  0. "¿Seguro?", con lo que pasa AHORA y lo que pasa a los 30 dias.
+     *  1. Lo que no se puede borrar, con nombre y apellido.
+     *  2. Escribir el propio usuario: no se puede confirmar sin leer.
+     *  3. La contrasena (y el segundo factor si lo hay).
+     *
+     * El pedido fue "varios mensajes para validar que este seguro". Un solo
+     * "¿seguro?" se confirma por reflejo; escribir el usuario no. Y la
+     * contrasena no es un paso de confirmacion sino de identidad: una sesion
+     * robada no deberia poder borrar a nadie.
+     */
+    var paso by remember { mutableIntStateOf(0) }
+    var escrito by remember { mutableStateOf("") }
+    val yo = app.sesion.username.orEmpty()
+
+    if (paso == 0) {
+        AlertDialog(
+            onDismissRequest = onCerrar,
+            containerColor = BgElev,
+            title = { Text("¿Seguro que quieres borrar tu cuenta?", color = TextoPrimario, fontSize = 18.sp) },
+            text = {
+                Column {
+                    Text(
+                        "Si sigues:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextoPrimario,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    listOf(
+                        "Se cierra tu sesión en todos tus aparatos, ahora mismo.",
+                        "Dejas de aparecer en Usuarios.",
+                        "En $DIAS_GRACIA_ELIMINACION días la cuenta @$yo se borra del servidor, " +
+                            "y eso ya no tiene vuelta atrás.",
+                    ).forEach {
+                        Text(
+                            "·  $it",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextoSecundario,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { paso = 1 }) { Text("Sí, quiero borrarla", color = Coral) }
+            },
+            dismissButton = {
+                TextButton(onClick = onCerrar) { Text("No, volver", color = Cian) }
+            },
+        )
+        return
+    }
+
+    if (paso == 2) {
+        val coincide = escrito.trim().removePrefix("@").equals(yo, ignoreCase = true) && yo.isNotBlank()
+        AlertDialog(
+            onDismissRequest = onCerrar,
+            containerColor = BgElev,
+            title = { Text("Confirma con tu usuario", color = TextoPrimario, fontSize = 18.sp) },
+            text = {
+                Column {
+                    Text(
+                        "Escribe @$yo para confirmar que es la cuenta que quieres borrar.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = escrito,
+                        onValueChange = { escrito = it.take(40) },
+                        prefix = { Text("@", color = TextoTerciario) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Coral,
+                            unfocusedBorderColor = Slate.copy(alpha = 0.6f),
+                            focusedTextColor = TextoPrimario,
+                            unfocusedTextColor = TextoPrimario,
+                            cursorColor = Coral,
+                        ),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { paso = 3 }, enabled = coincide) {
+                    Text("Continuar", color = if (coincide) Coral else TextoTerciario)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onCerrar) { Text("Cancelar", color = Cian) }
+            },
+        )
+        return
+    }
 
     // Antes de pedir la contrasena se dice lo que NO se puede borrar. Al reves
     // seria pedir una decision sin la informacion que la cambia.
-    if (advertencias == null) {
+    if (paso == 1) {
         AlertDialog(
             onDismissRequest = onCerrar,
             containerColor = BgElev,
@@ -997,7 +1108,7 @@ private fun DialogoEliminarCuenta(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { advertencias = emptyList() }) {
+                TextButton(onClick = { paso = 2 }) {
                     Text("Entiendo, continuar", color = Coral)
                 }
             },

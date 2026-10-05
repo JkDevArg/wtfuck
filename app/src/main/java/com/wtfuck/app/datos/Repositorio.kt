@@ -1941,13 +1941,19 @@ class Repositorio(
         texto: String,
         fondo: String = "",
         medio: Uri? = null,
+        /**
+         * La foto ya sale del editor a 1080x1920: no pasa por el reductor.
+         * Con el ajuste de calidad "Media", el reductor la bajaba a 1600 de
+         * lado mayor, y un estado se ve a pantalla completa.
+         */
+        renderizado: Boolean = false,
     ): Result<Unit> = runCatching {
         val id = UUID.randomUUID().toString()
         val destinos = api.destinosHistoria().destinos
 
         // Lo que se va a publicar. Con archivo, la clase sale de lo que ES el
         // archivo y no de lo que diga quien lo eligio.
-        val preparado = medio?.let { prepararMedioDeHistoria(id, it) }
+        val preparado = medio?.let { prepararMedioDeHistoria(id, it, renderizado) }
         val clase = preparado?.clase ?: ClaseHistoria.TEXTO
 
         // El metadato se registra ANTES de los sobres porque el servidor exige
@@ -2049,12 +2055,13 @@ class Repositorio(
      * Un documento no es una historia, asi que se rechaza aqui y no despues de
      * haberlo subido.
      */
-    private fun prepararMedioDeHistoria(id: String, uri: Uri): MedioDeHistoria {
+    private fun prepararMedioDeHistoria(id: String, uri: Uri, renderizado: Boolean = false): MedioDeHistoria {
         val original = archivos.datosDe(uri, ClaseAdjunto.IMAGEN)
         val clase = when (Media.claseDe(original.mime)) {
             ClaseAdjunto.IMAGEN -> ClaseHistoria.IMAGEN
             ClaseAdjunto.VIDEO -> ClaseHistoria.VIDEO
-            else -> throw IllegalArgumentException("Una historia solo admite una foto o un video.")
+            ClaseAdjunto.AUDIO -> ClaseHistoria.AUDIO
+            else -> throw IllegalArgumentException("Un estado admite una foto, un video o un audio.")
         }
 
         // Se reduce igual que una foto de chat: ahorra datos de quien publica,
@@ -2062,7 +2069,7 @@ class Repositorio(
         // pasarlo por el compresor JPEG lo deja quieto.
         var fuente = uri
         var datos = archivos.datosDe(uri, clase)
-        if (clase == ClaseHistoria.IMAGEN && original.mime != "image/gif") {
+        if (clase == ClaseHistoria.IMAGEN && original.mime != "image/gif" && !renderizado) {
             val reducida = archivos.temporal(id + "-red")
             if (archivos.prepararImagen(uri, ajustes.calidadImagen, reducida)) {
                 fuente = Uri.fromFile(reducida)
@@ -2076,8 +2083,7 @@ class Repositorio(
         }
         if (fuente != uri) fuente.path?.let { File(it).delete() }
 
-        val claseAdjunto =
-            if (clase == ClaseHistoria.VIDEO) ClaseAdjunto.VIDEO else ClaseAdjunto.IMAGEN
+        val claseAdjunto = claseAdjuntoDeHistoria(clase)
         val limite = ClaseAdjunto.limite(claseAdjunto)
         // Se comprueba aqui y no solo en el servidor para no cifrar y
         // transferir algo que va a ser rechazado igual.
@@ -2092,8 +2098,15 @@ class Repositorio(
             clase = clase,
             datos = datos.copy(bytes = local.length()),
             local = local,
-            miniatura = archivos.miniaturaDe(Uri.fromFile(local), claseAdjunto),
+            // Un audio no tiene miniatura: el visor dibuja su fondo de color.
+            miniatura = if (clase == ClaseHistoria.AUDIO) "" else archivos.miniaturaDe(Uri.fromFile(local), claseAdjunto),
         )
+    }
+
+    private fun claseAdjuntoDeHistoria(clase: String): String = when (clase) {
+        ClaseHistoria.VIDEO -> ClaseAdjunto.VIDEO
+        ClaseHistoria.AUDIO -> ClaseAdjunto.AUDIO
+        else -> ClaseAdjunto.IMAGEN
     }
 
     /**
@@ -2114,8 +2127,7 @@ class Repositorio(
             val llave = withContext(Dispatchers.IO) {
                 CifradorArchivo.cifrarA(medio.local.inputStream(), temp)
             }
-            val claseAdjunto =
-                if (medio.clase == ClaseHistoria.VIDEO) ClaseAdjunto.VIDEO else ClaseAdjunto.IMAGEN
+            val claseAdjunto = claseAdjuntoDeHistoria(medio.clase)
             val reserva = api.reservarAdjunto(
                 ReservarAdjuntoReq(
                     historiaId = id,
@@ -3889,6 +3901,13 @@ class Repositorio(
      */
     suspend fun perfilDe(username: String): UsuarioPublico? =
         runCatching { api.buscar(username) }.getOrNull()
+
+    /**
+     * Una pagina del directorio de Usuarios: solo quien se apunto. El filtro
+     * de privacidad lo aplica el servidor; ver `Repo.directorio`.
+     */
+    suspend fun directorio(consulta: String, desde: String = ""): Result<DirectorioResp> =
+        runCatching { api.directorio(consulta, desde) }
 
     suspend fun buscarCanales(consulta: String): List<CanalEnBusqueda> =
         runCatching { api.buscarCanales(consulta).canales }.getOrElse { emptyList() }

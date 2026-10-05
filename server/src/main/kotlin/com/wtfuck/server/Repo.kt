@@ -365,6 +365,97 @@ object Repo {
      * Ocultarse de la busqueda NO corta las conversaciones que ya existen: la
      * lista de participantes y los chats abiertos van por otro camino.
      */
+    /**
+     * Una pagina del directorio de Usuarios. Ver V44.
+     *
+     * Solo quien marco "aparecer en Usuarios", y de esos solo quien ademas:
+     *
+     *  - sigue activo: ni desactivado, ni suspendido, ni con la eliminacion
+     *    pedida -quien pidio irse no quiere que lo encuentren mientras tanto-;
+     *  - no me bloqueo ni lo bloquee yo;
+     *  - me deja encontrarlo (`priv_busqueda`): si no, tocarlo en la lista
+     *    abriria un perfil que responde 404, y la lista mentiria.
+     *
+     * Cada fila pasa por [leerPublico], asi que la foto, el nombre y la
+     * biografia salen con las mismas reglas que en el perfil: estar en la
+     * lista no es mostrar lo que la persona reservo para sus conocidos.
+     *
+     * Paginacion por clave (`desde` = el ultimo username visto) y no por
+     * OFFSET: con OFFSET, alguien que entra o sale de la lista mientras se
+     * recorre corre todo un lugar y se pierde o se repite una persona.
+     */
+    fun directorio(yo: Auth, consulta: String, desde: String): DirectorioResp = Db.query { c ->
+        val q = consulta.trim().removePrefix("@").lowercase().take(32)
+        // Un `%` o un `_` escritos a mano no son comodines: se escapan.
+        val patron = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        val conocidos = quienesMeConocen(c, yo.usuarioId)
+        val listado = excepcionesQueMeIncluyen(c, yo.usuarioId)
+        val comparte = comparteUltimaVez(c, yo.usuarioId)
+        val pagina = 30
+        val filas = c.prepareStatement(
+            """SELECT $COLS_PUBLICO, u.priv_busqueda
+               $FROM_PUBLICO
+               WHERE u.priv_directorio
+                 AND u.desactivado_en IS NULL
+                 AND u.eliminacion_pedida_en IS NULL
+                 AND NOT (u.suspendido_en IS NOT NULL
+                          AND (u.suspendido_hasta IS NULL OR u.suspendido_hasta > now()))
+                 AND u.id <> ?
+                 AND u.username > ?
+                 AND (? = '' OR u.username LIKE ? OR lower(coalesce(u.nombre_mostrado, '')) LIKE ?)
+                 AND NOT EXISTS (
+                       SELECT 1 FROM bloqueo b
+                       WHERE (b.bloqueador_id = u.id AND b.bloqueado_id = ?)
+                          OR (b.bloqueador_id = ? AND b.bloqueado_id = u.id))
+               ORDER BY u.username
+               LIMIT ?"""
+        ).use { st ->
+            st.setObject(1, yo.usuarioId)
+            st.setString(2, desde.lowercase())
+            st.setString(3, q)
+            st.setString(4, patron)
+            st.setString(5, patron)
+            st.setObject(6, yo.usuarioId)
+            st.setObject(7, yo.usuarioId)
+            // Se piden de mas porque `priv_busqueda` se filtra despues, con
+            // las excepciones ya resueltas para esta peticion.
+            st.setInt(8, pagina * 2)
+            st.executeQuery().use { rs ->
+                val out = mutableListOf<Pair<String, UsuarioPublico?>>()
+                while (rs.next()) {
+                    val id = rs.getObject(1, UUID::class.java)
+                    val username = rs.getString(2)
+                    val conocido = id in conocidos
+                    val visible = permiteCon(
+                        nivel = rs.getString(25),
+                        conocido = conocido,
+                        modo = modoDe(rs.getString(14), "busqueda"),
+                        enLaLista = (id to "busqueda") in listado,
+                    )
+                    out += username to if (!visible) null else leerPublico(
+                        rs, conocido = conocido, esMio = false,
+                        observadorComparte = comparte, listado = listado,
+                    )
+                }
+                out
+            }
+        }
+        val todos = filas.mapNotNull { it.second }
+        val visibles = todos.take(pagina)
+        // Donde sigue la proxima pagina:
+        //  - si sobraron visibles, desde el ultimo MOSTRADO (no el ultimo
+        //    leido: se saltarian los que sobraron);
+        //  - si no sobraron pero la consulta trajo la tanda entera, desde el
+        //    ultimo leido: lo descartado por privacidad tambien avanza;
+        //  - si trajo menos, no hay mas.
+        val siguiente = when {
+            todos.size > pagina -> visibles.last().username
+            filas.size >= pagina * 2 -> filas.last().first
+            else -> null
+        }
+        DirectorioResp(visibles, siguiente)
+    }
+
     fun buscar(yo: Auth, username: String): UsuarioPublico? = Db.query { c ->
         val u = publicoPorUsername(c, username, yo.usuarioId) ?: return@query null
         val id = runCatching { UUID.fromString(u.usuarioId) }.getOrNull() ?: return@query null
@@ -733,7 +824,7 @@ object Repo {
                       priv_ultima_vez, priv_nombre, priv_busqueda, priv_lectura,
                       priv_escribiendo, priv_historias,
                       priv_biografia, priv_videollamadas, priv_grabando, priv_solicitudes,
-                      priv_comunidades
+                      priv_comunidades, priv_directorio
                FROM usuario WHERE id = ?"""
         ).use { st ->
             st.setObject(1, usuarioId)
@@ -756,6 +847,7 @@ object Repo {
                         grabando = it.getBoolean(14),
                         solicitudes = it.getBoolean(15),
                         comunidades = it.getString(16),
+                        directorio = it.getBoolean(17),
                     )
                 }
             } ?: Privacidad()
@@ -779,7 +871,7 @@ object Repo {
                                   priv_escribiendo = ?, priv_historias = ?,
                                   priv_biografia = ?, priv_videollamadas = ?,
                                   priv_grabando = ?, priv_solicitudes = ?,
-                                  priv_comunidades = ?
+                                  priv_comunidades = ?, priv_directorio = ?
                WHERE id = ?"""
         ).use { st ->
             st.setString(1, p.foto); st.setString(2, p.estado)
@@ -794,7 +886,8 @@ object Repo {
             st.setBoolean(14, p.grabando)
             st.setBoolean(15, p.solicitudes)
             st.setString(16, p.comunidades)
-            st.setObject(17, yo.usuarioId)
+            st.setBoolean(17, p.directorio)
+            st.setObject(18, yo.usuarioId)
             st.executeUpdate()
         }
         p

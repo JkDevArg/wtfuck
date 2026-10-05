@@ -329,6 +329,14 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun buscar(username: String): UsuarioPublico =
         pedir("$RUTA_USUARIO/$username", "GET", null, true)
 
+    /** Una pagina del directorio de Usuarios. Ver V44. */
+    suspend fun directorio(consulta: String, desde: String): DirectorioResp =
+        pedir(
+            "$RUTA_DIRECTORIO?q=" + java.net.URLEncoder.encode(consulta, "UTF-8") +
+                "&desde=" + java.net.URLEncoder.encode(desde, "UTF-8"),
+            "GET", null, true,
+        )
+
     suspend fun excepcionesPrivacidad(): TodasLasExcepciones =
         pedir("$RUTA_PRIVACIDAD/excepciones", "GET", null, true)
 

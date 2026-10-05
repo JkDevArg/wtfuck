@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -27,8 +26,7 @@ import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.Contacto
-import com.wtfuck.protocol.Descubierto
-import com.wtfuck.protocol.Telefonos
+import com.wtfuck.protocol.UsuarioPublico
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -64,8 +62,7 @@ fun ContactosPantalla(
 
     var contactos by remember { mutableStateOf<List<Contacto>>(emptyList()) }
     var busqueda by rememberSaveable { mutableStateOf("") }
-    var descubriendo by remember { mutableStateOf(false) }
-    var agregando by remember { mutableStateOf(false) }
+    var buscandoUsuario by remember { mutableStateOf(false) }
     var editando by remember { mutableStateOf<Contacto?>(null) }
     var aviso by remember { mutableStateOf<String?>(null) }
 
@@ -97,11 +94,8 @@ fun ContactosPantalla(
                     },
                     title = { Text("Contactos", color = TextoPrimario) },
                     actions = {
-                        IconButton(onClick = { descubriendo = true }) {
-                            Icon(Icons.Filled.PersonSearch, "Buscar por teléfono", tint = Cian)
-                        }
-                        IconButton(onClick = { agregando = true }) {
-                            Icon(Icons.Filled.PersonAdd, "Agregar por usuario", tint = Cian)
+                        IconButton(onClick = { buscandoUsuario = true }) {
+                            Icon(Icons.Filled.PersonSearch, "Buscar por usuario", tint = Cian)
                         }
                     },
                 )
@@ -148,7 +142,7 @@ fun ContactosPantalla(
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Busca por número de teléfono, o agrega a alguien por su usuario.",
+                    "Busca a alguien por su @usuario y agrégalo.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextoTerciario,
                     // El bloque estaba centrado y el texto NO: con dos lineas,
@@ -158,9 +152,9 @@ fun ContactosPantalla(
                 )
                 Spacer(Modifier.height(16.dp))
                 Button(
-                    onClick = { descubriendo = true },
+                    onClick = { buscandoUsuario = true },
                     colors = ButtonDefaults.buttonColors(containerColor = Cian, contentColor = TextoSobreAcento),
-                ) { Text("Buscar por teléfono") }
+                ) { Text("Buscar por usuario") }
             }
 
             visibles.isEmpty() -> Box(Modifier.fillMaxSize().padding(pad), Alignment.Center) {
@@ -189,20 +183,22 @@ fun ContactosPantalla(
         }
     }
 
-    if (descubriendo) {
-        HojaDescubrir(
-            onCerrar = { descubriendo = false },
-            onAgregado = { ambito.launch { recargar() } },
-        )
-    }
-
-    if (agregando) {
-        DialogoAgregarPorUsuario(
-            onCerrar = { agregando = false },
-            onAgregar = { usuario, alias ->
+    if (buscandoUsuario) {
+        HojaBuscarUsuario(
+            yaGuardados = contactos.map { it.username }.toSet(),
+            onCerrar = { buscandoUsuario = false },
+            onAgregar = { usuario ->
                 ambito.launch {
-                    app.repo.guardarContacto(usuario, alias)
-                        .onSuccess { agregando = false; contactos = it }
+                    app.repo.guardarContacto(usuario, null)
+                        .onSuccess { contactos = it }
+                        .onFailure { aviso = it.message }
+                }
+            },
+            onEscribir = { usuario ->
+                buscandoUsuario = false
+                ambito.launch {
+                    runCatching { app.repo.nuevaDirecta(usuario) }
+                        .onSuccess { onAbrirChat(it) }
                         .onFailure { aviso = it.message }
                 }
             },
@@ -284,224 +280,119 @@ private fun FilaContacto(k: Contacto, onAbrir: () -> Unit, onMantener: () -> Uni
 }
 
 /**
- * Buscar por numero de telefono, como la agenda de WhatsApp.
+ * Buscar a alguien por su @usuario. Reemplaza a la busqueda por telefono.
  *
- * La explicacion de arriba no es relleno: la gente espera buscar por nombre, y
- * aqui hace falta el numero **exacto**. Sin decirlo, parece que la busqueda
- * esta rota.
+ * ## Que se encuentra, y que no
  *
- * Se normaliza mientras escribe y se muestra el resultado, porque un numero sin
- * prefijo es ambiguo y "no encontrado" por un prefijo mal supuesto es un fallo
- * imposible de diagnosticar desde aqui.
+ * Dos fuentes, y las dos respetan lo que cada persona eligio:
+ *
+ *  - el usuario EXACTO, con cualquiera que se deje encontrar (`priv_busqueda`):
+ *    es lo que ya hacia "nueva conversacion" escribiendo el @;
+ *  - sugerencias por PREFIJO, pero solo de quien eligio aparecer en Usuarios.
+ *
+ * No hay un buscador por prefijo abierto a todos a proposito: con eso,
+ * escribir "a", "b", "c"... listaria a cada persona del sistema, que es justo
+ * lo que el directorio voluntario existe para no hacer.
+ *
+ * Por eso la linea de abajo lo explica: sin decirlo, "no aparece nadie" al
+ * escribir medio nombre parece una busqueda rota.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HojaDescubrir(onCerrar: () -> Unit, onAgregado: () -> Unit) {
+private fun HojaBuscarUsuario(
+    yaGuardados: Set<String>,
+    onCerrar: () -> Unit,
+    onAgregar: (String) -> Unit,
+    onEscribir: (String) -> Unit,
+) {
     val app = LocalContext.current.applicationContext as WtfuckApp
-    val ambito = rememberCoroutineScope()
-
     var texto by remember { mutableStateOf("") }
-    var resultados by remember { mutableStateOf<List<Descubierto>>(emptyList()) }
     var buscando by remember { mutableStateOf(false) }
-    var buscado by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var resultados by remember { mutableStateOf<List<UsuarioPublico>>(emptyList()) }
+    val consulta = texto.trim().removePrefix("@").lowercase()
 
-    // Se normaliza aqui y tambien en el servidor. No es duplicar por gusto: el
-    // cliente necesita el numero canonico para MOSTRARLO antes de buscar, y el
-    // servidor no puede confiar en que el cliente lo haya hecho bien.
-    val numeros = remember(texto) {
-        texto.split(',', ';', '\n')
-            .mapNotNull { Telefonos.normalizar(it) }
-            .distinct()
-    }
-
-    LaunchedEffect(numeros) {
-        if (numeros.isEmpty()) {
-            resultados = emptyList()
-            buscado = false
-            return@LaunchedEffect
-        }
+    LaunchedEffect(consulta) {
+        if (consulta.length < 2) { resultados = emptyList(); return@LaunchedEffect }
+        delay(350)
         buscando = true
-        delay(400)
-        app.repo.descubrir(numeros)
-            .onSuccess { resultados = it; error = null }
-            .onFailure { error = it.message }
+        val exacto = app.repo.perfilDe(consulta)
+        val sugeridos = app.repo.directorio(consulta).getOrNull()?.usuarios.orEmpty()
+        resultados = listOfNotNull(exacto) + sugeridos.filter { it.username != exacto?.username }
         buscando = false
-        buscado = true
     }
 
     ModalBottomSheet(
-        // **Se abre ENTERA, no a media altura.**
-        //
-        // `ModalBottomSheet` arranca "parcialmente expandido" por defecto, o
-        // sea ocupando la mitad de la pantalla, y **no desplaza su contenido**:
-        // lo que no entra simplemente no esta. En una hoja que es un
-        // formulario, lo que no entra es el boton del final, asi que la
-        // funcion entera queda inalcanzable sin que nada lo indique. Fue
-        // exactamente lo que paso al publicar una historia.
-        //
-        // Ninguna hoja de la app lo declaraba: el defecto estaba en las seis
-        // que son formularios, y solo se notaba en las mas altas.
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-
         onDismissRequest = onCerrar,
-        containerColor = BgElev,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Slate) },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = BgSurface,
     ) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-            Text("Buscar por teléfono", style = MaterialTheme.typography.titleMedium, color = TextoPrimario)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Hace falta el número exacto: no se puede buscar por nombre. " +
-                    "Es lo que evita que alguien liste a todo el mundo probando.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextoSecundario,
-            )
-            Spacer(Modifier.height(14.dp))
-
+        Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 24.dp).imePadding()) {
+            Text("Buscar por usuario", style = MaterialTheme.typography.titleMedium, color = TextoPrimario)
+            Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = texto,
-                onValueChange = { texto = it },
-                placeholder = { Text("+51 987 654 321", color = TextoTerciario) },
-                minLines = 2,
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
-                ),
-                shape = RoundedCornerShape(10.dp),
+                onValueChange = { texto = it.take(33) },
+                prefix = { Text("@", color = TextoTerciario) },
+                placeholder = { Text("usuario", color = TextoTerciario) },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Cian,
-                    unfocusedBorderColor = Slate,
+                    unfocusedBorderColor = Slate.copy(alpha = 0.6f),
+                    focusedTextColor = TextoPrimario,
+                    unfocusedTextColor = TextoPrimario,
+                    cursorColor = Cian,
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
-                when {
-                    texto.isBlank() ->
-                        "Puedes pegar varios, separados por coma. Sin prefijo se asume " +
-                            "+${Telefonos.PAIS_POR_DEFECTO}."
-                    numeros.isEmpty() -> "Todavía no hay un número completo."
-                    numeros.size == 1 -> "Se buscara ${numeros.first()}"
-                    else -> "Se buscaran ${numeros.size} números"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = if (texto.isNotBlank() && numeros.isEmpty()) Ambar else TextoTerciario,
+                "Aparece quien escribas exacto, y por parte del nombre solo quien eligió " +
+                    "aparecer en Usuarios.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextoTerciario,
             )
-
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
 
             when {
-                buscando -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(color = Cian, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Text("Buscando...", color = TextoSecundario)
-                }
-
-                error != null -> Text(error!!, color = Coral, style = MaterialTheme.typography.bodySmall)
-
-                buscado && resultados.isEmpty() -> Text(
-                    // Los tres motivos, porque los tres son posibles y el
-                    // usuario no puede distinguirlos desde aqui.
-                    "Nadie con ese número. Puede que no tenga cuenta, que no haya " +
-                        "verificado su teléfono, o que no quiera que lo encuentren así.",
-                    color = TextoTerciario,
+                consulta.length < 2 -> Unit
+                buscando && resultados.isEmpty() -> Text("Buscando...", color = TextoSecundario)
+                resultados.isEmpty() -> Text(
+                    "No hay nadie con ese usuario, o no quiere que lo encuentren así.",
                     style = MaterialTheme.typography.bodySmall,
+                    color = TextoSecundario,
                 )
-
-                else -> resultados.forEach { d ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Avatar(
-                            nombre = d.nombreMostrado.ifBlank { d.username },
-                            url = ApiCliente.urlImagen(d.username, "avatar", d.avatarVersion),
-                            tamano = 42.dp,
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                d.nombreMostrado.ifBlank { "@${d.username}" },
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = TextoPrimario,
+                else -> LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(resultados, key = { it.usuarioId }) { u ->
+                        val nombre = u.nombreMostrado.ifBlank { u.username }
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onEscribir(u.username) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Avatar(
+                                nombre = nombre,
+                                url = ApiCliente.urlImagen(u.username, "avatar", u.avatarVersion),
+                                tamano = 42.dp,
                             )
-                            Text(
-                                "@${d.username}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextoTerciario,
-                            )
-                        }
-                        if (d.yaEsContacto) {
-                            Text("ya lo tienes", style = MaterialTheme.typography.labelSmall, color = Cian)
-                        } else {
-                            TextButton(onClick = {
-                                ambito.launch {
-                                    app.repo.guardarContacto(d.username)
-                                        .onSuccess {
-                                            resultados = resultados.map {
-                                                if (it.username == d.username) it.copy(yaEsContacto = true) else it
-                                            }
-                                            onAgregado()
-                                        }
-                                        .onFailure { error = it.message }
-                                }
-                            }) { Text("Agregar", color = Cian) }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(nombre, color = TextoPrimario, maxLines = 1)
+                                Text("@${u.username}", style = MaterialTheme.typography.labelSmall, color = TextoTerciario)
+                            }
+                            if (u.username in yaGuardados) {
+                                Text("ya lo tienes", style = MaterialTheme.typography.labelSmall, color = Cian)
+                            } else {
+                                TextButton(onClick = { onAgregar(u.username) }) { Text("Agregar", color = Cian) }
+                            }
                         }
                     }
                 }
             }
         }
     }
-}
-
-@Composable
-private fun DialogoAgregarPorUsuario(onCerrar: () -> Unit, onAgregar: (String, String?) -> Unit) {
-    var usuario by remember { mutableStateOf("") }
-    var alias by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onCerrar,
-        containerColor = BgElev,
-        title = { Text("Agregar contacto", color = TextoPrimario, fontSize = 18.sp) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = usuario,
-                    onValueChange = { usuario = it },
-                    label = { Text("Usuario") },
-                    prefix = { Text("@", color = TextoTerciario) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
-                    value = alias,
-                    onValueChange = { alias = it },
-                    label = { Text("Como lo llamas (opcional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "El alias es solo para ti. La otra persona no lo ve.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextoTerciario,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = usuario.isNotBlank(),
-                onClick = {
-                    onAgregar(
-                        usuario.trim().removePrefix("@").lowercase(),
-                        alias.trim().ifBlank { null },
-                    )
-                },
-            ) { Text("Agregar", color = Cian) }
-        },
-        dismissButton = { TextButton(onClick = onCerrar) { Text("Cancelar", color = TextoSecundario) } },
-    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

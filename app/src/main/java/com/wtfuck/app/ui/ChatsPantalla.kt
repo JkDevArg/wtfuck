@@ -1,6 +1,5 @@
 package com.wtfuck.app.ui
 
-import com.wtfuck.protocol.VistasDeHistoria
 import com.wtfuck.app.datos.Media
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -19,6 +18,7 @@ import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PersonAdd
@@ -104,6 +104,8 @@ fun ChatsPantalla(
     onCanales: () -> Unit,
     /** Crear un canal se hace en la pestaña Canales; esto la abre pidiendolo. */
     onNuevoCanal: () -> Unit = {},
+    /** La libreta, que salio de la barra de abajo. */
+    onContactos: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
@@ -111,18 +113,8 @@ fun ChatsPantalla(
     val cercaEstado by app.repo.cerca.estado.collectAsStateWithLifecycle()
     val ambito = rememberCoroutineScope()
 
-    // Modulo O. La fila de historias.
-    val historias by app.repo.historias().collectAsState(initial = emptyList())
-    var abiertoDe by remember { mutableStateOf<String?>(null) }
-    var componiendo by remember { mutableStateOf(false) }
-    var vistasDe by remember { mutableStateOf<VistasDeHistoria?>(null) }
-
-    // Se sincroniza al entrar y cada vez que llega un sobre: el metadato vive
-    // en el servidor y el contenido en el buzon, y la fila necesita los dos.
-    LaunchedEffect(Unit) { app.repo.sincronizarHistorias() }
-    LaunchedEffect(Unit) {
-        app.repo.avisos.collect { app.repo.sincronizarHistorias() }
-    }
+    // Los estados (modulo O) ya no viven aqui: se mudaron a la pestaña
+    // Social. Ver `SocialPantalla`.
 
     var verArchivados by rememberSaveable { mutableStateOf(false) }
     var filtro by rememberSaveable { mutableStateOf(Filtro.TODOS) }
@@ -184,9 +176,6 @@ fun ChatsPantalla(
     var confirmarBorrado by remember { mutableStateOf(false) }
     /** El menu de creacion desplegado. Ver [MenuDeCreacion]. */
     var creando by remember { mutableStateOf(false) }
-    /** Publicando una historia, y el motivo si no salio. Ver [HojaPublicarHistoria]. */
-    var publicandoHistoria by remember { mutableStateOf(false) }
-    var errorHistoria by remember { mutableStateOf<String?>(null) }
 
     // Salir de la seleccion con Atras, antes de que Atras signifique otra cosa.
     // Sin esto, el gesto natural para "me arrepenti" cierra la pestaña.
@@ -456,6 +445,7 @@ fun ChatsPantalla(
                     onConversacion = { arrancarEnGrupo = false; mostrarNueva = true },
                     onGrupo = { arrancarEnGrupo = true; mostrarNueva = true },
                     onCanal = onNuevoCanal,
+                    onContactos = onContactos,
                 )
             }
         },
@@ -464,22 +454,6 @@ fun ChatsPantalla(
       // dentro deja la lista corrida: el hueco de la barra inferior se
       // reservaria dos veces y los chats se irian al fondo de la pantalla.
       Column(Modifier.fillMaxSize().padding(pad)) {
-        // Va FUERA del `when` a proposito: dentro desapareceria justo cuando la
-        // lista de chats esta vacia, que es cuando alguien recien empieza y mas
-        // falta hace ver que esto existe.
-        // Tampoco en modo seleccion, por lo mismo que el buscador y los
-        // filtros: mientras se opera sobre un lote, todo lo que no sea el
-        // lote estorba, y tocar una historia por error pierde la seleccion.
-        if (seleccion.isEmpty()) {
-            FilaHistorias(
-                historias = historias,
-                miUsuario = app.sesion.username.orEmpty(),
-                onAbrir = { abiertoDe = it },
-                onPublicar = { componiendo = true },
-            )
-            HorizontalDivider(color = Slate.copy(alpha = 0.18f))
-        }
-
         when {
             chats.isEmpty() -> Vacio(
                 "Todavía no tienes conversaciones",
@@ -596,78 +570,6 @@ fun ChatsPantalla(
             }
         }
       }
-    }
-
-    // --- modulo O: el visor, el compositor y quien la vio ---------------
-
-    abiertoDe?.let { autor ->
-        // El mismo filtro que la fila: si no se anuncia, tampoco se abre. Si
-        // no, tocar un anillo llevaria a barras que solo dicen "no se pudo
-        // descifrar", que es lo que se vino a evitar.
-        val suyas = historias.filter { it.autor == autor && it.conContenido }
-        VisorHistorias(
-            delAutor = autor,
-            historias = suyas,
-            miUsuario = app.sesion.username.orEmpty(),
-            onVista = { id -> ambito.launch { app.repo.verHistoria(id) } },
-            onRetirar = { id ->
-                ambito.launch {
-                    app.repo.retirarHistoria(id)
-                    // Si era la ultima suya, el visor se queda sin nada que
-                    // mostrar: se cierra en vez de dejar una pantalla vacia.
-                    if (suyas.size <= 1) abiertoDe = null
-                }
-            },
-            onVerQuienes = { id ->
-                ambito.launch { vistasDe = app.repo.vistasDeHistoria(id) }
-            },
-            // El archivo se pide al abrirla y no al recibirla: lo que llego en
-            // el sobre es la miniatura, que ya dibuja la historia.
-            onDescargar = { id -> ambito.launch { app.repo.descargarArchivoDeHistoria(id) } },
-            // Responder cierra el visor: la respuesta se fue a un chat, y
-            // dejar la historia corriendo encima esconde donde acabo.
-            onResponder = { id, texto ->
-                abiertoDe = null
-                ambito.launch {
-                    app.repo.responderHistoria(id, texto)
-                        // El servidor puede decir que no -quien publica para
-                        // todos puede aceptar mensajes solo de conocidos- y
-                        // entonces hay que DECIRLO. Un boton de responder que
-                        // falla en silencio es peor que uno que no esta.
-                        .onFailure { errorDialogo = it.message ?: "No se pudo responder." }
-                }
-            },
-            onCerrar = { abiertoDe = null },
-        )
-    }
-
-    if (componiendo) {
-        HojaPublicarHistoria(
-            publicando = publicandoHistoria,
-            error = errorHistoria,
-            onPublicar = { texto, fondo, medio ->
-                // La hoja NO se cierra al empezar, solo al terminar bien.
-                //
-                // Se cerraba antes de saber el resultado, asi que un fallo de
-                // subida se llevaba por delante la foto elegida y el pie
-                // escrito: para reintentar habia que volver a abrir, volver a
-                // buscar la foto en la galeria y volver a escribir. Un error
-                // de red no deberia costar el trabajo de nadie.
-                publicandoHistoria = true
-                errorHistoria = null
-                ambito.launch {
-                    app.repo.publicarHistoria(texto, fondo, medio)
-                        .onSuccess { componiendo = false }
-                        .onFailure { errorHistoria = it.message ?: "No se pudo publicar." }
-                    publicandoHistoria = false
-                }
-            },
-            onCerrar = { componiendo = false; errorHistoria = null },
-        )
-    }
-
-    vistasDe?.let { v ->
-        HojaVistasHistoria(vistas = v, onCerrar = { vistasDe = null })
     }
 
     accionesDe?.let { chat ->
@@ -1456,13 +1358,18 @@ internal fun loteDe(marcados: List<ChatFila>) = LoteDeChats(
  * encontrar un icono. O sea que el elemento mas visible de la pantalla
  * resolvia la accion que menos falta hace descubrir.
  *
- * ## Por que NO esta "Historia"
+ * ## Por que NO esta "Estado"
  *
- * Porque ya tiene su sitio: el circulo "Publicar" de la fila de historias,
- * que esta justo encima y en su contexto. Ponerla tambien aqui seria el mismo
- * error que se acaba de corregir en el menu de tres puntos —dos caminos al
- * mismo sitio solo obligan a decidir cual es el bueno—, y esta vez con el
- * agravante de que el camino que ya existe es mejor.
+ * Porque tiene su sitio: la pestaña Social, con su boton "Nuevo estado" en
+ * contexto. Ponerlo tambien aqui seria el mismo error que se corrigio en el
+ * menu de tres puntos: dos caminos al mismo sitio solo obligan a decidir cual
+ * es el bueno.
+ *
+ * ## Por que SI esta "Contactos"
+ *
+ * Salio de la barra de abajo cuando llego Social. La libreta es a quien ya
+ * conoces, y se abre para empezar algo con alguien: es exactamente lo que
+ * hace este menu.
  *
  * ## Por que lleva texto
  *
@@ -1483,6 +1390,7 @@ private fun MenuDeCreacion(
     onConversacion: () -> Unit,
     onGrupo: () -> Unit,
     onCanal: () -> Unit,
+    onContactos: () -> Unit,
 ) {
     // El icono gira 45 grados: el mismo "+" se convierte en una X sin cambiar
     // de icono. Lo que cambia no es la forma, es lo que significa.
@@ -1490,6 +1398,10 @@ private fun MenuDeCreacion(
 
     Column(horizontalAlignment = Alignment.End) {
         if (abierto) {
+            // Contactos llego aqui desde la barra de abajo, donde ahora esta
+            // Social: la libreta sirve para empezar algo con alguien, que es
+            // lo que hace este menu.
+            OpcionDeCreacion("Contactos", Icons.Filled.Contacts) { onAbrir(false); onContactos() }
             OpcionDeCreacion("Canal", Icons.Filled.Campaign) { onAbrir(false); onCanal() }
             OpcionDeCreacion("Grupo", Icons.Filled.Group) { onAbrir(false); onGrupo() }
             OpcionDeCreacion("Conversación", Icons.Filled.PersonAdd) { onAbrir(false); onConversacion() }

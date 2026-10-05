@@ -7,7 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -46,11 +46,11 @@ import com.wtfuck.app.ui.theme.*
  */
 private enum class Pestana(val etiqueta: String, val icono: ImageVector) {
     CHATS("Chats", Icons.AutoMirrored.Filled.Chat),
-    // Contactos es una pestaña y no una pantalla escondida porque la libreta y
-    // la lista de chats son dos cosas distintas: una es *a quien conoces*, la
-    // otra *con quien hablaste*. Y desde el modulo I guardar a alguien decide
-    // quien puede escribirte, asi que no es una pantalla accesoria.
-    CONTACTOS("Contactos", Icons.Filled.Contacts),
+    // Social reemplazo a Contactos. Los estados salieron de la lista de chats
+    // -donde empujaban las conversaciones hacia abajo- y tienen pantalla
+    // propia, junto al directorio de Usuarios. La libreta paso al menu
+    // "Nuevo": se usa para empezar algo, que es justo lo que hace ese menu.
+    SOCIAL("Social", Icons.Filled.Groups),
     CANALES("Canales", Icons.Filled.Campaign),
     PERFIL("Perfil", Icons.Filled.AccountCircle),
 }
@@ -73,6 +73,10 @@ fun Inicio(
     onNotificaciones: () -> Unit,
     onTipoCuenta: () -> Unit,
     onDiagnostico: () -> Unit,
+    /** La libreta, desde el menu "Nuevo" de Chats. */
+    onContactos: () -> Unit,
+    /** El perfil de alguien por su usuario: lo abre el directorio. */
+    onVerPersona: (String) -> Unit,
     onCerrarSesion: () -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
@@ -146,12 +150,13 @@ fun Inicio(
                     onPerfil = { pestana = Pestana.PERFIL },
                     onCanales = { pestana = Pestana.CANALES },
                     onNuevoCanal = { pedirNuevoCanal = true; pestana = Pestana.CANALES },
+                    onContactos = onContactos,
                     modifier = hueco,
                 )
 
-                Pestana.CONTACTOS -> ContactosPantalla(
-                    onAbrirChat = onAbrirChat,
-                    onAtras = null,
+                Pestana.SOCIAL -> SocialPantalla(
+                    onVerPersona = onVerPersona,
+                    onPrivacidad = onPrivacidad,
                     modifier = hueco,
                 )
 

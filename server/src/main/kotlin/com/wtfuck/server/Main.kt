@@ -615,6 +615,19 @@ fun Application.modulo() {
             call.respond(MensajesLeidos(Repo.mensajesLeidos(yo, call.idRuta())))
         }
 
+        // El directorio de Usuarios. Solo quien se apunto: ver `Repo.directorio`
+        // y V44. Con el limite de busqueda, porque recorrer la lista entera en
+        // bucle es justo lo que no se quiere facilitar.
+        get(RUTA_DIRECTORIO) {
+            val yo = call.autenticar()
+            Limitador.exigir(
+                yo.usuarioId, yo.usuarioId.toString(), "buscar", Limitador.BUSCAR,
+            )
+            val q = call.request.queryParameters["q"].orEmpty()
+            val desde = call.request.queryParameters["desde"].orEmpty()
+            call.respond(Repo.directorio(yo, q, desde))
+        }
+
         get("$RUTA_USUARIO/{username}") {
             val u = call.parameters["username"].orEmpty()
             val yo = call.autenticar()

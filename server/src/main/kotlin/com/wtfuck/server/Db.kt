@@ -81,6 +81,7 @@ object Db {
         41 to "/db/V41__invitaciones_de_registro.sql",
         42 to "/db/V42__aviso_de_temporizador.sql",
         43 to "/db/V43__codigo_de_recuperacion.sql",
+        44 to "/db/V44__directorio_de_usuarios.sql",
     )
 
     /**

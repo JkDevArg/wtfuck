@@ -260,6 +260,14 @@ ck('retirarla dos veces da 404', r.s === 404, String(r.s));
 
 r = await post('/v1/historias', autora.t, { historiaId: uuid(), clase: 'inventada' });
 ck('una clase que no existe se rechaza', r.s === 400, String(r.s));
+
+// El editor de estados agrego los de audio: una grabacion sobre un color.
+const deAudio = uuid();
+r = await post('/v1/historias', autora.t, { historiaId: deAudio, clase: 'audio' });
+ck('un estado de audio se acepta', r.s === 200, String(r.s) + ' ' + JSON.stringify(r.b));
+r = await post('/v1/adjuntos', autora.t, { historiaId: deAudio, clase: 'audio', bytes: 4096, mime: 'audio/mp4', nombre: 'voz.m4a' });
+ck('y su archivo de audio se puede reservar', r.s === 200, String(r.s) + ' ' + JSON.stringify(r.b));
+await del(`/v1/historias/${deAudio}`, autora.t);
 r = await post('/v1/historias', autora.t, { historiaId: 'no-es-uuid', clase: 'texto' });
 ck('un id que no es uuid tambien', r.s === 400, String(r.s));
 

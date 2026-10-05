@@ -165,6 +165,16 @@ data class SesionResp(
     val username: String,
 )
 
+/** Una pagina del directorio de Usuarios. Ver V44 y `Repo.directorio`. */
+@Serializable
+data class DirectorioResp(
+    val usuarios: List<UsuarioPublico>,
+    /** El `desde` para la pagina siguiente; null = no hay mas. */
+    val siguiente: String? = null,
+)
+
+const val RUTA_DIRECTORIO = "/v1/directorio"
+
 /** Perfil publico. Lo necesario para abrir una conversacion y cifrar hacia el. */
 @Serializable
 data class UsuarioPublico(
@@ -407,6 +417,20 @@ data class Privacidad(
      * avisando de que lo estaba rompiendo.
      */
     val solicitudes: Boolean = false,
+
+    /**
+     * Si aparezco en el directorio de Usuarios (pestaña Social).
+     *
+     * Nace en `false` y es lo unico que lo cambia: estar en una lista que
+     * cualquiera puede recorrer es exponerse, y eso no se presume. Distinto de
+     * [busqueda], que decide quien me encuentra si YA sabe mi usuario. Ver
+     * V44.
+     *
+     * Un cliente viejo que guarde la privacidad sin conocer el campo lo
+     * manda en `false`: saca a la persona de la lista. Es el error del lado
+     * seguro.
+     */
+    val directorio: Boolean = false,
 ) {
     companion object {
         const val TODOS = "todos"

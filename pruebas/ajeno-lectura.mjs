@@ -289,6 +289,7 @@ const EXENTAS_LECTURA = [
   ['/v1/moderacion/mis-eventos', 'mis propios eventos'],
   ['/v1/canales/directorio', 'directorio publico, por diseno'],
   ['/v1/canales/buscar', 'buscador publico, por diseno'],
+  ['/v1/directorio', 'lista de quien se apunto, sin objeto ajeno; lo mira directorio.mjs'],
   ['/v1/canales/alias/{}', 'un alias publico resuelve a un canal publico'],
   ['/v1/usuarios/{}', 'perfil publico: la privacidad la aplica el servidor y lo mira privacidad.mjs'],
   ['/v1/usuarios/{}/{}', 'un CAMPO del perfil publico; misma puerta que el anterior'],

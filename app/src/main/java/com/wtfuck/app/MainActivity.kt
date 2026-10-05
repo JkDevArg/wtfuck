@@ -55,6 +55,7 @@ import com.wtfuck.app.ui.ModeracionPantalla
 import com.wtfuck.app.ui.PanelPantalla
 import com.wtfuck.app.ui.AuthPantalla
 import com.wtfuck.app.ui.PrivacidadPantalla
+import com.wtfuck.app.ui.ContactosPantalla
 import com.wtfuck.app.ui.PantallaBloqueada
 import com.wtfuck.app.ui.theme.WtfuckTheme
 
@@ -283,6 +284,8 @@ private fun Raiz() {
                     onNotificaciones = { nav.navigate("notificaciones") },
                 onTipoCuenta = { nav.navigate("tipo-cuenta") },
                 onDiagnostico = { nav.navigate("diagnostico") },
+                    onContactos = { nav.navigate("contactos") },
+                    onVerPersona = { u -> nav.navigate("persona/@$u") },
                     onCerrarSesion = {
                         nav.navigate("auth") { popUpTo(0) { inclusive = true } }
                     },
@@ -330,10 +333,21 @@ private fun Raiz() {
             AlmacenamientoPantalla(onAtras = { nav.popBackStack() })
         }
 
+        composable("contactos") {
+            ContactosPantalla(
+                onAbrirChat = { id -> nav.navigate("chat/$id") },
+                onAtras = { nav.popBackStack() },
+            )
+        }
+
         composable("privacidad") {
             PrivacidadPantalla(
                 onAtras = { nav.popBackStack() },
                 onExcepciones = { nav.navigate("excepciones") },
+                // Igual que desde Seguridad: pedir el borrado cierra las
+                // sesiones en el servidor, y quedarse dentro con un token
+                // muerto solo daria errores sin explicacion.
+                onCuentaBorrada = { nav.navigate("auth") { popUpTo(0) { inclusive = true } } },
             )
         }
 
