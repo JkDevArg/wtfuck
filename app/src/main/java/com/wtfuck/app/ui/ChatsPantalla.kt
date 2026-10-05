@@ -1069,6 +1069,24 @@ private fun FilaChat(
             Spacer(Modifier.height(2.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+              // Un borrador manda sobre el ultimo mensaje: es lo que la
+              // persona dejo a medias, y verlo en la lista es lo que hace que
+              // se acuerde de terminarlo.
+              if (c.borrador.isNotBlank()) {
+                Text(
+                    "Borrador: ",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Ambar,
+                    maxLines = 1,
+                )
+                Text(
+                    c.borrador.replace('\n', ' '),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextoSecundario,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+              } else {
                 // El check del ultimo mensaje propio, visible SIN entrar al chat.
                 if (c.ultimoEsMio == true) {
                     val (icono, tinte) = iconoEstado(estadoDe(c.ultimoEstado))
@@ -1097,6 +1115,7 @@ private fun FilaChat(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+              }
             }
         }
 
@@ -1294,7 +1313,9 @@ private fun DialogoNueva(
  */
 private fun previaDe(c: ChatFila): String {
     val clase = c.ultimoAdjuntoClase.orEmpty()
-    if (clase.isBlank()) return c.ultimoTexto ?: "Sin mensajes todavía"
+    // Sin las marcas de formato y con el spoiler tapado: en la lista no hay
+    // formato, y mostrar el spoiler aqui lo arruinaria. Ver `Formato.plano`.
+    if (clase.isBlank()) return c.ultimoTexto?.let { com.wtfuck.app.datos.Formato.plano(it) } ?: "Sin mensajes todavía"
     return Media.resumen(clase, c.ultimoTexto.orEmpty(), c.ultimoAdjuntoNombre.orEmpty())
 }
 

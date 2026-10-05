@@ -252,6 +252,8 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
                     when (n.tipo) {
                         "mensaje" -> Notificaciones.mensaje(
                             app, n.autor, n.titulo, n.conversacionId, n.esGrupo,
+                            silencioso = n.silencioso,
+                            mencionado = n.mencionado,
                         )
                         "canal" -> Notificaciones.canal(
                             app, n.titulo, n.conversacionId,

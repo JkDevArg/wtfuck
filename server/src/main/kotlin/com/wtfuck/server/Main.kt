@@ -2014,6 +2014,9 @@ private fun manejarEnvio(yo: Auth, msg: Subida.Enviar, salida: Channel<Bajada>) 
     // Se recorre `copias` en paralelo a `encolados` porque cada destino recibe
     // SU cuerpo y no un cuerpo comun: es el cambio que trae el cifrado punta a
     // punta y la razon por la que este bucle ya no puede reusar `msg.cuerpo`.
+    // A quien menciona, una sola consulta por sobre: el metadato se registro
+    // antes por HTTP. Ver `Bajada.Entrega.mencionado`.
+    val mencionados = runCatching { Repo.mencionados(UUID.fromString(msg.sobreId)) }.getOrDefault(emptySet())
     encolados.forEachIndexed { i, (destino, sobreIdDerivado) ->
         val cp = copias[i]
         Hub.empujar(
@@ -2030,6 +2033,7 @@ private fun manejarEnvio(yo: Auth, msg: Subida.Enviar, salida: Channel<Bajada>) 
                 creadoEn = creadoEn,
                 cuerpo = Base64Util.enc(cp.cuerpo),
                 tipo = cp.tipo,
+                mencionado = destino.usuarioId in mencionados,
             ),
         )
     }

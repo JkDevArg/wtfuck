@@ -252,6 +252,10 @@ class Repositorio(
         val autor: String = "",
         val esGrupo: Boolean = false,
         val conVideo: Boolean = false,
+        /** Mandado "sin sonido": se notifica sin sonar ni vibrar. */
+        val silencioso: Boolean = false,
+        /** Me menciona (lo decidio el servidor): avisa aunque el chat este silenciado. */
+        val mencionado: Boolean = false,
     )
 
     private val _notificables = MutableSharedFlow<Notificable>(extraBufferCapacity = 16)
@@ -303,12 +307,20 @@ class Repositorio(
      * conversacion esta silenciada -para eso la silencio- o no existe
      * localmente todavia.
      */
-    private suspend fun avisarMensaje(convId: String, autor: String) {
+    private suspend fun avisarMensaje(
+        convId: String,
+        autor: String,
+        silencioso: Boolean = false,
+        mencionado: Boolean = false,
+    ) {
         if (chatVisible == convId) return
         val conv = dao.conversacion(convId) ?: return
         val silenciado = conv.silenciadoHasta == -1L ||
             conv.silenciadoHasta > System.currentTimeMillis()
-        if (silenciado) return
+        // Una mencion atraviesa el silencio del chat, como en WhatsApp: para
+        // eso es. Quien decide si hubo mencion es el servidor, no el texto:
+        // ver `Bajada.Entrega.mencionado`.
+        if (silenciado && !mencionado) return
         _notificables.tryEmit(
             Notificable(
                 tipo = if (conv.tipo == "canal") "canal" else "mensaje",
@@ -316,6 +328,8 @@ class Repositorio(
                 titulo = conv.nombreMostrado.ifBlank { conv.nombre },
                 autor = autor,
                 esGrupo = conv.tipo == "grupo",
+                silencioso = silencioso,
+                mencionado = mencionado,
             )
         )
     }
@@ -946,6 +960,7 @@ class Repositorio(
 
                 val cita = carga as? Carga.Texto
                 val adj = carga as? CargaAdjunto
+                val silenciosoEntrante = cita?.silencioso == true || adj?.silencioso == true
 
                 // La cita de una historia **la escribio la otra persona** y el
                 // servidor no la vio: nada impide inventarla. Se acepta solo si
@@ -970,6 +985,7 @@ class Repositorio(
                         texto = texto,
                         creadoEn = msg.creadoEn,
                         estado = EstadoEnvio.ENTREGADO.name,
+                        silencioso = silenciosoEntrante,
                         respondeA = cita?.respondeA,
                         respondeTexto = cita?.respondeTexto,
                         respondeAutor = cita?.respondeAutor,
@@ -1043,7 +1059,7 @@ class Repositorio(
                     // El mismo `filas != -1L` que evita contar dos veces evita
                     // notificar dos veces: el buzon reentrega lo no acusado, y
                     // sin esto un mensaje repetido sonaba de nuevo.
-                    avisarMensaje(msg.conversacionId, msg.origenUsername)
+                    avisarMensaje(msg.conversacionId, msg.origenUsername, silenciosoEntrante, msg.mencionado)
                 }
 
                 // Acusar BORRA el sobre del servidor. Solo despues de guardarlo
@@ -1337,6 +1353,8 @@ class Repositorio(
         respondeA: MensajeEnt? = null,
         reenviadoDe: String? = null,
         citaHistoria: HistoriaEnt? = null,
+        /** "Enviar sin sonido". Ver `Carga.Texto.silencioso`. */
+        silencioso: Boolean = false,
     ) {
         val limpio = texto.trim()
         if (limpio.isEmpty()) return
@@ -1349,6 +1367,7 @@ class Repositorio(
             texto = limpio,
             creadoEn = horaParaMio(convId),
             estado = EstadoEnvio.PENDIENTE.name,
+            silencioso = silencioso,
             respondeA = respondeA?.id,
             // La cita se copia: si el original se borra despues, el hilo sigue
             // teniendo sentido.
@@ -1808,6 +1827,18 @@ class Repositorio(
      * Es local y de este aparato, igual que [marcarNoLeida].
      */
     suspend fun marcarLeidaLocal(convId: String) = dao.marcarLeida(convId)
+
+    /**
+     * Lo que quedo escrito sin enviar. En la base cifrada: ver
+     * `ConversacionEnt.borrador`.
+     */
+    suspend fun borradorDe(convId: String): String =
+        runCatching { dao.conversacion(convId)?.borrador.orEmpty() }.getOrDefault("")
+
+    /** Con tope: un borrador no es un documento, y la fila va en cada lista de chats. */
+    suspend fun guardarBorrador(convId: String, texto: String) {
+        runCatching { dao.guardarBorrador(convId, texto.take(4000)) }
+    }
 
     /**
      * La clase que se le declara al servidor, derivada de la carga.
@@ -4645,6 +4676,7 @@ class Repositorio(
                     previa = m.citaHistoriaTexto,
                     miniatura = m.citaHistoriaMiniatura,
                 ),
+                silencioso = m.silencioso,
             )
         } else {
             CargaAdjunto(
@@ -4661,6 +4693,7 @@ class Repositorio(
                 onda = m.adjuntoOnda,
                 pie = m.texto,
                 miniatura = m.adjuntoMiniatura,
+                silencioso = m.silencioso,
             )
         }
 

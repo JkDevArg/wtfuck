@@ -161,6 +161,23 @@ class Ajustes(private val ctx: Context) {
         p.edit().putBoolean("mapa_terceros", v).apply()
     }
 
+    /**
+     * Teclado incognito: pedirle al teclado que no aprenda de lo que se
+     * escribe. Ver `TecladoIncognito`.
+     *
+     * Nace ENCENDIDO, al reves que en Signal. Es una app de mensajeria
+     * privada y el defecto tiene que ser el seguro: lo que se escribe en un
+     * chat cifrado no deberia terminar como sugerencia del teclado en otra
+     * app. Quien prefiera las sugerencias personalizadas lo apaga.
+     */
+    var tecladoIncognito by mutableStateOf(p.getBoolean("teclado_incognito", true))
+        private set
+
+    fun fijarTecladoIncognito(v: Boolean) {
+        tecladoIncognito = v
+        p.edit().putBoolean("teclado_incognito", v).apply()
+    }
+
     var velocidadAudio: Float
         get() = p.getFloat("velocidad_audio", 1f)
         set(v) = p.edit().putFloat("velocidad_audio", v).apply()

@@ -73,6 +73,9 @@ object Repo {
         if (!FORMA_USERNAME.matches(user)) {
             throw ErrorNegocio(400, "El usuario debe tener 3-24 caracteres: letras, numeros o guion bajo.")
         }
+        if (user in USUARIOS_RESERVADOS) {
+            throw ErrorNegocio(400, "Ese usuario no esta disponible.")
+        }
         if (r.password.length < 8) {
             throw ErrorNegocio(400, "La contrasena debe tener al menos 8 caracteres.")
         }
@@ -1602,14 +1605,26 @@ object Repo {
     private fun derivar(base: UUID, i: Int): UUID =
         if (i == 0) base else UUID(base.mostSignificantBits, base.leastSignificantBits + i)
 
+    /** A quien menciona un mensaje, ya resuelto. Ver `Bajada.Entrega.mencionado`. */
+    fun mencionados(mensajeId: UUID): Set<UUID> = Db.query { c ->
+        c.prepareStatement("SELECT usuario_id FROM mencion WHERE mensaje_id = ?").use { st ->
+            st.setObject(1, mensajeId)
+            st.executeQuery().use { rs -> rs.mapear { it.getObject(1, UUID::class.java) }.toSet() }
+        }
+    }
+
     fun pendientes(dispositivoId: UUID): List<Bajada.Entrega> = Db.query { c ->
         c.prepareStatement(
             """SELECT s.id, s.conversacion_id, u.id, u.username,
                       s.creado_en_origen, s.cuerpo, s.origen_dispositivo, s.tipo_cifrado,
-                      coalesce(s.mensaje_id, s.id)
+                      coalesce(s.mensaje_id, s.id),
+                      EXISTS (SELECT 1 FROM mencion m
+                              WHERE m.mensaje_id = coalesce(s.mensaje_id, s.id)
+                                AND m.usuario_id = dd.usuario_id)
                FROM sobre_pendiente s
-                 JOIN dispositivo d ON d.id = s.origen_dispositivo
-                 JOIN usuario u     ON u.id = d.usuario_id
+                 JOIN dispositivo d  ON d.id = s.origen_dispositivo
+                 JOIN usuario u      ON u.id = d.usuario_id
+                 JOIN dispositivo dd ON dd.id = s.destino_dispositivo
                WHERE s.destino_dispositivo = ?
                ORDER BY s.id"""
         ).use { st ->
@@ -1632,6 +1647,7 @@ object Repo {
                         creadoEn = it.getLong(5),
                         cuerpo = Base64Util.enc(it.getBytes(6)),
                         tipo = it.getInt(8),
+                        mencionado = it.getBoolean(10),
                     )
                 }
             }

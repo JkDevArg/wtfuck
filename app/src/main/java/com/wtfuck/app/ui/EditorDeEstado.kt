@@ -75,6 +75,7 @@ import com.wtfuck.app.datos.EdicionFoto
 import com.wtfuck.app.datos.Encuadre
 import com.wtfuck.app.datos.FiltroFoto
 import com.wtfuck.app.datos.Lienzo
+import com.wtfuck.app.datos.Proporcion
 import com.wtfuck.app.datos.RenderEstado
 import com.wtfuck.app.datos.Stickers
 import com.wtfuck.app.ui.theme.*
@@ -158,7 +159,10 @@ fun EditorDeEstado(
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (modo) {
                         ModoEditor.TEXTO -> EditorTexto(publicando, error, onPublicar, marcar)
-                        ModoEditor.FOTO -> EditorFoto(publicando, error, onPublicar, marcar)
+                        ModoEditor.FOTO -> EditorFoto(
+                            publicando, error, marcar,
+                            onListo = { uri, renderizado, pie -> onPublicar(EstadoNuevo(pie, "", uri, renderizado)) },
+                        )
                         ModoEditor.VIDEO -> EditorVideo(publicando, error, onPublicar, marcar)
                         ModoEditor.AUDIO -> EditorAudio(publicando, error, onPublicar, marcar)
                     }
@@ -226,12 +230,14 @@ fun EditorDeEstado(
 private fun MarcoVertical(
     modifier: Modifier = Modifier,
     fondo: Color = Color.Black,
+    /** Ancho/alto del marco. 9:16 en un estado; la del recorte en el chat. */
+    proporcion: Float = Lienzo.PROPORCION,
     contenido: @Composable BoxScope.(ancho: Float, alto: Float) -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        val porAlto = maxHeight * Lienzo.PROPORCION
+        val porAlto = maxHeight * proporcion
         val ancho = if (porAlto <= maxWidth) porAlto else maxWidth
-        val alto = ancho / Lienzo.PROPORCION
+        val alto = ancho / proporcion
         Box(
             Modifier
                 .size(ancho, alto)
@@ -252,6 +258,7 @@ private fun PiePublicar(
     error: String?,
     publicando: Boolean,
     habilitado: Boolean,
+    etiqueta: String = "Publicar",
     onPublicar: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)) {
@@ -287,7 +294,7 @@ private fun PiePublicar(
                 if (publicando) {
                     CircularProgressIndicator(color = TextoSobreAcento, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                 } else {
-                    Text("Publicar")
+                    Text(etiqueta)
                 }
             }
         }
@@ -400,16 +407,37 @@ private fun Capa.transformada(dx: Float, dy: Float, zoom: Float, giroGrados: Flo
 }
 
 @Composable
-private fun EditorFoto(publicando: Boolean, error: String?, onPublicar: (EstadoNuevo) -> Unit, onTrabajo: () -> Unit) {
+internal fun EditorFoto(
+    publicando: Boolean,
+    error: String?,
+    onTrabajo: () -> Unit,
+    /**
+     * Cuando esta lista: la foto a mandar, si es la renderizada, y el pie.
+     * Sin cambios y con `renderizarSiempre = false` llega la ORIGINAL: no se
+     * recodifica una foto que nadie toco.
+     */
+    onListo: (Uri, Boolean, String) -> Unit,
+    /** La foto con la que arranca. Null = se elige en la propia pantalla. */
+    fotoInicial: Uri? = null,
+    proporciones: List<Proporcion> = listOf(Proporcion.VERTICAL),
+    etiqueta: String = "Publicar",
+    pieInicial: String = "",
+    /** Un estado siempre se renderiza: tiene que salir a 1080x1920 en vertical. */
+    renderizarSiempre: Boolean = true,
+    /** El lado mayor del archivo final. */
+    ladoSalida: Int = Lienzo.ALTO,
+) {
     val ctx = LocalContext.current
     val ambito = rememberCoroutineScope()
+    var proporcion by remember { mutableStateOf(proporciones.first()) }
+    var origen by remember { mutableStateOf(fotoInicial) }
 
     var foto by remember { mutableStateOf<Bitmap?>(null) }
     var miniatura by remember { mutableStateOf<Bitmap?>(null) }
     var edicion by remember { mutableStateOf(EdicionFoto()) }
     var stickers by remember { mutableStateOf<Map<String, Bitmap>>(emptyMap()) }
     var seleccion by remember { mutableStateOf<Long?>(null) }
-    var pie by remember { mutableStateOf("") }
+    var pie by remember { mutableStateOf(pieInicial) }
     var cargando by remember { mutableStateOf(false) }
     var renderizando by remember { mutableStateOf(false) }
     var aviso by remember { mutableStateOf<String?>(null) }
@@ -419,6 +447,7 @@ private fun EditorFoto(publicando: Boolean, error: String?, onPublicar: (EstadoN
     var verFiltros by remember { mutableStateOf(false) }
 
     fun abrir(uri: Uri) {
+        origen = uri
         cargando = true
         ambito.launch {
             val b = withContext(Dispatchers.IO) { RenderEstado.cargar(ctx, uri) }
@@ -442,6 +471,7 @@ private fun EditorFoto(publicando: Boolean, error: String?, onPublicar: (EstadoN
     val galeria = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) abrir(uri)
     }
+    LaunchedEffect(fotoInicial) { fotoInicial?.let { abrir(it) } }
     var destinoCamara by remember { mutableStateOf<Uri?>(null) }
     val camara = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val u = destinoCamara
@@ -506,9 +536,10 @@ private fun EditorFoto(publicando: Boolean, error: String?, onPublicar: (EstadoN
         return
     }
 
+    val prop = proporcion.efectiva(b.width, b.height, edicion.giro)
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            MarcoVertical(Modifier.fillMaxSize().padding(horizontal = 12.dp)) { ancho, alto ->
+            MarcoVertical(Modifier.fillMaxSize().padding(horizontal = 12.dp), proporcion = prop) { ancho, alto ->
                 Canvas(
                     Modifier
                         .fillMaxSize()
@@ -568,7 +599,9 @@ private fun EditorFoto(publicando: Boolean, error: String?, onPublicar: (EstadoN
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Herramienta(Icons.Filled.Rotate90DegreesCw, "Girar") {
-                    edicion = Encuadre.acotar(b.width, b.height, edicion.copy(giro = edicion.giro + 90, desplX = 0f, desplY = 0f), Lienzo.ANCHO.toFloat(), Lienzo.ALTO.toFloat())
+                    val girada = edicion.copy(giro = edicion.giro + 90, desplX = 0f, desplY = 0f)
+                    val p = proporcion.efectiva(b.width, b.height, girada.giro)
+                    edicion = Encuadre.acotar(b.width, b.height, girada, 1000f, 1000f / p)
                 }
                 Herramienta(Icons.Filled.TextFields, "Texto") { nuevoTexto = true }
                 Herramienta(Icons.Filled.EmojiEmotions, "Sticker") { eligiendoSticker = true }
@@ -581,6 +614,38 @@ private fun EditorFoto(publicando: Boolean, error: String?, onPublicar: (EstadoN
                         edicion = edicion.copy(capas = edicion.capas.filterNot { it.id == sel })
                         seleccion = null
                     }
+                }
+            }
+        }
+
+        // La forma del recorte, si hay para elegir. Un estado no la ofrece:
+        // es siempre 9:16.
+        if (proporciones.size > 1) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 4.dp),
+            ) {
+                items(proporciones) { pr ->
+                    val activa = pr == proporcion
+                    Text(
+                        pr.etiqueta,
+                        color = if (activa) TextoSobreAcento else Color.White,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (activa) Cian else Color.White.copy(alpha = 0.12f))
+                            .clickable {
+                                proporcion = pr
+                                // Al cambiar la forma se vuelve a encuadrar desde el centro.
+                                val p = pr.efectiva(b.width, b.height, edicion.giro)
+                                edicion = Encuadre.acotar(
+                                    b.width, b.height, edicion.copy(zoom = 1f, desplX = 0f, desplY = 0f), 1000f, 1000f / p,
+                                )
+                                onTrabajo()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
                 }
             }
         }
@@ -634,18 +699,31 @@ private fun EditorFoto(publicando: Boolean, error: String?, onPublicar: (EstadoN
 
         PiePublicar(
             pie = pie, onPie = { pie = it }, error = error ?: aviso,
-            publicando = publicando || renderizando, habilitado = true,
+            publicando = publicando || renderizando, habilitado = true, etiqueta = etiqueta,
         ) {
+            val original = origen
+            // Sin tocar nada, la original tal cual: recodificar una foto que
+            // nadie edito solo le quitaria calidad.
+            if (!renderizarSiempre && original != null &&
+                edicion == EdicionFoto() && proporcion == Proporcion.ORIGINAL
+            ) {
+                onListo(original, false, pie.trim())
+                return@PiePublicar
+            }
             renderizando = true
             ambito.launch {
                 val destino = archivoTemporal(ctx, "jpg")
-                val ok = withContext(Dispatchers.Default) { RenderEstado.renderizar(b, edicion, stickers, destino) }
+                // Sin agrandar: el lado mayor no pasa de los pixeles REALES
+                // que caben en el recorte. Ver `Proporcion.ladoSinAgrandar`.
+                val lado = minOf(
+                    ladoSalida,
+                    Proporcion.ladoSinAgrandar(prop, b.width, b.height, edicion.giro, edicion.zoom),
+                ).coerceAtLeast(480)
+                val (w, h) = if (renderizarSiempre) Proporcion.salida(prop, ladoSalida) else Proporcion.salida(prop, lado)
+                val ok = withContext(Dispatchers.Default) { RenderEstado.renderizar(b, edicion, stickers, destino, w, h) }
                 renderizando = false
-                if (ok) {
-                    onPublicar(EstadoNuevo(pie.trim(), "", uriPropia(ctx, destino), renderizado = true))
-                } else {
-                    aviso = "No se pudo preparar la foto."
-                }
+                if (ok) onListo(uriPropia(ctx, destino), true, pie.trim())
+                else aviso = "No se pudo preparar la foto."
             }
         }
     }
@@ -1021,6 +1099,74 @@ private fun EditorAudio(publicando: Boolean, error: String?, onPublicar: (Estado
                 val ok = withContext(Dispatchers.IO) { runCatching { f.copyTo(destino, overwrite = true); true }.getOrDefault(false) }
                 if (ok) onPublicar(EstadoNuevo(pie.trim(), fondo, uriPropia(ctx, destino)))
                 else aviso = "No se pudo preparar el audio."
+            }
+        }
+    }
+}
+
+
+/**
+ * El editor de fotos del chat: el mismo de los estados, con otra salida.
+ *
+ * Se abre al elegir una foto para mandar. Recorta con las formas de siempre
+ * -la de la foto, 1:1, 4:5, 9:16, 16:9-, gira, filtra y acepta textos y
+ * stickers. Lo que sale pasa despues por el mismo camino que cualquier foto
+ * del chat, con el ajuste de calidad de siempre.
+ *
+ * Si no se toca nada, manda la foto ORIGINAL: abrir el editor no puede costar
+ * calidad a quien solo queria mandar la foto.
+ */
+@Composable
+fun EditorFotoChat(
+    foto: Uri,
+    pieInicial: String,
+    onEnviar: (Uri, String) -> Unit,
+    onCerrar: () -> Unit,
+) {
+    var hayTrabajo by remember { mutableStateOf(false) }
+    var confirmarSalir by remember { mutableStateOf(false) }
+    val intentarCerrar: () -> Unit = { if (hayTrabajo) confirmarSalir = true else onCerrar() }
+    Dialog(
+        onDismissRequest = intentarCerrar,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = intentarCerrar) { Icon(Icons.Filled.Close, "Cerrar", tint = Color.White) }
+                    Text("Editar foto", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    EditorFoto(
+                        publicando = false,
+                        error = null,
+                        onTrabajo = { hayTrabajo = true },
+                        onListo = { uri, _, pie -> onEnviar(uri, pie) },
+                        fotoInicial = foto,
+                        proporciones = Proporcion.entries,
+                        etiqueta = "Enviar",
+                        pieInicial = pieInicial,
+                        renderizarSiempre = false,
+                        ladoSalida = 2560,
+                    )
+                }
+                if (confirmarSalir) {
+                    AlertDialog(
+                        onDismissRequest = { confirmarSalir = false },
+                        containerColor = BgElev,
+                        title = { Text("¿Descartar los cambios?", color = TextoPrimario) },
+                        text = { Text("La foto no se envía.", color = TextoSecundario) },
+                        confirmButton = {
+                            TextButton(onClick = { confirmarSalir = false; onCerrar() }) { Text("Descartar", color = Coral) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmarSalir = false }) { Text("Seguir editando", color = Cian) }
+                        },
+                    )
+                }
             }
         }
     }

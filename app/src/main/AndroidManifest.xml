@@ -128,6 +128,14 @@
             </intent-filter>
         </service>
 
+        <!--
+          Responder y marcar como leido desde la notificacion. Sin exportar:
+          solo lo invocan los PendingIntent explicitos que arma la propia app.
+        -->
+        <receiver
+            android:name=".datos.ReceptorAccionNotificacion"
+            android:exported="false" />
+
         <service
             android:name=".datos.ServicioLlamadaFg"
             android:exported="false"

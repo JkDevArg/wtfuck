@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.DeleteForever
 import com.wtfuck.protocol.DIAS_GRACIA_ELIMINACION
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -520,6 +521,47 @@ fun PrivacidadPantalla(
                 }
                 Switch(
                     checked = ajustes.mapaDeTerceros,
+                    onCheckedChange = null,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = TextoSobreAcento,
+                        checkedTrackColor = Cian,
+                        uncheckedThumbColor = TextoTerciario,
+                        uncheckedTrackColor = BgElev,
+                        uncheckedBorderColor = Slate,
+                    ),
+                )
+            }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = ajustes.tecladoIncognito,
+                        role = Role.Switch,
+                        onValueChange = { ajustes.fijarTecladoIncognito(it) },
+                    )
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.Keyboard,
+                    null,
+                    tint = if (ajustes.tecladoIncognito) Cian else Slate,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Teclado incógnito", color = TextoPrimario)
+                    Text(
+                        "Le pide al teclado que no aprenda de lo que escribes aquí: que no " +
+                            "guarde tus palabras ni te las sugiera en otras apps. Gboard y " +
+                            "SwiftKey lo respetan; un teclado de terceros puede no hacerlo.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+                Switch(
+                    checked = ajustes.tecladoIncognito,
                     onCheckedChange = null,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = TextoSobreAcento,

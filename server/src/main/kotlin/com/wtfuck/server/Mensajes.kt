@@ -117,6 +117,28 @@ object Mensajes {
             }
         }
 
+        // `@todos`: a todo el grupo, pero solo de quien puede fijar mensajes.
+        // Es una accion que interrumpe a todos -suena aunque el grupo este
+        // silenciado-, y por eso es de quien administra, como fijar. En una
+        // directa no significa nada. Sin permiso se ignora en silencio: el
+        // mensaje sale igual, solo que sin avisar a nadie de mas.
+        val todos = req.menciones.any { it.equals(MENCION_TODOS, ignoreCase = true) }
+        if (todos && esGrupo(c, convId) &&
+            Autz.puede(c, yo.usuarioId, convId, Permisos.MSG_FIJAR).permitido
+        ) {
+            c.prepareStatement(
+                """INSERT INTO mencion (mensaje_id, usuario_id)
+                   SELECT ?, p.usuario_id FROM participante p
+                   WHERE p.conversacion_id = ? AND p.salido_en IS NULL AND p.usuario_id <> ?
+                   ON CONFLICT DO NOTHING"""
+            ).use { st ->
+                st.setObject(1, msgId)
+                st.setObject(2, convId)
+                st.setObject(3, yo.usuarioId)
+                st.executeUpdate()
+            }
+        }
+
         // Menciones: se resuelven contra participantes reales. Mencionar a
         // alguien que no esta en la conversacion no genera nada.
         if (req.menciones.isNotEmpty()) {
@@ -145,6 +167,12 @@ object Mensajes {
      * proposito: un mensaje reenviado viene de OTRA conversacion, y quien lo
      * escribio no tiene por que estar en esta.
      */
+    private fun esGrupo(c: Connection, convId: UUID): Boolean =
+        c.prepareStatement("SELECT tipo = 'grupo' FROM conversacion WHERE id = ?").use { st ->
+            st.setObject(1, convId)
+            st.executeQuery().use { rs -> rs.primero { it.getBoolean(1) } } ?: false
+        }
+
     private fun idDeUsername(c: Connection, username: String): UUID? =
         c.prepareStatement("SELECT id FROM usuario WHERE username = ?").use { st ->
             st.setString(1, username.lowercase().trim())

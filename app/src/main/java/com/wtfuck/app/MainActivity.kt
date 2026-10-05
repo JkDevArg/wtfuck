@@ -56,6 +56,7 @@ import com.wtfuck.app.ui.PanelPantalla
 import com.wtfuck.app.ui.AuthPantalla
 import com.wtfuck.app.ui.PrivacidadPantalla
 import com.wtfuck.app.ui.ContactosPantalla
+import com.wtfuck.app.ui.TecladoIncognito
 import com.wtfuck.app.ui.PantallaBloqueada
 import com.wtfuck.app.ui.theme.WtfuckTheme
 
@@ -90,6 +91,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
         setContent {
             WtfuckTheme(tema = app.ajustes.tema, paletaElegida = app.ajustes.paleta) {
+              TecladoIncognito(activo = app.ajustes.tecladoIncognito) {
                 PedirPermisoNotificaciones()
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Raiz()
@@ -100,6 +102,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         PantallaBloqueada(onDesbloquear = { desbloquear(app) })
                     }
                 }
+              }
             }
         }
     }

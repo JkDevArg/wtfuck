@@ -150,6 +150,8 @@ data class CargaAdjunto(
      * entre un chat que responde y uno que no.
      */
     val miniatura: String = "",
+    /** Ver `Carga.Texto.silencioso`. */
+    val silencioso: Boolean = false,
 ) : Carga
 
 // ============================================================

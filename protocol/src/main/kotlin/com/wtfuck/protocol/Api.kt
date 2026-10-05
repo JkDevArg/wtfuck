@@ -828,6 +828,17 @@ sealed interface Bajada {
         val cuerpo: String,
         /** Tipo de mensaje de Signal. Ver [TipoCifrado]. */
         val tipo: Int = TipoCifrado.PLANO,
+        /**
+         * Si este mensaje te menciona: por tu usuario, o con un `@todos` que
+         * el servidor acepto.
+         *
+         * Lo decide el SERVIDOR y no el texto. Una mencion avisa aunque el
+         * grupo este silenciado, y si lo decidiera el telefono leyendo
+         * "@todos" en el mensaje, cualquiera podria saltarse el silencio de
+         * todos escribiendolo. El servidor solo acepta `@todos` de quien puede
+         * fijar mensajes en ese grupo.
+         */
+        val mencionado: Boolean = false,
     ) : Bajada
 
     /** El servidor acepto el envio. Equivale a la palomita gris. */

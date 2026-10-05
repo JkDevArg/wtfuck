@@ -171,6 +171,74 @@ class EdicionEstadoTest {
         assertEquals(110f, aplicar(Matrices.producto(a, b), 50f, 0f, 0f).first, 0.01f)
     }
 
+    // ------------------------------------------------------ proporciones
+
+    @Test
+    fun `un estado sale a 1080x1920`() {
+        assertEquals(1080 to 1920, com.wtfuck.app.datos.Proporcion.salida(9f / 16f, 1920))
+    }
+
+    @Test
+    fun `cuadrada y apaisada`() {
+        assertEquals(2560 to 2560, com.wtfuck.app.datos.Proporcion.salida(1f, 2560))
+        assertEquals(2560 to 1440, com.wtfuck.app.datos.Proporcion.salida(16f / 9f, 2560))
+    }
+
+    @Test
+    fun `los lados salen pares`() {
+        val (w, h) = com.wtfuck.app.datos.Proporcion.salida(4f / 5f, 1001)
+        assertEquals(0, w % 2)
+        assertEquals(0, h % 2)
+    }
+
+    @Test
+    fun `la original es la de la foto, y cambia al girarla`() {
+        val p = com.wtfuck.app.datos.Proporcion.ORIGINAL
+        assertEquals(4000f / 3000f, p.efectiva(4000, 3000, 0), 1e-5f)
+        assertEquals(3000f / 4000f, p.efectiva(4000, 3000, 90), 1e-5f)
+    }
+
+    @Test
+    fun `una fija no depende de la foto`() {
+        assertEquals(1f, com.wtfuck.app.datos.Proporcion.CUADRADA.efectiva(4000, 3000, 90), 0f)
+    }
+
+    @Test
+    fun `con la original y sin zoom no se recorta nada`() {
+        // La foto entera cabe justo: sus cuatro esquinas caen en las del lienzo.
+        val p = com.wtfuck.app.datos.Proporcion.ORIGINAL.efectiva(4000, 3000, 0)
+        val w = 1000f
+        val h = w / p
+        val t = Encuadre.transformacion(4000, 3000, EdicionFoto(), w, h)
+        assertEquals(0f, t.aplicar(0f, 0f).first, eps)
+        assertEquals(0f, t.aplicar(0f, 0f).second, eps)
+        assertEquals(w, t.aplicar(4000f, 3000f).first, eps)
+        assertEquals(h, t.aplicar(4000f, 3000f).second, eps)
+    }
+
+    @Test
+    fun `un recorte cuadrado no se agranda mas alla de sus pixeles reales`() {
+        // 2400x1500: el cuadrado mas grande que cabe mide 1500.
+        assertEquals(1500, com.wtfuck.app.datos.Proporcion.ladoSinAgrandar(1f, 2400, 1500, 0, 1f))
+    }
+
+    @Test
+    fun `con la proporcion de la foto sale a su tamano`() {
+        assertEquals(2400, com.wtfuck.app.datos.Proporcion.ladoSinAgrandar(2400f / 1500f, 2400, 1500, 0, 1f))
+    }
+
+    @Test
+    fun `acercar 2x deja la mitad de pixeles`() {
+        assertEquals(750, com.wtfuck.app.datos.Proporcion.ladoSinAgrandar(1f, 2400, 1500, 0, 2f))
+    }
+
+    @Test
+    fun `girada cuenta con los lados intercambiados`() {
+        // 2400x1500 girada es 1500x2400: un 9:16 tiene de alto lo que da el ancho.
+        val lado = com.wtfuck.app.datos.Proporcion.ladoSinAgrandar(9f / 16f, 2400, 1500, 90, 1f)
+        assertEquals(2400, lado)
+    }
+
     /** Aplica una matriz 4x5 a un color opaco. */
     private fun aplicar(m: FloatArray, r: Float, g: Float, b: Float): Triple<Float, Float, Float> =
         Triple(

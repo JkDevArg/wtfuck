@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
@@ -166,7 +168,13 @@ fun ChatPantalla(
         val gente = chat?.participantes.orEmpty().split(",").filter { it.isNotBlank() }
         val nombres = if (gente.isEmpty()) emptyMap() else app.repo.nombresDeLibreta(gente)
         nombresDeGente = nombres
-        candidatosMencion = gente.map { CandidatoMencion(it, nombres[it] ?: it) }
+        // `@todos` primero, y solo para quien puede fijar en un grupo: es la
+        // misma regla que aplica el servidor, que sin permiso lo ignora. Ver
+        // `MENCION_TODOS`.
+        val todos = if (chat?.tipo == "grupo" && (chat?.miJerarquia ?: 10) >= 50) {
+            listOf(CandidatoMencion(com.wtfuck.protocol.MENCION_TODOS, "Todo el grupo"))
+        } else emptyList()
+        candidatosMencion = todos + gente.map { CandidatoMencion(it, nombres[it] ?: it) }
     }
     var menuAbierto by remember { mutableStateOf(false) }
     var eligiendoTemporales by remember { mutableStateOf(false) }
@@ -177,6 +185,46 @@ fun ChatPantalla(
     var denunciaHecha by remember { mutableStateOf(false) }
     var respondiendoA by remember { mutableStateOf<MensajeEnt?>(null) }
     var editando by remember { mutableStateOf<MensajeEnt?>(null) }
+
+    // --- borrador -------------------------------------------------------
+    //
+    // Lo que se deja escrito sin enviar se guarda, por chat, en la base
+    // cifrada. Antes salir del chat lo perdia, y la lista no daba ninguna
+    // pista de que habia algo a medias.
+    //
+    // Se carga solo si el campo esta vacio: si ya hay texto -una rotacion,
+    // un texto compartido desde otra app- ese manda.
+    var borradorCargado by remember(conversacionId) { mutableStateOf(false) }
+    LaunchedEffect(conversacionId) {
+        val b = app.repo.borradorDe(conversacionId)
+        if (texto.text.isEmpty() && b.isNotEmpty()) {
+            texto = TextFieldValue(b, androidx.compose.ui.text.TextRange(b.length))
+        }
+        borradorCargado = true
+    }
+    // Con un respiro: guardar en cada tecla seria una escritura a la base por
+    // letra. Mientras se EDITA un mensaje ya enviado no se guarda nada: ese
+    // texto no es un borrador, es el mensaje viejo.
+    LaunchedEffect(texto.text, borradorCargado, editando) {
+        if (!borradorCargado || editando != null) return@LaunchedEffect
+        delay(500)
+        app.repo.guardarBorrador(conversacionId, texto.text)
+    }
+    // Y al salir, sin esperar el respiro: salir medio segundo despues de la
+    // ultima letra no puede perderla. En el ambito de la app, que sobrevive
+    // a esta pantalla.
+    val textoActual by rememberUpdatedState(texto.text)
+    val editandoActual by rememberUpdatedState(editando)
+    DisposableEffect(conversacionId) {
+        onDispose {
+            if (borradorCargado && editandoActual == null) {
+                val t = textoActual
+                app.ambito.launch { app.repo.guardarBorrador(conversacionId, t) }
+            }
+        }
+    }
+    /** El menu de la pulsacion larga en el boton de enviar. */
+    var menuEnviar by remember { mutableStateOf(false) }
     var aviso by remember { mutableStateOf<String?>(null) }
     val portapapeles = LocalClipboardManager.current
     /**
@@ -293,6 +341,25 @@ fun ChatPantalla(
         claveCambiada = runCatching { app.repo.claveCambiada(conversacionId) }.getOrNull()
     }
 
+    /** La foto elegida que se esta editando antes de mandarla. Ver `EditorFotoChat`. */
+    var fotoAEditar by remember { mutableStateOf<android.net.Uri?>(null) }
+
+    fotoAEditar?.let { foto ->
+        EditorFotoChat(
+            foto = foto,
+            pieInicial = texto.text.trim(),
+            onEnviar = { lista, pie ->
+                fotoAEditar = null
+                texto = TextFieldValue("")
+                ambito.launch {
+                    runCatching { app.repo.enviarAdjunto(conversacionId, lista, ClaseAdjunto.IMAGEN, pie) }
+                        .onFailure { aviso = it.message }
+                }
+            },
+            onCerrar = { fotoAEditar = null },
+        )
+    }
+
     /** Envia un archivo usando el texto escrito como pie de foto. */
     fun mandarArchivo(uri: android.net.Uri, clase: String, onda: String = "") {
         val pie = texto.text.trim()
@@ -332,7 +399,10 @@ fun ChatPantalla(
     ) { uri ->
         uri?.let {
             val mime = contexto.contentResolver.getType(it).orEmpty()
-            mandarArchivo(it, Media.claseDe(mime))
+            // Una foto pasa por el editor, como en cualquier mensajero. Un GIF
+            // no -el editor lo dejaria quieto- ni un video, que se manda tal cual.
+            if (Media.claseDe(mime) == ClaseAdjunto.IMAGEN && mime != "image/gif") fotoAEditar = it
+            else mandarArchivo(it, Media.claseDe(mime))
         }
     }
 
@@ -906,33 +976,60 @@ fun ChatPantalla(
                     // que ya conoce cualquiera que use un mensajero: el mismo
                     // lugar sirve para las dos cosas y nunca esta apagado.
                     val hayTexto = texto.text.isNotBlank()
-                    FilledIconButton(
-                        onClick = {
-                            if (!hayTexto) {
-                                grabarNotaVoz()
-                                return@FilledIconButton
-                            }
-                            val t = texto.text
-                            val cita = respondiendoA
-                            val edit = editando
-                            texto = TextFieldValue("")
-                            respondiendoA = null
-                            editando = null
-                            ambito.launch {
-                                runCatching {
-                                    if (edit != null) app.repo.editarMensaje(edit.id, t)
-                                    else app.repo.enviarTexto(conversacionId, t, respondeA = cita)
-                                }.onFailure { aviso = it.message }
-                            }
-                        },
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = Cian,
-                            contentColor = TextoSobreAcento,
-                        ),
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        if (hayTexto) Icon(Icons.AutoMirrored.Filled.Send, "Enviar")
-                        else Icon(Icons.Filled.Mic, "Grabar nota de voz")
+                    fun enviar(silencioso: Boolean) {
+                        val t = texto.text
+                        val cita = respondiendoA
+                        val edit = editando
+                        texto = TextFieldValue("")
+                        respondiendoA = null
+                        editando = null
+                        ambito.launch {
+                            runCatching {
+                                if (edit != null) app.repo.editarMensaje(edit.id, t)
+                                else app.repo.enviarTexto(conversacionId, t, respondeA = cita, silencioso = silencioso)
+                            }.onFailure { aviso = it.message }
+                        }
+                    }
+                    // Un boton propio y no `FilledIconButton`: ese no admite
+                    // pulsacion larga, y la pulsacion larga es donde vive
+                    // "enviar sin sonido", como en Telegram. Se ve igual.
+                    Box {
+                        Box(
+                            Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Cian)
+                                .combinedClickable(
+                                    onClickLabel = if (hayTexto) "Enviar" else "Grabar nota de voz",
+                                    onLongClickLabel = if (hayTexto && editando == null) "Más opciones de envío" else null,
+                                    onLongClick = { if (hayTexto && editando == null) menuEnviar = true },
+                                    onClick = { if (hayTexto) enviar(silencioso = false) else grabarNotaVoz() },
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (hayTexto) Icon(Icons.AutoMirrored.Filled.Send, "Enviar", tint = TextoSobreAcento)
+                            else Icon(Icons.Filled.Mic, "Grabar nota de voz", tint = TextoSobreAcento)
+                        }
+                        DropdownMenu(
+                            expanded = menuEnviar,
+                            onDismissRequest = { menuEnviar = false },
+                            containerColor = BgElev,
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text("Enviar sin sonido", color = TextoPrimario)
+                                        Text(
+                                            "Le llega, pero su teléfono no suena",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextoTerciario,
+                                        )
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Filled.NotificationsOff, null, tint = Cian) },
+                                onClick = { menuEnviar = false; enviar(silencioso = true) },
+                            )
+                        }
                     }
                 }
                 }
@@ -1771,8 +1868,16 @@ private fun Burbuja(
                     // color por defecto coincide con el correcto, asi que el
                     // defecto era invisible en la mitad de la pantalla y
                     // dejaba el texto claro sobre el cian en la otra mitad.
+                    // El formato (*negrita*, ||spoiler||...) y las menciones,
+                    // juntos. Ver `textoDeMensaje`. El spoiler se destapa por
+                    // mensaje y no queda destapado al volver al chat.
+                    var spoilerVisible by remember(m.id) { mutableStateOf(false) }
                     Text(
-                        textoConMenciones(m.texto, miUsuario, colorTexto, colorMencion),
+                        textoDeMensaje(
+                            m.texto, miUsuario, colorTexto, colorMencion,
+                            spoilerVisible = spoilerVisible,
+                            onVerSpoiler = { spoilerVisible = true },
+                        ),
                         color = colorTexto,
                         fontSize = 16.sp,
                     )

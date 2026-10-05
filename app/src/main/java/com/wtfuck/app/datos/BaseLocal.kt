@@ -77,6 +77,14 @@ data class ConversacionEnt(
      * puede escribir ni administrar.
      */
     val soyMiembro: Boolean = true,
+    /**
+     * Lo que quedo escrito sin enviar en este chat.
+     *
+     * En la base -cifrada- y no en las preferencias: un borrador es contenido
+     * de una conversacion cifrada de punta a punta, y las preferencias de
+     * Android se guardan en claro. Solo vive en este telefono: no viaja.
+     */
+    val borrador: String = "",
 )
 
 /**
@@ -156,6 +164,8 @@ data class ChatFila(
     val aliasContacto: String = "",
     /** Lo mismo para quien escribio el ultimo mensaje de un grupo. */
     val aliasAutor: String = "",
+    /** Lo que quedo sin enviar. La lista lo muestra en vez del ultimo mensaje. */
+    val borrador: String = "",
 ) {
     /** El globo se pinta si hay mensajes sin leer O si la marque a mano. */
     val sinLeer: Boolean get() = noLeidos > 0 || marcadaNoLeida
@@ -337,6 +347,12 @@ data class MensajeEnt(
      * voto habria aparecido como una burbuja vacia.
      */
     val oculto: Boolean = false,
+    /**
+     * Enviado "sin sonido": quien lo recibe ve la notificacion, pero el
+     * telefono no suena ni vibra. Viaja dentro del sobre cifrado; ver
+     * `Carga.Texto.silencioso`.
+     */
+    val silencioso: Boolean = false,
 )
 
 /**
@@ -586,7 +602,7 @@ interface ChatDao {
                   m.adjuntoClase AS ultimoAdjuntoClase,
                   m.adjuntoNombre AS ultimoAdjuntoNombre,
                   c.miRol, c.miJerarquia, c.silenciadoHasta, c.archivado, c.fijado,
-                  c.marcadaNoLeida, c.soyMiembro, c.expiraEn, c.temporalesSegundos,
+                  c.marcadaNoLeida, c.soyMiembro, c.expiraEn, c.temporalesSegundos, c.borrador,
                   COALESCE(k.alias, '') AS aliasContacto,
                   COALESCE(ka.alias, '') AS aliasAutor
            FROM conversacion c
@@ -992,6 +1008,9 @@ interface ChatDao {
     @Query("SELECT MAX(creadoEn) FROM mensaje WHERE conversacionId = :conv")
     suspend fun ultimoCreadoEn(conv: String): Long?
 
+    @Query("UPDATE conversacion SET borrador = :texto WHERE id = :id")
+    suspend fun guardarBorrador(id: String, texto: String)
+
 
 
     /**
@@ -1291,7 +1310,7 @@ interface ChatDao {
         EmojiUsoEnt::class,
         AjusteLocalEnt::class,
     ],
-    version = 21,
+    version = 22,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1311,7 +1330,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21,
+                    DE_20_A_21, DE_21_A_22,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1483,6 +1502,14 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Borradores por chat y mensajes sin sonido. */
+        private val DE_21_A_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE conversacion ADD COLUMN borrador TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN silencioso INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         private val DE_20_A_21 = object : Migration(20, 21) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

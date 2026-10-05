@@ -210,6 +210,10 @@ object Notificaciones {
         titulo: String,
         conversacionId: String,
         esGrupo: Boolean,
+        /** Quien lo mando pidio "sin sonido": se muestra, pero no suena ni vibra. */
+        silencioso: Boolean = false,
+        /** Me menciona: se dice, sin decir que. */
+        mencionado: Boolean = false,
     ) {
         val a = Ajustes(ctx)
         if (esGrupo && !a.grupos) return
@@ -221,6 +225,7 @@ object Notificaciones {
         } else "wtfuck"
         val cuerpo = when {
             !a.mostrarQuien -> "Tienes un mensaje nuevo"
+            mencionado && esGrupo -> "@$autor te mencionó en el grupo"
             esGrupo -> "@$autor escribio en el grupo"
             else -> "Te escribio"
         }
@@ -232,6 +237,8 @@ object Notificaciones {
             titulo = quien,
             texto = cuerpo,
             conversacionId = conversacionId,
+            conAcciones = true,
+            silencioso = silencioso,
         )
     }
 
@@ -330,6 +337,9 @@ object Notificaciones {
         titulo: String,
         texto: String,
         conversacionId: String,
+        /** Responder y marcar como leido. Solo en mensajes: a un canal no se contesta. */
+        conAcciones: Boolean = false,
+        silencioso: Boolean = false,
     ) {
         val intent = Intent(ctx, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -339,14 +349,25 @@ object Notificaciones {
             ctx, id, intent,
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
         )
-        val n = NotificationCompat.Builder(ctx, canal)
+        val b = NotificationCompat.Builder(ctx, canal)
             .setSmallIcon(R.drawable.ic_notificacion)
             .setContentTitle(titulo)
             .setContentText(texto)
             .setAutoCancel(true)
             .setContentIntent(pi)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .build()
+            // `setSilent` y no un canal aparte: es una decision por mensaje, y
+            // un canal "silencioso" quedaria en los ajustes del sistema como
+            // una categoria mas que nadie entiende.
+            .setSilent(silencioso)
+        // Con el bloqueo de la app activo NO se ofrecen: contestar desde la
+        // cortina seria entrar a la conversacion sin desbloquear, que es
+        // justo lo que el bloqueo existe para impedir.
+        if (conAcciones && !AjustesBloqueo(ctx).espera.activo) {
+            b.addAction(accionResponder(ctx, id, conversacionId))
+            b.addAction(accionLeido(ctx, id, conversacionId))
+        }
+        val n = b.build()
         runCatching { NotificationManagerCompat.from(ctx).notify(id, n) }
     }
 
@@ -377,6 +398,81 @@ object Notificaciones {
         runCatching {
             NotificationManagerCompat.from(ctx).notify(conversacionId.hashCode(), n)
         }
+    }
+
+    /**
+     * Quita la notificacion despues de contestar desde ella.
+     *
+     * Cancelarla a secas NO alcanza desde Android 15: tras una respuesta
+     * directa el sistema marca la notificacion con
+     * `LIFETIME_EXTENDED_BY_DIRECT_REPLY` e ignora el `cancel` hasta que la
+     * app publique una version nueva. Se vio en el emulador: la respuesta
+     * salia y la notificacion se quedaba con su circulo de "enviando".
+     *
+     * Y tampoco sirve "publicar una nueva y cancelar": se probo, y el sistema,
+     * que todavia tenia la respuesta en curso, volvia a poner la ORIGINAL con
+     * la vida extendida. Lo que Android espera tras una respuesta directa es
+     * una ACTUALIZACION, no una cancelacion.
+     *
+     * Asi que se publica una version nueva -silenciosa, que dice que salio- y
+     * se deja que caduque sola en un segundo y medio. Sin `cancel`: una
+     * caducidad la quita el sistema y no dispara la extension.
+     */
+    fun cerrarTrasResponder(ctx: Context, id: Int) {
+        val nm = NotificationManagerCompat.from(ctx)
+        if (!permitido(ctx)) {
+            runCatching { nm.cancel(id) }
+            return
+        }
+        val n = NotificationCompat.Builder(ctx, CANAL_MENSAJES)
+            .setSmallIcon(R.drawable.ic_notificacion)
+            .setContentText("Respuesta enviada")
+            .setSilent(true)
+            .setTimeoutAfter(1_500)
+            .setAutoCancel(true)
+            .build()
+        runCatching { nm.notify(id, n) }
+    }
+
+    private fun intentAccion(ctx: Context, accion: String, id: Int, conv: String) =
+        Intent(ctx, ReceptorAccionNotificacion::class.java).apply {
+            action = accion
+            putExtra(ReceptorAccionNotificacion.EXTRA_CONVERSACION, conv)
+            putExtra(ReceptorAccionNotificacion.EXTRA_NOTIFICACION, id)
+        }
+
+    /**
+     * "Responder" con campo de texto.
+     *
+     * MUTABLE a proposito, y es seguro: el sistema tiene que poder escribir la
+     * respuesta dentro del intent, y el intent es EXPLICITO -apunta a nuestro
+     * receptor, que no esta exportado-, asi que nadie puede redirigirlo.
+     */
+    private fun accionResponder(ctx: Context, id: Int, conv: String): NotificationCompat.Action {
+        val pi = android.app.PendingIntent.getBroadcast(
+            ctx, id * 31 + 1, intentAccion(ctx, ReceptorAccionNotificacion.ACCION_RESPONDER, id, conv),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                (if (Build.VERSION.SDK_INT >= 31) android.app.PendingIntent.FLAG_MUTABLE else 0),
+        )
+        val entrada = androidx.core.app.RemoteInput.Builder(ReceptorAccionNotificacion.CLAVE_RESPUESTA)
+            .setLabel("Responder")
+            .build()
+        return NotificationCompat.Action.Builder(R.drawable.ic_notificacion, "Responder", pi)
+            .addRemoteInput(entrada)
+            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+            .setShowsUserInterface(false)
+            .build()
+    }
+
+    private fun accionLeido(ctx: Context, id: Int, conv: String): NotificationCompat.Action {
+        val pi = android.app.PendingIntent.getBroadcast(
+            ctx, id * 31 + 2, intentAccion(ctx, ReceptorAccionNotificacion.ACCION_LEIDO, id, conv),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+        return NotificationCompat.Action.Builder(R.drawable.ic_notificacion, "Marcar como leído", pi)
+            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ)
+            .setShowsUserInterface(false)
+            .build()
     }
 
     /** En Android 13+ notificar sin permiso lanza; aqui simplemente no se hace. */

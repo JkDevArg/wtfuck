@@ -18,6 +18,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,7 +102,9 @@ fun textoConMenciones(
                     append(texto.substring(desde, h.range.first))
                 }
             }
-            val esParaMi = yo.isNotBlank() && h.groupValues[1] == yo
+            // `@todos` tambien es para mi: me incluye.
+            val esParaMi = (yo.isNotBlank() && h.groupValues[1] == yo) ||
+                h.groupValues[1] == com.wtfuck.protocol.MENCION_TODOS
             withStyle(
                 // Las dos llevan fondo, y la diferencia es el peso y la
                 // intensidad. Marcar las de otros SOLO con color no funciona
@@ -125,6 +128,63 @@ fun textoConMenciones(
         }
         if (desde < texto.length) {
             withStyle(SpanStyle(color = colorNormal)) { append(texto.substring(desde)) }
+        }
+    }
+}
+
+/**
+ * El texto de un mensaje con su formato (`*negrita*`, `_cursiva_`...) y sus
+ * menciones. Ver `Formato` para las reglas.
+ *
+ * Las menciones se resaltan DENTRO de cada tramo: `*@ana*` es una mencion en
+ * negrita. Menos dentro de un spoiler tapado, donde no se pinta nada: una
+ * mencion resaltada dentro del bloque dejaria leer justo lo que se tapo.
+ *
+ * El spoiler se destapa tocandolo. Se usa un enlace clicable y no un toque
+ * sobre toda la burbuja: la burbuja ya tiene sus propios gestos (mantener
+ * para el menu, deslizar para responder), y un toque cualquiera no puede
+ * destapar lo que alguien quiso esconder.
+ */
+fun textoDeMensaje(
+    texto: String,
+    miUsuario: String,
+    colorNormal: Color,
+    colorMencion: Color,
+    spoilerVisible: Boolean,
+    onVerSpoiler: () -> Unit,
+): AnnotatedString {
+    val tramos = com.wtfuck.app.datos.Formato.tramos(texto)
+    // El atajo de siempre: sin formato, lo de antes.
+    if (tramos.size == 1 && tramos[0].estilos.isEmpty()) {
+        return textoConMenciones(texto, miUsuario, colorNormal, colorMencion)
+    }
+    return buildAnnotatedString {
+        for (t in tramos) {
+            val e = t.estilos
+            val tapado = com.wtfuck.app.datos.Estilo.SPOILER in e && !spoilerVisible
+            val estilo = SpanStyle(
+                fontWeight = if (com.wtfuck.app.datos.Estilo.NEGRITA in e) FontWeight.Bold else null,
+                fontStyle = if (com.wtfuck.app.datos.Estilo.CURSIVA in e) androidx.compose.ui.text.font.FontStyle.Italic else null,
+                textDecoration = if (com.wtfuck.app.datos.Estilo.TACHADO in e) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                fontFamily = if (com.wtfuck.app.datos.Estilo.MONO in e) androidx.compose.ui.text.font.FontFamily.Monospace else null,
+                background = when {
+                    tapado -> colorNormal
+                    com.wtfuck.app.datos.Estilo.MONO in e -> colorNormal.copy(alpha = 0.12f)
+                    com.wtfuck.app.datos.Estilo.SPOILER in e -> colorNormal.copy(alpha = 0.10f)
+                    else -> Color.Unspecified
+                },
+                // Tapado: el texto del mismo color que el fondo del bloque.
+                color = if (tapado) colorNormal else Color.Unspecified,
+            )
+            if (tapado) {
+                withLink(androidx.compose.ui.text.LinkAnnotation.Clickable("spoiler") { onVerSpoiler() }) {
+                    withStyle(estilo) { append(t.texto) }
+                }
+            } else {
+                withStyle(estilo) {
+                    append(textoConMenciones(t.texto, miUsuario, colorNormal, colorMencion))
+                }
+            }
         }
     }
 }

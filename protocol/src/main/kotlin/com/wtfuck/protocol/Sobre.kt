@@ -166,6 +166,13 @@ sealed interface Carga {
          * viaja dentro del sobre como el resto del contenido.
          */
         val historia: CitaHistoria? = null,
+        /**
+         * "Enviar sin sonido", como en Telegram: llega y se notifica, pero el
+         * telefono de quien lo recibe no suena ni vibra. Va DENTRO del sobre:
+         * el servidor no sabe ni eso de un mensaje. Un cliente viejo lo
+         * ignora y suena, que es lo que hacia siempre.
+         */
+        val silencioso: Boolean = false,
     ) : Carga
 
     /**
@@ -774,6 +781,18 @@ object TopesConsulta {
  * resuelve el servidor cuando se toca la tarjeta.
  */
 val FORMA_USERNAME = Regex("^[a-z0-9_]{3,24}$")
+
+/**
+ * La mencion a todo el grupo: `@todos`.
+ *
+ * Es una palabra de la app, no una cuenta: por eso nadie puede registrarse
+ * con ese usuario (`USUARIOS_RESERVADOS`). Si pudiera, `@todos` en un grupo
+ * donde esta esa persona seria ambiguo.
+ */
+const val MENCION_TODOS = "todos"
+
+/** Usuarios que no se pueden registrar: son palabras de la app. */
+val USUARIOS_RESERVADOS = setOf(MENCION_TODOS)
 
 object ClaseContenido {
     const val TEXTO = ""

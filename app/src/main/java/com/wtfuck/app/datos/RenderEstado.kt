@@ -185,9 +185,17 @@ object RenderEstado {
      * estado que se ve a pantalla completa no admite el ahorro de una foto
      * de chat que se ve del tamano de una burbuja.
      */
-    fun renderizar(foto: Bitmap, e: EdicionFoto, stickers: Map<String, Bitmap>, destino: File): Boolean = runCatching {
-        val bmp = Bitmap.createBitmap(Lienzo.ANCHO, Lienzo.ALTO, Bitmap.Config.ARGB_8888)
-        dibujar(Canvas(bmp), foto, e, Lienzo.ANCHO.toFloat(), Lienzo.ALTO.toFloat(), stickers)
+    fun renderizar(
+        foto: Bitmap,
+        e: EdicionFoto,
+        stickers: Map<String, Bitmap>,
+        destino: File,
+        /** 1080x1920 para un estado; el tamano del recorte para una foto del chat. */
+        ancho: Int = Lienzo.ANCHO,
+        alto: Int = Lienzo.ALTO,
+    ): Boolean = runCatching {
+        val bmp = Bitmap.createBitmap(ancho, alto, Bitmap.Config.ARGB_8888)
+        dibujar(Canvas(bmp), foto, e, ancho.toFloat(), alto.toFloat(), stickers)
         destino.parentFile?.mkdirs()
         destino.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
         bmp.recycle()

@@ -251,5 +251,61 @@ object Matrices {
     }
 }
 
+/**
+ * La forma del recorte. Un estado es siempre 9:16; una foto del chat puede
+ * quedarse como vino o recortarse a las formas de siempre.
+ *
+ * `valor` es ancho/alto; null = la de la propia foto (ya girada).
+ */
+enum class Proporcion(val etiqueta: String, val valor: Float?) {
+    ORIGINAL("Original", null),
+    CUADRADA("1:1", 1f),
+    RETRATO("4:5", 4f / 5f),
+    VERTICAL("9:16", 9f / 16f),
+    APAISADA("16:9", 16f / 9f),
+    ;
+
+    /** Ancho/alto efectivo para una foto de ese tamano con ese giro. */
+    fun efectiva(anchoFoto: Int, altoFoto: Int, giro: Int): Float {
+        valor?.let { return it }
+        val (w, h) = Encuadre.dimensionesGiradas(anchoFoto, altoFoto, giro)
+        return if (w > 0 && h > 0) w.toFloat() / h else 1f
+    }
+
+    companion object {
+        /**
+         * El lado mayor mas grande que se puede sacar SIN agrandar la foto.
+         *
+         * Un recorte cuadrado de una foto de 2400x1500 solo tiene 1500 pixeles
+         * de lado de verdad; sacarlo a 2400 era inflarlo: mas peso para
+         * mandar y ni un detalle mas. Lo mismo con el zoom: acercar 2x deja
+         * la mitad de pixeles reales.
+         *
+         * @param proporcion ancho/alto del recorte.
+         * @param zoom el de la edicion (1 = la foto justo cubre el recorte).
+         */
+        fun ladoSinAgrandar(proporcion: Float, anchoFoto: Int, altoFoto: Int, giro: Int, zoom: Float): Int {
+            val (w, h) = Encuadre.dimensionesGiradas(anchoFoto, altoFoto, giro)
+            if (w <= 0 || h <= 0) return 0
+            val p = if (proporcion > 0f) proporcion else 1f
+            // El recorte con lado mayor 1: cuanto de la foto (girada) cubre.
+            val (w1, h1) = if (p >= 1f) 1f to 1f / p else p to 1f
+            val k = maxOf(w1 / w, h1 / h) * Encuadre.zoomValido(zoom)
+            return (1f / k).toInt()
+        }
+
+        /**
+         * El tamano del archivo final: el lado mayor mide `ladoMayor`.
+         * Redondeado a par: algunos codificadores se quejan de lados impares.
+         */
+        fun salida(proporcion: Float, ladoMayor: Int): Pair<Int, Int> {
+            val p = if (proporcion > 0f) proporcion else 1f
+            val (w, h) = if (p >= 1f) ladoMayor.toFloat() to ladoMayor / p else ladoMayor * p to ladoMayor.toFloat()
+            fun par(x: Float) = (Math.round(x / 2f) * 2).coerceAtLeast(2)
+            return par(w) to par(h)
+        }
+    }
+}
+
 /** Lo que dura como maximo un estado de audio. Un minuto, como una nota de voz larga. */
 const val AUDIO_ESTADO_MAX_MS = 60_000
