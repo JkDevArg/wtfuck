@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    El atajo fijo del icono -"Nota para mi"- y el destino de compartir.
+
+    Los chats recientes NO estan aqui: son atajos dinamicos que publica
+    `Atajos.publicar`, con las reglas de lo que se le cuenta al sistema.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="nota"
+        android:enabled="true"
+        android:icon="@drawable/ic_atajo_nota"
+        android:shortcutShortLabel="@string/atajo_nota_corto"
+        android:shortcutLongLabel="@string/atajo_nota_largo">
+        <intent
+            android:action="com.wtfuck.app.NOTA"
+            android:targetPackage="com.wtfuck.app"
+            android:targetClass="com.wtfuck.app.MainActivity" />
+    </shortcut>
+
+    <share-target android:targetClass="com.wtfuck.app.MainActivity">
+        <data android:mimeType="text/plain" />
+        <data android:mimeType="image/*" />
+        <data android:mimeType="video/*" />
+        <data android:mimeType="audio/*" />
+        <data android:mimeType="application/*" />
+        <category android:name="com.wtfuck.app.category.COMPARTIR" />
+    </share-target>
+</shortcuts>

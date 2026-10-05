@@ -357,6 +357,27 @@ class Repositorio(
     /** Traduce al idioma del telefono, en el telefono. Ver `Traductor`. */
     suspend fun traducir(texto: String): String = Traductor.traducir(contexto, texto)
 
+    /**
+     * Manda lo que llego con "Compartir" desde otra app: el texto como un
+     * mensaje y cada archivo como adjunto. Ver `Pedidos`.
+     *
+     * Los archivos salen en segundo plano, en el ambito del repositorio y no
+     * en el de la pantalla: un video tarda, y cerrar la hoja no tiene que
+     * cortar la subida. La copia ya esta hecha, asi que no depende del
+     * permiso de la otra app.
+     */
+    suspend fun enviarCompartido(convId: String, texto: String?, adjuntos: List<File>) {
+        texto?.takeIf { it.isNotBlank() }?.let { enviarTexto(convId, it) }
+        for (f in adjuntos) {
+            val uri = archivos.uriCompartible(f)
+            val clase = Media.claseDe(contexto.contentResolver.getType(uri).orEmpty())
+            ambito.launch {
+                runCatching { enviarAdjunto(convId, uri, clase) }
+                    .onFailure { _rechazos.tryEmit(it.message ?: "No se pudo enviar ${f.name}.") }
+            }
+        }
+    }
+
     /** "Info del mensaje" de uno mio en un grupo. Ver `Mensajes.info` en el servidor. */
     suspend fun infoMensaje(id: String): InfoMensaje = api.infoMensaje(id)
 
@@ -5371,6 +5392,9 @@ class Repositorio(
         // quien eran.
         dao.borrarChatsEnCarpetas()
         dao.borrarCarpetas()
+        // Los atajos y el widget hablan de esta cuenta.
+        Atajos.borrarTodos(contexto)
+        WidgetWtfuck.actualizar(contexto, 0)
         sesion.limpiar()
     }
 }

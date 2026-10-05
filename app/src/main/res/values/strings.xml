@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">wtfuck</string>
+    <string name="atajo_nota_corto">Nota para mí</string>
+    <string name="atajo_nota_largo">Abrir mi nota</string>
+    <string name="widget_nada">Nada sin leer</string>
+    <string name="widget_descripcion">Mensajes sin leer y tu nota. Sin nombres ni mensajes a la vista.</string>
 </resources>

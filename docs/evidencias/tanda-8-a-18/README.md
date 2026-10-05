@@ -459,7 +459,58 @@ preguntar. En un teléfono que ya los tiene, el camino es el mismo.
 
 Room 29 (`transcripcion`).
 
+## 17. Compartir desde otras apps, atajos y widget
+
+**Compartir hacia wtfuck.** Desde cualquier app, *Compartir → wtfuck* abre
+"Enviar a…": el mismo selector de reenviar, con "Nota para mí" primero y un
+resumen de lo que llega ("Texto", "1 archivo") (`17a-`). El texto sale como
+mensaje y cada archivo como adjunto. Si se eligió un solo chat, se abre.
+
+- **Los archivos se copian al llegar.** El permiso para leer lo que manda otra
+  app dura lo que dura la pantalla, y un video tarda más en subir. La subida va
+  en el ámbito del repositorio, así que cerrar la hoja no la corta.
+- **Solo `content://` de OTRAS apps.** Un `file://` o una URI del propio
+  proveedor se leerían con los permisos de wtfuck: otra app podría "compartir"
+  `file:///data/data/com.wtfuck.app/databases/wtfuck.db` y hacernos mandar
+  nuestra propia base. Probado con los dos ataques: **no se ofrece mandar
+  nada**.
+
+**La fila de compartir del sistema** muestra los 3 chats recientes (`17b-`).
+Si se toca uno, la hoja se abre con ese chat ya marcado (`17c-`). Probado
+desde Google Fotos: la foto llegó al chat (`17d-`).
+
+**Atajos del icono:**
+
+- "Nota para mí" es fija.
+- Los chats recientes son dinámicos.
+
+Un atajo es un nombre que **el sistema** guarda y muestra fuera de la app, así
+que:
+
+- nunca aparece un chat protegido;
+- con el bloqueo de la app encendido no se publica ninguno, porque el menú del
+  icono se ve sin desbloquear;
+- se publican tres como máximo, y solo cuando cambian, porque el sistema limita
+  cuántas veces por día se pueden tocar.
+
+**El widget** muestra cuántos mensajes hay sin leer y tiene un botón a la nota
+(`17f-`). **Nunca nombres ni mensajes:** está en la pantalla de inicio, sin
+pasar por el bloqueo. Se actualiza solo con la app en segundo plano: pasó de
+"1" a "2 mensajes sin leer" al llegar otro mensaje (`17g-`).
+
+**Un defecto anterior, encontrado aquí:** tocar una notificación abría la app
+**en la lista y no en el chat**. Las notificaciones mandaban el chat en el
+Intent y `MainActivity` nunca lo leía. Ahora hay un solo camino para todo lo
+que pide algo desde afuera (`Pedidos`): notificaciones, atajos, widget y
+compartir. Verificado: la notificación abre el chat (`17e-`).
+
+**Otro, encontrado probando el atajo:** el pedido vivía en un objeto global.
+Un atajo creó una segunda pantalla, la que quedó en segundo plano se llevó el
+pedido y navegó donde nadie la veía. Ahora el pedido es de cada pantalla.
+
+`AtajosTest`: 5 pruebas sobre qué chats se vuelven atajo y qué dice el widget.
+
 ## Números
 
-- Unitarias: 590 → **606**, 0 fallos.
+- Unitarias: 590 → **611**, 0 fallos.
 - Integración: 1672 → **1733**, 0 fallos (suites nuevas `notas.mjs` e `info.mjs`).

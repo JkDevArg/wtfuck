@@ -1,5 +1,7 @@
 package com.wtfuck.app
 
+import androidx.lifecycle.lifecycleScope
+import android.content.Intent
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -78,6 +80,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
      */
     private val bloqueada = mutableStateOf(false)
 
+    /**
+     * Lo que se pidio desde afuera, para ESTA pantalla. Ver `Pedidos`.
+     *
+     * En la Activity y no en un objeto global: un atajo o "Compartir" pueden
+     * crear una segunda Activity, y con un estado global la que quedo en
+     * segundo plano se lo llevaba y navegaba en una pantalla que nadie veia.
+     */
+    private val pedido = mutableStateOf<Pedido?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -88,13 +99,20 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         // instante es justo lo que el bloqueo existe para evitar.
         bloqueada.value = app.bloqueo.bloqueadoAhora(android.os.SystemClock.elapsedRealtime())
         aplicarPrivacidadDeRecientes(app)
+        // Solo en un arranque nuevo: al recrearse por un giro, el Intent es
+        // el mismo de antes y ya se atendio.
+        if (savedInstanceState == null) atender(intent)
 
         setContent {
             WtfuckTheme(tema = app.ajustes.tema, paletaElegida = app.ajustes.paleta) {
               TecladoIncognito(activo = app.ajustes.tecladoIncognito) {
                 PedirPermisoNotificaciones()
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Raiz()
+                    Raiz(
+                        bloqueada = bloqueada.value,
+                        pedido = pedido.value,
+                        onAtendido = { pedido.value = null },
+                    )
                     // ENCIMA de Raiz y dentro del mismo Surface: tapa lo que
                     // haya, incluido un chat abierto o una llamada en curso, y
                     // Atras no la puede quitar porque no es un destino.
@@ -103,6 +121,25 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     }
                 }
               }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        atender(intent)
+    }
+
+    /** Ver `Pedidos`: notificaciones, atajos, widget y "Compartir". */
+    private fun atender(i: Intent?) {
+        i ?: return
+        Pedidos.simple(i)?.let { pedido.value = it; return }
+        if (Pedidos.esCompartir(i)) {
+            val app = application as WtfuckApp
+            // La copia ya, mientras dure el permiso de leer de la otra app.
+            lifecycleScope.launch {
+                Pedidos.compartido(app, i)?.let { pedido.value = it }
             }
         }
     }
@@ -200,10 +237,25 @@ private fun PedirPermisoNotificaciones() {
 }
 
 @Composable
-private fun Raiz() {
+private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val nav = rememberNavController()
     val inicio = if (app.sesion.hayS) "chats" else "auth"
+
+    // Lo que se pidio desde afuera. Ver `Pedidos`.
+    var compartiendo by remember { mutableStateOf<Pedido.Compartir?>(null) }
+    LaunchedEffect(pedido) {
+        val p = pedido ?: return@LaunchedEffect
+        onAtendido()
+        // Sin sesion no hay a donde ir: el pedido se descarta.
+        if (!app.sesion.hayS) return@LaunchedEffect
+        when (p) {
+            is Pedido.AbrirChat -> nav.navigate("chat/${p.id}")
+            Pedido.AbrirNota -> runCatching { app.repo.abrirNotaParaMi() }
+                .onSuccess { nav.navigate("chat/$it") }
+            is Pedido.Compartir -> compartiendo = p
+        }
+    }
 
     // Un cierre remoto tiene que sacar de la app, no solo fallar por dentro.
     //
@@ -227,6 +279,20 @@ private fun Raiz() {
     // aparecer sobre lo que sea que haya en pantalla -incluido un borrador a
     // medio escribir, que no debe perderse- y desaparecer sin dejar nada en el
     // historial de navegacion. Ver `CapaLlamada`.
+    compartiendo?.let { c ->
+        // Nunca con el bloqueo puesto: la hoja es otra ventana y quedaria
+        // por ENCIMA de la pantalla de bloqueo, con la lista de chats a la
+        // vista.
+        if (!bloqueada) {
+            com.wtfuck.app.ui.HojaCompartir(
+                compartido = c.compartido,
+                preseleccion = c.destino,
+                onCerrar = { compartiendo = null },
+                onAbrirChat = { nav.navigate("chat/$it") },
+            )
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
     NavHost(navController = nav, startDestination = inicio) {
 

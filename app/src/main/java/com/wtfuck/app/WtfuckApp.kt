@@ -1,5 +1,7 @@
 package com.wtfuck.app
 
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import android.app.Application
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -158,6 +160,7 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
         // -el que dispara un push, por ejemplo- tiene que encontrar a alguien
         // escuchando. Ver `escucharAvisos`.
         escucharAvisos()
+        vigilarAtajosYWidget()
 
         // Firebase se inicializa con lo que haya en disco, ANTES de pedirle
         // nada al servidor: un aviso puede llegar en el mismo segundo del
@@ -192,6 +195,28 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
      * que el colector tiene que estar puesto ANTES de que algo pueda emitir:
      * por eso se llama al principio de `onCreate`.
      */
+    /**
+     * Mantiene al dia lo que se ve fuera de la app: los atajos de chats
+     * recientes y el numero del widget. Solo cuando cambia lo que muestran:
+     * el sistema limita cuantas veces por dia se pueden tocar los atajos.
+     */
+    private fun vigilarAtajosYWidget() {
+        ambito.launch {
+            repo.conversaciones
+                .map { lista -> lista.sumOf { it.noLeidos } }
+                .distinctUntilChanged()
+                .collect { com.wtfuck.app.datos.WidgetWtfuck.actualizar(this@WtfuckApp, it) }
+        }
+        ambito.launch {
+            repo.conversaciones
+                .map { lista -> com.wtfuck.app.datos.Atajos.elegidos(lista).map { it.id to it.titulo } to lista }
+                .distinctUntilChanged { a, b -> a.first == b.first }
+                .collect { (_, lista) ->
+                    com.wtfuck.app.datos.Atajos.publicar(this@WtfuckApp, lista, bloqueo.espera.activo)
+                }
+        }
+    }
+
     private fun escucharAvisos() {
         val app = this
         ambito.launch {

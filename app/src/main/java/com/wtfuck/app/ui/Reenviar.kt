@@ -40,20 +40,77 @@ private const val CLAVE_NOTA = "\u0000nota"
 private const val MAX_DESTINOS = 5
 
 /**
- * "Reenviar a...": elegir a donde va un mensaje.
+ * "Reenviar a...": elegir a donde va un mensaje. Ver [ElegirChats].
+ */
+@Composable
+fun HojaReenviar(mensaje: MensajeEnt, onCerrar: () -> Unit) {
+    val app = LocalContext.current.applicationContext as WtfuckApp
+    ElegirChats(
+        titulo = "Reenviar a",
+        verbo = "Reenviar",
+        hecho = "Reenviado",
+        onCerrar = onCerrar,
+        accion = { destino -> app.repo.reenviar(mensaje, destino) },
+    )
+}
+
+/**
+ * "Enviar a...": lo que llego desde otra app con "Compartir". Ver [ElegirChats]
+ * y `Compartido`. Si se eligio un solo chat, se abre: es lo que espera quien
+ * acaba de mandar algo.
+ */
+@Composable
+fun HojaCompartir(
+    compartido: com.wtfuck.app.Compartido,
+    /** El chat que se eligio en la fila de compartir del sistema: ya viene marcado. */
+    preseleccion: String? = null,
+    onCerrar: () -> Unit,
+    onAbrirChat: (String) -> Unit,
+) {
+    val app = LocalContext.current.applicationContext as WtfuckApp
+    ElegirChats(
+        titulo = "Enviar a",
+        verbo = "Enviar",
+        hecho = "Enviado",
+        onCerrar = onCerrar,
+        accion = { destino -> app.repo.enviarCompartido(destino, compartido.texto, compartido.archivos) },
+        onListo = { ids -> if (ids.size == 1) onAbrirChat(ids[0]) },
+        preseleccion = preseleccion,
+        resumen = buildList {
+            if (!compartido.texto.isNullOrBlank()) add("texto")
+            if (compartido.archivos.isNotEmpty()) {
+                add(if (compartido.archivos.size == 1) "1 archivo" else "${compartido.archivos.size} archivos")
+            }
+        }.joinToString(" y "),
+    )
+}
+
+/**
+ * Elegir uno o varios chats y hacer algo con cada uno.
  *
  * La "Nota para mi" va primero y siempre, aunque todavia no exista: reenviarse
- * algo es la forma mas comun de guardarlo, y es para lo que sirve la nota.
- * Los canales aparecen solo si puedo publicar en ellos.
+ * o mandarse algo es la forma mas comun de guardarlo, y es para lo que sirve
+ * la nota. Los canales aparecen solo si puedo publicar en ellos.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HojaReenviar(mensaje: MensajeEnt, onCerrar: () -> Unit) {
+private fun ElegirChats(
+    titulo: String,
+    verbo: String,
+    hecho: String,
+    onCerrar: () -> Unit,
+    accion: suspend (String) -> Unit,
+    onListo: (List<String>) -> Unit = {},
+    /** Un chat ya marcado al abrir. */
+    preseleccion: String? = null,
+    /** Que se va a mandar, en pocas palabras ("texto y 2 archivos"). */
+    resumen: String = "",
+) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
     val ambito = rememberCoroutineScope()
     var filtro by remember { mutableStateOf("") }
-    var elegidos by remember { mutableStateOf(listOf<String>()) }
+    var elegidos by remember { mutableStateOf(listOfNotNull(preseleccion)) }
     var enviando by remember { mutableStateOf(false) }
 
     val nota = chats.firstOrNull { it.tipo == "notas" }
@@ -73,8 +130,8 @@ fun HojaReenviar(mensaje: MensajeEnt, onCerrar: () -> Unit) {
         }
     }
 
-    // Abierta del todo: a media altura el boton de reenviar quedaba debajo
-    // del borde, y no habia forma de saber que habia que arrastrar.
+    // Abierta del todo: a media altura el boton quedaba debajo del borde, y no
+    // habia forma de saber que habia que arrastrar.
     val hoja = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = { if (!enviando) onCerrar() },
@@ -83,12 +140,20 @@ fun HojaReenviar(mensaje: MensajeEnt, onCerrar: () -> Unit) {
     ) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
             Text(
-                "Reenviar a",
+                titulo,
                 color = TextoPrimario,
                 fontWeight = FontWeight.Medium,
                 fontSize = 18.sp,
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
+            if (resumen.isNotBlank()) {
+                Text(
+                    resumen.replaceFirstChar { it.uppercase() },
+                    color = TextoTerciario,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+            }
             OutlinedTextField(
                 value = filtro,
                 onValueChange = { filtro = it },
@@ -127,10 +192,12 @@ fun HojaReenviar(mensaje: MensajeEnt, onCerrar: () -> Unit) {
                 onClick = {
                     enviando = true
                     ambito.launch {
+                        val ids = mutableListOf<String>()
                         val r = runCatching {
                             for (d in elegidos) {
                                 val id = if (d == CLAVE_NOTA) nota?.id ?: app.repo.abrirNotaParaMi() else d
-                                app.repo.reenviar(mensaje, id)
+                                accion(id)
+                                ids += id
                             }
                         }
                         enviando = false
@@ -139,10 +206,11 @@ fun HojaReenviar(mensaje: MensajeEnt, onCerrar: () -> Unit) {
                                 if (elegidos[0] == CLAVE_NOTA) "tu nota"
                                 else chats.firstOrNull { it.id == elegidos[0] }?.titulo ?: "1 chat"
                             } else "${elegidos.size} chats"
-                            Toast.makeText(app, "Reenviado a $a", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(app, "$hecho a $a", Toast.LENGTH_SHORT).show()
                             onCerrar()
+                            onListo(ids)
                         }.onFailure {
-                            Toast.makeText(app, it.message ?: "No se pudo reenviar.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(app, it.message ?: "No se pudo.", Toast.LENGTH_LONG).show()
                         }
                     }
                 },
@@ -151,9 +219,9 @@ fun HojaReenviar(mensaje: MensajeEnt, onCerrar: () -> Unit) {
             ) {
                 Text(
                     when {
-                        enviando -> "Reenviando..."
+                        enviando -> "$verbo..."
                         elegidos.isEmpty() -> "Elige a dónde"
-                        else -> "Reenviar (${elegidos.size})"
+                        else -> "$verbo (${elegidos.size})"
                     },
                 )
             }
