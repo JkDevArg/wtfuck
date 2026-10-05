@@ -369,6 +369,8 @@ data class MensajeEnt(
     val unaVezAbierta: Boolean = false,
     /** Cuando sale, si esta programado (`estado = PROGRAMADO`). Ver `Programados`. */
     val programadoPara: Long = 0,
+    /** Ver `CargaAdjunto.forma`. */
+    val adjuntoForma: String = "",
 )
 
 /**
@@ -1442,7 +1444,7 @@ interface ChatDao {
         CarpetaEnt::class,
         CarpetaChatEnt::class,
     ],
-    version = 27,
+    version = 28,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1462,7 +1464,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1634,6 +1636,13 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Videonotas. */
+        private val DE_27_A_28 = object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN adjuntoForma TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         /** Carpetas de chats. */
         private val DE_26_A_27 = object : Migration(26, 27) {
             override fun migrate(db: SupportSQLiteDatabase) {

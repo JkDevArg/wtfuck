@@ -165,6 +165,7 @@ camera-core      = { module = "androidx.camera:camera-core", version.ref = "came
 camera-camera2   = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
 camera-view      = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+camera-video     = { module = "androidx.camera:camera-video", version.ref = "camerax" }
 
 # --- modulo N: push ---
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebaseMessaging" }

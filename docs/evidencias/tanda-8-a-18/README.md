@@ -370,6 +370,39 @@ misma transacción que borra el sobre.
 `ajeno-lectura.mjs` exige que toda ruta de lectura nueva esté probada contra
 otra cuenta: avisó de esta y quedó cubierta (no eximida).
 
+## 15. Videonotas
+
+Las videonotas son como las de Telegram: *Adjuntar → Videonota* abre la
+cámara en un círculo. Se toca para grabar y otra vez para terminar, hasta 60
+segundos, y después *Enviar* o *Repetir* (`15a-`, `15b-`). En el chat van
+sueltas, en un círculo y sin burbuja, con su miniatura y su duración. Al
+tocarlas suenan ahí mismo (`15c-`, `15d-`).
+
+- **Con la misma CameraX** del escáner de QR. Solo se sumó `camera-video` con
+  el mismo `version.ref` (1.6.2), sin otra biblioteca.
+- **En calidad SD.** Se ve en un círculo de 220 dp, y un minuto en alta
+  definición serían decenas de megas cifrados y subidos para nada. Medido: 6
+  segundos ocupan **581 KB**.
+- **Viajan como un video**, con `CargaAdjunto.forma = "circulo"`. Un cliente
+  viejo lo ignora y la ve como lo que es, un video normal. Quien recibe solo
+  acepta esa forma en un video. Al reenviarla conserva la forma.
+- **Detalles de Android que hubo que resolver:**
+  - la vista previa usa un `TextureView` (modo `COMPATIBLE`), porque un
+    `SurfaceView` no se deja recortar en círculo y se veía cuadrado;
+  - lo mismo el reproductor de la burbuja, con un recorte al centro para no
+    deformar el video;
+  - la grabación sale espejada como la vista previa.
+
+**Dos defectos encontrados probando:**
+
+- **Sin cámara frontal la pantalla quedaba negra.** El emulador tiene solo la
+  trasera, y hay tablets y teléfonos así. Ahora usa la frontal si existe y, si
+  no, la trasera.
+- **Al terminar decía "Lista: 0:00".** El reloj se ponía en cero también al
+  parar. Ahora dice "Lista: 0:04".
+
+Room 28 (`adjuntoForma`).
+
 ## Números
 
 - Unitarias: 590 → **602**, 0 fallos.

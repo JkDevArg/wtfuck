@@ -331,6 +331,8 @@ dependencies {
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
+    // Las videonotas: grabar con la misma CameraX, sin otra biblioteca.
+    implementation(libs.camera.video)
     implementation(libs.coroutines.android)
 
     testImplementation(libs.junit4)

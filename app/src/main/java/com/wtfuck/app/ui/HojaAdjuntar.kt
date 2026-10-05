@@ -43,6 +43,8 @@ fun HojaAdjuntar(
     onGaleria: () -> Unit,
     /** Foto o video para ver una vez. Ver `CargaAdjunto.unaVez`. */
     onUnaVez: () -> Unit,
+    /** Grabar una videonota, en circulo. */
+    onVideonota: () -> Unit,
     onDocumento: () -> Unit,
     onNotaVoz: () -> Unit,
     onSticker: () -> Unit,
@@ -62,6 +64,7 @@ fun HojaAdjuntar(
     val opciones = listOfNotNull(
         OpcionAdjunto("Galeria", Icons.Filled.Image, Cian, onGaleria),
         OpcionAdjunto("Ver una vez", Icons.Filled.LooksOne, Coral, onUnaVez),
+        OpcionAdjunto("Videonota", Icons.Filled.RadioButtonChecked, Ambar, onVideonota),
         OpcionAdjunto("Documento", Icons.AutoMirrored.Filled.InsertDriveFile, Ambar, onDocumento),
         OpcionAdjunto("Nota de voz", Icons.Filled.Mic, Coral, onNotaVoz),
         // Ya no dice "Sticker o GIF": son dos cosas separadas y este boton

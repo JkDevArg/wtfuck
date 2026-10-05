@@ -88,6 +88,11 @@ fun ContenidoAdjunto(
         else -> ({ onAbrir(local) })
     }
 
+    if (m.adjuntoClase == ClaseAdjunto.VIDEO && m.adjuntoForma == FORMA_CIRCULO) {
+        VistaVideonota(m, local, onDescargar)
+        return
+    }
+
     when (m.adjuntoClase) {
         ClaseAdjunto.IMAGEN, ClaseAdjunto.VIDEO ->
             VistaImagen(m, local, alTocar)

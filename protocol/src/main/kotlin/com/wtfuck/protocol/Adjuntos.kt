@@ -162,6 +162,12 @@ data class CargaAdjunto(
      * Quien recibe ignora los dos aunque vengan. Ver `VisorUnaVez`.
      */
     val unaVez: Boolean = false,
+    /**
+     * Como se dibuja. "circulo" = videonota, como las de Telegram. Vacio = como
+     * siempre. Un cliente viejo lo ignora y la ve como un video normal, que es
+     * exactamente lo que es.
+     */
+    val forma: String = "",
 ) : Carga
 
 // ============================================================

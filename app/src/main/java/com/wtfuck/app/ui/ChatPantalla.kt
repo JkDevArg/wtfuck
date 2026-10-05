@@ -276,6 +276,7 @@ private fun ChatAbierto(
     var infoDe by remember { mutableStateOf<String?>(null) }
     /** El mensaje que se esta por reenviar: abre "Reenviar a...". */
     var reenviando by remember { mutableStateOf<MensajeEnt?>(null) }
+    var grabandoVideonota by remember { mutableStateOf(false) }
     /** Lo proximo que se elija en la galeria va como "ver una vez". */
     var proximoUnaVez by remember { mutableStateOf(false) }
     /** Con que valor arranca el interruptor del editor de fotos. */
@@ -1435,6 +1436,7 @@ private fun ChatAbierto(
                     )
                 )
             },
+            onVideonota = { grabandoVideonota = true },
             onUnaVez = {
                 proximoUnaVez = true
                 elegirMedia.launch(
@@ -1597,6 +1599,26 @@ private fun ChatAbierto(
     reenviando?.let { m -> HojaReenviar(m, onCerrar = { reenviando = null }) }
 
     infoDe?.let { id -> HojaInfoMensaje(id, onCerrar = { infoDe = null }) }
+
+    if (grabandoVideonota) {
+        GrabadorVideonota(
+            onListo = { archivo ->
+                grabandoVideonota = false
+                ambito.launch {
+                    // Por el FileProvider y no `file://`: sin proveedor el
+                    // sistema no sabe el tipo, y un video sin tipo no es video.
+                    runCatching {
+                        app.repo.enviarAdjunto(
+                            conversacionId, app.archivos.uriCompartible(archivo), ClaseAdjunto.VIDEO,
+                            forma = FORMA_CIRCULO,
+                        )
+                    }.onFailure { aviso = it.message }
+                    archivo.delete()
+                }
+            },
+            onCerrar = { grabandoVideonota = false },
+        )
+    }
 
     if (eligiendoMomento) {
         ElegirMomento(
@@ -1963,7 +1985,12 @@ private fun Burbuja(
 
     // La semantica de color del sistema de diseno, aplicada:
     //   cian  = va bien    ambar = esperando    coral = se rompio
-    val esSticker = m.adjuntoClase == ClaseAdjunto.STICKER && !m.retirado
+    // Sin burbuja: un sticker y una videonota van sueltos. Encerrarlos en un
+    // rectangulo de color los convierte en una calcomania pegada sobre otra.
+    val esSticker = !m.retirado && (
+        m.adjuntoClase == ClaseAdjunto.STICKER ||
+            (m.adjuntoClase == ClaseAdjunto.VIDEO && m.adjuntoForma == FORMA_CIRCULO)
+        )
 
     /**
      * Un contenido con estructura NO se pinta sobre el cian de la burbuja

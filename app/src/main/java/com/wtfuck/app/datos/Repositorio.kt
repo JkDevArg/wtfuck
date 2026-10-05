@@ -1097,6 +1097,9 @@ class Repositorio(
                         adjuntoNonce = adj?.nonce.orEmpty(),
                         adjuntoMiniatura = if (adj?.unaVez == true) "" else adj?.miniatura.orEmpty(),
                         unaVez = adj?.unaVez == true,
+                        // Solo las formas que se saben dibujar: el resto es un
+                        // video normal. Lo escribio otra persona.
+                        adjuntoForma = adj?.forma?.takeIf { it == "circulo" && adj.clase == ClaseAdjunto.VIDEO }.orEmpty(),
                         // Se guarda tal cual vino. Que sea una figura
                         // dibujable lo decide quien la dibuja, con
                         // `Onda.decodificar`: esto lo escribio otra persona y
@@ -2663,6 +2666,8 @@ class Repositorio(
         onda: String = "",
         /** "Ver una vez". Sale sin pie y sin miniatura: ver `CargaAdjunto.unaVez`. */
         unaVez: Boolean = false,
+        /** Ver `CargaAdjunto.forma`. */
+        forma: String = "",
     ) {
         val pie = if (unaVez) "" else pie
         val mensajeId = UUID.randomUUID().toString()
@@ -2732,6 +2737,7 @@ class Repositorio(
                 rutaLocal = local.absolutePath,
                 adjuntoEstado = "SUBIENDO",
                 unaVez = unaVez,
+                adjuntoForma = forma,
             )
         )
 
@@ -2854,6 +2860,7 @@ class Repositorio(
                 adjuntoOnda = m.adjuntoOnda,
                 rutaLocal = local.absolutePath,
                 adjuntoEstado = "SUBIENDO",
+                adjuntoForma = m.adjuntoForma,
             )
         )
         val datos = DatosArchivo(
@@ -5031,6 +5038,7 @@ class Repositorio(
                 silencioso = m.silencioso,
                 reenviadoDe = m.reenviadoDe,
                 unaVez = m.unaVez,
+                forma = m.adjuntoForma,
             )
         }
 
