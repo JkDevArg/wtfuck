@@ -185,6 +185,12 @@ fun ChatPantalla(
     var accionesDe by remember { mutableStateOf<MensajeEnt?>(null) }
     /** El mensaje que se esta por reenviar: abre "Reenviar a...". */
     var reenviando by remember { mutableStateOf<MensajeEnt?>(null) }
+    /** Lo proximo que se elija en la galeria va como "ver una vez". */
+    var proximoUnaVez by remember { mutableStateOf(false) }
+    /** Con que valor arranca el interruptor del editor de fotos. */
+    var fotoUnaVez by remember { mutableStateOf(false) }
+    /** El "ver una vez" que se esta viendo, con su archivo. */
+    var viendoUnaVez by remember { mutableStateOf<Pair<MensajeEnt, File>?>(null) }
     var denunciando by remember { mutableStateOf<MensajeEnt?>(null) }
     var enviandoDenuncia by remember { mutableStateOf(false) }
     var denunciaHecha by remember { mutableStateOf(false) }
@@ -371,12 +377,14 @@ fun ChatPantalla(
         EditorFotoChat(
             foto = foto,
             pieInicial = texto.text.trim(),
-            onEnviar = { lista, pie ->
+            unaVezInicial = fotoUnaVez,
+            onEnviar = { lista, pie, unaVez ->
                 fotoAEditar = null
-                texto = TextFieldValue("")
+                if (!unaVez) texto = TextFieldValue("")
                 ambito.launch {
-                    runCatching { app.repo.enviarAdjunto(conversacionId, lista, ClaseAdjunto.IMAGEN, pie) }
-                        .onFailure { aviso = it.message }
+                    runCatching {
+                        app.repo.enviarAdjunto(conversacionId, lista, ClaseAdjunto.IMAGEN, pie, unaVez = unaVez)
+                    }.onFailure { aviso = it.message }
                 }
             },
             onCerrar = { fotoAEditar = null },
@@ -384,11 +392,12 @@ fun ChatPantalla(
     }
 
     /** Envia un archivo usando el texto escrito como pie de foto. */
-    fun mandarArchivo(uri: android.net.Uri, clase: String, onda: String = "") {
-        val pie = texto.text.trim()
-        texto = TextFieldValue("")
+    fun mandarArchivo(uri: android.net.Uri, clase: String, onda: String = "", unaVez: Boolean = false) {
+        // Un "ver una vez" no lleva pie: lo escrito se queda en el campo.
+        val pie = if (unaVez) "" else texto.text.trim()
+        if (!unaVez) texto = TextFieldValue("")
         ambito.launch {
-            runCatching { app.repo.enviarAdjunto(conversacionId, uri, clase, pie, onda = onda) }
+            runCatching { app.repo.enviarAdjunto(conversacionId, uri, clase, pie, onda = onda, unaVez = unaVez) }
                 .onFailure { aviso = it.message }
         }
     }
@@ -420,12 +429,18 @@ fun ChatPantalla(
     val elegirMedia = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
+        // Se consume aqui, se haya elegido algo o no: si no, cancelar el
+        // selector dejaria el proximo envio marcado sin que nadie lo sepa.
+        val unaVez = proximoUnaVez
+        proximoUnaVez = false
         uri?.let {
             val mime = contexto.contentResolver.getType(it).orEmpty()
             // Una foto pasa por el editor, como en cualquier mensajero. Un GIF
             // no -el editor lo dejaria quieto- ni un video, que se manda tal cual.
-            if (Media.claseDe(mime) == ClaseAdjunto.IMAGEN && mime != "image/gif") fotoAEditar = it
-            else mandarArchivo(it, Media.claseDe(mime))
+            if (Media.claseDe(mime) == ClaseAdjunto.IMAGEN && mime != "image/gif") {
+                fotoUnaVez = unaVez
+                fotoAEditar = it
+            } else mandarArchivo(it, Media.claseDe(mime), unaVez = unaVez)
         }
     }
 
@@ -1222,6 +1237,13 @@ fun ChatPantalla(
                             }.onFailure { aviso = "No hay ninguna app que pueda abrir este archivo." }
                         },
                         onMantener = { if (!m.retirado) accionesDe = m },
+                        onVerUnaVez = {
+                            ambito.launch {
+                                val f = app.repo.abrirUnaVez(m.id)
+                                if (f != null) viendoUnaVez = m to f
+                                else aviso = "No se pudo abrir. Revisa la conexión e inténtalo otra vez."
+                            }
+                        },
                         onReaccion = { emoji, poner ->
                             ambito.launch {
                                 runCatching { app.repo.reaccionar(m.id, emoji, poner) }
@@ -1257,6 +1279,14 @@ fun ChatPantalla(
     if (hojaAdjuntar) {
         HojaAdjuntar(
             onGaleria = {
+                elegirMedia.launch(
+                    androidx.activity.result.PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                    )
+                )
+            },
+            onUnaVez = {
+                proximoUnaVez = true
                 elegirMedia.launch(
                     androidx.activity.result.PickVisualMediaRequest(
                         ActivityResultContracts.PickVisualMedia.ImageAndVideo
@@ -1415,6 +1445,13 @@ fun ChatPantalla(
     }
 
     reenviando?.let { m -> HojaReenviar(m, onCerrar = { reenviando = null }) }
+
+    viendoUnaVez?.let { (m, archivo) ->
+        VisorUnaVez(archivo, m.adjuntoClase) {
+            viendoUnaVez = null
+            ambito.launch { app.repo.cerrarUnaVez(m.id) }
+        }
+    }
 
     accionesDe?.let { m ->
         HojaAccionesMensaje(
@@ -1719,6 +1756,7 @@ private fun Burbuja(
     onDescargar: () -> Unit,
     onAbrir: (File) -> Unit,
     onMantener: () -> Unit,
+    onVerUnaVez: () -> Unit,
     onReaccion: (String, Boolean) -> Unit,
     onAbrirContacto: (String) -> Unit,
     /** Volver a llamar desde el resumen de una llamada. El booleano es el video. */
@@ -1914,7 +1952,7 @@ private fun Burbuja(
                     // sonar, y por eso se quedaban con la pulsacion larga: abrian
                     // el visor en vez del menu. Igual que con los enlaces.
                     Box(Modifier.sinAbrirConPulsacionLarga { mantener() }) {
-                        ContenidoAdjunto(m, sobreAcento, onDescargar, onAbrir, onReintentar)
+                        ContenidoAdjunto(m, sobreAcento, onDescargar, onAbrir, onReintentar, onVerUnaVez)
                     }
                     // El pie solo si existe: un espacio vacio debajo de la foto
                     // se ve como un error de maquetado.

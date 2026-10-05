@@ -154,6 +154,14 @@ data class CargaAdjunto(
     val silencioso: Boolean = false,
     /** Si es un reenvio, de quien venia. Ver `Carga.Texto.reenviadoDe`. */
     val reenviadoDe: String? = null,
+    /**
+     * "Ver una vez": quien recibe la abre una vez y se borra de su telefono.
+     *
+     * Va sin miniatura y sin pie, a proposito: la miniatura es la foto en
+     * chico y el pie se queda en el chat, en la lista y en la notificacion.
+     * Quien recibe ignora los dos aunque vengan. Ver `VisorUnaVez`.
+     */
+    val unaVez: Boolean = false,
 ) : Carga
 
 // ============================================================

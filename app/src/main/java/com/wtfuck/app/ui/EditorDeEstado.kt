@@ -1,5 +1,8 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -426,6 +429,8 @@ internal fun EditorFoto(
     renderizarSiempre: Boolean = true,
     /** El lado mayor del archivo final. */
     ladoSalida: Int = Lienzo.ALTO,
+    /** Sin campo de pie: un "ver una vez" no lo lleva. Ver `CargaAdjunto.unaVez`. */
+    conPie: Boolean = true,
 ) {
     val ctx = LocalContext.current
     val ambito = rememberCoroutineScope()
@@ -698,7 +703,7 @@ internal fun EditorFoto(
         }
 
         PiePublicar(
-            pie = pie, onPie = { pie = it }, error = error ?: aviso,
+            pie = if (conPie) pie else null, onPie = if (conPie) ({ pie = it }) else null, error = error ?: aviso,
             publicando = publicando || renderizando, habilitado = true, etiqueta = etiqueta,
         ) {
             val original = origen
@@ -1120,9 +1125,12 @@ private fun EditorAudio(publicando: Boolean, error: String?, onPublicar: (Estado
 fun EditorFotoChat(
     foto: Uri,
     pieInicial: String,
-    onEnviar: (Uri, String) -> Unit,
+    /** El tercer valor es "ver una vez". Ver `CargaAdjunto.unaVez`. */
+    onEnviar: (Uri, String, Boolean) -> Unit,
     onCerrar: () -> Unit,
+    unaVezInicial: Boolean = false,
 ) {
+    var unaVez by remember { mutableStateOf(unaVezInicial) }
     var hayTrabajo by remember { mutableStateOf(false) }
     var confirmarSalir by remember { mutableStateOf(false) }
     val intentarCerrar: () -> Unit = { if (hayTrabajo) confirmarSalir = true else onCerrar() }
@@ -1138,19 +1146,47 @@ fun EditorFotoChat(
                 ) {
                     IconButton(onClick = intentarCerrar) { Icon(Icons.Filled.Close, "Cerrar", tint = Color.White) }
                     Text("Editar foto", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.weight(1f))
+                    // El "1" de WhatsApp: encendido, la foto se ve una vez.
+                    Box(
+                        Modifier
+                            .padding(end = 8.dp)
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (unaVez) Coral else Color.Transparent)
+                            .border(2.dp, if (unaVez) Coral else Color.White, CircleShape)
+                            .clickable { unaVez = !unaVez }
+                            .semantics {
+                                contentDescription = "Ver una vez"
+                                stateDescription = if (unaVez) "encendido" else "apagado"
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("1", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (unaVez) {
+                    Text(
+                        "Ver una vez: se abre una sola vez, sin pie de foto, y tampoco queda en tu teléfono.",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.fillMaxWidth().background(Coral.copy(alpha = 0.25f))
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     EditorFoto(
                         publicando = false,
                         error = null,
                         onTrabajo = { hayTrabajo = true },
-                        onListo = { uri, _, pie -> onEnviar(uri, pie) },
+                        onListo = { uri, _, pie -> onEnviar(uri, if (unaVez) "" else pie, unaVez) },
                         fotoInicial = foto,
                         proporciones = Proporcion.entries,
-                        etiqueta = "Enviar",
+                        etiqueta = if (unaVez) "Enviar · ver una vez" else "Enviar",
                         pieInicial = pieInicial,
                         renderizarSiempre = false,
                         ladoSalida = 2560,
+                        conPie = !unaVez,
                     )
                 }
                 if (confirmarSalir) {

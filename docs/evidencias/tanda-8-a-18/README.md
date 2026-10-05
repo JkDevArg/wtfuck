@@ -161,6 +161,56 @@ contador.
 emuladores como segundo aparato de la misma cuenta. El camino del servidor sí
 está probado (`notas.mjs`, "dos aparatos").
 
+## 10. Ver una vez
+
+Se elige en *Adjuntar → Ver una vez*, y vale para foto y video. Una foto pasa
+por el editor con el "1" encendido. Se puede apagar ahí, y entonces sale como
+foto normal (`10a-`). Un video sale directo.
+
+**Lo que sí hace:**
+
+- **Sin miniatura ni pie.** La miniatura viaja dentro del sobre y es la foto en
+  chico. El pie se quedaría en el chat, en la lista y en la notificación. Quien
+  recibe ignora los dos aunque vengan.
+- **Quien envía tampoco lo conserva.** Su copia se borra apenas el servidor
+  acepta el envío (`10b-`). Verificado: en el emisor no queda ningún archivo.
+- **Quien recibe no lo descarga hasta que lo abre** (`10c-`). El archivo
+  descifrado no espera en el disco a que alguien decida.
+- **Se marca como abierto antes de mostrarlo.** En ese momento se borran la
+  llave del archivo, el pie y la miniatura. Al cerrar el visor se borra el
+  archivo. Verificado: después de cerrar, el archivo ya no está y la burbuja
+  dice "Abierta", sin forma de volver a abrirla (`10e-`).
+- **Si la app muere con el visor abierto**, al volver a abrirla figura como
+  abierta y un barrido borra el archivo. Probado con `am force-stop` mientras
+  se veía el video.
+- **El visor usa `FLAG_SECURE`.** El sistema no deja capturar ni grabar la
+  pantalla, y en "recientes" la ventana sale en negro. La captura que se tomó
+  con el visor abierto salió **negra** (`10d-`), y la ventana figura con el
+  flag `SECURE` en `dumpsys`.
+- **El video se reproduce dentro de la app.** Los otros videos se abren en el
+  reproductor del sistema, pero abrir este afuera sería entregarle el archivo a
+  otra app.
+- **No se reenvía**, ni desde el menú ni por código.
+
+**Lo que no puede hacer, y se dice en el visor:** impedir una foto a la
+pantalla con otro teléfono. Tampoco puede impedir que un cliente modificado se
+guarde el archivo y la llave al recibirlo: es una cortesía con barreras
+técnicas, no una garantía. Lo mismo vale para WhatsApp y Signal.
+
+**Pendiente:**
+
+- avisarle a quien envió que se abrió;
+- sincronizar el "abierto" entre los aparatos de quien recibe: hoy cada aparato
+  vinculado lo deja ver una vez.
+
+Room pasa a la versión 24 (`unaVez`, `unaVezAbierta`) y `CargaAdjunto` gana
+`unaVez`. Ambos tienen valor por defecto, así que un cliente viejo no se
+rompe. Ese cliente vería una foto normal sin miniatura, y por eso conviene
+publicar esta versión antes de usarlo en serio.
+
+De paso, "Copiar" ya no aparece en mensajes sin texto (una foto sin pie, un
+"ver una vez"): copiaba una cadena vacía.
+
 ## Números
 
 - Unitarias: **590**, 0 fallos.

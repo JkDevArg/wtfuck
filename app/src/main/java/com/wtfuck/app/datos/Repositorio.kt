@@ -524,6 +524,8 @@ class Repositorio(
         val token = sesion.token ?: return
         socket.alRechazarToken = { sesion.invalidar(it) }
         socket.conectar(token)
+        // Lo de "ver una vez" que haya quedado en el disco. Ver `barrerUnaVez`.
+        ambito.launch { barrerUnaVez() }
 
         // El vigilante vive FUERA de `colectores` a proposito: si estuviera
         // dentro, detener() se cancelaria a si mismo a media ejecucion.
@@ -940,7 +942,9 @@ class Repositorio(
                 val texto = when (carga) {
                     is Carga.Texto -> carga.cuerpo
                     is Carga.EventoGrupo -> textoDeEvento(carga)
-                    is CargaAdjunto -> carga.pie
+                    // Un "ver una vez" no trae pie aunque lo traiga: se
+                    // quedaria en el chat, la lista y la notificacion.
+                    is CargaAdjunto -> if (carga.unaVez) "" else carga.pie
                     // El resumen se calcula aqui, al recibir, y se guarda en
                     // `texto`. Asi la lista de chats y el buscador leen una
                     // columna de texto como con cualquier mensaje, en vez de
@@ -1024,7 +1028,8 @@ class Repositorio(
                         adjuntoDuracionMs = adj?.duracionMs ?: 0,
                         adjuntoClave = adj?.clave.orEmpty(),
                         adjuntoNonce = adj?.nonce.orEmpty(),
-                        adjuntoMiniatura = adj?.miniatura.orEmpty(),
+                        adjuntoMiniatura = if (adj?.unaVez == true) "" else adj?.miniatura.orEmpty(),
+                        unaVez = adj?.unaVez == true,
                         // Se guarda tal cual vino. Que sea una figura
                         // dibujable lo decide quien la dibuja, con
                         // `Onda.decodificar`: esto lo escribio otra persona y
@@ -1047,7 +1052,9 @@ class Repositorio(
 
                 // Descarga automatica segun los ajustes: en WiFi una foto se
                 // baja sola, un video de 40 MB con datos moviles no.
-                if (filas != -1L && adj != null && ajustes.descargaSola(adj.clase, adj.bytes)) {
+                // Un "ver una vez" no se baja solo: el archivo descifrado no
+                // espera en el disco a que alguien decida abrirlo.
+                if (filas != -1L && adj != null && !adj.unaVez && ajustes.descargaSola(adj.clase, adj.bytes)) {
                     ambito.launch { descargarAdjunto(msg.mensajeId.ifBlank { msg.sobreId }) }
                 }
                 // Solo se cuenta como no leido si el INSERT de verdad inserto.
@@ -1081,6 +1088,10 @@ class Repositorio(
 
             is Bajada.Aceptado -> {
                 dao.estado(msg.sobreId, EstadoEnvio.ENVIADO.name)
+                // Un "ver una vez" mio no se queda en mi telefono: tampoco yo
+                // lo vuelvo a ver, como en WhatsApp y Signal. Hasta aqui hacia
+                // falta, para cifrarlo y para reintentar.
+                dao.mensaje(msg.sobreId)?.takeIf { it.unaVez && it.esMio }?.let { soltarUnaVez(it) }
                 // La hora del servidor NO reemplaza la de mi mensaje -es la de
                 // autoria, y si lo escribi sin red tiene que seguir siendo de
                 // cuando lo escribi-. Sirve para afinar el desfase del reloj.
@@ -2537,7 +2548,10 @@ class Repositorio(
          * ya no. Sacarla del .m4a obligaria a decodificarlo entero.
          */
         onda: String = "",
+        /** "Ver una vez". Sale sin pie y sin miniatura: ver `CargaAdjunto.unaVez`. */
+        unaVez: Boolean = false,
     ) {
+        val pie = if (unaVez) "" else pie
         val mensajeId = UUID.randomUUID().toString()
         val original = archivos.datosDe(uri, clase)
 
@@ -2600,10 +2614,11 @@ class Repositorio(
                 adjuntoAncho = datos.ancho,
                 adjuntoAlto = datos.alto,
                 adjuntoDuracionMs = datos.duracionMs,
-                adjuntoMiniatura = archivos.miniaturaDe(Uri.fromFile(local), clase),
+                adjuntoMiniatura = if (unaVez) "" else archivos.miniaturaDe(Uri.fromFile(local), clase),
                 adjuntoOnda = onda,
                 rutaLocal = local.absolutePath,
                 adjuntoEstado = "SUBIENDO",
+                unaVez = unaVez,
             )
         )
 
@@ -2691,6 +2706,7 @@ class Repositorio(
      * "Reenviado de" lleva al autor ORIGINAL, aunque ya sea un reenvio.
      */
     suspend fun reenviar(m: MensajeEnt, destino: String) {
+        if (m.unaVez) throw IllegalStateException("Lo que se ve una vez no se reenvía.")
         val origen = m.reenviadoDe ?: m.autor
         if (m.adjuntoClase.isBlank()) {
             val previa = if (m.previaJson.isBlank()) null else runCatching {
@@ -2734,6 +2750,45 @@ class Repositorio(
         // La subida, aparte: un video de 60 MB no puede dejar la hoja de
         // reenviar abierta hasta que termine. La burbuja ya muestra el avance.
         ambito.launch { subirAdjunto(nuevoId, destino, m.adjuntoClase, datos, local) }
+    }
+
+    // --- "Ver una vez" -----------------------------------------------------
+
+    /**
+     * Abre un "ver una vez" que me mandaron: lo baja si hace falta, lo marca
+     * abierto y devuelve el archivo para el visor. Null si ya se abrio o no se
+     * pudo bajar.
+     *
+     * Se marca ANTES de mostrarlo: ver `dao.abrirUnaVez`.
+     */
+    suspend fun abrirUnaVez(id: String): File? {
+        var m = dao.mensaje(id) ?: return null
+        if (!m.unaVez || m.esMio || m.unaVezAbierta) return null
+        if (m.rutaLocal?.let { File(it).exists() } != true) {
+            descargarAdjunto(id)
+            m = dao.mensaje(id) ?: return null
+        }
+        val archivo = m.rutaLocal?.let { File(it) }?.takeIf { it.exists() } ?: return null
+        dao.abrirUnaVez(id)
+        return archivo
+    }
+
+    /** Al cerrar el visor: el archivo se va del disco. */
+    suspend fun cerrarUnaVez(id: String) {
+        dao.mensaje(id)?.let { soltarUnaVez(it) }
+    }
+
+    private suspend fun soltarUnaVez(m: MensajeEnt) {
+        withContext(Dispatchers.IO) { m.rutaLocal?.let { File(it).delete() } }
+        dao.soltarArchivo(m.id)
+    }
+
+    /**
+     * Lo que quedo en el disco y no deberia: un visor que no llego a cerrarse
+     * porque la app murio, o uno mio que salio con la app cerrada. Al arrancar.
+     */
+    suspend fun barrerUnaVez() {
+        runCatching { dao.unaVezConArchivo().forEach { soltarUnaVez(it) } }
     }
 
     /** Vuelve a intentar la subida de un adjunto que fallo. */
@@ -4862,6 +4917,7 @@ class Repositorio(
                 miniatura = m.adjuntoMiniatura,
                 silencioso = m.silencioso,
                 reenviadoDe = m.reenviadoDe,
+                unaVez = m.unaVez,
             )
         }
 

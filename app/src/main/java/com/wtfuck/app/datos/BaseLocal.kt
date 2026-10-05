@@ -355,6 +355,10 @@ data class MensajeEnt(
     val silencioso: Boolean = false,
     /** La vista previa del enlace, en JSON (`VistaPreviaEnlace`). Vacio = sin. */
     val previaJson: String = "",
+    /** "Ver una vez". Ver `CargaAdjunto.unaVez`. */
+    val unaVez: Boolean = false,
+    /** Ya se abrio: no queda ni el archivo ni su llave. */
+    val unaVezAbierta: Boolean = false,
 )
 
 /**
@@ -855,6 +859,32 @@ interface ChatDao {
     @Query("SELECT * FROM conversacion WHERE tipo = 'directa' AND nombre = :username LIMIT 1")
     suspend fun directaCon(username: String): ConversacionEnt?
 
+    /**
+     * Marca un "ver una vez" como abierto y le quita lo que permitiria verlo
+     * otra vez: la llave del archivo, el pie y la miniatura. Va ANTES de
+     * mostrarlo, no despues: si la app muere con el visor abierto, al volver
+     * ya esta abierto.
+     */
+    @Query(
+        """UPDATE mensaje SET unaVezAbierta = 1, texto = '', adjuntoClave = '',
+           adjuntoNonce = '', adjuntoMiniatura = '' WHERE id = :id"""
+    )
+    suspend fun abrirUnaVez(id: String)
+
+    /** Suelta el archivo de un "ver una vez": ya se borro del disco. */
+    @Query("UPDATE mensaje SET rutaLocal = NULL WHERE id = :id")
+    suspend fun soltarArchivo(id: String)
+
+    /**
+     * Los "ver una vez" que todavia tienen archivo y no deberian: abiertos, o
+     * mios ya enviados. Para el barrido al arrancar.
+     */
+    @Query(
+        """SELECT * FROM mensaje WHERE unaVez = 1 AND rutaLocal IS NOT NULL
+           AND (unaVezAbierta = 1 OR (esMio = 1 AND estado != 'PENDIENTE' AND estado != 'FALLIDO'))"""
+    )
+    suspend fun unaVezConArchivo(): List<MensajeEnt>
+
     /** La "Nota para mi", si este aparato ya la conoce. Ver `Repositorio.abrirNotaParaMi`. */
     @Query("SELECT * FROM conversacion WHERE tipo = 'notas' AND soyMiembro = 1 LIMIT 1")
     suspend fun notaParaMi(): ConversacionEnt?
@@ -1316,7 +1346,7 @@ interface ChatDao {
         EmojiUsoEnt::class,
         AjusteLocalEnt::class,
     ],
-    version = 23,
+    version = 24,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1336,7 +1366,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1508,6 +1538,14 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** "Ver una vez". */
+        private val DE_23_A_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN unaVez INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN unaVezAbierta INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         /** Vista previa de enlaces. */
         private val DE_22_A_23 = object : Migration(22, 23) {
             override fun migrate(db: SupportSQLiteDatabase) {

@@ -64,7 +64,12 @@ fun ContenidoAdjunto(
     onDescargar: () -> Unit,
     onAbrir: (File) -> Unit,
     onReintentar: () -> Unit,
+    onVerUnaVez: () -> Unit = {},
 ) {
+    if (m.unaVez) {
+        VistaUnaVez(m, sobreAcento, onVerUnaVez)
+        return
+    }
     val local = remember(m.rutaLocal) { m.rutaLocal?.let { File(it) }?.takeIf { it.exists() } }
 
     /**
@@ -627,5 +632,132 @@ private fun iconoDeArchivo(mime: String, nombre: String): ImageVector {
         ext in setOf("zip", "rar", "7z", "tar", "gz") -> Icons.Filled.FolderZip
         ext in setOf("apk") -> Icons.Filled.Android
         else -> Icons.AutoMirrored.Filled.InsertDriveFile
+    }
+}
+
+
+// ------------------------------------------------------------------
+//  Ver una vez
+// ------------------------------------------------------------------
+
+/**
+ * La burbuja de un "ver una vez". Nunca muestra la foto: ni miniatura ni
+ * archivo, en ninguno de los dos lados.
+ */
+@Composable
+private fun VistaUnaVez(m: MensajeEnt, sobreAcento: Boolean, onVer: () -> Unit) {
+    val esVideo = m.adjuntoClase == ClaseAdjunto.VIDEO
+    val que = if (esVideo) "Video" else "Foto"
+    val abrible = !m.esMio && !m.unaVezAbierta && m.estado != EstadoEnvio.FALLIDO.name
+    val bajando = m.adjuntoEstado == "DESCARGANDO"
+    val texto = if (sobreAcento) TextoSobreAcento else TextoPrimario
+    val (titulo, detalle) = when {
+        m.esMio -> "$que · ver una vez" to when (m.estado) {
+            EstadoEnvio.PENDIENTE.name -> "enviando..."
+            EstadoEnvio.FALLIDO.name -> "no se envió"
+            else -> "enviada · ya no está en este teléfono"
+        }
+        m.unaVezAbierta -> "Abierta" to "$que de ver una vez"
+        bajando -> que to "descargando..."
+        else -> que to "toca para verla una vez"
+    }
+    Row(
+        Modifier
+            .widthIn(min = 200.dp)
+            .then(if (abrible && !bajando) Modifier.clickable(onClick = onVer) else Modifier)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .border(2.dp, if (abrible) Coral else texto.copy(alpha = 0.4f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("1", color = if (abrible) Coral else texto.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(titulo, color = texto, fontWeight = FontWeight.Medium)
+            Text(detalle, color = texto.copy(alpha = 0.7f), fontSize = 12.sp)
+        }
+    }
+}
+
+/**
+ * El visor de un "ver una vez".
+ *
+ * Con `FLAG_SECURE`: el sistema no deja capturar ni grabar la pantalla
+ * mientras esta abierto, y en "recientes" la ventana sale en negro. Lo que NO
+ * puede impedir, y se dice en pantalla, es una foto a la pantalla con otro
+ * telefono.
+ *
+ * El video se reproduce aqui adentro y no en el reproductor del sistema, como
+ * el resto de los videos: abrirlo afuera seria entregarle el archivo a otra
+ * app, que podria guardarlo.
+ */
+@Composable
+fun VisorUnaVez(archivo: File, clase: String, onCerrar: () -> Unit) {
+    Dialog(
+        onDismissRequest = onCerrar,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+            securePolicy = androidx.compose.ui.window.SecureFlagPolicy.SecureOn,
+        ),
+    ) {
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            if (clase == ClaseAdjunto.VIDEO) {
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { ctx ->
+                        android.widget.VideoView(ctx).apply {
+                            setVideoPath(archivo.absolutePath)
+                            setOnPreparedListener { it.start() }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize().align(Alignment.Center),
+                )
+            } else {
+                val imagen = remember(archivo) {
+                    // Con muestreo: una foto de 50 MP decodificada entera no
+                    // cabe en memoria, y aqui no hay segunda oportunidad.
+                    val lim = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(archivo.absolutePath, lim)
+                    var muestra = 1
+                    while (maxOf(lim.outWidth, lim.outHeight) / (muestra * 2) >= 2048) muestra *= 2
+                    BitmapFactory.decodeFile(
+                        archivo.absolutePath, BitmapFactory.Options().apply { inSampleSize = muestra },
+                    )?.asImageBitmap()
+                }
+                if (imagen != null) {
+                    Image(
+                        imagen, null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().align(Alignment.Center),
+                    )
+                } else {
+                    Text("No se pudo mostrar.", color = Color.White, modifier = Modifier.align(Alignment.Center))
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().systemBarsPadding().padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onCerrar) { Icon(Icons.Filled.Close, "Cerrar", tint = Color.White) }
+                Text("Ver una vez", color = Color.White, fontWeight = FontWeight.Medium)
+            }
+            Text(
+                "Al cerrar se borra de este teléfono. Las capturas de pantalla están " +
+                    "bloqueadas, pero nadie puede impedir una foto a la pantalla con otro teléfono.",
+                color = Color.White.copy(alpha = 0.75f),
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
     }
 }

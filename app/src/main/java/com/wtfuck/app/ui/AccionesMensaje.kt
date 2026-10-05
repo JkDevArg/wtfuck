@@ -130,10 +130,14 @@ fun HojaAccionesMensaje(
 
             if (!mensaje.retirado) {
                 Opcion("Responder", Icons.AutoMirrored.Filled.Reply, onClick = onResponder)
-                Opcion("Copiar", Icons.Filled.ContentCopy, onClick = onCopiar)
+                // Sin texto no hay nada que copiar: una foto sin pie, un
+                // "ver una vez".
+                if (mensaje.texto.isNotBlank()) {
+                    Opcion("Copiar", Icons.Filled.ContentCopy, onClick = onCopiar)
+                }
                 // Una encuesta o un evento son de SU chat: sus votos y sus
                 // asistentes viven ahi. Reenviados serian una copia muerta.
-                if (mensaje.especial.isBlank()) {
+                if (mensaje.especial.isBlank() && !mensaje.unaVez) {
                     Opcion("Reenviar", Icons.AutoMirrored.Filled.Send, onClick = onReenviar)
                 }
 
