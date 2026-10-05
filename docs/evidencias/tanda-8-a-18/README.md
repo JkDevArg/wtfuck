@@ -211,7 +211,99 @@ publicar esta versión antes de usarlo en serio.
 De paso, "Copiar" ya no aparece en mensajes sin texto (una foto sin pie, un
 "ver una vez"): copiaba una cadena vacía.
 
+## 11. Mensajes programados
+
+Se programan con una pulsación larga en enviar → *Programar envío*. Hay tres
+atajos (en 1 hora, esta noche a las 20:00 si todavía falta, mañana a las 08:00)
+y *Otra fecha y hora* con los selectores del sistema (`11a-`).
+
+**Viven en el teléfono, a propósito.** El servidor no puede mandar nada en
+nombre de nadie, porque solo tiene sobres cifrados. Para que lo hiciera habría
+que dejarle el sobre y una hora, y eso es contarle cuándo alguien piensa
+escribir y a quién. Telegram lo hace en el servidor porque ahí el servidor lee
+los chats; Signal no lo tiene por lo mismo. El costo se dice en pantalla: sale
+desde este teléfono, y si a esa hora está apagado o sin red, sale cuando
+vuelva.
+
+**Cómo:**
+
+- Se guarda como cualquier mensaje, pero con estado `PROGRAMADO` y `oculto`.
+  La cola solo toma `PENDIENTE`, así que no sale. `oculto` ya lo sacaba del
+  chat, de la lista y del buscador, así que no hubo que tocar ninguna consulta.
+  En el chat aparece un aviso: "1 mensaje programado · el próximo hoy 16:46".
+  Abre la lista con *Enviar ahora* y *Cancelar* (`11b-`).
+- A la hora pasa a `PENDIENTE` y lo demás lo hace la maquinaria de siempre:
+  cifrado, reintentos y cola en segundo plano.
+- **Qué lo despierta.** Una alarma `setAndAllowWhileIdle`, que el sistema
+  respeta en reposo, y un trabajo de WorkManager como respaldo, porque las
+  alarmas se pierden al reiniciar el teléfono. Al abrir la app también se
+  liberan los vencidos. El cambio de estado lleva la condición en el `WHERE`,
+  así que si llegan los dos no sale dos veces.
+- La alarma es **inexacta a propósito**. La exacta pide un permiso que Android
+  14 ya no da por defecto, y unos minutos de diferencia no justifican mandar a
+  la persona a los ajustes del sistema.
+
+**Probado en el emulador:**
+
+- Se programó para las 16:46, con la app **en segundo plano**.
+- `dumpsys alarm` mostraba la alarma con su ventana.
+- Salió a las **16:48:11**, el final de la ventana inexacta. Llegó al otro
+  emulador con esa hora (`11c-`), que es cuando salió y no cuando se programó.
+- `creadoEn` queda en la hora en que se escribió y no en la futura. Una hora
+  futura en una fila oculta habría empujado hacia adelante la hora de todo lo
+  que se escriba después (`horaParaMio`).
+
+`MomentoProgramadoTest`: 5 pruebas de los atajos, de las etiquetas ("hoy",
+"mañana", "lun 12 oct") y de qué horas valen.
+
+Room 25 (`programadoPara`).
+
+## 12. Proteger un chat con huella
+
+Se activa desde el menú del chat o desde la lista (*Proteger con huella*). Se
+llama así y no "bloquear" porque "bloquear a @fulano" ya existe y es otra cosa
+(`12a-`).
+
+- **La puerta está en el chat, no en la lista.** A un chat se llega también
+  desde una notificación, el buscador, un contacto o un enlace, y la puerta
+  tiene que estar en todos. Mientras no se sabe si está protegido no se dibuja
+  nada: ni un instante con los mensajes a la vista.
+- **Qué pide.** Huella, rostro o el PIN del teléfono, con el mismo diálogo que
+  el bloqueo de la app. Si se abrió hace menos de un minuto, ir a la lista y
+  volver no la pide otra vez. Después de más de un minuto fuera de la app, sí.
+  No al instante: elegir una foto o abrir la cámara también "sale" de la app, y
+  cerrar el chat ahí perdería lo que se estaba eligiendo.
+- **Lo que no se asoma:**
+  - la lista dice "Chat protegido" en vez del último mensaje o del borrador;
+  - el lector de pantalla tampoco lo lee;
+  - el buscador lo salta;
+  - la notificación dice "Mensaje nuevo en un chat protegido", sin quién y sin
+    *Responder*, porque responder desde la cortina sería entrar sin la huella.
+- **Quitar la protección.** Desde la lista pide la huella. Desde adentro del
+  chat no hace falta, porque ya se verificó.
+- **Sin huella ni PIN configurados no se ofrece.** Encenderlo sería un candado
+  que no cierra. La app lo dice: "Primero configura una huella o un PIN en el
+  teléfono" (`12b-`).
+- **Solo vive en este teléfono.** El servidor no tiene por qué saber qué chats
+  protege alguien.
+
+**Lo que no se probó de punta a punta:** los emuladores no tienen huella ni
+PIN, y configurarlos es cambiar la seguridad del aparato. Por eso no lo hice.
+Se probó el camino sin credenciales y todo lo que no depende del diálogo. Falta
+abrir un chat protegido en un teléfono real con huella.
+
+Room 26 (`conversacion.protegido`).
+
+### Un defecto del punto 3, encontrado aquí
+
+`guardarConversacion` **reemplaza la fila entera**, y lo que llega del servidor
+en cada sincronización no traía las columnas que solo viven en el teléfono. Eso
+pasaba cada vez que se abría la app, y **borraba todos los borradores** y la
+marca de "no leído". Con `protegido` habría pasado lo mismo. Ahora esas columnas
+se copian de la fila anterior. Verificado: un borrador sobrevivió a matar la app
+y a la sincronización al volver (`12c-`).
+
 ## Números
 
-- Unitarias: **590**, 0 fallos.
+- Unitarias: 590 → **595**, 0 fallos.
 - Integración: 1672 → **1708**, 0 fallos (suite nueva `notas.mjs`).

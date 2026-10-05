@@ -85,6 +85,12 @@ data class ConversacionEnt(
      * Android se guardan en claro. Solo vive en este telefono: no viaja.
      */
     val borrador: String = "",
+    /**
+     * Protegido con huella: para abrirlo hay que verificarse, y ni la lista ni
+     * las notificaciones ni el buscador muestran lo que tiene. Solo vive en
+     * este telefono: el servidor no tiene por que saber cuales son.
+     */
+    val protegido: Boolean = false,
 )
 
 /**
@@ -166,6 +172,8 @@ data class ChatFila(
     val aliasAutor: String = "",
     /** Lo que quedo sin enviar. La lista lo muestra en vez del ultimo mensaje. */
     val borrador: String = "",
+    /** Ver `ConversacionEnt.protegido`. */
+    val protegido: Boolean = false,
 ) {
     /** El globo se pinta si hay mensajes sin leer O si la marque a mano. */
     val sinLeer: Boolean get() = noLeidos > 0 || marcadaNoLeida
@@ -359,6 +367,8 @@ data class MensajeEnt(
     val unaVez: Boolean = false,
     /** Ya se abrio: no queda ni el archivo ni su llave. */
     val unaVezAbierta: Boolean = false,
+    /** Cuando sale, si esta programado (`estado = PROGRAMADO`). Ver `Programados`. */
+    val programadoPara: Long = 0,
 )
 
 /**
@@ -608,7 +618,7 @@ interface ChatDao {
                   m.adjuntoClase AS ultimoAdjuntoClase,
                   m.adjuntoNombre AS ultimoAdjuntoNombre,
                   c.miRol, c.miJerarquia, c.silenciadoHasta, c.archivado, c.fijado,
-                  c.marcadaNoLeida, c.soyMiembro, c.expiraEn, c.temporalesSegundos, c.borrador,
+                  c.marcadaNoLeida, c.soyMiembro, c.expiraEn, c.temporalesSegundos, c.borrador, c.protegido,
                   COALESCE(k.alias, '') AS aliasContacto,
                   COALESCE(ka.alias, '') AS aliasAutor
            FROM conversacion c
@@ -871,6 +881,36 @@ interface ChatDao {
     )
     suspend fun abrirUnaVez(id: String)
 
+    @Query("UPDATE conversacion SET protegido = :protegido WHERE id = :id")
+    suspend fun fijarProtegido(id: String, protegido: Boolean)
+
+    @Query("SELECT protegido FROM conversacion WHERE id = :id")
+    suspend fun estaProtegido(id: String): Boolean?
+
+    /** Los programados de un chat, el proximo primero. Ver `Programados`. */
+    @Query("SELECT * FROM mensaje WHERE conversacionId = :conv AND estado = 'PROGRAMADO' ORDER BY programadoPara")
+    fun programadosDe(conv: String): Flow<List<MensajeEnt>>
+
+    @Query("SELECT * FROM mensaje WHERE estado = 'PROGRAMADO' AND programadoPara <= :ahora ORDER BY programadoPara")
+    suspend fun programadosVencidos(ahora: Long): List<MensajeEnt>
+
+    @Query("SELECT MIN(programadoPara) FROM mensaje WHERE estado = 'PROGRAMADO'")
+    suspend fun proximoProgramado(): Long?
+
+    /**
+     * A la cola: deja de estar oculto y pasa a `PENDIENTE`. Con la condicion
+     * del estado en el WHERE, la alarma y el trabajo de respaldo pueden llegar
+     * los dos sin que el mensaje salga dos veces.
+     */
+    @Query(
+        """UPDATE mensaje SET estado = 'PENDIENTE', oculto = 0, creadoEn = :creadoEn
+           WHERE id = :id AND estado = 'PROGRAMADO'"""
+    )
+    suspend fun liberarProgramado(id: String, creadoEn: Long): Int
+
+    @Query("DELETE FROM mensaje WHERE id = :id AND estado = 'PROGRAMADO'")
+    suspend fun cancelarProgramado(id: String)
+
     /** Suelta el archivo de un "ver una vez": ya se borro del disco. */
     @Query("UPDATE mensaje SET rutaLocal = NULL WHERE id = :id")
     suspend fun soltarArchivo(id: String)
@@ -1021,6 +1061,9 @@ interface ChatDao {
              JOIN conversacion c ON c.id = m.conversacionId
              LEFT JOIN contacto k ON c.tipo = 'directa' AND k.username = c.nombre
            WHERE m.oculto = 0 AND m.retirado = 0 AND m.esSistema = 0
+             -- Un chat protegido no se asoma por el buscador: seria leerlo
+             -- sin verificarse.
+             AND c.protegido = 0
              AND m.texto LIKE '%' || :q || '%' ESCAPE '\'
            ORDER BY m.creadoEn DESC LIMIT 200"""
     )
@@ -1041,7 +1084,7 @@ interface ChatDao {
     @Query("UPDATE mensaje SET estado = :estado WHERE id = :id")
     suspend fun estado(id: String, estado: String)
 
-    @Query("SELECT MAX(creadoEn) FROM mensaje WHERE conversacionId = :conv")
+    @Query("SELECT MAX(creadoEn) FROM mensaje WHERE conversacionId = :conv AND estado != 'PROGRAMADO'")
     suspend fun ultimoCreadoEn(conv: String): Long?
 
     @Query("UPDATE conversacion SET borrador = :texto WHERE id = :id")
@@ -1346,7 +1389,7 @@ interface ChatDao {
         EmojiUsoEnt::class,
         AjusteLocalEnt::class,
     ],
-    version = 24,
+    version = 26,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1366,7 +1409,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1538,6 +1581,20 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Chats protegidos con huella. */
+        private val DE_25_A_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE conversacion ADD COLUMN protegido INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /** Mensajes programados. */
+        private val DE_24_A_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN programadoPara INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         /** "Ver una vez". */
         private val DE_23_A_24 = object : Migration(23, 24) {
             override fun migrate(db: SupportSQLiteDatabase) {

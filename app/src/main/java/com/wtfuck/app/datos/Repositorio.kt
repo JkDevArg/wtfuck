@@ -256,6 +256,8 @@ class Repositorio(
         val silencioso: Boolean = false,
         /** Me menciona (lo decidio el servidor): avisa aunque el chat este silenciado. */
         val mencionado: Boolean = false,
+        /** Chat protegido: ni quien ni de donde. Ver `ConversacionEnt.protegido`. */
+        val protegido: Boolean = false,
     )
 
     private val _notificables = MutableSharedFlow<Notificable>(extraBufferCapacity = 16)
@@ -330,8 +332,29 @@ class Repositorio(
                 esGrupo = conv.tipo == "grupo",
                 silencioso = silencioso,
                 mencionado = mencionado,
+                protegido = conv.protegido,
             )
         )
+    }
+
+    // --- Chats protegidos ---------------------------------------------------
+
+    /**
+     * Los que se abrieron hace poco, hasta cuando: un minuto. Asi ir a la lista
+     * y volver no pide la huella cada vez. En memoria a proposito: un reinicio
+     * no tiene que recordarlo.
+     */
+    private val abiertosHasta = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    suspend fun estaProtegido(id: String): Boolean = dao.estaProtegido(id) == true
+
+    fun recienAbierto(id: String): Boolean = (abiertosHasta[id] ?: 0L) > System.currentTimeMillis()
+
+    fun marcarAbierto(id: String) { abiertosHasta[id] = System.currentTimeMillis() + 60_000 }
+
+    suspend fun proteger(id: String, protegido: Boolean) {
+        dao.fijarProtegido(id, protegido)
+        if (protegido) abiertosHasta.remove(id)
     }
 
     /** Motivos por los que el servidor rechazo un envio, para mostrarlos. */
@@ -526,6 +549,9 @@ class Repositorio(
         socket.conectar(token)
         // Lo de "ver una vez" que haya quedado en el disco. Ver `barrerUnaVez`.
         ambito.launch { barrerUnaVez() }
+        // Y los programados que vencieron con la app cerrada y sin alarma -un
+        // reinicio se las lleva-. Ver `Programados`.
+        ambito.launch { runCatching { liberarProgramados() } }
 
         // El vigilante vive FUERA de `colectores` a proposito: si estuviera
         // dentro, detener() se cancelaria a si mismo a media ejecucion.
@@ -698,6 +724,14 @@ class Repositorio(
                 // `0` cuando el servidor dice `null`: permanentes. Ver
                 // `ConversacionEnt.temporalesSegundos`.
                 temporalesSegundos = r.temporalesSegundos ?: 0,
+                // Lo que solo vive en este telefono se copia de la fila de
+                // antes. `guardarConversacion` REEMPLAZA la fila entera, y sin
+                // esto cada sincronizacion -cada vez que se abre la app- borraba
+                // los borradores y la marca de "no leido". Se vio al agregar
+                // `protegido`, que habria tenido el mismo final.
+                borrador = previa?.borrador.orEmpty(),
+                marcadaNoLeida = previa?.marcadaNoLeida ?: false,
+                protegido = previa?.protegido ?: false,
             )
         )
     }
@@ -1378,9 +1412,12 @@ class Repositorio(
         silencioso: Boolean = false,
         /** La vista previa ya armada del primer enlace, si la hay. */
         previa: VistaPreviaEnlace? = null,
+        /** Si es > 0, no sale ahora sino a esa hora. Ver `Programados`. */
+        programadoPara: Long = 0,
     ) {
         val limpio = texto.trim()
         if (limpio.isEmpty()) return
+        val programado = programadoPara > 0
 
         val m = MensajeEnt(
             id = UUID.randomUUID().toString(),
@@ -1405,9 +1442,52 @@ class Repositorio(
             // el texto. En los dos casos es lo que se dibujara en la burbuja.
             citaHistoriaTexto = citaHistoria?.texto.orEmpty().take(TOPE_CITA_HISTORIA),
             citaHistoriaMiniatura = citaHistoria?.miniatura.orEmpty(),
-        )
+        ).let {
+            if (!programado) it
+            // Oculto y fuera de la cola hasta su hora. `creadoEn` queda en la
+            // de ahora y no en la programada: una hora futura en un mensaje
+            // oculto empujaria hacia adelante la de todo lo que escriba
+            // despues. Ver `horaParaMio`.
+            else it.copy(estado = Programados.ESTADO, oculto = true, programadoPara = programadoPara)
+        }
         dao.guardarMensaje(m)
+        if (programado) rearmarProgramados() else despachar()
+    }
+
+    // --- Mensajes programados ------------------------------------------------
+
+    fun programadosDe(convId: String): Flow<List<MensajeEnt>> = dao.programadosDe(convId)
+
+    /**
+     * Los que ya tocan, a la cola. Con la hora de AHORA, que es cuando
+     * salen: mostrar la que se programo seria mentir si el telefono estuvo
+     * apagado una hora.
+     */
+    suspend fun liberarProgramados() {
+        val vencidos = dao.programadosVencidos(System.currentTimeMillis())
+        for (m in vencidos) dao.liberarProgramado(m.id, horaParaMio(m.conversacionId))
+        if (vencidos.isNotEmpty()) {
+            Log.i(TAG, "${vencidos.size} programados a la cola")
+            despachar()
+        }
+        rearmarProgramados()
+    }
+
+    suspend fun enviarProgramadoYa(id: String) {
+        val m = dao.mensaje(id) ?: return
+        dao.liberarProgramado(id, horaParaMio(m.conversacionId))
         despachar()
+        rearmarProgramados()
+    }
+
+    suspend fun cancelarProgramado(id: String) {
+        dao.cancelarProgramado(id)
+        rearmarProgramados()
+    }
+
+    private suspend fun rearmarProgramados() {
+        runCatching { Programados.armar(contexto, dao.proximoProgramado()) }
+            .onFailure { Log.w(TAG, "No se pudo armar la alarma: ${it.message}") }
     }
 
     // ============================================================

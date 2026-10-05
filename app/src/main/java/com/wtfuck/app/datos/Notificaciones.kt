@@ -214,11 +214,28 @@ object Notificaciones {
         silencioso: Boolean = false,
         /** Me menciona: se dice, sin decir que. */
         mencionado: Boolean = false,
+        /** Chat protegido: ni quien, ni de donde, ni responder desde la cortina. */
+        protegido: Boolean = false,
     ) {
         val a = Ajustes(ctx)
         if (esGrupo && !a.grupos) return
         if (!esGrupo && !a.mensajes) return
         if (!permitido(ctx)) return
+
+        if (protegido) {
+            publicar(
+                ctx,
+                canal = if (esGrupo) CANAL_GRUPOS else CANAL_MENSAJES,
+                id = conversacionId.hashCode(),
+                titulo = "wtfuck",
+                texto = "Mensaje nuevo en un chat protegido",
+                conversacionId = conversacionId,
+                // Responder desde la cortina seria entrar al chat sin la huella.
+                conAcciones = false,
+                silencioso = silencioso,
+            )
+            return
+        }
 
         val quien = if (a.mostrarQuien) {
             if (esGrupo) titulo else "@$autor"

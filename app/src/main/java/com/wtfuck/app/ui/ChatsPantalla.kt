@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.Lock
 import com.wtfuck.app.datos.Media
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -114,6 +115,7 @@ fun ChatsPantalla(
     var cercaAbierto by remember { mutableStateOf(false) }
     val cercaEstado by app.repo.cerca.estado.collectAsStateWithLifecycle()
     val ambito = rememberCoroutineScope()
+    val contextoLista = LocalContext.current
 
     // Los estados (modulo O) ya no viven aqui: se mudaron a la pestaña
     // Social. Ver `SocialPantalla`.
@@ -617,6 +619,24 @@ fun ChatsPantalla(
                         .onFailure { errorDialogo = it.message }
                 }
             },
+            onProteger = { v ->
+                accionesDe = null
+                val ctx = contextoLista
+                when {
+                    v && !sePuedeBloquear(ctx) -> Toast.makeText(
+                        ctx, "Primero configura una huella o un PIN en el teléfono.", Toast.LENGTH_LONG,
+                    ).show()
+                    v -> ambito.launch { app.repo.proteger(chat.id, true) }
+                    // Quitarla pide la huella: si no, cualquiera con el
+                    // telefono desbloqueado la quitaria desde la lista.
+                    else -> pedirAutenticacion(
+                        ctx,
+                        onOk = { ambito.launch { app.repo.proteger(chat.id, false) } },
+                        onError = { if (it.isNotBlank()) Toast.makeText(ctx, it, Toast.LENGTH_LONG).show() },
+                        titulo = "Quitar la protección",
+                    )
+                }
+            },
             onBloquear = {
                 accionesDe = null
                 ambito.launch {
@@ -1085,7 +1105,18 @@ private fun FilaChat(
               // Un borrador manda sobre el ultimo mensaje: es lo que la
               // persona dejo a medias, y verlo en la lista es lo que hace que
               // se acuerde de terminarlo.
-              if (c.borrador.isNotBlank()) {
+              if (c.protegido) {
+                // Ni el ultimo mensaje ni el borrador: es justo lo que se
+                // protege.
+                Icon(Icons.Filled.Lock, null, tint = TextoTerciario, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "Chat protegido",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextoTerciario,
+                    maxLines = 1,
+                )
+              } else if (c.borrador.isNotBlank()) {
                 Text(
                     "Borrador: ",
                     style = MaterialTheme.typography.bodyMedium,

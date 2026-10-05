@@ -75,7 +75,12 @@ fun EstadoEnvio.enPalabras(): String = when (this) {
  * dijo, y cuándo. Poner la hora primero obligaria a escuchar un dato que casi
  * nunca decide nada antes de llegar al que si.
  */
-fun descripcionDeFila(c: ChatFila, miUsuario: String): String = buildList {
+fun descripcionDeFila(c: ChatFila, miUsuario: String): String =
+    // Lo que no se ve tampoco se dice: el lector de pantalla leeria en voz alta
+    // el ultimo mensaje de un chat protegido.
+    if (c.protegido) "${c.titulo}, chat protegido" else descripcionDeFilaAbierta(c, miUsuario)
+
+private fun descripcionDeFilaAbierta(c: ChatFila, miUsuario: String): String = buildList {
     // El tipo va AQUI y ya no como etiqueta en pantalla: a la vista lo dice
     // el icono del avatar -personas para un grupo, megafono para un canal- y
     // repetirlo en texto al lado del nombre era ruido. Quien no ve el icono

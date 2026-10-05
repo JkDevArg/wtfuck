@@ -136,6 +136,11 @@
             android:name=".datos.ReceptorAccionNotificacion"
             android:exported="false" />
 
+        <!-- La alarma de los mensajes programados. Ver `Programados`. -->
+        <receiver
+            android:name=".datos.Programados$Receptor"
+            android:exported="false" />
+
         <service
             android:name=".datos.ServicioLlamadaFg"
             android:exported="false"

@@ -162,7 +162,12 @@ fun sePuedeBloquear(ctx: Context): Boolean =
  * "desbloqueado" en silencio: sería una cerradura que se abre sola por un
  * error de refactor. Devuelve un error visible, y la app se queda bloqueada.
  */
-private fun pedirAutenticacion(ctx: Context, onOk: () -> Unit, onError: (String) -> Unit) {
+internal fun pedirAutenticacion(
+    ctx: Context,
+    onOk: () -> Unit,
+    onError: (String) -> Unit,
+    titulo: String = "Desbloquear wtfuck",
+) {
     val actividad = generateSequence(ctx) { (it as? android.content.ContextWrapper)?.baseContext }
         .filterIsInstance<FragmentActivity>()
         .firstOrNull()
@@ -197,7 +202,7 @@ private fun pedirAutenticacion(ctx: Context, onOk: () -> Unit, onError: (String)
 
     prompt.authenticate(
         BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Desbloquear wtfuck")
+            .setTitle(titulo)
             .setSubtitle("Usa tu huella, tu rostro o el PIN del teléfono")
             .setAllowedAuthenticators(METODOS)
             // Sin `setNegativeButtonText`: con DEVICE_CREDENTIAL permitido, el

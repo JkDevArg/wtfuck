@@ -1,5 +1,7 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -39,6 +41,8 @@ fun HojaAccionesChat(
     onNoLeida: () -> Unit,
     onArchivar: (Boolean) -> Unit,
     onFijar: (Boolean) -> Unit,
+    /** Proteger con huella, o quitarlo. Ver `ConversacionEnt.protegido`. */
+    onProteger: (Boolean) -> Unit,
     onBloquear: () -> Unit,
     onEliminar: () -> Unit,
     onDenunciar: () -> Unit,
@@ -101,6 +105,11 @@ fun HojaAccionesChat(
                 if (chat.fijado) "Dejar de fijar" else "Fijar arriba",
                 Icons.Filled.PushPin,
             ) { onFijar(!chat.fijado) }
+
+            Accion(
+                if (chat.protegido) "Quitar la protección con huella" else "Proteger con huella",
+                if (chat.protegido) Icons.Filled.LockOpen else Icons.Filled.Lock,
+            ) { onProteger(!chat.protegido) }
 
             Accion(
                 if (chat.archivado) "Desarchivar" else "Archivar",

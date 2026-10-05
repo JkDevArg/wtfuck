@@ -1,5 +1,7 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -115,6 +117,93 @@ fun ChatPantalla(
     onInfoPersona: () -> Unit,
     onVerificarCifrado: () -> Unit,
     /** Abrir la conversacion con alguien: lo pide la tarjeta de contacto. */
+    onAbrirChatCon: (String) -> Unit,
+    onAtras: () -> Unit,
+) {
+    // La puerta de los chats protegidos. Va AQUI, delante de todo, y no en la
+    // lista: a un chat se llega tambien desde una notificacion, el buscador,
+    // un contacto o un enlace, y la puerta tiene que estar en todos.
+    val app = LocalContext.current.applicationContext as WtfuckApp
+    val ctx = LocalContext.current
+    val ambito = rememberCoroutineScope()
+    // null = todavia no se sabe. Mientras tanto no se dibuja el chat: un
+    // instante con los mensajes a la vista es justo lo que no tiene que pasar.
+    var cerrado by remember(conversacionId) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(conversacionId) {
+        cerrado = app.repo.estaProtegido(conversacionId) && !app.repo.recienAbierto(conversacionId)
+    }
+    // Se vuelve a cerrar si pasa mas de un minuto fuera de la app. No al
+    // instante: elegir una foto o abrir la camara tambien "sale" de la app, y
+    // cerrar el chat ahi perderia lo que se estaba eligiendo.
+    var salioEn by remember { mutableLongStateOf(0L) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+        salioEn = System.currentTimeMillis()
+    }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_START) {
+        if (salioEn > 0 && System.currentTimeMillis() - salioEn > 60_000) {
+            ambito.launch { if (app.repo.estaProtegido(conversacionId)) cerrado = true }
+        }
+    }
+    fun abrir() {
+        pedirAutenticacion(
+            ctx,
+            onOk = { app.repo.marcarAbierto(conversacionId); cerrado = false },
+            onError = { if (it.isNotBlank()) android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_LONG).show() },
+            titulo = "Abrir chat protegido",
+        )
+    }
+    when (cerrado) {
+        null -> Box(Modifier.fillMaxSize().background(BgBase))
+        true -> {
+            // La huella se pide sola al llegar; el boton queda por si se cancelo.
+            LaunchedEffect(Unit) { abrir() }
+            PuertaProtegida(onAbrir = { abrir() }, onAtras = onAtras)
+        }
+        false -> ChatAbierto(
+            conversacionId, irAMensaje, onInfoGrupo, onInfoPersona,
+            onVerificarCifrado, onAbrirChatCon, onAtras,
+        )
+    }
+}
+
+/** Lo que se ve de un chat protegido antes de verificarse: nada de el. */
+@Composable
+private fun PuertaProtegida(onAbrir: () -> Unit, onAtras: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(BgBase).systemBarsPadding()) {
+        IconButton(onClick = onAtras, modifier = Modifier.padding(4.dp)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atras", tint = TextoPrimario)
+        }
+        Column(
+            Modifier.align(Alignment.Center).padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(Icons.Filled.Lock, null, tint = Cian, modifier = Modifier.size(48.dp))
+            Spacer(Modifier.height(14.dp))
+            Text("Chat protegido", color = TextoPrimario, fontWeight = FontWeight.Medium, fontSize = 18.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Usa tu huella, tu rostro o el PIN del teléfono para abrirlo.",
+                color = TextoTerciario,
+                fontSize = 13.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            Spacer(Modifier.height(18.dp))
+            Button(
+                onClick = onAbrir,
+                colors = ButtonDefaults.buttonColors(containerColor = Cian, contentColor = TextoSobreAcento),
+            ) { Text("Abrir") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatAbierto(
+    conversacionId: String,
+    irAMensaje: String,
+    onInfoGrupo: () -> Unit,
+    onInfoPersona: () -> Unit,
+    onVerificarCifrado: () -> Unit,
     onAbrirChatCon: (String) -> Unit,
     onAtras: () -> Unit,
 ) {
@@ -236,6 +325,10 @@ fun ChatPantalla(
     }
     /** El menu de la pulsacion larga en el boton de enviar. */
     var menuEnviar by remember { mutableStateOf(false) }
+    /** Eligiendo a que hora sale lo escrito. Ver `Programados`. */
+    var eligiendoMomento by remember { mutableStateOf(false) }
+    var hojaProgramados by remember { mutableStateOf(false) }
+    val programados by app.repo.programadosDe(conversacionId).collectAsStateWithLifecycle(emptyList())
 
     // --- vista previa del enlace que se esta escribiendo ----------------
     //
@@ -812,6 +905,24 @@ fun ChatPantalla(
                             menuAbierto = false; confirmarExportar = true
                         }
 
+                        if (chat != null) {
+                            OpcionMenu(
+                                if (chat.protegido) "Quitar la protección con huella" else "Proteger con huella",
+                                if (chat.protegido) Icons.Filled.LockOpen else Icons.Filled.Lock,
+                            ) {
+                                menuAbierto = false
+                                // Adentro ya se verifico: quitarla no vuelve a
+                                // pedir la huella. Ponerla necesita que el
+                                // telefono tenga con que pedirla.
+                                if (!chat.protegido && !sePuedeBloquear(contexto)) {
+                                    aviso = "Primero configura una huella o un PIN en el teléfono."
+                                } else {
+                                    if (!chat.protegido) app.repo.marcarAbierto(conversacionId)
+                                    ambito.launch { app.repo.proteger(conversacionId, !chat.protegido) }
+                                }
+                            }
+                        }
+
                         // En la nota no hay con quien comparar numeros: los
                         // aparatos propios se verifican al vincularlos.
                         if (chat?.tipo != "notas") {
@@ -884,6 +995,29 @@ fun ChatPantalla(
 
             Surface(color = BgSurface) {
                 Column {
+
+                if (programados.isNotEmpty()) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { hojaProgramados = true }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.Schedule, null, tint = Cian, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            (if (programados.size == 1) "1 mensaje programado" else "${programados.size} mensajes programados") +
+                                " · el próximo " + com.wtfuck.app.datos.MomentoProgramado.etiqueta(
+                                    programados.first().programadoPara, com.wtfuck.app.datos.MomentoProgramado.ahora(),
+                                ),
+                            color = TextoSecundario,
+                            fontSize = 13.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(Icons.Filled.ChevronRight, null, tint = TextoTerciario, modifier = Modifier.size(18.dp))
+                    }
+                }
 
                 previa?.let { p ->
                     Row(
@@ -1100,6 +1234,20 @@ fun ChatPantalla(
                                 },
                                 leadingIcon = { Icon(Icons.Filled.NotificationsOff, null, tint = Cian) },
                                 onClick = { menuEnviar = false; enviar(silencioso = true) },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text("Programar envío", color = TextoPrimario)
+                                        Text(
+                                            "Sale solo, a la hora que elijas",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextoTerciario,
+                                        )
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Filled.Schedule, null, tint = Cian) },
+                                onClick = { menuEnviar = false; eligiendoMomento = true },
                             )
                         }
                     }
@@ -1445,6 +1593,43 @@ fun ChatPantalla(
     }
 
     reenviando?.let { m -> HojaReenviar(m, onCerrar = { reenviando = null }) }
+
+    if (eligiendoMomento) {
+        ElegirMomento(
+            onElegir = { cuando ->
+                eligiendoMomento = false
+                val t = texto.text
+                val cita = respondiendoA
+                texto = TextFieldValue("")
+                respondiendoA = null
+                ambito.launch {
+                    runCatching { app.repo.enviarTexto(conversacionId, t, respondeA = cita, programadoPara = cuando) }
+                        .onSuccess {
+                            // Un Toast y no `aviso`: `aviso` es el dialogo de
+                            // "No se pudo completar", y esto salio bien.
+                            android.widget.Toast.makeText(
+                                contexto,
+                                "Programado para " + com.wtfuck.app.datos.MomentoProgramado.etiqueta(
+                                    cuando, com.wtfuck.app.datos.MomentoProgramado.ahora(),
+                                ),
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                        .onFailure { aviso = it.message }
+                }
+            },
+            onCerrar = { eligiendoMomento = false },
+        )
+    }
+
+    if (hojaProgramados) {
+        HojaProgramados(
+            programados = programados,
+            onEnviarYa = { id -> ambito.launch { app.repo.enviarProgramadoYa(id) } },
+            onCancelar = { id -> ambito.launch { app.repo.cancelarProgramado(id) } },
+            onCerrar = { hojaProgramados = false },
+        )
+    }
 
     viendoUnaVez?.let { (m, archivo) ->
         VisorUnaVez(archivo, m.adjuntoClase) {
