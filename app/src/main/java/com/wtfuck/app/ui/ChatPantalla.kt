@@ -272,6 +272,8 @@ private fun ChatAbierto(
     var eligiendoTemporales by remember { mutableStateOf(false) }
     var confirmarExportar by remember { mutableStateOf(false) }
     var accionesDe by remember { mutableStateOf<MensajeEnt?>(null) }
+    /** Traducciones hechas en esta pantalla. Solo en memoria: ver `Traductor`. */
+    val traducciones = remember { mutableStateMapOf<String, String>() }
     /** El mensaje del que se mira "Info". */
     var infoDe by remember { mutableStateOf<String?>(null) }
     /** El mensaje que se esta por reenviar: abre "Reenviar a...". */
@@ -1363,6 +1365,7 @@ private fun ChatAbierto(
 
                     Burbuja(
                         m = m,
+                        traduccion = traducciones[m.id],
                         esGrupo = chat?.tipo == "grupo",
                         miUsuario = app.sesion.username.orEmpty(),
                         nombreDe = { u -> nombresDeGente[u] ?: u },
@@ -1667,6 +1670,27 @@ private fun ChatAbierto(
     accionesDe?.let { m ->
         HojaAccionesMensaje(
             mensaje = m,
+            onTranscribir = if (
+                (m.adjuntoClase == ClaseAdjunto.NOTA_VOZ || m.adjuntoClase == ClaseAdjunto.AUDIO) &&
+                !m.unaVez && m.transcripcion.isBlank()
+            ) ({
+                accionesDe = null
+                android.widget.Toast.makeText(contexto, "Transcribiendo en el teléfono…", android.widget.Toast.LENGTH_SHORT).show()
+                ambito.launch {
+                    runCatching { app.repo.transcribir(m.id) }.onFailure { aviso = it.message }
+                }
+            }) else null,
+            onTraducir = if (
+                !m.esMio && m.texto.isNotBlank() && m.adjuntoClase.isBlank() && m.especial.isBlank() &&
+                m.id !in traducciones
+            ) ({
+                accionesDe = null
+                ambito.launch {
+                    runCatching { app.repo.traducir(m.texto) }
+                        .onSuccess { traducciones[m.id] = it }
+                        .onFailure { aviso = it.message }
+                }
+            }) else null,
             // Solo lo mio, en un grupo y ya registrado en el servidor: en una
             // directa los checks ya lo dicen todo.
             onInfo = if (chat?.tipo == "grupo" && m.esMio && !m.retirado &&
@@ -1952,6 +1976,8 @@ private fun LineaSistema(texto: String) {
 @Composable
 private fun Burbuja(
     m: MensajeEnt,
+    /** La traduccion hecha en el telefono, si se pidio. Ver `Traductor`. */
+    traduccion: String? = null,
     esGrupo: Boolean,
     /** En minusculas, para saber cual mencion es a mi. Vacio si aun no se sabe. */
     miUsuario: String,
@@ -2175,6 +2201,15 @@ private fun Burbuja(
                     Box(Modifier.sinAbrirConPulsacionLarga { mantener() }) {
                         ContenidoAdjunto(m, sobreAcento, onDescargar, onAbrir, onReintentar, onVerUnaVez)
                     }
+                    if (m.transcripcion.isNotBlank()) {
+                        Text(
+                            m.transcripcion,
+                            color = colorTexto.copy(alpha = 0.85f),
+                            fontSize = 14.sp,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
                     // El pie solo si existe: un espacio vacio debajo de la foto
                     // se ve como un error de maquetado.
                     if (m.texto.isNotBlank()) Spacer(Modifier.height(6.dp))
@@ -2227,6 +2262,18 @@ private fun Burbuja(
                         fontSize = 16.sp,
                         modifier = Modifier.sinAbrirConPulsacionLarga { mantener() },
                     )
+                    if (traduccion != null) {
+                        HorizontalDivider(
+                            color = colorTexto.copy(alpha = 0.2f),
+                            modifier = Modifier.padding(vertical = 6.dp),
+                        )
+                        Text(
+                            "Traducido en el teléfono",
+                            color = colorTexto.copy(alpha = 0.6f),
+                            fontSize = 11.sp,
+                        )
+                        Text(traduccion, color = colorTexto, fontSize = 16.sp)
+                    }
                 }
             }
 

@@ -337,6 +337,26 @@ class Repositorio(
         )
     }
 
+    /**
+     * Transcribe una nota de voz, en el telefono, y la guarda con el mensaje:
+     * se hace una vez. Si todavia no se bajo, la baja primero. Lanza
+     * `NoEnEsteTelefono` si no se puede sin red. Ver `Transcriptor`.
+     */
+    suspend fun transcribir(id: String) {
+        var m = dao.mensaje(id) ?: return
+        if (m.unaVez) return
+        if (m.rutaLocal?.let { File(it).exists() } != true) {
+            descargarAdjunto(id)
+            m = dao.mensaje(id) ?: return
+        }
+        val archivo = m.rutaLocal?.let { File(it) }?.takeIf { it.exists() }
+            ?: throw NoEnEsteTelefono("No se pudo bajar el audio.")
+        dao.guardarTranscripcion(id, Transcriptor.transcribir(contexto, archivo))
+    }
+
+    /** Traduce al idioma del telefono, en el telefono. Ver `Traductor`. */
+    suspend fun traducir(texto: String): String = Traductor.traducir(contexto, texto)
+
     /** "Info del mensaje" de uno mio en un grupo. Ver `Mensajes.info` en el servidor. */
     suspend fun infoMensaje(id: String): InfoMensaje = api.infoMensaje(id)
 

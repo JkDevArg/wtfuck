@@ -403,7 +403,63 @@ tocarlas suenan ahí mismo (`15c-`, `15d-`).
 
 Room 28 (`adjuntoForma`).
 
+## 16. Transcribir notas de voz y traducir mensajes, en el teléfono
+
+En la pulsación larga hay dos opciones nuevas:
+
+- **Transcribir**, en notas de voz y audios. El texto queda guardado debajo de
+  la nota y se hace una sola vez.
+- **Traducir**, en mensajes de texto ajenos. La traducción aparece debajo, con
+  la marca "Traducido en el teléfono", y no se guarda.
+
+**Nunca en un servidor.** Mandar el audio o el texto a un servicio de internet
+es mandarle el mensaje descifrado a un tercero: el cifrado de punta a punta
+dejaría de significar algo justo al leer. Se usan las piezas de Android que lo
+hacen dentro del aparato, y **no hay plan B en la nube**. Si el teléfono no
+puede, lo dice.
+
+- **Transcripción.**
+  - Se usa `SpeechRecognizer.createOnDeviceSpeechRecognizer` (Android 13+) con
+    el audio de la nota entrando por un tubo (`EXTRA_AUDIO_SOURCE`).
+  - La nota se decodifica con MediaCodec a PCM de 16 bits, mono y 16 kHz. La
+    baja de tasa es una función pura con 4 pruebas (`RemuestreoTest`).
+  - La sesión va por segmentos: una nota de voz tiene pausas, y sin eso el
+    reconocedor se cortaría en el primer silencio.
+- **Traducción.**
+  - El idioma de origen se detecta en el aparato (`TextClassifier`) y la
+    traducción la hace `TranslationManager.createOnDeviceTranslator`
+    (Android 12+).
+  - Solo se usa si la capacidad del par de idiomas es `STATE_ON_DEVICE`.
+- **Idiomas sin descargar.** Si el idioma se puede bajar, para transcribir se
+  le pide al sistema que lo baje; para traducir, se indica a la persona dónde
+  hacerlo. La descarga es del sistema y lleva solo el modelo, nada de nadie.
+
+**Lo que se probó en el emulador**, que trae Android System Intelligence, el
+mismo servicio de los Pixel:
+
+- **Traducir.** Un "Mañana nos vemos a las diez en la biblioteca…" se detectó
+  como español y el traductor del aparato respondió que el par español→inglés
+  está "para descargar". La app no salió a internet y lo dijo (`16a-`).
+- **Transcribir.** Se cambió el audio de una nota por una voz en inglés,
+  generada con el TTS de Windows. La nota se decodificó y el reconocedor del
+  aparato encontró el paquete "English (US)" sin instalar. La app le pidió al
+  sistema que lo bajara, y el sistema mostró su propio diálogo: "Download
+  English (US) update (62.06 MB)" (`16b-`).
+
+**Lo que falta:** ver una transcripción y una traducción terminadas. Hace
+falta descargar esos modelos (62 MB el de voz), y no los descargué sin
+preguntar. En un teléfono que ya los tiene, el camino es el mismo.
+
+**Defectos de texto encontrados:**
+
+- Decía "del Spanish", con el nombre del idioma en el idioma del teléfono.
+  Ahora dice "del español".
+- Decía "está descargando", pero el sistema pregunta antes de bajar. Ahora
+  dice que, si se acepta la descarga, se intente cuando termine.
+
+Room 29 (`transcripcion`).
+
 ## Números
 
-- Unitarias: 590 → **602**, 0 fallos.
+- Unitarias: 590 → **606**, 0 fallos.
 - Integración: 1672 → **1733**, 0 fallos (suites nuevas `notas.mjs` e `info.mjs`).

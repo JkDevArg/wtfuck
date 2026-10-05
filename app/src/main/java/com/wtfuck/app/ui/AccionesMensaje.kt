@@ -1,5 +1,7 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -84,6 +86,10 @@ fun HojaAccionesMensaje(
     onDenunciar: () -> Unit,
     /** "Info": a quien le llego y quien lo leyo. Null = no se ofrece. */
     onInfo: (() -> Unit)? = null,
+    /** Transcribir una nota de voz, en el telefono. Null = no se ofrece. */
+    onTranscribir: (() -> Unit)? = null,
+    /** Traducir el texto, en el telefono. Null = no se ofrece. */
+    onTraducir: (() -> Unit)? = null,
 ) {
     var confirmandoBorrado by remember { mutableStateOf(false) }
     val puedeRetirar = mensaje.esMio || puedeBorrarAjeno
@@ -140,6 +146,12 @@ fun HojaAccionesMensaje(
                 }
                 if (onInfo != null) {
                     Opcion("Info", Icons.Filled.Info, onClick = onInfo)
+                }
+                if (onTranscribir != null) {
+                    Opcion("Transcribir", Icons.Filled.Subtitles, onClick = onTranscribir)
+                }
+                if (onTraducir != null) {
+                    Opcion("Traducir", Icons.Filled.Translate, onClick = onTraducir)
                 }
                 // Una encuesta o un evento son de SU chat: sus votos y sus
                 // asistentes viven ahi. Reenviados serian una copia muerta.

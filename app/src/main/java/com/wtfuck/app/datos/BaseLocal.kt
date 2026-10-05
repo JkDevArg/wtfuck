@@ -371,6 +371,8 @@ data class MensajeEnt(
     val programadoPara: Long = 0,
     /** Ver `CargaAdjunto.forma`. */
     val adjuntoForma: String = "",
+    /** El texto de una nota de voz, sacado en el telefono. Ver `Transcriptor`. */
+    val transcripcion: String = "",
 )
 
 /**
@@ -934,6 +936,9 @@ interface ChatDao {
     @Query("DELETE FROM carpeta_chat")
     suspend fun borrarChatsEnCarpetas()
 
+    @Query("UPDATE mensaje SET transcripcion = :texto WHERE id = :id")
+    suspend fun guardarTranscripcion(id: String, texto: String)
+
     @Query("UPDATE conversacion SET protegido = :protegido WHERE id = :id")
     suspend fun fijarProtegido(id: String, protegido: Boolean)
 
@@ -1444,7 +1449,7 @@ interface ChatDao {
         CarpetaEnt::class,
         CarpetaChatEnt::class,
     ],
-    version = 28,
+    version = 29,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1464,7 +1469,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1636,6 +1641,13 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Transcripcion de notas de voz. */
+        private val DE_28_A_29 = object : Migration(28, 29) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN transcripcion TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         /** Videonotas. */
         private val DE_27_A_28 = object : Migration(27, 28) {
             override fun migrate(db: SupportSQLiteDatabase) {
