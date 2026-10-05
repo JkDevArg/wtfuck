@@ -1,5 +1,9 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -324,6 +328,59 @@ fun TiraDeMenciones(candidatos: List<CandidatoMencion>, onElegir: (CandidatoMenc
                 Spacer(Modifier.width(8.dp))
                 Text(c.nombre, color = TextoPrimario, fontSize = 14.sp)
             }
+        }
+    }
+}
+
+
+/**
+ * Que una pulsacion LARGA sobre un enlace abra el menu del mensaje, y no el
+ * enlace.
+ *
+ * Los enlaces y el spoiler del texto, y la tarjeta de la vista previa, solo
+ * saben de toques. Para Compose, un toque sin accion de pulsacion larga es
+ * "bajar y subir el dedo", tarde lo que tarde. Y como el enlace se queda con
+ * el dedo, la burbuja que lo contiene nunca se entera de que la mantienen
+ * apretada. Mantener el dedo sobre un enlace para responder o reenviar el
+ * mensaje abria el navegador y ningun menu. Paso en el emulador, probando
+ * justo eso.
+ *
+ * Se mira el gesto en dos pasadas:
+ *  - en `Main`, ya pasado el enlace -que esta mas adentro- y antes que la
+ *    burbuja, para saber si el enlace se quedo con el dedo. Si no, la burbuja
+ *    lo ve y abre su menu sola: llamar a [onLargo] tambien lo abriria dos
+ *    veces;
+ *  - en `Initial`, antes que el enlace, para consumir el levantar del dedo
+ *    tras una pulsacion larga. Para el enlace eso es un gesto cancelado.
+ *
+ * Moverse mas que el umbral de arrastre no es pulsacion larga: es desplazar la
+ * lista, y se deja en paz.
+ */
+fun Modifier.sinAbrirConPulsacionLarga(onLargo: () -> Unit = {}): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        val abajo = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        // El mismo evento, una pasada despues: lo que hizo el enlace con el.
+        val enMain = awaitPointerEvent(PointerEventPass.Main).changes.firstOrNull { it.id == abajo.id }
+        val loTomoUnEnlace = enMain?.isConsumed == true
+        val umbral = viewConfiguration.touchSlop
+        var corto = false
+        val vencio = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            while (true) {
+                val c = awaitPointerEvent(PointerEventPass.Initial).changes
+                    .firstOrNull { it.id == abajo.id }
+                if (c == null || !c.pressed || (c.position - abajo.position).getDistance() > umbral) {
+                    corto = true
+                    break
+                }
+            }
+        }
+        if (vencio != null || corto) return@awaitEachGesture
+        if (loTomoUnEnlace) onLargo()
+        while (true) {
+            val c = awaitPointerEvent(PointerEventPass.Initial).changes
+                .firstOrNull { it.id == abajo.id } ?: break
+            c.consume()
+            if (!c.pressed) break
         }
     }
 }

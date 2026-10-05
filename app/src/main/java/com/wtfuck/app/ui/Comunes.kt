@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material3.Surface
 import androidx.compose.material.icons.filled.CloudOff
@@ -74,12 +75,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
  *
  * A la tercera el problema deja de ser el sitio.
  */
-enum class ClaseDeChat { DIRECTA, GRUPO, CANAL }
+enum class ClaseDeChat { DIRECTA, GRUPO, CANAL, NOTAS }
 
 /** El `tipo` que manda el servidor, como clase. */
 fun claseDeTipo(tipo: String?): ClaseDeChat = when (tipo) {
     "grupo" -> ClaseDeChat.GRUPO
     "canal" -> ClaseDeChat.CANAL
+    "notas" -> ClaseDeChat.NOTAS
     // Una directa es el unico caso donde el avatar es una PERSONA, y por eso
     // es el que se puede caer aqui sin hacer dano: si el tipo llega vacio o
     // desconocido, dibujar iniciales de un nombre es lo menos equivocado.
@@ -108,6 +110,9 @@ fun AvatarDeChat(
         icono = when (clase) {
             ClaseDeChat.GRUPO -> Icons.Filled.Group
             ClaseDeChat.CANAL -> Icons.Filled.Campaign
+            // Un marcador y no mi foto: con mi foto, la nota se confundia con
+            // una conversacion con alguien que se llama como yo.
+            ClaseDeChat.NOTAS -> Icons.Filled.Bookmark
             // Una directa cae a las iniciales de la persona, que es lo que
             // `Avatar` hace para todo el mundo.
             ClaseDeChat.DIRECTA -> null

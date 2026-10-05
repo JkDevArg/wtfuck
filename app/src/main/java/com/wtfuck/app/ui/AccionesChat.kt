@@ -66,12 +66,16 @@ fun HojaAccionesChat(
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
-                        if (chat.tipo == "grupo") chat.titulo else "@${chat.titulo}",
+                        if (chat.tipo == "grupo" || chat.tipo == "notas") chat.titulo else "@${chat.titulo}",
                         style = MaterialTheme.typography.titleMedium,
                         color = TextoPrimario,
                     )
                     Text(
-                        if (chat.tipo == "grupo") "Grupo" else "Conversación directa",
+                        when (chat.tipo) {
+                            "grupo" -> "Grupo"
+                            "notas" -> "Solo tú"
+                            else -> "Conversación directa"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = TextoTerciario,
                     )
@@ -111,12 +115,15 @@ fun HojaAccionesChat(
             // Denunciar va ANTES de eliminar, y separado de bloquear: bloquear
             // resuelve tu problema, denunciar avisa de uno que puede ser de
             // mas gente. Son dos cosas y conviene no obligar a elegir una.
-            Accion(
-                if (chat.tipo == "grupo") "Denunciar este grupo" else "Denunciar a @${chat.nombre}",
-                Icons.Filled.Flag,
-                Coral,
-                onDenunciar,
-            )
+            // En la nota no hay a quien denunciar.
+            if (chat.tipo != "notas") {
+                Accion(
+                    if (chat.tipo == "grupo") "Denunciar este grupo" else "Denunciar a @${chat.nombre}",
+                    Icons.Filled.Flag,
+                    Coral,
+                    onDenunciar,
+                )
+            }
 
             Accion("Eliminar chat", Icons.Filled.DeleteOutline, Coral) { confirmando = "eliminar" }
         }

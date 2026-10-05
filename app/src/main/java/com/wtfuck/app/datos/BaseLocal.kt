@@ -855,6 +855,10 @@ interface ChatDao {
     @Query("SELECT * FROM conversacion WHERE tipo = 'directa' AND nombre = :username LIMIT 1")
     suspend fun directaCon(username: String): ConversacionEnt?
 
+    /** La "Nota para mi", si este aparato ya la conoce. Ver `Repositorio.abrirNotaParaMi`. */
+    @Query("SELECT * FROM conversacion WHERE tipo = 'notas' AND soyMiembro = 1 LIMIT 1")
+    suspend fun notaParaMi(): ConversacionEnt?
+
     /**
      * Los chats temporales que ya vencieron, segun el reloj de ESTE telefono.
      *

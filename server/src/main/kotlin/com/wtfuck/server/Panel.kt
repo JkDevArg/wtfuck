@@ -655,6 +655,11 @@ object Panel {
             // suspension de una cuenta, que al menos tiene nombre y plazo.
             throw ErrorNegocio(400, "Una conversacion directa no se cierra: se suspende la cuenta.")
         }
+        if (tipo == "notas") {
+            // Lo que alguien se escribe a si mismo no le llega a nadie: no hay
+            // nada que moderar ahi.
+            throw ErrorNegocio(400, "La nota personal de alguien no se cierra.")
+        }
 
         c.prepareStatement(
             """UPDATE conversacion

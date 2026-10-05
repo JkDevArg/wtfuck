@@ -352,6 +352,8 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun crearDirecta(username: String, duracionMs: Long = 0): ConversacionResumen =
         pedir(RUTA_DIRECTA, "POST", jsonApp.encodeToString(DirectaReq(username, duracionMs)), true)
 
+    suspend fun notaParaMi(): ConversacionResumen = pedir(RUTA_NOTAS, "POST", null, true)
+
     suspend fun crearGrupo(
         nombre: String,
         usernames: List<String>,

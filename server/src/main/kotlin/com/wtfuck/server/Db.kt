@@ -82,6 +82,7 @@ object Db {
         42 to "/db/V42__aviso_de_temporizador.sql",
         43 to "/db/V43__codigo_de_recuperacion.sql",
         44 to "/db/V44__directorio_de_usuarios.sql",
+        45 to "/db/V45__nota_para_mi.sql",
     )
 
     /**

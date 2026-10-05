@@ -351,7 +351,7 @@ object Mensajes {
             st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
         } ?: throw ErrorNegocio(404, "Esa conversacion no existe.")
 
-        if (tipo == "directa") {
+        if (tipo == "directa" || tipo == "notas") {
             // Participar es el unico requisito, pero hay que EXIGIRLO: sin esto
             // cualquiera con el id podria cambiarle el temporizador a un chat
             // ajeno.

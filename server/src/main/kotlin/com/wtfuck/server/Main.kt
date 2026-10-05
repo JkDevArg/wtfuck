@@ -706,6 +706,8 @@ fun Application.modulo() {
             call.respond(Repo.crearDirecta(yo, req.usernameDestino, req.duracionMs))
         }
 
+        post(RUTA_NOTAS) { call.respond(Repo.notaParaMi(call.autenticar())) }
+
         post(RUTA_GRUPOS) {
             val yo = call.autenticar()
             Limitador.exigir(

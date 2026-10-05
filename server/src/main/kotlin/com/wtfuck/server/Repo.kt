@@ -1388,6 +1388,39 @@ object Repo {
         usuarios.forEach { Comunidades.alEntrarAGrupo(c, conv, it, actor ?: it) }
     }
 
+    /**
+     * La "Nota para mi" de quien pregunta: la crea la primera vez y despues
+     * devuelve siempre la misma. Ver V45.
+     *
+     * Con el rol `miembro` y nada mas, como en una directa: no hay a quien
+     * agregar ni a quien administrar, y ese rol no tiene permisos para
+     * agregar gente, invitar ni tocar roles. Si alguna vez salio de ella,
+     * vuelve a entrar: `agregarParticipantes` limpia `salido_en`.
+     */
+    fun notaParaMi(yo: Auth): ConversacionResumen = Db.tx { c ->
+        val clave = "notas:${yo.usuarioId}"
+        val existente = c.prepareStatement(
+            "SELECT id FROM conversacion WHERE clave_directa = ?"
+        ).use { st ->
+            st.setString(1, clave)
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+        }
+        val id = existente ?: c.prepareStatement(
+            // ON CONFLICT por la carrera de dos aparatos pidiendola a la vez:
+            // el segundo no falla, se queda con la del primero.
+            """INSERT INTO conversacion (tipo, creador_id, clave_directa)
+               VALUES ('$TIPO_NOTAS', ?, ?)
+               ON CONFLICT (clave_directa) DO UPDATE SET clave_directa = EXCLUDED.clave_directa
+               RETURNING id"""
+        ).use { st ->
+            st.setObject(1, yo.usuarioId)
+            st.setString(2, clave)
+            st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
+        }
+        agregarParticipantes(c, id, listOf(yo.usuarioId), "miembro")
+        resumen(c, id, yo.usuarioId) ?: throw ErrorNegocio(500, "No se pudo abrir la nota.")
+    }
+
     fun listar(yo: Auth): List<ConversacionResumen> = Db.query { c ->
         val ids = c.prepareStatement(
             "SELECT conversacion_id FROM participante WHERE usuario_id = ? AND salido_en IS NULL"
@@ -1480,6 +1513,7 @@ object Repo {
         val nombre = when (meta.tipo) {
             "grupo" -> meta.nombre ?: "Grupo"
             "canal" -> meta.nombre ?: "Canal"
+            TIPO_NOTAS -> "Nota para mí"
             else -> otros.firstOrNull()?.username ?: "(sin participantes)"
         }
         return ConversacionResumen(

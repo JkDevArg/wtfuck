@@ -972,6 +972,13 @@ class Repositorio(
                 val historiaCitada = cita?.historia?.let { h ->
                     dao.historia(h.historiaId)?.takeIf { it.mia }?.let { h }
                 }
+                // Lo que escribi en OTRO aparato mio. Con varios aparatos, cada
+                // mensaje que mando le llega tambien a mis otros -son destinos
+                // como cualquiera-, y se guardaba como si lo hubiera escrito
+                // otra persona que se llama como yo: a la izquierda, sumando
+                // "no leidos" y con notificacion. Con la "Nota para mi" eso es
+                // todo lo que pasa en ese chat, y ahi se vio.
+                val deMiOtroAparato = msg.origenUsername.equals(sesion.username, ignoreCase = true)
                 val filas = dao.guardarMensaje(
                     MensajeEnt(
                         // El id del MENSAJE, no el de la fila del buzon. Son
@@ -981,16 +988,18 @@ class Repositorio(
                         id = msg.mensajeId.ifBlank { msg.sobreId },
                         conversacionId = msg.conversacionId,
                         autor = msg.origenUsername,
-                        esMio = false,
+                        esMio = deMiOtroAparato,
                         texto = texto,
                         creadoEn = msg.creadoEn,
-                        estado = EstadoEnvio.ENTREGADO.name,
+                        // Si es mio, ya salio: el servidor lo acepto antes de
+                        // traermelo.
+                        estado = if (deMiOtroAparato) EstadoEnvio.ENVIADO.name else EstadoEnvio.ENTREGADO.name,
                         silencioso = silenciosoEntrante,
                         previaJson = previaAceptable(cita?.previa, texto),
                         respondeA = cita?.respondeA,
                         respondeTexto = cita?.respondeTexto,
                         respondeAutor = cita?.respondeAutor,
-                        reenviadoDe = cita?.reenviadoDe,
+                        reenviadoDe = cita?.reenviadoDe ?: adj?.reenviadoDe,
                         citaHistoriaId = historiaCitada?.historiaId.orEmpty(),
                         citaHistoriaClase = historiaCitada?.clase.orEmpty(),
                         // Recortado con las mismas reglas que el resto del
@@ -1055,7 +1064,7 @@ class Repositorio(
                 if (filas != -1L && chatVisible == msg.conversacionId) {
                     runCatching { sincronizarLecturas(msg.conversacionId) }
                 }
-                if (filas != -1L && chatVisible != msg.conversacionId) {
+                if (filas != -1L && chatVisible != msg.conversacionId && !deMiOtroAparato) {
                     dao.sumarNoLeido(msg.conversacionId)
                     // El mismo `filas != -1L` que evita contar dos veces evita
                     // notificar dos veces: el buzon reentrega lo no acusado, y
@@ -2661,6 +2670,70 @@ class Repositorio(
         } finally {
             temp.delete()
         }
+    }
+
+    /**
+     * Reenvia un mensaje a [destino], que puede ser cualquier conversacion.
+     *
+     * Antes "Reenviar" volvia a mandar el texto al MISMO chat, y de una foto
+     * mandaba solo el pie. Ahora:
+     *  - un texto sale con su vista previa, que ya esta armada: su enlace esta
+     *    en el texto, asi que quien recibe la acepta igual que la primera vez;
+     *  - un archivo se vuelve a cifrar con una llave NUEVA y se sube otra vez.
+     *    Reusar el adjunto no se puede ni se deberia: el servidor solo deja
+     *    bajarlo a quien esta en la conversacion donde se subio, y compartir
+     *    la llave entre chats ataria los dos para siempre.
+     *
+     * El archivo sale de la copia local, tal cual se recibio: sin volver a
+     * comprimir una foto que ya se comprimio una vez. Si todavia no se bajo,
+     * no hay de donde sacarlo y se dice.
+     *
+     * "Reenviado de" lleva al autor ORIGINAL, aunque ya sea un reenvio.
+     */
+    suspend fun reenviar(m: MensajeEnt, destino: String) {
+        val origen = m.reenviadoDe ?: m.autor
+        if (m.adjuntoClase.isBlank()) {
+            val previa = if (m.previaJson.isBlank()) null else runCatching {
+                jsonApp.decodeFromString(VistaPreviaEnlace.serializer(), m.previaJson)
+            }.getOrNull()
+            enviarTexto(destino, m.texto, reenviadoDe = origen, previa = previa)
+            return
+        }
+        val original = m.rutaLocal?.let { File(it) }?.takeIf { it.exists() }
+            ?: throw IllegalStateException("Abre el archivo una vez para que se descargue y después reenvíalo.")
+        val nuevoId = UUID.randomUUID().toString()
+        val local = archivos.archivoDe(nuevoId, m.adjuntoNombre)
+        withContext(Dispatchers.IO) { original.copyTo(local, overwrite = true) }
+        dao.guardarMensaje(
+            MensajeEnt(
+                id = nuevoId,
+                conversacionId = destino,
+                autor = sesion.username.orEmpty(),
+                esMio = true,
+                texto = m.texto,
+                creadoEn = horaParaMio(destino),
+                estado = EstadoEnvio.PENDIENTE.name,
+                reenviadoDe = origen,
+                adjuntoClase = m.adjuntoClase,
+                adjuntoMime = m.adjuntoMime,
+                adjuntoNombre = m.adjuntoNombre,
+                adjuntoBytes = local.length(),
+                adjuntoAncho = m.adjuntoAncho,
+                adjuntoAlto = m.adjuntoAlto,
+                adjuntoDuracionMs = m.adjuntoDuracionMs,
+                adjuntoMiniatura = m.adjuntoMiniatura,
+                adjuntoOnda = m.adjuntoOnda,
+                rutaLocal = local.absolutePath,
+                adjuntoEstado = "SUBIENDO",
+            )
+        )
+        val datos = DatosArchivo(
+            m.adjuntoNombre, m.adjuntoMime, local.length(),
+            m.adjuntoAncho, m.adjuntoAlto, m.adjuntoDuracionMs,
+        )
+        // La subida, aparte: un video de 60 MB no puede dejar la hoja de
+        // reenviar abierta hasta que termine. La burbuja ya muestra el avance.
+        ambito.launch { subirAdjunto(nuevoId, destino, m.adjuntoClase, datos, local) }
     }
 
     /** Vuelve a intentar la subida de un adjunto que fallo. */
@@ -4788,6 +4861,7 @@ class Repositorio(
                 pie = m.texto,
                 miniatura = m.adjuntoMiniatura,
                 silencioso = m.silencioso,
+                reenviadoDe = m.reenviadoDe,
             )
         }
 
@@ -4871,6 +4945,19 @@ class Repositorio(
         dao.borrarVotos()
         dao.borrarMensajes()
         dao.borrarConversaciones()
+    }
+
+    /**
+     * Abre la "Nota para mi": la conversacion donde solo estoy yo.
+     *
+     * Vive en el servidor -ver V45- para que lo que se apunta en un aparato
+     * aparezca en los otros. Pero si este aparato ya la conoce se abre sin
+     * preguntar: apuntar algo sin red es justo uno de sus usos, y lo que se
+     * escriba queda en la cola como cualquier mensaje.
+     */
+    suspend fun abrirNotaParaMi(): String {
+        dao.notaParaMi()?.let { return it.id }
+        return api.notaParaMi().also { guardarResumen(it) }.id
     }
 
     suspend fun nuevaDirecta(username: String, duracionMs: Long = 0): String =

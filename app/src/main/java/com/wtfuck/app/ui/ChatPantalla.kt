@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -182,6 +183,8 @@ fun ChatPantalla(
     var eligiendoTemporales by remember { mutableStateOf(false) }
     var confirmarExportar by remember { mutableStateOf(false) }
     var accionesDe by remember { mutableStateOf<MensajeEnt?>(null) }
+    /** El mensaje que se esta por reenviar: abre "Reenviar a...". */
+    var reenviando by remember { mutableStateOf<MensajeEnt?>(null) }
     var denunciando by remember { mutableStateOf<MensajeEnt?>(null) }
     var enviandoDenuncia by remember { mutableStateOf(false) }
     var denunciaHecha by remember { mutableStateOf(false) }
@@ -658,7 +661,12 @@ fun ChatPantalla(
                     // donde todo el mundo lo busca es el nombre.
                     Row(
                         Modifier.clickable {
-                            if (chat?.tipo == "grupo") onInfoGrupo() else onInfoPersona()
+                            // La nota no tiene ficha: no hay nadie del otro lado.
+                            when (chat?.tipo) {
+                                "grupo" -> onInfoGrupo()
+                                "notas" -> Unit
+                                else -> onInfoPersona()
+                            }
                         },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -686,6 +694,7 @@ fun ChatPantalla(
                                 // decir nada.
                                 chat != null && !chat.soyMiembro -> "ya no eres miembro"
                                 conexion != EstadoConexion.CONECTADO -> "sin conexión"
+                                chat?.tipo == "notas" -> "solo tú · en todos tus aparatos"
                                 // Escribiendo manda sobre todo lo demas: es lo
                                 // unico que esta pasando AHORA.
                                 quienEscribe != null && chat?.tipo != "directa" ->
@@ -763,14 +772,16 @@ fun ChatPantalla(
                         onDismissRequest = { menuAbierto = false },
                         containerColor = BgElev,
                     ) {
-                        OpcionMenu(
-                            if (chat?.tipo == "grupo") "Info del grupo" else "Ver contacto",
-                            Icons.Filled.Info,
-                        ) {
-                            menuAbierto = false
-                            // Un grupo tiene administracion; una directa solo
-                            // una tarjeta con los datos del contacto.
-                            if (chat?.tipo == "grupo") onInfoGrupo() else onInfoPersona()
+                        if (chat?.tipo != "notas") {
+                            OpcionMenu(
+                                if (chat?.tipo == "grupo") "Info del grupo" else "Ver contacto",
+                                Icons.Filled.Info,
+                            ) {
+                                menuAbierto = false
+                                // Un grupo tiene administracion; una directa solo
+                                // una tarjeta con los datos del contacto.
+                                if (chat?.tipo == "grupo") onInfoGrupo() else onInfoPersona()
+                            }
                         }
 
                         OpcionMenu("Buscar en el chat", Icons.Filled.Search) {
@@ -786,8 +797,12 @@ fun ChatPantalla(
                             menuAbierto = false; confirmarExportar = true
                         }
 
-                        OpcionMenu("Verificar cifrado", Icons.Filled.Lock, Cian) {
-                            menuAbierto = false; onVerificarCifrado()
+                        // En la nota no hay con quien comparar numeros: los
+                        // aparatos propios se verifican al vincularlos.
+                        if (chat?.tipo != "notas") {
+                            OpcionMenu("Verificar cifrado", Icons.Filled.Lock, Cian) {
+                                menuAbierto = false; onVerificarCifrado()
+                            }
                         }
 
                         // El temporizador. En una directa lo puede poner
@@ -800,7 +815,8 @@ fun ChatPantalla(
                         // cuyas publicaciones se borran solas no es un canal.
                         if (chat != null && chat.soyMiembro && chat.tipo != "canal") {
                             val puedoPonerlo =
-                                chat.tipo == "directa" || chat.miRol == "admin" || chat.miRol == "dueno"
+                                chat.tipo == "directa" || chat.tipo == "notas" ||
+                                    chat.miRol == "admin" || chat.miRol == "dueno"
                             if (puedoPonerlo) {
                                 OpcionMenu(
                                     if (chat.temporalesSegundos > 0) {
@@ -990,7 +1006,9 @@ fun ChatPantalla(
                             texto = it
                             // El freno esta en el Repositorio: aqui se avisa en
                             // cada tecla y alli se decide si toca mandarlo.
-                            if (it.text.isNotEmpty()) app.repo.avisarQueEscribo(conversacionId)
+                            // En la nota no: solo lo verian mis otros aparatos,
+                            // diciendome que estoy escribiendo.
+                            if (it.text.isNotEmpty() && chat?.tipo != "notas") app.repo.avisarQueEscribo(conversacionId)
                         },
                         placeholder = { Text("Mensaje", color = TextoTerciario) },
                         modifier = Modifier.weight(1f),
@@ -1153,6 +1171,9 @@ fun ChatPantalla(
             // Anclada abajo, en lo mas nuevo. Ver el efecto de arriba.
             reverseLayout = true,
         ) {
+            if (chat?.tipo == "notas" && mensajes.isEmpty()) {
+                item(key = "nota-vacia") { NotaVacia() }
+            }
             itemsIndexed(invertidos, key = { _, m -> m.id }) { j, m ->
                 // `i` es la posicion CRONOLOGICA: los vecinos de abajo la usan
                 // para saber que vino antes y que despues.
@@ -1393,6 +1414,8 @@ fun ChatPantalla(
         )
     }
 
+    reenviando?.let { m -> HojaReenviar(m, onCerrar = { reenviando = null }) }
+
     accionesDe?.let { m ->
         HojaAccionesMensaje(
             mensaje = m,
@@ -1424,11 +1447,7 @@ fun ChatPantalla(
             },
             onReenviar = {
                 accionesDe = null
-                ambito.launch {
-                    runCatching {
-                        app.repo.enviarTexto(conversacionId, m.texto, reenviadoDe = m.autor)
-                    }.onFailure { aviso = it.message }
-                }
+                reenviando = m
             },
             onGuardarSticker = {
                 accionesDe = null
@@ -1774,6 +1793,11 @@ private fun Burbuja(
 
     val reacciones = remember(m.reaccionesJson) { leerReacciones(m.reaccionesJson) }
 
+    // Para `sinAbrirConPulsacionLarga`: el modificador vive lo que vive la
+    // burbuja, y asi llama siempre a la accion de ahora y no a la del primer
+    // pintado.
+    val mantener by rememberUpdatedState(onMantener)
+
     // Deslizar para responder. Un mensaje retirado no se responde: no queda
     // nada a que responder, y ofrecerlo seria citar un hueco.
     ParaResponder(habilitado = !m.retirado, onResponder = onResponder) {
@@ -1886,7 +1910,12 @@ private fun Burbuja(
                 ContenidoEspecialBurbuja(m, onAbrirContacto, onDevolverLlamada)
             } else {
                 if (m.adjuntoClase.isNotBlank()) {
-                    ContenidoAdjunto(m, sobreAcento, onDescargar, onAbrir, onReintentar)
+                    // La foto, el audio y el documento se tocan para abrirse o
+                    // sonar, y por eso se quedaban con la pulsacion larga: abrian
+                    // el visor en vez del menu. Igual que con los enlaces.
+                    Box(Modifier.sinAbrirConPulsacionLarga { mantener() }) {
+                        ContenidoAdjunto(m, sobreAcento, onDescargar, onAbrir, onReintentar)
+                    }
                     // El pie solo si existe: un espacio vacio debajo de la foto
                     // se ve como un error de maquetado.
                     if (m.texto.isNotBlank()) Spacer(Modifier.height(6.dp))
@@ -1922,7 +1951,11 @@ private fun Burbuja(
                         val uri = androidx.compose.ui.platform.LocalUriHandler.current
                         TarjetaEnlace(
                             previaDelMensaje,
-                            Modifier.padding(bottom = 6.dp).clickable { runCatching { uri.openUri(previaDelMensaje.url) } },
+                            Modifier
+                                .padding(bottom = 6.dp)
+                                .sinAbrirConPulsacionLarga { mantener() }
+                                .clickable { runCatching { uri.openUri(previaDelMensaje.url) } },
+                            colorTexto = colorTexto,
                         )
                     }
                     Text(
@@ -1933,6 +1966,7 @@ private fun Burbuja(
                         ),
                         color = colorTexto,
                         fontSize = 16.sp,
+                        modifier = Modifier.sinAbrirConPulsacionLarga { mantener() },
                     )
                 }
             }
@@ -2038,7 +2072,16 @@ internal fun leerReacciones(json: String): List<Pair<String, Pair<Int, Boolean>>
  * quiere que lo toque.
  */
 @Composable
-fun TarjetaEnlace(p: com.wtfuck.protocol.VistaPreviaEnlace, modifier: Modifier = Modifier) {
+fun TarjetaEnlace(
+    p: com.wtfuck.protocol.VistaPreviaEnlace,
+    modifier: Modifier = Modifier,
+    /**
+     * El color del texto. Sin decirlo, la tarjeta heredaba el del tema -claro,
+     * para el fondo oscuro- y dentro de mi burbuja cian el titulo casi no se
+     * leia. Dentro de una burbuja va el color de esa burbuja.
+     */
+    colorTexto: Color = Color.Unspecified,
+) {
     val miniatura = remember(p.imagen) {
         if (p.imagen.isBlank()) null else runCatching {
             val b = android.util.Base64.decode(p.imagen, android.util.Base64.DEFAULT)
@@ -2061,16 +2104,50 @@ fun TarjetaEnlace(p: com.wtfuck.protocol.VistaPreviaEnlace, modifier: Modifier =
             }
             Column(Modifier.weight(1f)) {
                 if (p.titulo.isNotBlank()) {
-                    Text(p.titulo, fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 2,
+                    Text(p.titulo, color = colorTexto, fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
                 if (p.descripcion.isNotBlank()) {
-                    Text(p.descripcion, fontSize = 12.sp, maxLines = 2,
+                    Text(p.descripcion, color = colorTexto, fontSize = 12.sp, maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         modifier = Modifier.alpha(0.8f))
                 }
-                Text(com.wtfuck.app.datos.VistaPreviaHtml.dominio(p.url), fontSize = 11.sp, modifier = Modifier.alpha(0.7f))
+                Text(
+                    com.wtfuck.app.datos.VistaPreviaHtml.dominio(p.url),
+                    color = colorTexto, fontSize = 11.sp, modifier = Modifier.alpha(0.7f),
+                )
             }
         }
+    }
+}
+
+
+/**
+ * Lo que se ve en una "Nota para mi" sin nada todavia: para que sirve, y que
+ * pasa con lo que se escribe aqui.
+ */
+@Composable
+private fun NotaVacia() {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier.size(64.dp).clip(CircleShape).background(BgElev),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Bookmark, null, tint = Cian, modifier = Modifier.size(30.dp))
+        }
+        Spacer(Modifier.height(14.dp))
+        Text("Tu nota", color = TextoPrimario, fontWeight = FontWeight.Medium, fontSize = 17.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Apunta, guarda enlaces y reenvíate mensajes, fotos y archivos. Aparece en " +
+                "todos tus aparatos vinculados y va cifrada como cualquier chat: el " +
+                "servidor solo pasa sobres que no puede abrir.",
+            color = TextoTerciario,
+            fontSize = 13.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
     }
 }

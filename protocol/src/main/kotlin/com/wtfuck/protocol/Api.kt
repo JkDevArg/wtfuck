@@ -26,6 +26,15 @@ const val RUTA_USUARIO = "/v1/usuarios"
 const val RUTA_CONVERSACIONES = "/v1/conversaciones"
 const val RUTA_DIRECTA = "/v1/conversaciones/directa"
 const val RUTA_GRUPOS = "/v1/conversaciones/grupo"
+
+/**
+ * "Nota para mi": la conversacion de una sola persona. Ver `Repo.notaParaMi`.
+ * El POST la crea la primera vez y despues devuelve la misma.
+ */
+const val RUTA_NOTAS = "/v1/conversaciones/notas"
+
+/** El `tipo` de esa conversacion. */
+const val TIPO_NOTAS = "notas"
 const val RUTA_PREKEYS = "/v1/prekeys"
 const val RUTA_WS = "/v1/ws"
 const val RUTA_PERFIL = "/v1/perfil"
@@ -617,7 +626,7 @@ object DuracionMensaje {
 @Serializable
 data class ConversacionResumen(
     val id: String,
-    val tipo: String,              // "directa" | "grupo" | "canal"
+    val tipo: String,              // "directa" | "grupo" | "canal" | "notas"
     val nombre: String,            // username del otro, o nombre del grupo
     val participantes: List<UsuarioPublico>,
     /** Mi rol aqui. La UI lo usa para saber que mostrar, pero NO para autorizar. */

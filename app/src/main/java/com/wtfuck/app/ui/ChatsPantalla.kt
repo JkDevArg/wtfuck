@@ -1,6 +1,7 @@
 package com.wtfuck.app.ui
 
 import com.wtfuck.app.datos.Media
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Group
@@ -446,6 +448,17 @@ fun ChatsPantalla(
                     onGrupo = { arrancarEnGrupo = true; mostrarNueva = true },
                     onCanal = onNuevoCanal,
                     onContactos = onContactos,
+                    onNota = {
+                        ambito.launch {
+                            runCatching { app.repo.abrirNotaParaMi() }
+                                .onSuccess { onAbrir(it, "notas") }
+                                .onFailure {
+                                    Toast.makeText(
+                                        app, "No se pudo abrir la nota: ${it.message}", Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                        }
+                    },
                 )
             }
         },
@@ -1412,6 +1425,7 @@ private fun MenuDeCreacion(
     onGrupo: () -> Unit,
     onCanal: () -> Unit,
     onContactos: () -> Unit,
+    onNota: () -> Unit,
 ) {
     // El icono gira 45 grados: el mismo "+" se convierte en una X sin cambiar
     // de icono. Lo que cambia no es la forma, es lo que significa.
@@ -1422,6 +1436,9 @@ private fun MenuDeCreacion(
             // Contactos llego aqui desde la barra de abajo, donde ahora esta
             // Social: la libreta sirve para empezar algo con alguien, que es
             // lo que hace este menu.
+            // Arriba de todo y aparte: no es empezar algo con alguien, es el
+            // sitio propio donde apuntar y reenviarse cosas.
+            OpcionDeCreacion("Nota para mí", Icons.Filled.Bookmark) { onAbrir(false); onNota() }
             OpcionDeCreacion("Contactos", Icons.Filled.Contacts) { onAbrir(false); onContactos() }
             OpcionDeCreacion("Canal", Icons.Filled.Campaign) { onAbrir(false); onCanal() }
             OpcionDeCreacion("Grupo", Icons.Filled.Group) { onAbrir(false); onGrupo() }

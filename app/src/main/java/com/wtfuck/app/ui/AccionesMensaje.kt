@@ -131,7 +131,11 @@ fun HojaAccionesMensaje(
             if (!mensaje.retirado) {
                 Opcion("Responder", Icons.AutoMirrored.Filled.Reply, onClick = onResponder)
                 Opcion("Copiar", Icons.Filled.ContentCopy, onClick = onCopiar)
-                Opcion("Reenviar", Icons.AutoMirrored.Filled.Send, onClick = onReenviar)
+                // Una encuesta o un evento son de SU chat: sus votos y sus
+                // asistentes viven ahi. Reenviados serian una copia muerta.
+                if (mensaje.especial.isBlank()) {
+                    Opcion("Reenviar", Icons.AutoMirrored.Filled.Send, onClick = onReenviar)
+                }
 
                 // Solo si es un sticker Y ya esta descargado: guardar uno que
                 // todavia no bajo copiaria un archivo que no existe.

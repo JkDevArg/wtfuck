@@ -152,6 +152,8 @@ data class CargaAdjunto(
     val miniatura: String = "",
     /** Ver `Carga.Texto.silencioso`. */
     val silencioso: Boolean = false,
+    /** Si es un reenvio, de quien venia. Ver `Carga.Texto.reenviadoDe`. */
+    val reenviadoDe: String? = null,
 ) : Carga
 
 // ============================================================

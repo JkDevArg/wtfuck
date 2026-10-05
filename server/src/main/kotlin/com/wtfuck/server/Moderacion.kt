@@ -158,7 +158,7 @@ object Moderacion {
                 TipoDenuncia.GRUPO, TipoDenuncia.CANAL -> {
                     objConversacion = uuid(req.objetivoConversacion, "conversacion")
                     val existe = c.prepareStatement(
-                        "SELECT 1 FROM conversacion WHERE id = ? AND tipo <> 'directa'"
+                        "SELECT 1 FROM conversacion WHERE id = ? AND tipo IN ('grupo', 'canal')"
                     ).use { st ->
                         st.setObject(1, objConversacion); st.executeQuery().use { it.next() }
                     }
