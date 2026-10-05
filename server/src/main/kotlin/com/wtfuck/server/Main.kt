@@ -167,16 +167,66 @@ object Hub {
      */
     fun empujar(dispositivo: UUID, msg: Bajada): Boolean {
         val local = vivos[dispositivo]?.trySend(msg)?.isSuccess ?: false
-        if (local) return true
+        if (local) {
+            vigilarAcuse(dispositivo, msg)
+            return true
+        }
 
         // No esta aqui: puede estar en otra instancia. El bus devuelve si
         // habia alguien suscrito, asi que solo se recurre al push cuando NO
         // esta conectado en ningun proceso.
-        if (Bus.publicar(dispositivo, msg)) return true
+        if (Bus.publicar(dispositivo, msg)) {
+            vigilarAcuse(dispositivo, msg)
+            return true
+        }
 
         Push.despertar(dispositivo)
         return false
     }
+
+    /**
+     * "Conectado" no es "escuchando": si el acuse no llega, se despierta igual.
+     *
+     * Con la app en segundo plano, Android CONGELA el proceso pero el socket
+     * sigue abierto: para este servidor el aparato esta conectado, el sobre se
+     * mete en el canal y `empujar` devuelve true. Nadie lo lee, no hay acuse, y
+     * como "estaba conectado" el push no se pedia nunca. El ping lo detecta,
+     * pero a los 60 s, y para entonces el mensaje ya se habia "entregado" a un
+     * proceso dormido: llegaba recien cuando la persona abria la app.
+     *
+     * Ahora, si a los [ESPERA_ACUSE_S] segundos el sobre sigue en el buzon, se
+     * pide el push. Un aviso de prioridad alta descongela el proceso, que lee
+     * lo que tenia en el socket o reconecta, y notifica. Se consulta la BASE y
+     * no un mapa en memoria porque el acuse puede entrar por otra instancia.
+     *
+     * Solo para entregas: son lo unico que merece despertar a alguien. Que un
+     * mensaje propio se marco como leido puede esperar a que abra la app.
+     */
+    private fun vigilarAcuse(dispositivo: UUID, msg: Bajada) {
+        val e = msg as? Bajada.Entrega ?: return
+        val id = runCatching { UUID.fromString(e.sobreId) }.getOrNull() ?: return
+        runCatching {
+            vigia.schedule({
+                runCatching { if (Repo.sobreSigue(id)) Push.despertar(dispositivo) }
+            }, ESPERA_ACUSE_S, java.util.concurrent.TimeUnit.SECONDS)
+        }
+    }
+
+    /**
+     * Un solo hilo: cada tarea es una consulta por clave primaria. Daemon para
+     * que no impida cerrar el proceso.
+     */
+    private val vigia = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "vigia-acuses").apply { isDaemon = true }
+    }
+
+    /**
+     * Ocho segundos. Un telefono despierto acusa en menos de uno; el margen es
+     * para una red movil lenta, que no debe disparar un push de mas. Y si lo
+     * dispara no pasa nada: el aviso va vacio y `Push` ya limita uno por
+     * aparato cada pocos segundos.
+     */
+    private const val ESPERA_ACUSE_S = 8L
 }
 
 fun main() {
@@ -411,6 +461,16 @@ private fun arrancarTareas() {
 }
 
 fun Application.modulo() {
+    // La hora de este servidor en cada respuesta, en milisegundos.
+    //
+    // Es la referencia con la que el telefono corrige su reloj antes de
+    // sellar un mensaje (`Reloj` en la app). Sin ella, un telefono con la hora
+    // atrasada fechaba sus mensajes en el pasado y quien los recibia los veia
+    // enterrados entre los viejos. La cabecera `Date` no sirve: tiene
+    // resolucion de un segundo y Netty no la manda sin un plugin.
+    intercept(io.ktor.server.application.ApplicationCallPipeline.Plugins) {
+        call.response.header("X-Hora", System.currentTimeMillis().toString())
+    }
     install(ContentNegotiation) { json(json) }
     install(CallLogging) { level = Level.INFO }
     install(WebSockets) {
@@ -1920,8 +1980,20 @@ private fun manejarEnvio(yo: Auth, msg: Subida.Enviar, salida: Channel<Bajada>) 
     val cubiertos = copias.map { it.destino.dispositivoId }.toSet()
     val sinCopia = permitidos.keys.filter { it !in cubiertos }.map { it.toString() }
 
-    val encolados = Repo.encolar(sobreId, yo.dispositivoId, conv, copias, msg.creadoEn)
-    salida.trySend(Bajada.Aceptado(msg.sobreId, sinCopia))
+    // La hora que viaja es la de AUTORIA, la del sobre: es la promesa de msg
+    // off -escrito sin red a las 8, entregado a las 18, se muestra de las 8-.
+    // Ver `msgoff.mjs` y V8.
+    //
+    // Lo unico que se corrige aqui es el futuro: nadie escribe un mensaje
+    // despues de que llega. Un reloj adelantado dejaba ese mensaje pegado al
+    // final del chat de quien lo recibia, por debajo de todo lo que se
+    // contestara despues. El reloj ATRASADO no se puede distinguir aqui de un
+    // mensaje escrito sin red; ese lo corrige el telefono que escribe, con
+    // su desfase contra este servidor (`X-Hora` y `Aceptado.servidorEn`).
+    val servidorEn = System.currentTimeMillis()
+    val creadoEn = minOf(msg.creadoEn, servidorEn)
+    val encolados = Repo.encolar(sobreId, yo.dispositivoId, conv, copias, creadoEn)
+    salida.trySend(Bajada.Aceptado(msg.sobreId, sinCopia, servidorEn))
 
     // Empuja a los que estan conectados ahora mismo. Para los demas el sobre ya
     // esta en la base y lo tomaran al reconectar: esto es solo el atajo rapido.
@@ -1942,7 +2014,7 @@ private fun manejarEnvio(yo: Auth, msg: Subida.Enviar, salida: Channel<Bajada>) 
                 origenUsuarioId = yo.usuarioId.toString(),
                 origenUsername = yo.username,
                 origenDispositivo = yo.dispositivoId.toString(),
-                creadoEn = msg.creadoEn,
+                creadoEn = creadoEn,
                 cuerpo = Base64Util.enc(cp.cuerpo),
                 tipo = cp.tipo,
             ),

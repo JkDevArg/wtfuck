@@ -95,6 +95,9 @@ class Push(private val ctx: Context, private val api: ApiCliente, private val se
 
     val disponible: Boolean get() = cacheProyecto != null
 
+    /** Si este telefono ya le dio su token al servidor. Ver `DiagnosticoAvisos`. */
+    val registrado: Boolean get() = tokenRegistrado != null
+
     /**
      * Inicializa Firebase con lo que haya en disco. Idempotente.
      *

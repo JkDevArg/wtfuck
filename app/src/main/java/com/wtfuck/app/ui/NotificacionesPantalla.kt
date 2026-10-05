@@ -25,7 +25,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.wtfuck.app.datos.EstadoAvisos
 import com.wtfuck.app.datos.Notificaciones
+import com.wtfuck.app.datos.ProblemaAviso
+import com.wtfuck.app.datos.pasosDelFabricante
+import com.wtfuck.app.datos.problemasDeAvisos
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
+import kotlinx.coroutines.launch
 import com.wtfuck.app.ui.theme.*
 
 /**
@@ -135,6 +142,10 @@ fun NotificacionesPantalla(onAtras: () -> Unit) {
             )
 
             Spacer(Modifier.height(20.dp))
+            Encabezado("Con la app cerrada")
+            SeccionAppCerrada()
+
+            Spacer(Modifier.height(20.dp))
             Encabezado("Lo que decide Android")
 
             Row(
@@ -206,6 +217,133 @@ fun NotificacionesPantalla(onAtras: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * Si los avisos pueden despertar la app con el telefono suspendido, y que
+ * hacer si no. La regla esta en `problemasDeAvisos`; aqui se junta el estado,
+ * que solo Android conoce, y se ofrece el ajuste que corresponde.
+ *
+ * Se vuelve a medir al volver a la pantalla: la persona va a los ajustes del
+ * sistema, cambia algo y vuelve, y lo que ve tiene que reflejarlo.
+ */
+@Composable
+private fun SeccionAppCerrada() {
+    val ctx = LocalContext.current
+    val app = ctx.applicationContext as com.wtfuck.app.WtfuckApp
+    val ambito = rememberCoroutineScope()
+    var vuelta by remember { mutableIntStateOf(0) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vuelta++ }
+
+    val estado = remember(vuelta) {
+        val energia = ctx.getSystemService(android.os.PowerManager::class.java)
+        EstadoAvisos(
+            notificacionesPermitidas =
+                androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled(),
+            servidorConPush = app.push.disponible,
+            googlePlay = runCatching {
+                com.google.android.gms.common.GoogleApiAvailabilityLight.getInstance()
+                    .isGooglePlayServicesAvailable(ctx) == com.google.android.gms.common.ConnectionResult.SUCCESS
+            }.getOrDefault(false),
+            tokenRegistrado = app.push.registrado,
+            bateriaSinRestriccion = energia?.isIgnoringBatteryOptimizations(ctx.packageName) ?: true,
+            fabricante = Build.MANUFACTURER.orEmpty(),
+        )
+    }
+    val problemas = problemasDeAvisos(estado)
+
+    fun abrir(i: Intent) { runCatching { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+    val ajustesApp = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+        .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+
+    if (problemas.isEmpty()) {
+        AvisoEstado(
+            ok = true,
+            titulo = "Todo listo",
+            texto = "Los avisos pueden despertar la app aunque el teléfono esté suspendido.",
+        )
+        return
+    }
+    for (p in problemas) {
+        when (p) {
+            ProblemaAviso.SIN_PERMISO -> AvisoEstado(
+                titulo = "Las notificaciones están apagadas",
+                texto = "Android no deja que wtfuck muestre nada. Sin esto, lo demás no importa.",
+                accion = "Activarlas",
+            ) {
+                abrir(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                    } else ajustesApp
+                )
+            }
+            ProblemaAviso.SERVIDOR_SIN_PUSH -> AvisoEstado(
+                titulo = "El servidor no tiene push",
+                texto = "Con la app cerrada nada puede despertarla: los mensajes llegan " +
+                    "cuando la abres. Se arregla en el servidor, no en este teléfono.",
+            )
+            ProblemaAviso.SIN_GOOGLE -> AvisoEstado(
+                titulo = "Este teléfono no tiene servicios de Google",
+                texto = "El aviso con la app cerrada viaja por ahí. Mientras wtfuck siga " +
+                    "abierta en segundo plano, los mensajes llegan igual.",
+            )
+            ProblemaAviso.SIN_TOKEN -> AvisoEstado(
+                titulo = "Todavía no está registrado para avisos",
+                texto = "Este teléfono no le dio su identificador de avisos al servidor.",
+                accion = "Reintentar",
+            ) { ambito.launch { app.push.poner(); vuelta++ } }
+            ProblemaAviso.BATERIA_RESTRINGIDA -> AvisoEstado(
+                titulo = "Android optimiza la batería de wtfuck",
+                texto = "Con el teléfono suspendido puede retrasar o cortar los avisos.",
+                accion = "Quitar la restricción",
+            ) {
+                abrir(
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                )
+            }
+            ProblemaAviso.FABRICANTE_AGRESIVO -> AvisoEstado(
+                titulo = "Tu ${Build.MANUFACTURER.orEmpty().replaceFirstChar { it.uppercase() }} " +
+                    "tiene su propio gestor de batería",
+                texto = (pasosDelFabricante(estado.fabricante) ?: "") +
+                    " No hay forma de comprobarlo desde la app: si los avisos no llegan " +
+                    "con el teléfono suspendido, es lo primero que hay que revisar.",
+                accion = "Abrir los ajustes de wtfuck",
+            ) { abrir(ajustesApp) }
+        }
+    }
+}
+
+@Composable
+private fun AvisoEstado(
+    titulo: String,
+    texto: String,
+    ok: Boolean = false,
+    accion: String? = null,
+    alTocar: (() -> Unit)? = null,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(
+            if (ok) Icons.Filled.CheckCircle else Icons.Filled.Warning,
+            null,
+            tint = if (ok) Cian else Ambar,
+            modifier = Modifier.size(20.dp).padding(top = 2.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(titulo, color = TextoPrimario)
+            Text(texto, style = MaterialTheme.typography.bodySmall, color = TextoTerciario)
+            if (accion != null && alTocar != null) {
+                TextButton(onClick = alTocar, contentPadding = PaddingValues(0.dp)) {
+                    Text(accion, color = Cian)
+                }
+            }
         }
     }
 }

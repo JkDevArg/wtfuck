@@ -795,6 +795,11 @@ sealed interface Bajada {
          * sesion abrir el sobre.
          */
         val origenDispositivo: String,
+        /**
+         * La hora de AUTORIA, nunca posterior a la del servidor. Ver
+         * `Sobre.creadoEn`: la corrige el cliente que escribe y el servidor
+         * solo recorta el futuro.
+         */
         val creadoEn: Long,
         val cuerpo: String,
         /** Tipo de mensaje de Signal. Ver [TipoCifrado]. */
@@ -815,6 +820,14 @@ sealed interface Bajada {
          * reenvio no duplique nada.
          */
         val sinCopia: List<String> = emptyList(),
+        /**
+         * La hora del servidor al aceptarlo. NO reemplaza la del mensaje -esa
+         * es la de autoria-: sirve para que el cliente mida su desfase y
+         * selle bien los proximos. Ver `Reloj` en la app.
+         *
+         * 0 = un servidor anterior que no la manda.
+         */
+        val servidorEn: Long = 0,
     ) : Bajada
 
     /**

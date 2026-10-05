@@ -117,6 +117,13 @@ fun ChatPantalla(
     val ambito = rememberCoroutineScope()
 
     val mensajes by app.repo.mensajes(conversacionId).collectAsStateWithLifecycle(emptyList())
+
+    // La lista se dibuja INVERTIDA (ver la LazyColumn): el indice 0 es el
+    // mensaje mas nuevo, abajo. `mensajes` sigue en orden cronologico porque
+    // asi lo piensa todo lo demas -rafagas, buscador, fijados-, y estas dos
+    // piezas traducen entre un orden y el otro.
+    val invertidos = remember(mensajes) { mensajes.asReversed() }
+    fun enLista(cronologico: Int): Int = (mensajes.lastIndex - cronologico).coerceAtLeast(0)
     val fijados by app.repo.fijados(conversacionId).collectAsStateWithLifecycle(emptyList())
     // Con gracia, igual que la lista de chats: el reenganche al desbloquear el
     // telefono no debe pintar "sin conexion" en el subtitulo por un segundo.
@@ -411,7 +418,7 @@ fun ChatPantalla(
         // scroll que falla no debe tirar la pantalla con el resultado ya
         // encontrado en la mano.
         hallazgos.firstOrNull()?.let { m ->
-            runCatching { lista.scrollToItem(app.repo.posicionDe(conversacionId, m)) }
+            runCatching { lista.scrollToItem(enLista(app.repo.posicionDe(conversacionId, m))) }
         }
     }
 
@@ -424,6 +431,9 @@ fun ChatPantalla(
      */
     var yaSalto by remember(irAMensaje) { mutableStateOf(irAMensaje.isBlank()) }
 
+    /** Cuantos mensajes habia en la ultima pasada; 0 = todavia no cargo. */
+    var cargados by remember(conversacionId) { mutableIntStateOf(0) }
+
     /**
      * A donde mirar cuando la lista cambia: UN solo efecto, no dos.
      *
@@ -435,7 +445,10 @@ fun ChatPantalla(
      * Con uno solo la prioridad se lee de arriba abajo, que es lo que era todo
      * el tiempo: primero el mensaje al que se vino, si hay; si no, el final.
      */
-    LaunchedEffect(mensajes.size, buscando) {
+    // Tambien con el id del ULTIMO: un mensaje que cambia de sitio sin que
+    // cambie el tamano -el mio, al recibir la hora del servidor- tiene que
+    // llevarse la vista con el.
+    LaunchedEffect(mensajes.size, mensajes.lastOrNull()?.id, buscando) {
         // Mientras se busca no se mueve nada: el buscador acaba de poner la
         // lista donde la persona esta leyendo, y un mensaje nuevo que llegue
         // en ese momento se la arrastraria lejos.
@@ -447,7 +460,7 @@ fun ChatPantalla(
             // quedarse donde se estaba es mejor que saltar a un sitio
             // cualquiera.
             val i = mensajes.indexOfFirst { it.id == irAMensaje }
-            if (i >= 0) runCatching { lista.scrollToItem(i) }
+            if (i >= 0) runCatching { lista.scrollToItem(enLista(i)) }
             // Se da por hecho PASE LO QUE PASE: dejarlo en false cuando el
             // mensaje no aparece dejaria la pantalla intentandolo con cada
             // mensaje nuevo, y sin volver al final nunca.
@@ -455,7 +468,26 @@ fun ChatPantalla(
             return@LaunchedEffect
         }
 
-        lista.animateScrollToItem(mensajes.lastIndex)
+        // El final es el indice 0, y una lista invertida ARRANCA ahi: abrir un
+        // chat ya muestra lo ultimo, sin animar desde el primer mensaje.
+        //
+        // Antes la lista iba al derecho y se mandaba al final con
+        // `animateScrollToItem(lastIndex)`. Quedaba anclada ARRIBA: al abrirse
+        // el teclado, o al cargar una foto o un sticker por encima, lo de
+        // abajo -lo nuevo- se salia de la pantalla. "Abro el chat y me lleva a
+        // mensajes anteriores". Invertida, se ancla abajo y lo que cambia de
+        // tamano empuja hacia arriba lo viejo, como en cualquier app de chat.
+        //
+        // Un mensaje nuevo baja la lista solo si se estaba cerca del final o
+        // si es mio. Antes arrastraba siempre: quien subia a releer algo era
+        // devuelto abajo con cada mensaje que llegaba.
+        val primeraCarga = cargados == 0
+        cargados = mensajes.size
+        if (primeraCarga) {
+            runCatching { lista.scrollToItem(0) }
+        } else if (lista.firstVisibleItemIndex <= 2 || mensajes.lastOrNull()?.esMio == true) {
+            runCatching { lista.animateScrollToItem(0) }
+        }
     }
 
     // §15 · Atajos de teclado, que en esta pantalla son dos y no diez.
@@ -508,7 +540,7 @@ fun ChatPantalla(
                             ambito.launch {
                                 runCatching {
                                     lista.animateScrollToItem(
-                                        app.repo.posicionDe(conversacionId, hallazgos[cualHallazgo])
+                                        enLista(app.repo.posicionDe(conversacionId, hallazgos[cualHallazgo]))
                                     )
                                 }
                             }
@@ -918,7 +950,7 @@ fun ChatPantalla(
                     .background(BgElev)
                     .clickable {
                         val i = mensajes.indexOfFirst { it.id == fijado.id }
-                        if (i >= 0) ambito.launch { lista.animateScrollToItem(i) }
+                        if (i >= 0) ambito.launch { lista.animateScrollToItem(enLista(i)) }
                     }
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -982,8 +1014,13 @@ fun ChatPantalla(
                 .weight(1f)
                 .fondoDeChat(app.ajustes.fondoChat, claroAhora(app.ajustes.tema), Cian),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            // Anclada abajo, en lo mas nuevo. Ver el efecto de arriba.
+            reverseLayout = true,
         ) {
-            itemsIndexed(mensajes, key = { _, m -> m.id }) { i, m ->
+            itemsIndexed(invertidos, key = { _, m -> m.id }) { j, m ->
+                // `i` es la posicion CRONOLOGICA: los vecinos de abajo la usan
+                // para saber que vino antes y que despues.
+                val i = mensajes.lastIndex - j
                 if (m.esSistema) {
                     LineaSistema(m.texto)
                 } else {

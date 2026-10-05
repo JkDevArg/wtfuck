@@ -83,7 +83,17 @@ data class Sobre(
     val origenDispositivo: String,
 
     /** Milisegundos epoch segun el remitente. Es una pista, no una verdad:
-     *  el reloj del emisor no es confiable. El orden real lo da `id`. */
+     *  el reloj del emisor no es confiable.
+     *
+     *  Aqui decia que "el orden real lo da `id`", y no era cierto: `id` es un
+     *  UUIDv7 que genera el MISMO cliente, con el MISMO reloj. Un telefono con
+     *  la hora atrasada enterraba sus respuestas entre los mensajes viejos.
+     *
+     *  Es la hora de AUTORIA y tiene que seguir siendolo: es lo que permite
+     *  que un mensaje escrito sin red se muestre de cuando se escribio (msg
+     *  off, V8). Por eso no la reemplaza la hora del servidor. Lo que se hace:
+     *  el cliente la sella ya CORREGIDA con su desfase contra el servidor
+     *  (`Reloj` en la app), y el servidor recorta lo que venga del futuro. */
     val creadoEn: Long,
 
     /**

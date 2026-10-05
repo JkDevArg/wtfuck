@@ -1549,6 +1549,14 @@ object Repo {
      * Confirma y BORRA. Devuelve los dispositivos de origen para avisarles
      * "entregado" — es lo que pinta la palomita doble en el remitente.
      */
+    /** Si el sobre sigue sin acusar. Ver `Hub.vigilarAcuse`. */
+    fun sobreSigue(id: UUID): Boolean = Db.tx { c ->
+        c.prepareStatement("SELECT 1 FROM sobre_pendiente WHERE id = ?").use { st ->
+            st.setObject(1, id)
+            st.executeQuery().use { it.next() }
+        }
+    }
+
     fun acusar(dispositivoId: UUID, sobreIds: List<String>): List<Pair<UUID, String>> {
         if (sobreIds.isEmpty()) return emptyList()
         val ids = sobreIds.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }

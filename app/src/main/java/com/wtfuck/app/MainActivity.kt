@@ -9,9 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
@@ -82,7 +79,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        escucharAvisos()
         val app = application as WtfuckApp
 
         // Arranque en frío: se decide ANTES de dibujar nada. Si se decidiera
@@ -111,6 +107,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         super.onStart()
         val app = application as WtfuckApp
         if (app.sesion.hayS) app.repo.iniciar()
+        app.repo.alEntrarEnPantalla()
         // Tambien aqui y no solo en `onCreate`: el ajuste se cambia sin
         // recrear la Activity, y si solo se aplicara al crearla, activar el
         // bloqueo dejaria la miniatura de recientes a la vista hasta el
@@ -128,6 +125,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onStop() {
         super.onStop()
         val app = application as WtfuckApp
+        app.repo.alSalirDePantalla()
         // Se anota CUANDO se dejo de usar la app, que es desde donde cuenta la
         // espera. No se anota si ya estaba bloqueada: si no, salir y volver
         // reiniciaria el contador y abriria la app sin autenticar nada.
@@ -175,84 +173,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }
     }
 
-    /**
-     * Convierte los avisos del servidor en notificaciones del sistema.
-     *
-     * Vive en la Activity y no en el Repositorio a proposito: notificar es cosa
-     * de la capa de Android, y asi el Repositorio se puede probar sin framework.
-     */
-    private fun escucharAvisos() {
-        val app = application as WtfuckApp
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.CREATED) {
-                app.repo.avisos.collect { ev ->
-                    when (ev.tipo) {
-                        "agregado_grupo" -> Notificaciones.agregadoAGrupo(
-                            this@MainActivity, ev.actor, ev.nombreConversacion, ev.conversacionId,
-                        )
-                        // Una advertencia que el usuario no ve no sirve de
-                        // nada: el punto de advertir es que haya oportunidad
-                        // de corregir.
-                        "advertencia" -> Notificaciones.moderacion(this@MainActivity, false)
-                        "sancion" -> Notificaciones.moderacion(this@MainActivity, true)
-                    }
-                }
-            }
-        }
-
-        // Una notificacion de llamada entrante es "ongoing": no se va sola.
-        // Si nadie la borra, queda una llamada fantasma en la bandeja despues
-        // de colgar, con sus botones de contestar incluidos.
-        //
-        // Se borra al DEJAR DE SONAR, no al colgar. Antes solo se limpiaba
-        // cuando el estado pasaba a null —o sea al terminar la llamada— y el
-        // cartel de "Toca para contestar" se quedaba encima durante toda la
-        // conversacion, con sus botones de Contestar y Rechazar puestos.
-        //
-        // Tapaba ademas la ventanita de la camara propia, que vive justo
-        // debajo en la esquina de arriba: parecia que la camara no arrancaba.
-        // Dos sintomas que no se parecian entre si, y una sola causa.
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.CREATED) {
-                var ultima: String? = null
-                app.repo.llamadas.estado.collect { e ->
-                    val sonando = e != null &&
-                        e.fase == com.wtfuck.app.datos.EstadoLlamada.Fase.SONANDO &&
-                        !e.saliente
-                    if (sonando) {
-                        ultima = e!!.conversacionId
-                    } else {
-                        ultima?.let {
-                            Notificaciones.quitarLlamada(this@MainActivity, it)
-                            ultima = null
-                        }
-                    }
-                }
-            }
-        }
-
-        // L.6. El Repositorio dice QUE paso; aqui se decide COMO se muestra, y
-        // los ajustes por categoria los mira `Notificaciones`. Va en un
-        // colector aparte del de eventos porque son dos fuentes distintas: una
-        // son avisos del servidor y la otra, cosas que ya pasaron localmente.
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.CREATED) {
-                app.repo.notificables.collect { n ->
-                    when (n.tipo) {
-                        "mensaje" -> Notificaciones.mensaje(
-                            this@MainActivity, n.autor, n.titulo, n.conversacionId, n.esGrupo,
-                        )
-                        "canal" -> Notificaciones.canal(
-                            this@MainActivity, n.titulo, n.conversacionId,
-                        )
-                        "llamada" -> Notificaciones.llamada(
-                            this@MainActivity, n.autor, n.conVideo, n.conversacionId,
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
 
 /**

@@ -304,7 +304,7 @@ class Repositorio(
      * localmente todavia.
      */
     private suspend fun avisarMensaje(convId: String, autor: String) {
-        if (chatAbierto == convId) return
+        if (chatVisible == convId) return
         val conv = dao.conversacion(convId) ?: return
         val silenciado = conv.silenciadoHasta == -1L ||
             conv.silenciadoHasta > System.currentTimeMillis()
@@ -350,6 +350,37 @@ class Repositorio(
     }
 
     fun cerrarChat() { chatAbierto = null }
+
+    /**
+     * Si la app esta en pantalla. Lo fija `MainActivity` en onStart/onStop.
+     *
+     * ## Por que "chat abierto" no bastaba
+     *
+     * `chatAbierto` dice que pantalla esta arriba de la pila, no que alguien
+     * la este mirando. Quien estaba en un chat y tocaba Inicio lo dejaba
+     * "abierto" para siempre, y todo lo que llegaba a esa conversacion:
+     *
+     *  - **no notificaba**, porque "ya lo esta viendo";
+     *  - **no sumaba no leidos**;
+     *  - y mandaba un **acuse de lectura** falso: el otro veia la palomita
+     *    cian de un mensaje que nadie habia mirado.
+     *
+     * Se vio en dos emuladores: chat abierto, Inicio, mensaje del otro lado,
+     * cero notificaciones y un `GET .../leidos` del aparato en el bolsillo.
+     */
+    @Volatile private var enPantalla = false
+
+    /** El chat que de verdad se esta viendo: abierto Y con la app en pantalla. */
+    private val chatVisible: String? get() = if (enPantalla) chatAbierto else null
+
+    fun alEntrarEnPantalla() {
+        enPantalla = true
+        // Si se vuelve a un chat que quedo abierto, es AHORA cuando se lee lo
+        // que llego mientras tanto: se limpia el contador y se acusa.
+        chatAbierto?.let { abrirChat(it) }
+    }
+
+    fun alSalirDePantalla() { enPantalla = false }
 
     /**
      * L.1 · Avisa al remitente de que sus mensajes se leyeron.
@@ -1004,10 +1035,10 @@ class Repositorio(
                 // Con el chat abierto el mensaje se esta leyendo AHORA: se
                 // acusa en el acto en vez de esperar a que se reabra la
                 // pantalla.
-                if (filas != -1L && chatAbierto == msg.conversacionId) {
+                if (filas != -1L && chatVisible == msg.conversacionId) {
                     runCatching { sincronizarLecturas(msg.conversacionId) }
                 }
-                if (filas != -1L && chatAbierto != msg.conversacionId) {
+                if (filas != -1L && chatVisible != msg.conversacionId) {
                     dao.sumarNoLeido(msg.conversacionId)
                     // El mismo `filas != -1L` que evita contar dos veces evita
                     // notificar dos veces: el buzon reentrega lo no acusado, y
@@ -1024,6 +1055,10 @@ class Repositorio(
 
             is Bajada.Aceptado -> {
                 dao.estado(msg.sobreId, EstadoEnvio.ENVIADO.name)
+                // La hora del servidor NO reemplaza la de mi mensaje -es la de
+                // autoria, y si lo escribi sin red tiene que seguir siendo de
+                // cuando lo escribi-. Sirve para afinar el desfase del reloj.
+                Reloj.observar(msg.servidorEn)
                 // El servidor tenia destinos que el cliente no cubrio: alguien
                 // entro a la conversacion entre que se pidio la lista y se
                 // envio. Se refresca el cache y se reintenta; el id derivado
@@ -1276,7 +1311,7 @@ class Repositorio(
                 esSistema = true,
             )
         )
-        if (chatAbierto != e.conversacionId) dao.sumarNoLeido(e.conversacionId)
+        if (chatVisible != e.conversacionId) dao.sumarNoLeido(e.conversacionId)
 
         _avisos.tryEmit(e)
 
@@ -1312,7 +1347,7 @@ class Repositorio(
             autor = sesion.username.orEmpty(),
             esMio = true,
             texto = limpio,
-            creadoEn = System.currentTimeMillis(),
+            creadoEn = horaParaMio(convId),
             estado = EstadoEnvio.PENDIENTE.name,
             respondeA = respondeA?.id,
             // La cita se copia: si el original se borra despues, el hilo sigue
@@ -1358,7 +1393,7 @@ class Repositorio(
                 autor = sesion.username.orEmpty(),
                 esMio = true,
                 texto = if (oculto) "" else resumenDe(carga),
-                creadoEn = System.currentTimeMillis(),
+                creadoEn = horaParaMio(convId),
                 estado = EstadoEnvio.PENDIENTE.name,
                 especial = clase,
                 especialJson = jsonApp.encodeToString(Carga.serializer(), carga),
@@ -1442,7 +1477,7 @@ class Repositorio(
                 autor = sesion.username.orEmpty(),
                 esMio = true,
                 texto = resumenDe(carga),
-                creadoEn = System.currentTimeMillis(),
+                creadoEn = horaParaMio(convId),
                 estado = EstadoEnvio.PENDIENTE.name,
                 especial = ClaseContenido.UBICACION_VIVA,
                 especialJson = jsonApp.encodeToString(
@@ -2410,7 +2445,7 @@ class Repositorio(
                 autor = sesion.username.orEmpty(),
                 esMio = true,
                 texto = pie,
-                creadoEn = System.currentTimeMillis(),
+                creadoEn = horaParaMio(convId),
                 estado = EstadoEnvio.PENDIENTE.name,
                 respondeA = respondeA?.id,
                 respondeTexto = respondeA?.texto?.take(140),
@@ -4119,7 +4154,7 @@ class Repositorio(
             autor = sesion.username.orEmpty(),
             esMio = true,
             texto = limpio,
-            creadoEn = System.currentTimeMillis(),
+            creadoEn = horaParaMio(convId),
             estado = EstadoEnvio.PENDIENTE.name,
             respondeA = publicacionId,
         )
@@ -4401,6 +4436,27 @@ class Repositorio(
     /** Si queda algo por salir. Lo usa el reintento en segundo plano. */
     suspend fun hayPendientes(): Boolean = dao.cola().isNotEmpty()
 
+    /**
+     * La hora con la que nace un mensaje mio: la de este telefono corregida
+     * contra el servidor (`Reloj`), y nunca por debajo del ultimo mensaje de
+     * la conversacion.
+     *
+     * Con el reloj atrasado, el mensaje recien escrito se ordenaba ENTRE los
+     * viejos -un cuarto de hora arriba, con la hora quince minutos atrasada-
+     * y quedaba fuera de la vista, debajo del compositor. Y ese mismo
+     * mensaje le llegaba al otro enterrado igual.
+     *
+     * El "nunca por debajo del ultimo" cubre lo que el desfase no alcanza a
+     * corregir: el primer mensaje sin ninguna medida, o uno que llego fechado
+     * de mas por un telefono que todavia no se actualizo.
+     */
+    private suspend fun horaParaMio(convId: String): Long =
+        maxOf(Reloj.ahora(), (dao.ultimoCreadoEn(convId) ?: 0L) + 1)
+
+    /** Conversaciones de las que ya se aviso que no hay cifrado. Ver el despacho. */
+    private val avisadosSinCifrado: MutableSet<String> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
+
     private suspend fun despacharSinCandado() {
         val pendientes = dao.cola()
         if (pendientes.isEmpty()) return
@@ -4508,7 +4564,19 @@ class Repositorio(
             // seria romper en silencio la promesa del producto.
             if (copias.isEmpty() && destinos.isNotEmpty()) {
                 Log.w(TAG, "Nadie con sesion en ${m.conversacionId}; ${m.id} sigue en cola")
-                _rechazos.tryEmit("Todavia no se pudo establecer el cifrado con esa persona.")
+                // Una vez por conversacion, y diciendo con quien. Se emitia en
+                // CADA pasada del despacho y lo mostraba el chat que estuviera
+                // abierto: hablando con una persona saltaba, una y otra vez,
+                // "no se pudo establecer el cifrado con esa persona" por
+                // mensajes atascados a OTRA.
+                if (avisadosSinCifrado.add(m.conversacionId)) {
+                    val quien = dao.conversacion(m.conversacionId)
+                        ?.let { "@" + it.nombreMostrado.ifBlank { it.nombre } } ?: "esa persona"
+                    _rechazos.tryEmit(
+                        "Todavía no se pudo establecer el cifrado con $quien. " +
+                            "El mensaje sigue en cola y saldrá solo."
+                    )
+                }
                 atascadas += m.conversacionId
                 continue
             }
@@ -4528,6 +4596,8 @@ class Repositorio(
             // Recien con la entrega aceptada se da la clave de emisor por
             // repartida. Ver `Cifrador.confirmarEnvio`.
             cifrador.confirmarEnvio(m.conversacionId, destinos)
+            // Si vuelve a atascarse mas adelante, se vuelve a avisar.
+            avisadosSinCifrado.remove(m.conversacionId)
         }
     }
 

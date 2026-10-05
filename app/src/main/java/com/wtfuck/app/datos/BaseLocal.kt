@@ -989,6 +989,11 @@ interface ChatDao {
     @Query("UPDATE mensaje SET estado = :estado WHERE id = :id")
     suspend fun estado(id: String, estado: String)
 
+    @Query("SELECT MAX(creadoEn) FROM mensaje WHERE conversacionId = :conv")
+    suspend fun ultimoCreadoEn(conv: String): Long?
+
+
+
     /**
      * Mensajes ajenos de un chat que este aparato todavia no acuso como
      * leidos. L.1.

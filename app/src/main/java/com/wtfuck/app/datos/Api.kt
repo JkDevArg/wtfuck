@@ -168,6 +168,13 @@ class ApiCliente(private val sesion: Sesion) {
             .readTimeout(30, TimeUnit.SECONDS)
             // Sin reintentos automaticos: la cola de salida decide cuando reintentar.
             .retryOnConnectionFailure(false)
+            // Cada respuesta trae la hora del servidor: con ella se corrige
+            // la de este telefono antes de fechar un mensaje. Ver `Reloj`.
+            .addInterceptor { cadena ->
+                val resp = cadena.proceed(cadena.request())
+                resp.header("X-Hora")?.toLongOrNull()?.let { Reloj.observar(it) }
+                resp
+            }
     ).build()
 
     /**

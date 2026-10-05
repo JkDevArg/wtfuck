@@ -154,6 +154,11 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
 
         Notificaciones.crearCanales(this)
 
+        // Antes que `repo.iniciar()`: lo que el socket baje en este arranque
+        // -el que dispara un push, por ejemplo- tiene que encontrar a alguien
+        // escuchando. Ver `escucharAvisos`.
+        escucharAvisos()
+
         // Firebase se inicializa con lo que haya en disco, ANTES de pedirle
         // nada al servidor: un aviso puede llegar en el mismo segundo del
         // arranque, y esperar la red para inicializar perderia el primero de
@@ -165,6 +170,98 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
             // Y en segundo plano se refresca la configuracion y el token. Si
             // el servidor apago el push, esto lo detecta y se da de baja.
             ambito.launch { push.poner() }
+        }
+    }
+
+    /**
+     * Convierte los avisos del servidor en notificaciones del sistema.
+     *
+     * Fuera del Repositorio a proposito: notificar es cosa de la capa de
+     * Android, y asi el Repositorio se puede probar sin framework.
+     *
+     * ## Por que en la Application y no en la Activity
+     *
+     * Vivia en `MainActivity`, con `lifecycleScope`. Y la notificacion de un
+     * mensaje que llega con la app CERRADA pasa asi: el push despierta el
+     * proceso, `ServicioPush` abre el socket, baja el sobre, lo descifra y
+     * emite en `notificables`... y no habia nadie escuchando, porque sin
+     * interfaz no existe ninguna Activity. El mensaje se guardaba y la
+     * notificacion se perdia: justo el caso para el que existe el push.
+     *
+     * Aqui vive lo que vive el proceso. `notificables` no tiene replay, asi
+     * que el colector tiene que estar puesto ANTES de que algo pueda emitir:
+     * por eso se llama al principio de `onCreate`.
+     */
+    private fun escucharAvisos() {
+        val app = this
+        ambito.launch {
+            run {
+                app.repo.avisos.collect { ev ->
+                    when (ev.tipo) {
+                        "agregado_grupo" -> Notificaciones.agregadoAGrupo(
+                            app, ev.actor, ev.nombreConversacion, ev.conversacionId,
+                        )
+                        // Una advertencia que el usuario no ve no sirve de
+                        // nada: el punto de advertir es que haya oportunidad
+                        // de corregir.
+                        "advertencia" -> Notificaciones.moderacion(app, false)
+                        "sancion" -> Notificaciones.moderacion(app, true)
+                    }
+                }
+            }
+        }
+
+        // Una notificacion de llamada entrante es "ongoing": no se va sola.
+        // Si nadie la borra, queda una llamada fantasma en la bandeja despues
+        // de colgar, con sus botones de contestar incluidos.
+        //
+        // Se borra al DEJAR DE SONAR, no al colgar. Antes solo se limpiaba
+        // cuando el estado pasaba a null —o sea al terminar la llamada— y el
+        // cartel de "Toca para contestar" se quedaba encima durante toda la
+        // conversacion, con sus botones de Contestar y Rechazar puestos.
+        //
+        // Tapaba ademas la ventanita de la camara propia, que vive justo
+        // debajo en la esquina de arriba: parecia que la camara no arrancaba.
+        // Dos sintomas que no se parecian entre si, y una sola causa.
+        ambito.launch {
+            run {
+                var ultima: String? = null
+                app.repo.llamadas.estado.collect { e ->
+                    val sonando = e != null &&
+                        e.fase == com.wtfuck.app.datos.EstadoLlamada.Fase.SONANDO &&
+                        !e.saliente
+                    if (sonando) {
+                        ultima = e!!.conversacionId
+                    } else {
+                        ultima?.let {
+                            Notificaciones.quitarLlamada(app, it)
+                            ultima = null
+                        }
+                    }
+                }
+            }
+        }
+
+        // L.6. El Repositorio dice QUE paso; aqui se decide COMO se muestra, y
+        // los ajustes por categoria los mira `Notificaciones`. Va en un
+        // colector aparte del de eventos porque son dos fuentes distintas: una
+        // son avisos del servidor y la otra, cosas que ya pasaron localmente.
+        ambito.launch {
+            run {
+                app.repo.notificables.collect { n ->
+                    when (n.tipo) {
+                        "mensaje" -> Notificaciones.mensaje(
+                            app, n.autor, n.titulo, n.conversacionId, n.esGrupo,
+                        )
+                        "canal" -> Notificaciones.canal(
+                            app, n.titulo, n.conversacionId,
+                        )
+                        "llamada" -> Notificaciones.llamada(
+                            app, n.autor, n.conVideo, n.conversacionId,
+                        )
+                    }
+                }
+            }
         }
     }
 

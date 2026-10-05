@@ -202,6 +202,87 @@ if (!activo) {
     // El aviso no lleva contenido, asi que el segundo no consigue nada que el
     // primero no haya conseguido ya: que el telefono se conecte y baje TODO.
     ck('se coalescen en cero o uno', hay && segunda.length <= 1, `fueron ${segunda.length}`);
+
+    // ----------------------------------------------------------------
+    //  "Conectado" no es "escuchando". Ver `Hub.vigilarAcuse`.
+    // ----------------------------------------------------------------
+    //
+    // Con la app en segundo plano, Android congela el proceso y el socket
+    // sigue abierto. El servidor le entregaba el sobre a un proceso dormido,
+    // como "estaba conectado" no pedia el push, y el mensaje se veia recien
+    // al abrir la app. Ahora, si el acuse no llega, se pide igual.
+    const abrir = (t) => new Promise((res, rej) => {
+      const w = new WebSocket(BASE.replace('http', 'ws') + '/v1/ws?token=' + encodeURIComponent(t));
+      w.recibidos = [];
+      w.onmessage = (e) => {
+        const m = JSON.parse(e.data);
+        w.recibidos.push(m);
+        if (w.acusa && m.type === 'entrega') {
+          w.send(JSON.stringify({ type: 'acuse', sobreIds: [m.sobreId] }));
+        }
+      };
+      w.onopen = () => res(w);
+      w.onerror = rej;
+    });
+    const esperar = (ms) => new Promise((res) => setTimeout(res, ms));
+    async function escribir(quien, ws, conv, texto) {
+      const id = crypto.randomUUID();
+      await call('POST', '/v1/mensajes', quien.t, { mensajeId: id, conversacionId: conv });
+      const ds = ((await get(`/v1/conversaciones/${conv}/destinos`, quien.t)).b?.destinos) ?? [];
+      ws.send(JSON.stringify({
+        type: 'enviar', sobreId: id, conversacionId: conv, creadoEn: Date.now(),
+        copias: [{ destinos: ds.map((d) => d.dispositivoId), cuerpo: b64(texto), tipo: 0 }],
+      }));
+    }
+    async function avisosA(token, ms) {
+      let hallados = [];
+      for (let i = 0; i < ms / 250 && hallados.length === 0; i++) {
+        await esperar(250);
+        const rr = await fetch(STUB + '/recibidos').then((x) => x.json()).catch(() => []);
+        hallados = rr.filter((x) => x.ruta === 'send' && x.cuerpo?.message?.token === token);
+      }
+      return hallados;
+    }
+
+    console.log('\n=== conectada pero sin acusar: el proceso dormido ===');
+    const carla = await reg('nc');
+    const dario = await reg('nd');
+    const tokCarla = 'tok-dormida-' + S;
+    await put('/v1/push', carla.t, { token: tokCarla, proveedor: 'fcm' });
+    const convCD = (await call('POST', '/v1/conversaciones/directa', dario.t, { usernameDestino: carla.user })).b?.id;
+    const wsCarla = await abrir(carla.t);
+    const wsDario = await abrir(dario.t);
+    await esperar(400);
+    await fetch(STUB + '/limpiar', { method: 'POST' });
+
+    await escribir(dario, wsDario, convCD, 'hola, dormida');
+    await esperar(1500);
+    ck('el sobre entra por su socket abierto', wsCarla.recibidos.some((x) => x.type === 'entrega'),
+       JSON.stringify(wsCarla.recibidos).slice(0, 160));
+    ck('y al principio no se la despierta: para el servidor esta conectada',
+       (await avisosA(tokCarla, 500)).length === 0);
+    const tarde = await avisosA(tokCarla, 12000);
+    ck('como no acusa, a los pocos segundos se pide el aviso igual', tarde.length > 0,
+       'no llego ningun aviso en 12 s');
+    ck('y el aviso sigue sin contenido', JSON.stringify(tarde[0]?.cuerpo?.message?.data) === '{"w":"1"}',
+       JSON.stringify(tarde[0]?.cuerpo?.message?.data));
+
+    console.log('\n=== conectada y acusando: no hace falta despertarla ===');
+    const eva = await reg('ne');
+    const fede = await reg('nf');
+    const tokEva = 'tok-despierta-' + S;
+    await put('/v1/push', eva.t, { token: tokEva, proveedor: 'fcm' });
+    const convEF = (await call('POST', '/v1/conversaciones/directa', fede.t, { usernameDestino: eva.user })).b?.id;
+    const wsEva = await abrir(eva.t);
+    wsEva.acusa = true;
+    const wsFede = await abrir(fede.t);
+    await esperar(400);
+    await escribir(fede, wsFede, convEF, 'hola, despierta');
+    await esperar(1500);
+    ck('recibe el sobre y lo acusa', wsEva.recibidos.some((x) => x.type === 'entrega'));
+    ck('no se le manda ningun aviso: no hacia falta', (await avisosA(tokEva, 10000)).length === 0);
+
+    for (const w of [wsCarla, wsDario, wsEva, wsFede]) w.close();
   }
 }
 
