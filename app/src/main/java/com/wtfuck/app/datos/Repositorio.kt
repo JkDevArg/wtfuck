@@ -381,6 +381,18 @@ class Repositorio(
     /** "Info del mensaje" de uno mio en un grupo. Ver `Mensajes.info` en el servidor. */
     suspend fun infoMensaje(id: String): InfoMensaje = api.infoMensaje(id)
 
+    init {
+        // Ver `Red`: con el proxy nuevo, el socket abierto sigue por el camino
+        // viejo hasta que se cae. Se rehace en el momento.
+        ambito.launch {
+            Red.cambios.collect {
+                val t = sesion.token ?: return@collect
+                socket.desconectar()
+                socket.conectar(t)
+            }
+        }
+    }
+
     // --- Carpetas: ver `Carpetas` -------------------------------------------
 
     val carpetas: Flow<List<CarpetaEnt>> get() = dao.carpetas()
@@ -2041,7 +2053,7 @@ class Repositorio(
             .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
             .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
-            .build()
+            .let(Red::construir)
     }
 
     /**

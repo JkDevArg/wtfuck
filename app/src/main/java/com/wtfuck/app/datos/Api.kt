@@ -162,7 +162,8 @@ class Sesion(ctx: Context) {
 
 class ApiCliente(private val sesion: Sesion) {
 
-    private val http = Pinning.aplicar(
+    // Todos los clientes pasan por `Red`: es la que pone el proxy, si hay.
+    private val http = Red.construir(Pinning.aplicar(
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -175,7 +176,7 @@ class ApiCliente(private val sesion: Sesion) {
                 resp.header("X-Hora")?.toLongOrNull()?.let { Reloj.observar(it) }
                 resp
             }
-    ).build()
+    ))
 
     /**
      * Cliente aparte para el almacen de archivos.
@@ -189,7 +190,7 @@ class ApiCliente(private val sesion: Sesion) {
         .writeTimeout(10, TimeUnit.MINUTES)
         .readTimeout(10, TimeUnit.MINUTES)
         .retryOnConnectionFailure(false)
-        .build()
+        .let(Red::construir)
 
     private val JSON = "application/json; charset=utf-8".toMediaType()
 

@@ -105,7 +105,7 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
                 }
                 cadena.proceed(req)
             }
-            .build()
+            .let(com.wtfuck.app.datos.Red::construir)
 
         return ImageLoader.Builder(context)
             .components {
@@ -144,6 +144,9 @@ class WtfuckApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+
+        // El proxy, antes de que exista ningun cliente de red. Ver `Red`.
+        com.wtfuck.app.datos.Red.cargar(this)
 
         // Antes que NADA: lo que se instale despues no cubre lo que pase
         // mientras tanto.

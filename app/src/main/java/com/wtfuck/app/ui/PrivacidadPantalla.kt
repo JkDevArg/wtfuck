@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.VpnLock
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -615,6 +616,45 @@ fun PrivacidadPantalla(
                 )
             }
 
+            val contextoProxy = androidx.compose.ui.platform.LocalContext.current
+            // El proxy. Ver `Red`.
+            var editandoProxy by remember { mutableStateOf(false) }
+            var proxyAhora by remember { mutableStateOf(com.wtfuck.app.datos.Red.actual) }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { editandoProxy = true }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.VpnLock,
+                    null,
+                    tint = if (proxyAhora != null) Cian else Slate,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Proxy", color = TextoPrimario)
+                    Text(
+                        proxyAhora?.let { "Activado · $it" } ?: "Desactivado. Para redes que bloquean la app.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+            }
+            if (editandoProxy) {
+                DialogoProxy(
+                    actual = proxyAhora,
+                    onListo = { nuevo ->
+                        com.wtfuck.app.datos.Red.fijar(contextoProxy, nuevo)
+                        proxyAhora = nuevo
+                        editandoProxy = false
+                    },
+                    onCerrar = { editandoProxy = false },
+                )
+            }
+
             Spacer(Modifier.height(10.dp))
 
             // Explicar el modelo evita que "conocidos" se interprete como la
@@ -830,4 +870,102 @@ private fun Ajuste(icono: ImageVector, titulo: String, valor: String, onClick: (
             )
         }
     }
+}
+
+
+/**
+ * Elegir el proxy: tipo, direccion y puerto, con "Probar" antes de guardar.
+ * Ver `Red` para lo que cubre y lo que no.
+ */
+@Composable
+private fun DialogoProxy(
+    actual: com.wtfuck.app.datos.Red.ConfigProxy?,
+    onListo: (com.wtfuck.app.datos.Red.ConfigProxy?) -> Unit,
+    onCerrar: () -> Unit,
+) {
+    val ambito = rememberCoroutineScope()
+    var tipo by remember { mutableStateOf(actual?.tipo ?: com.wtfuck.app.datos.Red.Tipo.SOCKS5) }
+    var host by remember { mutableStateOf(actual?.host.orEmpty()) }
+    var puerto by remember { mutableStateOf(actual?.puerto?.toString() ?: "9050") }
+    var resultado by remember { mutableStateOf<String?>(null) }
+    var probando by remember { mutableStateOf(false) }
+    val problema = com.wtfuck.app.datos.Red.problemaCon(host, puerto)
+    fun config() = com.wtfuck.app.datos.Red.ConfigProxy(tipo, host.trim(), puerto.trim().toInt())
+
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        containerColor = BgElev,
+        title = { Text("Proxy", color = TextoPrimario) },
+        text = {
+            Column {
+                Row {
+                    com.wtfuck.app.datos.Red.Tipo.entries.forEach { t ->
+                        FilterChip(
+                            selected = tipo == t,
+                            onClick = { tipo = t; resultado = null },
+                            label = { Text(t.etiqueta) },
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = host, onValueChange = { host = it; resultado = null },
+                    label = { Text("Dirección") }, singleLine = true,
+                    placeholder = { Text("127.0.0.1") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = puerto, onValueChange = { puerto = it.filter(Char::isDigit).take(5); resultado = null },
+                    label = { Text("Puerto") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (host.isNotBlank() && problema != null) {
+                    Text(problema, color = Coral, style = MaterialTheme.typography.bodySmall)
+                }
+                resultado?.let {
+                    Text(it, color = if (it.startsWith("Conect")) Cian else Coral, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Cubre los mensajes, los archivos y todo lo demás de la app, menos las " +
+                        "llamadas y las notificaciones push. El proxy ve que hablas con el " +
+                        "servidor, pero no qué: la conexión va cifrada dentro del túnel. " +
+                        "Sirve, por ejemplo, el de Orbot (SOCKS5, 127.0.0.1:9050).",
+                    color = TextoTerciario,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(
+                    enabled = problema == null && !probando,
+                    onClick = {
+                        probando = true
+                        resultado = "Probando…"
+                        val c = config()
+                        ambito.launch {
+                            val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                com.wtfuck.app.datos.Red.probar(c, com.wtfuck.app.BuildConfig.SERVIDOR)
+                            }
+                            probando = false
+                            resultado = r.fold(
+                                { "Conectó con el servidor en $it ms." },
+                                { "No conectó: ${it.message ?: it.javaClass.simpleName}" },
+                            )
+                        }
+                    },
+                ) { Text("Probar", color = Cian) }
+                TextButton(enabled = problema == null, onClick = { onListo(config()) }) { Text("Guardar", color = Cian) }
+            }
+        },
+        dismissButton = {
+            Row {
+                if (actual != null) {
+                    TextButton(onClick = { onListo(null) }) { Text("Quitar", color = Coral) }
+                }
+                TextButton(onClick = onCerrar) { Text("Cancelar", color = TextoSecundario) }
+            }
+        },
+    )
 }

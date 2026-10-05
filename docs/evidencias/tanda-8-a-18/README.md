@@ -510,7 +510,64 @@ pedido y navegó donde nadie la veía. Ahora el pedido es de cada pantalla.
 
 `AtajosTest`: 5 pruebas sobre qué chats se vuelven atajo y qué dice el widget.
 
+## 18. Proxy
+
+En *Privacidad → Este aparato → Proxy* se elige SOCKS5 o HTTP, con dirección y
+puerto. *Probar* se conecta al servidor a través del proxy antes de guardar
+(`18a-`). Sirve el de Orbot (Tor), que corre en el propio teléfono, o el de
+Psiphon.
+
+- **Cubre todo lo que la app le pide a la red:** la API, el socket de mensajes,
+  los archivos, las vistas previas, las fotos de perfil y el mapa. Todos los
+  clientes se construyen en un solo lugar (`Red`), que elige el proxy en cada
+  conexión.
+- **No cubre las llamadas** (WebRTC va por su propio camino) **ni el push**, que
+  lo entrega el sistema. La pantalla lo dice.
+- **El proxy no puede leer nada.** La conexión con el servidor va cifrada
+  dentro del túnel y con el certificado fijado, así que el proxy ve que hablas
+  con el servidor pero no qué dices. Además, los mensajes van cifrados de
+  punta a punta.
+- **El DNS lo resuelve el proxy.** Con SOCKS5 el nombre del servidor se manda
+  sin resolver, así que un DNS bloqueado en la red no molesta. Hay una prueba
+  unitaria de eso.
+- **Al cambiarlo se cierran las conexiones abiertas** y el socket se rehace en
+  el momento. Si no, el cliente seguiría usando las conexiones directas hasta
+  que se cayeran solas, y el proxy parecería no hacer nada.
+- **Sin usuario ni contraseña de proxy**, a propósito: los de Tor y Psiphon no
+  los piden, y guardarlos sería guardar una credencial más.
+
+**Probado en el emulador** con un SOCKS5 mínimo hecho para esto
+(`pruebas/stub-proxy-socks.mjs`, con `stub-` para que la suite no lo corra):
+
+- *Probar*: "Conectó con el servidor en 22 ms".
+- Al guardar, todas las conexiones pasaron a ir por el proxy: el registro del
+  proxy muestra cada `CONNECT` (`18-proxy.log`). Se mandó un mensaje por él
+  (`18b-`).
+- **Con el proxy caído, la app quedó "sin conexión"** (`18c-`). No vuelve sola
+  a salir directo: si la red bloquea la app, salir directo es justo lo que no
+  hay que hacer.
+- Al quitarlo, reconectó directo. El servidor registró "@xampl3 conectado".
+
+Un detalle del emulador, no de la app: las apps salen por su WiFi virtual,
+donde `10.0.2.2` no es la PC. El proxy se alcanzó como el servidor, con
+`adb reverse`.
+
+`RedTest`: 4 pruebas.
+
+## Novedades 0.6.3
+
+Están en la pantalla de Novedades: los 18 puntos de las dos tandas y los
+defectos que se encontraron en el camino.
+
+## Para publicar
+
+- **El servidor cambió** y hay que redesplegarlo antes de la app: V44
+  (directorio), V45 (nota), V46 (entregas en grupos), y @todos/mencionado de la
+  tanda anterior. Las migraciones se aplican solas al arrancar.
+- **La app:** versionCode 16 o más (lo calcula `lanzar.sh`), versión 0.6.3.
+  Room pasó de 23 a **29**, con todas las migraciones escritas.
+
 ## Números
 
-- Unitarias: 590 → **611**, 0 fallos.
+- Unitarias: 590 → **615**, 0 fallos.
 - Integración: 1672 → **1733**, 0 fallos (suites nuevas `notas.mjs` e `info.mjs`).

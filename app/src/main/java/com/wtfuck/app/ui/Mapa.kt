@@ -97,7 +97,7 @@ object TeselaCliente {
                         .build(),
                 )
             }
-            .build()
+            .let(com.wtfuck.app.datos.Red::construir)
         return ImageLoader.Builder(ctx)
             .components { add(OkHttpNetworkFetcherFactory(callFactory = { cliente })) }
             .memoryCache { MemoryCache.Builder().maxSizePercent(ctx, 0.08).build() }

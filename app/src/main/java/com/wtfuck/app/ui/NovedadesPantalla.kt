@@ -90,6 +90,35 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.6.3",
+            fecha = "05/10/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "Nota para mí: un chat solo tuyo para apuntar y reenviarte cosas. Aparece en todos tus aparatos y va cifrada como cualquier chat. Está en Nuevo."),
+                Cambio(TipoCambio.NUEVO, "Reenviar ahora te deja elegir a qué chats (hasta 5), y las fotos y archivos se reenvían enteros."),
+                Cambio(TipoCambio.NUEVO, "Responder y marcar como leído desde la notificación."),
+                Cambio(TipoCambio.NUEVO, "Formato de texto: *negrita*, _cursiva_, ~tachado~, `código` y ||spoiler||, que se toca para verlo."),
+                Cambio(TipoCambio.NUEVO, "Vista previa de enlaces, armada por tu teléfono: quien recibe no visita nada y el servidor no sabe qué enlace mandaste. Se apaga en Privacidad."),
+                Cambio(TipoCambio.NUEVO, "Ver una vez para fotos y videos: se abren una sola vez, con las capturas de pantalla bloqueadas, y se borran al cerrarlas."),
+                Cambio(TipoCambio.NUEVO, "Mensajes programados: mantén pulsado el botón de enviar y elige la hora. Salen desde tu teléfono."),
+                Cambio(TipoCambio.NUEVO, "Enviar sin sonido, en el mismo menú: le llega, pero su teléfono no suena."),
+                Cambio(TipoCambio.NUEVO, "Proteger un chat con tu huella o tu PIN: no se ve en la lista, ni en el buscador, ni en las notificaciones."),
+                Cambio(TipoCambio.NUEVO, "Carpetas de chats, como pestañas propias. Viven solo en tu teléfono."),
+                Cambio(TipoCambio.NUEVO, "En un grupo, \"Info\" en tus mensajes te dice quién lo recibió y quién lo leyó."),
+                Cambio(TipoCambio.NUEVO, "Videonotas: mensajes de video en un círculo, desde Adjuntar."),
+                Cambio(TipoCambio.NUEVO, "Transcribir notas de voz y traducir mensajes, siempre en tu teléfono y nunca en internet. Depende de que tu teléfono lo sepa hacer sin conexión."),
+                Cambio(TipoCambio.NUEVO, "Compartir a wtfuck desde otras apps, tus chats recientes en el menú de compartir y un widget con los mensajes sin leer."),
+                Cambio(TipoCambio.NUEVO, "Proxy SOCKS5 o HTTP para las redes que bloquean la app, en Privacidad."),
+                Cambio(TipoCambio.NUEVO, "@todos en los grupos, para quien puede fijar mensajes. Una mención te avisa aunque el grupo esté silenciado."),
+                Cambio(TipoCambio.MEJORA, "Las fotos del chat pasan por el editor: recorte, giro, filtros, textos y stickers. Si no tocas nada, sale la original."),
+                Cambio(TipoCambio.MEJORA, "Lo que dejas escrito sin enviar se guarda por chat, y la lista te lo recuerda."),
+                Cambio(TipoCambio.MEJORA, "Teclado incógnito, encendido: le pide al teclado que no aprenda lo que escribes."),
+                Cambio(TipoCambio.ARREGLO, "Tocar una notificación abre el chat, y no la lista."),
+                Cambio(TipoCambio.ARREGLO, "Los borradores se perdían cada vez que abrías la app. Ya no."),
+                Cambio(TipoCambio.ARREGLO, "Mantener pulsado un enlace o una foto abre el menú del mensaje, en vez de abrir el enlace o la foto."),
+                Cambio(TipoCambio.ARREGLO, "Lo que escribes en otro de tus aparatos se ve como tuyo, y ya no te llega como una notificación."),
+            ),
+        ),
+        NotasVersion(
             version = "0.6.2",
             fecha = "04/10/2026",
             cambios = listOf(
