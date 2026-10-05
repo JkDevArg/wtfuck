@@ -90,6 +90,27 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.6.2",
+            fecha = "04/10/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "Nueva pestaña Social, en lugar de Contactos: ahí están los estados y el directorio de Usuarios. Los estados ya no ocupan la parte de arriba de tus chats."),
+                Cambio(TipoCambio.NUEVO, "Editor de estados: fotos siempre en vertical y con buena resolución, que puedes encuadrar, girar y decorar con filtros, textos y stickers. También estados de texto, de video y de audio grabado al momento."),
+                Cambio(TipoCambio.NUEVO, "Usuarios: un directorio para que te encuentre gente que no sabe tu usuario. Es opcional y viene apagado; si quieres aparecer, actívalo en Privacidad."),
+                Cambio(TipoCambio.MEJORA, "Contactos ahora está en el botón Nuevo, y se busca por @usuario en vez de por teléfono."),
+                Cambio(TipoCambio.NUEVO, "Puedes borrar tu cuenta desde Privacidad, abajo de todo. Pide confirmar varias veces, y tienes 30 días para arrepentirte."),
+                Cambio(TipoCambio.ARREGLO, "Las notificaciones llegan con la app en segundo plano o cerrada. Antes el mensaje se recibía, pero el aviso se perdía."),
+                // SEGURIDAD y no ARREGLO, por lo mismo que los temporales de la
+                // 0.6.0: quien recibio ese "leido" falso saco conclusiones de
+                // algo que no paso, y conviene que lo sepa.
+                Cambio(TipoCambio.SEGURIDAD, "Si dejabas un chat abierto y salías de la app, a la otra persona le llegaba \"leído\" aunque no lo hubieras visto, y a ti no te avisaba. Ya no pasa."),
+                Cambio(TipoCambio.ARREGLO, "Al abrir un chat ves el último mensaje, y el teclado ya no tapa lo nuevo."),
+                Cambio(TipoCambio.ARREGLO, "Las respuestas ya no aparecen escondidas entre mensajes viejos cuando el teléfono de la otra persona tiene mal la hora."),
+                Cambio(TipoCambio.MEJORA, "En Ajustes > Notificaciones, la sección \"Con la app cerrada\" te dice qué falta para que lleguen los avisos, con los pasos para Honor, Huawei, Xiaomi y otras marcas."),
+                Cambio(TipoCambio.ARREGLO, "Si con una persona todavía no se puede cifrar, tus mensajes a los demás salen igual. Antes se quedaban todos en \"Enviando...\"."),
+                Cambio(TipoCambio.ARREGLO, "Añadir a alguien a una llamada ahora sí arranca la llamada del grupo, y a la otra persona le suena."),
+            ),
+        ),
+        NotasVersion(
             version = "0.6.1",
             fecha = "29/09/2026",
             cambios = listOf(
