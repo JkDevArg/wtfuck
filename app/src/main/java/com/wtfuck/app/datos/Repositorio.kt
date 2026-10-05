@@ -986,6 +986,7 @@ class Repositorio(
                         creadoEn = msg.creadoEn,
                         estado = EstadoEnvio.ENTREGADO.name,
                         silencioso = silenciosoEntrante,
+                        previaJson = previaAceptable(cita?.previa, texto),
                         respondeA = cita?.respondeA,
                         respondeTexto = cita?.respondeTexto,
                         respondeAutor = cita?.respondeAutor,
@@ -1355,6 +1356,8 @@ class Repositorio(
         citaHistoria: HistoriaEnt? = null,
         /** "Enviar sin sonido". Ver `Carga.Texto.silencioso`. */
         silencioso: Boolean = false,
+        /** La vista previa ya armada del primer enlace, si la hay. */
+        previa: VistaPreviaEnlace? = null,
     ) {
         val limpio = texto.trim()
         if (limpio.isEmpty()) return
@@ -1368,6 +1371,8 @@ class Repositorio(
             creadoEn = horaParaMio(convId),
             estado = EstadoEnvio.PENDIENTE.name,
             silencioso = silencioso,
+            previaJson = previa?.takeIf { it.url in limpio }
+                ?.let { jsonApp.encodeToString(VistaPreviaEnlace.serializer(), it) }.orEmpty(),
             respondeA = respondeA?.id,
             // La cita se copia: si el original se borra despues, el hilo sigue
             // teniendo sentido.
@@ -1827,6 +1832,92 @@ class Repositorio(
      * Es local y de este aparato, igual que [marcarNoLeida].
      */
     suspend fun marcarLeidaLocal(convId: String) = dao.marcarLeida(convId)
+
+    /**
+     * La vista previa que llego, si se puede mostrar sin riesgo.
+     *
+     * Solo si su enlace ESTA en el texto del mensaje. Si no, cualquiera podria
+     * mandar una tarjeta que dice "banco.com" y abre otro sitio: la tarjeta la
+     * arma quien envia, y aqui no se le cree nada que no se pueda comprobar.
+     * Con topes en cada campo y en la miniatura, por lo mismo.
+     */
+    private fun previaAceptable(p: VistaPreviaEnlace?, texto: String): String {
+        if (p == null) return ""
+        if (VistaPreviaHtml.enlacesEn(texto).none { it.second == p.url }) return ""
+        val limpia = p.copy(
+            titulo = p.titulo.take(200),
+            descripcion = p.descripcion.take(300),
+            sitio = p.sitio.take(80),
+            imagen = if (p.imagen.length > 120_000) "" else p.imagen,
+        )
+        return jsonApp.encodeToString(VistaPreviaEnlace.serializer(), limpia)
+    }
+
+    /**
+     * Cliente aparte para armar vistas previas: va a sitios cualquiera, asi
+     * que sin el pinning de nuestro servidor, sin cookies y con tiempos cortos.
+     * Una pagina lenta no puede trabar el envio.
+     */
+    private val httpPrevia by lazy {
+        okhttp3.OkHttpClient.Builder()
+            .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+    }
+
+    /**
+     * Arma la vista previa de un enlace. La llama quien ESCRIBE, antes de
+     * enviar: ver `VistaPreviaHtml` para por que es asi.
+     *
+     * Null si no se pudo o si no hay nada que mostrar. Nunca lanza: una vista
+     * previa que falla solo significa un mensaje sin tarjeta.
+     */
+    suspend fun vistaPreviaDe(url: String): VistaPreviaEnlace? = withContext(Dispatchers.IO) {
+        runCatching {
+            val pedido = okhttp3.Request.Builder().url(url)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android) wtfuck")
+                .header("Accept", "text/html,application/xhtml+xml")
+                .build()
+            val (html, final) = httpPrevia.newCall(pedido).execute().use { r ->
+                val tipo = r.header("Content-Type").orEmpty()
+                if (!r.isSuccessful || !tipo.contains("html", ignoreCase = true)) return@runCatching null
+                // Con tope: solo hace falta la cabecera, y una pagina de 50 MB
+                // no puede gastar los datos de nadie.
+                val bytes = r.body?.byteStream()?.use { it.readNBytes(512 * 1024) } ?: return@runCatching null
+                String(bytes, Charsets.UTF_8) to r.request.url.toString()
+            }
+            val meta = VistaPreviaHtml.extraer(html, final)
+            if (meta.titulo.isBlank() && meta.descripcion.isBlank()) return@runCatching null
+            val imagen = if (meta.imagen.isBlank()) "" else miniaturaDePrevia(meta.imagen)
+            VistaPreviaEnlace(
+                url = url, titulo = meta.titulo, descripcion = meta.descripcion,
+                sitio = meta.sitio, imagen = imagen,
+            )
+        }.getOrNull()
+    }
+
+    /** La imagen del enlace, chica: 360 px y JPEG. Va dentro de un sobre. */
+    private fun miniaturaDePrevia(url: String): String = runCatching {
+        val pedido = okhttp3.Request.Builder().url(url).header("User-Agent", "Mozilla/5.0 (Linux; Android) wtfuck").build()
+        val bytes = httpPrevia.newCall(pedido).execute().use { r ->
+            if (!r.isSuccessful || r.header("Content-Type").orEmpty().startsWith("image/").not()) return@runCatching ""
+            r.body?.byteStream()?.use { it.readNBytes(3 * 1024 * 1024) } ?: return@runCatching ""
+        }
+        val limites = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, limites)
+        var muestra = 1
+        while (maxOf(limites.outWidth, limites.outHeight) / (muestra * 2) >= 360) muestra *= 2
+        val bmp = android.graphics.BitmapFactory.decodeByteArray(
+            bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = muestra },
+        ) ?: return@runCatching ""
+        val f = 360f / maxOf(bmp.width, bmp.height)
+        val chica = if (f < 1f) android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * f).toInt().coerceAtLeast(1), (bmp.height * f).toInt().coerceAtLeast(1), true) else bmp
+        val salida = java.io.ByteArrayOutputStream()
+        chica.compress(android.graphics.Bitmap.CompressFormat.JPEG, 72, salida)
+        android.util.Base64.encodeToString(salida.toByteArray(), android.util.Base64.NO_WRAP)
+    }.getOrDefault("")
 
     /**
      * Lo que quedo escrito sin enviar. En la base cifrada: ver
@@ -4677,6 +4768,9 @@ class Repositorio(
                     miniatura = m.citaHistoriaMiniatura,
                 ),
                 silencioso = m.silencioso,
+                previa = if (m.previaJson.isBlank()) null else runCatching {
+                    jsonApp.decodeFromString(VistaPreviaEnlace.serializer(), m.previaJson)
+                }.getOrNull(),
             )
         } else {
             CargaAdjunto(

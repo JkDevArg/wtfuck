@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.DeleteForever
 import com.wtfuck.protocol.DIAS_GRACIA_ELIMINACION
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -562,6 +563,47 @@ fun PrivacidadPantalla(
                 }
                 Switch(
                     checked = ajustes.tecladoIncognito,
+                    onCheckedChange = null,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = TextoSobreAcento,
+                        checkedTrackColor = Cian,
+                        uncheckedThumbColor = TextoTerciario,
+                        uncheckedTrackColor = BgElev,
+                        uncheckedBorderColor = Slate,
+                    ),
+                )
+            }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = ajustes.vistasPrevias,
+                        role = Role.Switch,
+                        onValueChange = { ajustes.fijarVistasPrevias(it) },
+                    )
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.Link,
+                    null,
+                    tint = if (ajustes.vistasPrevias) Cian else Slate,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Vista previa de enlaces", color = TextoPrimario)
+                    Text(
+                        "Al escribir un enlace, tu teléfono visita la página para armar la " +
+                            "tarjeta: ese sitio ve tu IP, como si lo abrieras. Quien recibe no " +
+                            "visita nada, y el servidor no sabe qué enlace mandaste.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+                Switch(
+                    checked = ajustes.vistasPrevias,
                     onCheckedChange = null,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = TextoSobreAcento,

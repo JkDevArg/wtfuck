@@ -154,8 +154,8 @@ fun textoDeMensaje(
     onVerSpoiler: () -> Unit,
 ): AnnotatedString {
     val tramos = com.wtfuck.app.datos.Formato.tramos(texto)
-    // El atajo de siempre: sin formato, lo de antes.
-    if (tramos.size == 1 && tramos[0].estilos.isEmpty()) {
+    // El atajo de siempre: sin formato ni enlaces, lo de antes.
+    if (tramos.size == 1 && tramos[0].estilos.isEmpty() && "http" !in texto) {
         return textoConMenciones(texto, miUsuario, colorNormal, colorMencion)
     }
     return buildAnnotatedString {
@@ -182,7 +182,28 @@ fun textoDeMensaje(
                 }
             } else {
                 withStyle(estilo) {
-                    append(textoConMenciones(t.texto, miUsuario, colorNormal, colorMencion))
+                    // Los enlaces, tocables y subrayados. Dentro de lo
+                    // monoespaciado no: es codigo, y ahi una URL es texto.
+                    val enlaces = if (com.wtfuck.app.datos.Estilo.MONO in e) emptyList()
+                    else com.wtfuck.app.datos.VistaPreviaHtml.enlacesEn(t.texto)
+                    var desde = 0
+                    for ((rango, url) in enlaces) {
+                        if (rango.first > desde) {
+                            append(textoConMenciones(t.texto.substring(desde, rango.first), miUsuario, colorNormal, colorMencion))
+                        }
+                        withLink(
+                            androidx.compose.ui.text.LinkAnnotation.Url(
+                                url,
+                                androidx.compose.ui.text.TextLinkStyles(
+                                    SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
+                                ),
+                            )
+                        ) { append(t.texto.substring(rango)) }
+                        desde = rango.last + 1
+                    }
+                    if (desde < t.texto.length) {
+                        append(textoConMenciones(t.texto.substring(desde), miUsuario, colorNormal, colorMencion))
+                    }
                 }
             }
         }

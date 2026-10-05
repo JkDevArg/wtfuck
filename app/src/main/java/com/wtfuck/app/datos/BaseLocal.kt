@@ -353,6 +353,8 @@ data class MensajeEnt(
      * `Carga.Texto.silencioso`.
      */
     val silencioso: Boolean = false,
+    /** La vista previa del enlace, en JSON (`VistaPreviaEnlace`). Vacio = sin. */
+    val previaJson: String = "",
 )
 
 /**
@@ -1310,7 +1312,7 @@ interface ChatDao {
         EmojiUsoEnt::class,
         AjusteLocalEnt::class,
     ],
-    version = 22,
+    version = 23,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1330,7 +1332,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1502,6 +1504,13 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Vista previa de enlaces. */
+        private val DE_22_A_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN previaJson TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         /** Borradores por chat y mensajes sin sonido. */
         private val DE_21_A_22 = object : Migration(21, 22) {
             override fun migrate(db: SupportSQLiteDatabase) {

@@ -178,6 +178,20 @@ class Ajustes(private val ctx: Context) {
         p.edit().putBoolean("teclado_incognito", v).apply()
     }
 
+    /**
+     * Vista previa de enlaces: al escribir un enlace, este telefono visita la
+     * pagina para armar la tarjeta. Ver `VistaPreviaHtml`. Encendida, como en
+     * Signal y WhatsApp: el costo -el sitio ve la IP de quien envia, como si
+     * lo abriera- se dice en el ajuste.
+     */
+    var vistasPrevias by mutableStateOf(p.getBoolean("vistas_previas", true))
+        private set
+
+    fun fijarVistasPrevias(v: Boolean) {
+        vistasPrevias = v
+        p.edit().putBoolean("vistas_previas", v).apply()
+    }
+
     var velocidadAudio: Float
         get() = p.getFloat("velocidad_audio", 1f)
         set(v) = p.edit().putFloat("velocidad_audio", v).apply()

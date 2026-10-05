@@ -173,6 +173,12 @@ sealed interface Carga {
          * ignora y suena, que es lo que hacia siempre.
          */
         val silencioso: Boolean = false,
+        /**
+         * La vista previa del primer enlace, armada por quien ENVIA. Va dentro
+         * del sobre: quien recibe no visita el sitio, y el servidor no sabe
+         * que enlace se mando. Ver `VistaPreviaHtml` en la app.
+         */
+        val previa: VistaPreviaEnlace? = null,
     ) : Carga
 
     /**
@@ -781,6 +787,22 @@ object TopesConsulta {
  * resuelve el servidor cuando se toca la tarjeta.
  */
 val FORMA_USERNAME = Regex("^[a-z0-9_]{3,24}$")
+
+/**
+ * Lo que se ve de un enlace: titulo, descripcion, sitio y una miniatura.
+ *
+ * `imagen` es un JPEG chico en base64: la miniatura viaja en el sobre para que
+ * quien recibe no tenga que pedirle nada a nadie. Con tope, porque un sobre no
+ * es un archivo.
+ */
+@Serializable
+data class VistaPreviaEnlace(
+    val url: String,
+    val titulo: String = "",
+    val descripcion: String = "",
+    val sitio: String = "",
+    val imagen: String = "",
+)
 
 /**
  * La mencion a todo el grupo: `@todos`.

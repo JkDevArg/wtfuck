@@ -57,7 +57,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -225,6 +227,24 @@ fun ChatPantalla(
     }
     /** El menu de la pulsacion larga en el boton de enviar. */
     var menuEnviar by remember { mutableStateOf(false) }
+
+    // --- vista previa del enlace que se esta escribiendo ----------------
+    //
+    // La arma ESTE telefono antes de enviar y viaja en el sobre: ver
+    // `VistaPreviaHtml`. Con un respiro, para no pedir una pagina por cada
+    // letra de una URL a medio escribir. La X la quita para ese enlace.
+    var previa by remember { mutableStateOf<com.wtfuck.protocol.VistaPreviaEnlace?>(null) }
+    var previaQuitada by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(texto.text, app.ajustes.vistasPrevias) {
+        val url = com.wtfuck.app.datos.VistaPreviaHtml.primerEnlace(texto.text)
+        if (url == null || !app.ajustes.vistasPrevias || editando != null) {
+            previa = null
+            return@LaunchedEffect
+        }
+        if (url == previa?.url || url == previaQuitada) return@LaunchedEffect
+        delay(700)
+        previa = app.repo.vistaPreviaDe(url)
+    }
     var aviso by remember { mutableStateOf<String?>(null) }
     val portapapeles = LocalClipboardManager.current
     /**
@@ -834,6 +854,18 @@ fun ChatPantalla(
             Surface(color = BgSurface) {
                 Column {
 
+                previa?.let { p ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TarjetaEnlace(p, Modifier.weight(1f))
+                        IconButton(onClick = { previaQuitada = p.url; previa = null }) {
+                            Icon(Icons.Filled.Close, "Quitar la vista previa", tint = TextoTerciario)
+                        }
+                    }
+                }
+
                 // Cabecera de "respondiendo a" o "editando": sin esto no se ve
                 // que el proximo envio no es un mensaje nuevo.
                 (respondiendoA ?: editando)?.let { ctx ->
@@ -980,13 +1012,20 @@ fun ChatPantalla(
                         val t = texto.text
                         val cita = respondiendoA
                         val edit = editando
+                        // Solo si el enlace sigue en el texto: si se borro,
+                        // la tarjeta hablaria de algo que ya no esta.
+                        val conPrevia = previa?.takeIf { it.url in t }
                         texto = TextFieldValue("")
                         respondiendoA = null
                         editando = null
+                        previa = null
+                        previaQuitada = null
                         ambito.launch {
                             runCatching {
                                 if (edit != null) app.repo.editarMensaje(edit.id, t)
-                                else app.repo.enviarTexto(conversacionId, t, respondeA = cita, silencioso = silencioso)
+                                else app.repo.enviarTexto(
+                                    conversacionId, t, respondeA = cita, silencioso = silencioso, previa = conPrevia,
+                                )
                             }.onFailure { aviso = it.message }
                         }
                     }
@@ -1872,6 +1911,20 @@ private fun Burbuja(
                     // juntos. Ver `textoDeMensaje`. El spoiler se destapa por
                     // mensaje y no queda destapado al volver al chat.
                     var spoilerVisible by remember(m.id) { mutableStateOf(false) }
+                    val previaDelMensaje = remember(m.previaJson) {
+                        if (m.previaJson.isBlank()) null else runCatching {
+                            com.wtfuck.app.datos.jsonApp.decodeFromString(
+                                com.wtfuck.protocol.VistaPreviaEnlace.serializer(), m.previaJson,
+                            )
+                        }.getOrNull()
+                    }
+                    if (previaDelMensaje != null) {
+                        val uri = androidx.compose.ui.platform.LocalUriHandler.current
+                        TarjetaEnlace(
+                            previaDelMensaje,
+                            Modifier.padding(bottom = 6.dp).clickable { runCatching { uri.openUri(previaDelMensaje.url) } },
+                        )
+                    }
                     Text(
                         textoDeMensaje(
                             m.texto, miUsuario, colorTexto, colorMencion,
@@ -1974,4 +2027,50 @@ internal fun leerReacciones(json: String): List<Pair<String, Pair<Int, Boolean>>
         jsonApp.decodeFromString<List<ReaccionAgrupada>>(json)
             .map { it.emoji to (it.total to it.mia) }
     }.getOrDefault(emptyList())
+}
+
+
+/**
+ * La tarjeta de un enlace: miniatura, titulo, descripcion y el DOMINIO real.
+ *
+ * El dominio sale de la URL y no del `sitio` que mando quien escribio: es lo
+ * que la persona tiene que mirar antes de tocar, y no puede venir de quien
+ * quiere que lo toque.
+ */
+@Composable
+fun TarjetaEnlace(p: com.wtfuck.protocol.VistaPreviaEnlace, modifier: Modifier = Modifier) {
+    val miniatura = remember(p.imagen) {
+        if (p.imagen.isBlank()) null else runCatching {
+            val b = android.util.Base64.decode(p.imagen, android.util.Base64.DEFAULT)
+            android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size)?.asImageBitmap()
+        }.getOrNull()
+    }
+    Surface(
+        color = Color.Black.copy(alpha = 0.18f),
+        shape = RoundedCornerShape(10.dp),
+        modifier = modifier,
+    ) {
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (miniatura != null) {
+                androidx.compose.foundation.Image(
+                    miniatura, null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+                )
+                Spacer(Modifier.width(10.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                if (p.titulo.isNotBlank()) {
+                    Text(p.titulo, fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+                if (p.descripcion.isNotBlank()) {
+                    Text(p.descripcion, fontSize = 12.sp, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.alpha(0.8f))
+                }
+                Text(com.wtfuck.app.datos.VistaPreviaHtml.dominio(p.url), fontSize = 11.sp, modifier = Modifier.alpha(0.7f))
+            }
+        }
+    }
 }
