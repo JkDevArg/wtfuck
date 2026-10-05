@@ -337,6 +337,36 @@ class Repositorio(
         )
     }
 
+    // --- Carpetas: ver `Carpetas` -------------------------------------------
+
+    val carpetas: Flow<List<CarpetaEnt>> get() = dao.carpetas()
+    val chatsEnCarpetas: Flow<List<CarpetaChatEnt>> get() = dao.chatsEnCarpetas()
+
+    /** Crea una carpeta con esos chats adentro. Devuelve su id. */
+    suspend fun crearCarpeta(nombre: String, chats: Collection<String>): String {
+        val id = UUID.randomUUID().toString()
+        dao.guardarCarpeta(CarpetaEnt(id, nombre.trim(), dao.ultimoOrdenCarpeta() + 1))
+        chats.forEach { dao.meterEnCarpeta(CarpetaChatEnt(id, it)) }
+        return id
+    }
+
+    /** Cambia el nombre y deja adentro exactamente [chats]. */
+    suspend fun guardarCarpeta(id: String, nombre: String, chats: Collection<String>) {
+        val c = dao.carpeta(id) ?: return
+        dao.guardarCarpeta(c.copy(nombre = nombre.trim()))
+        dao.vaciarCarpeta(id)
+        chats.forEach { dao.meterEnCarpeta(CarpetaChatEnt(id, it)) }
+    }
+
+    suspend fun borrarCarpeta(id: String) {
+        dao.vaciarCarpeta(id)
+        dao.borrarCarpeta(id)
+    }
+
+    suspend fun ponerEnCarpeta(carpeta: String, conv: String, dentro: Boolean) {
+        if (dentro) dao.meterEnCarpeta(CarpetaChatEnt(carpeta, conv)) else dao.sacarDeCarpeta(carpeta, conv)
+    }
+
     // --- Chats protegidos ---------------------------------------------------
 
     /**
@@ -5081,6 +5111,10 @@ class Repositorio(
         dao.borrarVotos()
         dao.borrarMensajes()
         dao.borrarConversaciones()
+        // Las carpetas tambien son de la otra cuenta: sus nombres dicen de
+        // quien eran.
+        dao.borrarChatsEnCarpetas()
+        dao.borrarCarpetas()
     }
 
     /**
@@ -5302,6 +5336,10 @@ class Repositorio(
         dao.borrarVotos()
         dao.borrarMensajes()
         dao.borrarConversaciones()
+        // Las carpetas tambien son de la otra cuenta: sus nombres dicen de
+        // quien eran.
+        dao.borrarChatsEnCarpetas()
+        dao.borrarCarpetas()
         sesion.limpiar()
     }
 }

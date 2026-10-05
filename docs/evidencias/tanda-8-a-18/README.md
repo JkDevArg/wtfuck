@@ -303,7 +303,31 @@ marca de "no leído". Con `protegido` habría pasado lo mismo. Ahora esas column
 se copian de la fila anterior. Verificado: un borrador sobrevivió a matar la app
 y a la sincronización al volver (`12c-`).
 
+## 13. Carpetas de chats
+
+Las carpetas son "Trabajo", "Familia" o lo que cada quien quiera. Se crean y
+editan en *⋮ → Carpetas*, con nombre y casillas de chats (`13a-`). Aparecen
+como pestañas después de Todos, No leídos y Grupos (`13b-`). Un chat se agrega
+desde su menú con *Añadir a carpeta*, que marca y desmarca al momento y deja
+crear una carpeta nueva con ese chat ya adentro (`13c-`, `13d-`).
+
+- **Solo en este teléfono.** Telegram las sincroniza por su servidor. Aquí no:
+  el nombre de una carpeta y quién está en ella dicen mucho de con quién habla
+  alguien y para qué. El costo es que en otro aparato vinculado hay que
+  armarlas de nuevo, y la pantalla lo dice.
+- **Límites:** hasta 10 carpetas y nombres de hasta 20 caracteres. El nombre no
+  puede repetirse, aunque cambien las mayúsculas, ni llamarse como una pestaña
+  fija: dos "Grupos" en la barra no se distinguirían.
+- **La barra.** Sin carpetas es la de siempre, con tres pestañas repartidas. Con
+  carpetas se desplaza.
+- **Borrar** una carpeta no borra los chats: solo salen de ella.
+- **Al cambiar de cuenta o cerrar sesión** se borran con el resto de lo local,
+  porque sus nombres dicen de quién eran.
+
+`CarpetasTest`: 7 pruebas de nombres y límites. Room 27 (tablas `carpeta` y
+`carpeta_chat`).
+
 ## Números
 
-- Unitarias: 590 → **595**, 0 fallos.
+- Unitarias: 590 → **602**, 0 fallos.
 - Integración: 1672 → **1708**, 0 fallos (suite nueva `notas.mjs`).

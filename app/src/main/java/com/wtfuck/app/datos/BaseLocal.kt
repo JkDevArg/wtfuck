@@ -595,6 +595,22 @@ data class AjusteLocalEnt(
     val valor: String,
 )
 
+/** Una carpeta de chats. Ver `Carpetas`. */
+@Entity(tableName = "carpeta")
+data class CarpetaEnt(
+    @PrimaryKey val id: String,
+    val nombre: String,
+    /** El lugar en la barra de pestañas. */
+    val orden: Int,
+)
+
+/** Que chat esta en que carpeta. Un chat puede estar en varias. */
+@Entity(tableName = "carpeta_chat", primaryKeys = ["carpetaId", "conversacionId"])
+data class CarpetaChatEnt(
+    val carpetaId: String,
+    val conversacionId: String,
+)
+
 @Entity(tableName = "emoji_uso")
 data class EmojiUsoEnt(
     /** El glifo tal cual se manda, **con** su tono de piel si lo tiene. */
@@ -880,6 +896,41 @@ interface ChatDao {
            adjuntoNonce = '', adjuntoMiniatura = '' WHERE id = :id"""
     )
     suspend fun abrirUnaVez(id: String)
+
+    // --- Carpetas. Ver `Carpetas`. ---
+
+    @Query("SELECT * FROM carpeta ORDER BY orden, nombre")
+    fun carpetas(): Flow<List<CarpetaEnt>>
+
+    @Query("SELECT * FROM carpeta WHERE id = :id")
+    suspend fun carpeta(id: String): CarpetaEnt?
+
+    @Query("SELECT * FROM carpeta_chat")
+    fun chatsEnCarpetas(): Flow<List<CarpetaChatEnt>>
+
+    @Query("SELECT COALESCE(MAX(orden), 0) FROM carpeta")
+    suspend fun ultimoOrdenCarpeta(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarCarpeta(c: CarpetaEnt)
+
+    @Query("DELETE FROM carpeta WHERE id = :id")
+    suspend fun borrarCarpeta(id: String)
+
+    @Query("DELETE FROM carpeta_chat WHERE carpetaId = :id")
+    suspend fun vaciarCarpeta(id: String)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun meterEnCarpeta(f: CarpetaChatEnt)
+
+    @Query("DELETE FROM carpeta_chat WHERE carpetaId = :carpeta AND conversacionId = :conv")
+    suspend fun sacarDeCarpeta(carpeta: String, conv: String)
+
+    @Query("DELETE FROM carpeta")
+    suspend fun borrarCarpetas()
+
+    @Query("DELETE FROM carpeta_chat")
+    suspend fun borrarChatsEnCarpetas()
 
     @Query("UPDATE conversacion SET protegido = :protegido WHERE id = :id")
     suspend fun fijarProtegido(id: String, protegido: Boolean)
@@ -1388,8 +1439,10 @@ interface ChatDao {
         PackEnt::class,
         EmojiUsoEnt::class,
         AjusteLocalEnt::class,
+        CarpetaEnt::class,
+        CarpetaChatEnt::class,
     ],
-    version = 26,
+    version = 27,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1409,7 +1462,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1581,6 +1634,20 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Carpetas de chats. */
+        private val DE_26_A_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `carpeta` (`id` TEXT NOT NULL, `nombre` TEXT NOT NULL, " +
+                        "`orden` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `carpeta_chat` (`carpetaId` TEXT NOT NULL, " +
+                        "`conversacionId` TEXT NOT NULL, PRIMARY KEY(`carpetaId`, `conversacionId`))"
+                )
+            }
+        }
+
         /** Chats protegidos con huella. */
         private val DE_25_A_26 = object : Migration(25, 26) {
             override fun migrate(db: SupportSQLiteDatabase) {

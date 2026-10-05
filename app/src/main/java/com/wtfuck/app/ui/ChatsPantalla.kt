@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
 import com.wtfuck.app.datos.Media
 import android.widget.Toast
@@ -122,6 +123,14 @@ fun ChatsPantalla(
 
     var verArchivados by rememberSaveable { mutableStateOf(false) }
     var filtro by rememberSaveable { mutableStateOf(Filtro.TODOS) }
+    // Carpetas: ver `Carpetas`. Si hay una elegida, manda sobre `filtro`.
+    val carpetas by app.repo.carpetas.collectAsStateWithLifecycle(emptyList())
+    val enCarpetas by app.repo.chatsEnCarpetas.collectAsStateWithLifecycle(emptyList())
+    var carpetaElegida by rememberSaveable { mutableStateOf<String?>(null) }
+    // La elegida puede haberse borrado: entonces no hay ninguna elegida.
+    val carpetaSel = carpetaElegida?.takeIf { id -> carpetas.any { it.id == id } }
+    var hojaCarpetas by remember { mutableStateOf(false) }
+    var carpetasDe by remember { mutableStateOf<String?>(null) }
 
     val activos by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
     val archivados by app.repo.archivadas.collectAsStateWithLifecycle(emptyList())
@@ -195,8 +204,12 @@ fun ChatsPantalla(
     // El filtro decide QUE lista se mira; el buscador, que parte de esa lista.
     // En ese orden: buscar dentro de "No leidos" es util, filtrar un resultado
     // de busqueda no.
-    val filtrados = remember(chats, filtro, verArchivados) {
-        if (verArchivados) chats else when (filtro) {
+    val filtrados = remember(chats, filtro, verArchivados, carpetaSel, enCarpetas) {
+        if (verArchivados) chats
+        else if (carpetaSel != null) {
+            val ids = enCarpetas.filter { it.carpetaId == carpetaSel }.map { it.conversacionId }.toSet()
+            chats.filter { it.id in ids }
+        } else when (filtro) {
             Filtro.TODOS -> chats
             Filtro.SIN_LEER -> chats.filter { it.sinLeer }
             Filtro.GRUPOS -> chats.filter { it.tipo == "grupo" }
@@ -382,6 +395,10 @@ fun ChatsPantalla(
                                 menuAbierto = false
                                 cercaAbierto = true
                             }
+                            OpcionMenu("Carpetas", Icons.Filled.Folder) {
+                                menuAbierto = false
+                                hojaCarpetas = true
+                            }
                             OpcionMenu("Actualizar", Icons.Filled.Refresh) {
                                 menuAbierto = false
                                 ambito.launch { app.repo.sincronizar(); app.repo.despachar() }
@@ -419,9 +436,12 @@ fun ChatsPantalla(
                 if (!verArchivados) {
                     PestanasFiltro(
                         filtro = filtro,
-                        onCambio = { filtro = it },
+                        onCambio = { filtro = it; carpetaElegida = null },
                         sinLeer = chats.count { it.sinLeer },
                         grupos = chats.count { it.tipo == "grupo" },
+                        carpetas = carpetas,
+                        carpetaSel = carpetaSel,
+                        onCarpeta = { carpetaElegida = it },
                     )
                 }
             }
@@ -483,6 +503,10 @@ fun ChatsPantalla(
             )
             // Un filtro vacio no es un error: decir "no hay sin leer" es una
             // respuesta, y es distinta de "no tienes conversaciones".
+            visibles.isEmpty() && carpetaSel != null -> Vacio(
+                "Carpeta vacía",
+                "Agrega chats desde el menú de cada chat, o editando la carpeta en ⋮ → Carpetas.",
+            )
             visibles.isEmpty() -> Vacio(
                 when (filtro) {
                     Filtro.SIN_LEER -> "Todo leido"
@@ -587,6 +611,9 @@ fun ChatsPantalla(
       }
     }
 
+    if (hojaCarpetas) HojaCarpetas(onCerrar = { hojaCarpetas = false })
+    carpetasDe?.let { id -> ElegirCarpetas(id, onCerrar = { carpetasDe = null }) }
+
     accionesDe?.let { chat ->
         HojaAccionesChat(
             chat = chat,
@@ -618,6 +645,10 @@ fun ChatsPantalla(
                     runCatching { app.repo.preferencias(chat.id, PreferenciasChat(fijado = v)) }
                         .onFailure { errorDialogo = it.message }
                 }
+            },
+            onCarpetas = {
+                accionesDe = null
+                carpetasDe = chat.id
             },
             onProteger = { v ->
                 accionesDe = null
@@ -807,46 +838,76 @@ private fun PestanasFiltro(
     onCambio: (Filtro) -> Unit,
     sinLeer: Int,
     grupos: Int,
+    carpetas: List<com.wtfuck.app.datos.CarpetaEnt> = emptyList(),
+    carpetaSel: String? = null,
+    onCarpeta: (String) -> Unit = {},
 ) {
     val etiquetas = listOf(
         Filtro.TODOS to "Todos",
         Filtro.SIN_LEER to if (sinLeer > 0) "No leidos $sinLeer" else "No leidos",
         Filtro.GRUPOS to if (grupos > 0) "Grupos $grupos" else "Grupos",
     )
-    TabRow(
-        selectedTabIndex = etiquetas.indexOfFirst { it.first == filtro },
-        containerColor = BgSurface,
-        contentColor = Cian,
-        divider = { HorizontalDivider(color = Slate.copy(alpha = 0.25f)) },
-        indicator = { tabPositions ->
-            val i = etiquetas.indexOfFirst { it.first == filtro }
-            if (i in tabPositions.indices) {
-                TabRowDefaults.PrimaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[i]),
-                    width = 48.dp,
-                    height = 3.dp,
-                    color = Cian,
-                )
-            }
-        },
-    ) {
-        etiquetas.forEach { (f, texto) ->
-            Tab(
-                selected = filtro == f,
-                onClick = { onCambio(f) },
-                selectedContentColor = Cian,
-                unselectedContentColor = TextoTerciario,
-                text = {
-                    Text(
-                        texto,
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        fontWeight = if (filtro == f) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                },
+    val elegida = if (carpetaSel != null) {
+        etiquetas.size + carpetas.indexOfFirst { it.id == carpetaSel }
+    } else etiquetas.indexOfFirst { it.first == filtro }
+    val indicador: @Composable (List<TabPosition>) -> Unit = { tabPositions ->
+        if (elegida in tabPositions.indices) {
+            TabRowDefaults.PrimaryIndicator(
+                modifier = Modifier.tabIndicatorOffset(tabPositions[elegida]),
+                width = 48.dp,
+                height = 3.dp,
+                color = Cian,
             )
         }
     }
+    val pestanas: @Composable () -> Unit = {
+        etiquetas.forEachIndexed { i, (f, texto) ->
+            PestanaFiltro(texto, elegida == i) { onCambio(f) }
+        }
+        carpetas.forEachIndexed { i, c ->
+            PestanaFiltro(c.nombre, elegida == etiquetas.size + i) { onCarpeta(c.id) }
+        }
+    }
+    // Sin carpetas, la barra de siempre: tres pestañas repartidas. Con
+    // carpetas ya no caben repartidas, y la barra se desplaza.
+    if (carpetas.isEmpty()) {
+        TabRow(
+            selectedTabIndex = elegida,
+            containerColor = BgSurface,
+            contentColor = Cian,
+            divider = { HorizontalDivider(color = Slate.copy(alpha = 0.25f)) },
+            indicator = indicador,
+            tabs = pestanas,
+        )
+    } else {
+        ScrollableTabRow(
+            selectedTabIndex = elegida,
+            containerColor = BgSurface,
+            contentColor = Cian,
+            edgePadding = 8.dp,
+            divider = { HorizontalDivider(color = Slate.copy(alpha = 0.25f)) },
+            indicator = indicador,
+            tabs = pestanas,
+        )
+    }
+}
+
+@Composable
+private fun PestanaFiltro(texto: String, seleccionada: Boolean, onClick: () -> Unit) {
+    Tab(
+        selected = seleccionada,
+        onClick = onClick,
+        selectedContentColor = Cian,
+        unselectedContentColor = TextoTerciario,
+        text = {
+            Text(
+                texto,
+                fontSize = 13.sp,
+                maxLines = 1,
+                fontWeight = if (seleccionada) FontWeight.SemiBold else FontWeight.Normal,
+            )
+        },
+    )
 }
 
 @Composable
