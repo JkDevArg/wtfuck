@@ -178,6 +178,14 @@ class Repositorio(
 
     val conversaciones: Flow<List<ChatFila>> = dao.conversaciones(archivados = false)
     val archivadas: Flow<List<ChatFila>> = dao.conversaciones(archivados = true)
+
+    /**
+     * Todas, archivadas incluidas. Para BUSCAR un chat por id, no para
+     * listarlos: la pantalla de un chat archivado se abria "vacia" -sin
+     * titulo, sin menu de grupo, sin "Info"- porque lo buscaba entre las no
+     * archivadas y no lo encontraba.
+     */
+    val todasLasConversaciones: Flow<List<ChatFila>> = dao.conversaciones(todas = true)
     val cuantosArchivados: Flow<Int> = dao.cuantosArchivados()
     val estadoConexion = socket.estado
     val tamanoCola: Flow<Int> = dao.tamanoCola()
@@ -4899,6 +4907,33 @@ class Repositorio(
     private val avisadosSinCifrado: MutableSet<String> =
         java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
 
+    /**
+     * Por que no sale lo de cada conversacion atascada, en palabras.
+     *
+     * Antes la barra decia "Enviando 2 pendientes..." para siempre y no habia
+     * forma de saber que mensajes eran, por que no salian ni de sacarlos de la
+     * cola. Ver `HojaPendientes`.
+     */
+    private val _atascos = MutableStateFlow<Map<String, String>>(emptyMap())
+    val atascos: StateFlow<Map<String, String>> = _atascos.asStateFlow()
+
+    private fun anotarAtasco(conv: String, motivo: String) {
+        if (_atascos.value[conv] != motivo) _atascos.value = _atascos.value + (conv to motivo)
+    }
+
+    private fun limpiarAtasco(conv: String) {
+        if (conv in _atascos.value) _atascos.value = _atascos.value - conv
+    }
+
+    /** Lo que espera salir. */
+    val pendientes: Flow<List<MensajeEnt>> = dao.colaFlow()
+
+    /** Saca un mensaje de la cola: no se manda. */
+    suspend fun descartarPendiente(id: String) {
+        val m = dao.mensaje(id) ?: return
+        if (m.esMio && m.estado == EstadoEnvio.PENDIENTE.name) dao.borrarMensaje(id)
+    }
+
     private suspend fun despacharSinCandado() {
         val pendientes = dao.cola()
         if (pendientes.isEmpty()) return
@@ -4986,6 +5021,7 @@ class Repositorio(
             val destinos = destinosDe(m.conversacionId)
             if (destinos == null) {
                 Log.w(TAG, "Sin destinos para ${m.conversacionId}, el mensaje espera")
+                anotarAtasco(m.conversacionId, "No se pudo saber a qué aparatos mandarlo: sin red, o el servidor no respondió.")
                 atascadas += m.conversacionId
                 continue
             }
@@ -4996,6 +5032,7 @@ class Repositorio(
             val copias = runCatching { cifrador.cifrar(m.conversacionId, esGrupo, destinos, cargaDe(m)) }
                 .getOrElse {
                     Log.w(TAG, "No se pudo cifrar ${m.id}: ${it.message}")
+                    anotarAtasco(m.conversacionId, "No se pudo cifrar: ${it.message ?: "error desconocido"}.")
                     atascadas += m.conversacionId
                     null
                 }
@@ -5006,6 +5043,10 @@ class Repositorio(
             // seria romper en silencio la promesa del producto.
             if (copias.isEmpty() && destinos.isNotEmpty()) {
                 Log.w(TAG, "Nadie con sesion en ${m.conversacionId}; ${m.id} sigue en cola")
+                anotarAtasco(
+                    m.conversacionId,
+                    "Todavía no hay cifrado con esa cuenta: no publicó sus claves. Sale solo cuando lo haga.",
+                )
                 // Una vez por conversacion, y diciendo con quien. Se emitia en
                 // CADA pasada del despacho y lo mostraba el chat que estuviera
                 // abierto: hablando con una persona saltaba, una y otra vez,
@@ -5040,6 +5081,7 @@ class Repositorio(
             cifrador.confirmarEnvio(m.conversacionId, destinos)
             // Si vuelve a atascarse mas adelante, se vuelve a avisar.
             avisadosSinCifrado.remove(m.conversacionId)
+            limpiarAtasco(m.conversacionId)
         }
     }
 

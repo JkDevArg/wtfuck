@@ -107,7 +107,7 @@ private fun ElegirChats(
     resumen: String = "",
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
-    val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
+    val chats by app.repo.todasLasConversaciones.collectAsStateWithLifecycle(emptyList())
     val ambito = rememberCoroutineScope()
     var filtro by remember { mutableStateOf("") }
     var elegidos by remember { mutableStateOf(listOfNotNull(preseleccion)) }

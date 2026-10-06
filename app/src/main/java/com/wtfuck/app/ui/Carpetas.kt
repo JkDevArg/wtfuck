@@ -125,7 +125,7 @@ fun EditorCarpeta(carpetaId: String?, onCerrar: () -> Unit, conChat: String? = n
     val ambito = rememberCoroutineScope()
     val carpetas by app.repo.carpetas.collectAsStateWithLifecycle(emptyList())
     val enCarpetas by app.repo.chatsEnCarpetas.collectAsStateWithLifecycle(emptyList())
-    val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
+    val chats by app.repo.todasLasConversaciones.collectAsStateWithLifecycle(emptyList())
     val actual = carpetas.firstOrNull { it.id == carpetaId }
 
     var nombre by remember(actual?.id) { mutableStateOf(actual?.nombre.orEmpty()) }

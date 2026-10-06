@@ -651,10 +651,10 @@ interface ChatDao {
            -- distintas y las dos merecen salir con el nombre que yo les puse.
            LEFT JOIN contacto k ON c.tipo = 'directa' AND k.username = c.nombre
            LEFT JOIN contacto ka ON ka.username = m.autor
-           WHERE c.archivado = :archivados
+           WHERE (:todas OR c.archivado = :archivados)
            ORDER BY c.fijado DESC, COALESCE(m.creadoEn, 0) DESC"""
     )
-    fun conversaciones(archivados: Boolean = false): Flow<List<ChatFila>>
+    fun conversaciones(archivados: Boolean = false, todas: Boolean = false): Flow<List<ChatFila>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun guardarContactos(filas: List<ContactoEnt>)
@@ -1304,6 +1304,10 @@ interface ChatDao {
                   AND adjuntoEstado != 'SUBIENDO' ORDER BY creadoEn ASC"""
     )
     suspend fun cola(): List<MensajeEnt>
+
+    /** Lo que espera salir, para mostrarlo. Ver `HojaPendientes`. */
+    @Query("SELECT * FROM mensaje WHERE esMio = 1 AND estado = 'PENDIENTE' ORDER BY creadoEn")
+    fun colaFlow(): Flow<List<MensajeEnt>>
 
     @Query(
         """SELECT COUNT(*) FROM mensaje WHERE esMio = 1 AND estado = 'PENDIENTE'

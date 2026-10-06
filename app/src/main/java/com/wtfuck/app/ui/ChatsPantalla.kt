@@ -130,6 +130,7 @@ fun ChatsPantalla(
     // La elegida puede haberse borrado: entonces no hay ninguna elegida.
     val carpetaSel = carpetaElegida?.takeIf { id -> carpetas.any { it.id == id } }
     var hojaCarpetas by remember { mutableStateOf(false) }
+    var verPendientes by remember { mutableStateOf(false) }
     var carpetasDe by remember { mutableStateOf<String?>(null) }
 
     val activos by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
@@ -430,6 +431,7 @@ fun ChatsPantalla(
                     onIrAlFallo = convsConFallidos.firstOrNull()
                         ?.let { id -> chats.firstOrNull { it.id == id } }
                         ?.let { c -> { irAlFallo(c) } },
+                    onVerPendientes = { verPendientes = true },
                 )
                 BuscadorChats(busqueda) { busqueda = it }
                 // Dentro de Archivados no hay filtros: es ya una lista aparte.
@@ -612,6 +614,12 @@ fun ChatsPantalla(
     }
 
     if (hojaCarpetas) HojaCarpetas(onCerrar = { hojaCarpetas = false })
+    if (verPendientes) {
+        HojaPendientes(
+            onCerrar = { verPendientes = false },
+            onAbrirChat = { id -> verPendientes = false; chats.firstOrNull { it.id == id }?.let { onAbrir(it.id, it.tipo) } },
+        )
+    }
     carpetasDe?.let { id -> ElegirCarpetas(id, onCerrar = { carpetasDe = null }) }
 
     accionesDe?.let { chat ->
@@ -1004,6 +1012,8 @@ private fun BarraEstado(
     dondeFallo: String? = null,
     /** Abre ese chat. Nulo cuando no hay ninguno al que ir. */
     onIrAlFallo: (() -> Unit)? = null,
+    /** Abre la lista de lo que espera salir. Ver `HojaPendientes`. */
+    onVerPendientes: (() -> Unit)? = null,
 ) {
     // Un mensaje FALLIDO no esta "enviandose": no va a salir solo. Mezclarlo
     // con los pendientes dejaba la barra diciendo "Enviando 1..." para siempre.
@@ -1032,7 +1042,8 @@ private fun BarraEstado(
         enCola > 0 && conexion != EstadoConexion.CONECTADO ->
             Ambar to "Sin conexión - $enCola ${if (enCola == 1) "mensaje" else "mensajes"} en cola"
         conexion == EstadoConexion.CONECTADO && enCola > 0 ->
-            Ambar to "Enviando $enCola ${if (enCola == 1) "pendiente" else "pendientes"}..."
+            Ambar to "Enviando $enCola ${if (enCola == 1) "pendiente" else "pendientes"}..." +
+                (if (onVerPendientes != null) " · toca para ver" else "")
         conexion == EstadoConexion.CONECTADO -> Cian to "Conectado"
         conexion == EstadoConexion.CONECTANDO -> Ambar to "Conectando..."
         else -> Coral to "Sin conexión"
@@ -1044,10 +1055,10 @@ private fun BarraEstado(
                 // "clicable" que no lleva a ningun lado es peor que una que no
                 // lo parece.
                 .then(
-                    if (onIrAlFallo != null) {
-                        Modifier.clickable(onClick = onIrAlFallo)
-                    } else {
-                        Modifier
+                    when {
+                        fallidos > 0 && enCola == 0 && onIrAlFallo != null -> Modifier.clickable(onClick = onIrAlFallo)
+                        enCola > 0 && onVerPendientes != null -> Modifier.clickable(onClick = onVerPendientes)
+                        else -> Modifier
                     }
                 )
                 .padding(horizontal = 16.dp, vertical = 6.dp),

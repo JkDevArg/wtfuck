@@ -1173,7 +1173,7 @@ private fun fotoDe(
     //
     // Sale de la lista que la app ya tiene cargada, no de una consulta nueva:
     // es la misma de la que se dibuja la pantalla de chats.
-    val chats by app.repo.conversaciones.collectAsState(emptyList())
+    val chats by app.repo.todasLasConversaciones.collectAsState(emptyList())
     val c = chats.firstOrNull { it.id == m.conversacionId } ?: return null
     if (c.avatarUsername != autor) return null
     return com.wtfuck.app.datos.ApiCliente.urlImagen(autor, "avatar", c.avatarVersion)

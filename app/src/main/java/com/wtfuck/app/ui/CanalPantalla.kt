@@ -102,7 +102,7 @@ fun CanalPantalla(
     val elegirImagen = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) imagen = uri }
-    val chats by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
+    val chats by app.repo.todasLasConversaciones.collectAsStateWithLifecycle(emptyList())
 
     /**
      * El nombre que ya sabemos de este canal, sin preguntarle a nadie.
