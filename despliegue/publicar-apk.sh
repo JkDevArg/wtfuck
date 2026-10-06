@@ -36,6 +36,13 @@ esac
 
 VERSION=$(date +%Y%m%d)
 NOMBRE="wtfuck-$VERSION.apk"
+# Con el versionCode en el nombre cuando se sabe. Con solo la fecha, dos
+# publicaciones el mismo dia -paso con la 14 y la 15- dejaban el mismo nombre:
+# la segunda pisaba en el servidor el archivo de la primera mientras su huella
+# seguia anunciada. Se lee de `output-metadata.json`, que AGP deja junto al APK.
+CODIGO_NOMBRE=$(grep -oE '"versionCode"[: ]+[0-9]+' app/build/outputs/apk/release/output-metadata.json 2>/dev/null |
+  grep -oE '[0-9]+' | head -1 || true)
+[ -n "$CODIGO_NOMBRE" ] && NOMBRE="wtfuck-$VERSION-$CODIGO_NOMBRE.apk"
 
 # El `versionCode` del APK, que es lo unico que Android mira para decidir si
 # una version es mas nueva que la instalada. Se LEE del archivo en vez de
