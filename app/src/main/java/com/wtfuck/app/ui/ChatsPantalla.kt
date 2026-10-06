@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
 import com.wtfuck.app.datos.Media
@@ -131,6 +132,7 @@ fun ChatsPantalla(
     val carpetaSel = carpetaElegida?.takeIf { id -> carpetas.any { it.id == id } }
     var hojaCarpetas by remember { mutableStateOf(false) }
     var verPendientes by remember { mutableStateOf(false) }
+    var verDestacados by remember { mutableStateOf(false) }
     var carpetasDe by remember { mutableStateOf<String?>(null) }
 
     val activos by app.repo.conversaciones.collectAsStateWithLifecycle(emptyList())
@@ -396,6 +398,10 @@ fun ChatsPantalla(
                                 menuAbierto = false
                                 cercaAbierto = true
                             }
+                            OpcionMenu("Mensajes destacados", Icons.Filled.Star) {
+                                menuAbierto = false
+                                verDestacados = true
+                            }
                             OpcionMenu("Carpetas", Icons.Filled.Folder) {
                                 menuAbierto = false
                                 hojaCarpetas = true
@@ -614,6 +620,12 @@ fun ChatsPantalla(
     }
 
     if (hojaCarpetas) HojaCarpetas(onCerrar = { hojaCarpetas = false })
+    if (verDestacados) {
+        HojaDestacados(
+            onIr = { conv, m -> verDestacados = false; onAbrirEnMensaje(conv, m.id) },
+            onCerrar = { verDestacados = false },
+        )
+    }
     if (verPendientes) {
         HojaPendientes(
             onCerrar = { verPendientes = false },

@@ -1,5 +1,12 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -276,8 +283,12 @@ private fun ChatAbierto(
     val traducciones = remember { mutableStateMapOf<String, String>() }
     /** El mensaje del que se mira "Info". */
     var infoDe by remember { mutableStateOf<String?>(null) }
-    /** El mensaje que se esta por reenviar: abre "Reenviar a...". */
-    var reenviando by remember { mutableStateOf<MensajeEnt?>(null) }
+    /** Lo que se esta por reenviar: abre "Reenviar a...". */
+    var reenviando by remember { mutableStateOf<List<MensajeEnt>?>(null) }
+    /** Modo seleccion: los ids marcados. Vacio = no se esta seleccionando. */
+    var seleccion by remember(conversacionId) { mutableStateOf(setOf<String>()) }
+    var confirmarBorrarSeleccion by remember { mutableStateOf(false) }
+    var verDestacados by remember { mutableStateOf(false) }
     var grabandoVideonota by remember { mutableStateOf(false) }
     /** Lo proximo que se elija en la galeria va como "ver una vez". */
     var proximoUnaVez by remember { mutableStateOf(false) }
@@ -730,6 +741,38 @@ private fun ChatAbierto(
             },
         containerColor = BgBase,
         topBar = {
+            if (seleccion.isNotEmpty()) {
+                val marcados = mensajes.filter { it.id in seleccion }
+                BarraSeleccionMensajes(
+                    cuantos = seleccion.size,
+                    todosDestacados = marcados.isNotEmpty() && marcados.all { it.destacado },
+                    puedeReenviar = marcados.any { !it.unaVez && it.especial.isBlank() && !it.retirado },
+                    onSalir = { seleccion = emptySet() },
+                    onCopiar = {
+                        // Como WhatsApp: cada uno con su hora y su autor, para
+                        // que pegado en otro lado se entienda quien dijo que.
+                        val fmt = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.getDefault())
+                        portapapeles.setText(AnnotatedString(
+                            marcados.sortedBy { it.creadoEn }.filter { it.texto.isNotBlank() }.joinToString("\n") {
+                                "[${fmt.format(java.util.Date(it.creadoEn))}] ${if (it.esMio) "Tú" else it.autor}: ${it.texto}"
+                            },
+                        ))
+                        seleccion = emptySet()
+                    },
+                    onReenviar = {
+                        reenviando = marcados.filter { !it.unaVez && it.especial.isBlank() && !it.retirado }
+                        seleccion = emptySet()
+                    },
+                    onDestacar = {
+                        val todos = marcados.all { it.destacado }
+                        val ids = seleccion
+                        seleccion = emptySet()
+                        ambito.launch { app.repo.destacar(ids, !todos) }
+                    },
+                    onBorrar = { confirmarBorrarSeleccion = true },
+                )
+                return@Scaffold
+            }
             if (buscando) {
                 BarraBusquedaChat(
                     consulta = consulta,
@@ -899,6 +942,10 @@ private fun ChatAbierto(
 
                         OpcionMenu("Buscar en el chat", Icons.Filled.Search) {
                             menuAbierto = false; buscando = true
+                        }
+
+                        OpcionMenu("Destacados", Icons.Filled.Star) {
+                            menuAbierto = false; verDestacados = true
                         }
 
                         OpcionMenu("Vaciar chat", Icons.Filled.DeleteSweep) {
@@ -1366,6 +1413,11 @@ private fun ChatAbierto(
                     Burbuja(
                         m = m,
                         traduccion = traducciones[m.id],
+                        enSeleccion = seleccion.isNotEmpty(),
+                        marcado = m.id in seleccion,
+                        onAlternar = {
+                            seleccion = if (m.id in seleccion) seleccion - m.id else seleccion + m.id
+                        },
                         esGrupo = chat?.tipo == "grupo",
                         miUsuario = app.sesion.username.orEmpty(),
                         nombreDe = { u -> nombresDeGente[u] ?: u },
@@ -1599,7 +1651,40 @@ private fun ChatAbierto(
         )
     }
 
-    reenviando?.let { m -> HojaReenviar(m, onCerrar = { reenviando = null }) }
+    reenviando?.let { ms -> HojaReenviar(ms, onCerrar = { reenviando = null }) }
+
+    // Atras sale de la seleccion antes que del chat.
+    androidx.activity.compose.BackHandler(enabled = seleccion.isNotEmpty()) { seleccion = emptySet() }
+
+    if (confirmarBorrarSeleccion) {
+        val n = seleccion.size
+        AlertDialog(
+            onDismissRequest = { confirmarBorrarSeleccion = false },
+            containerColor = BgElev,
+            title = { Text(if (n == 1) "¿Borrar el mensaje para ti?" else "¿Borrar $n mensajes para ti?", color = TextoPrimario) },
+            text = { Text("Se borran de este teléfono. Los demás los siguen viendo.", color = TextoSecundario) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val ids = seleccion
+                    confirmarBorrarSeleccion = false
+                    seleccion = emptySet()
+                    ambito.launch { ids.forEach { app.repo.borrarSoloParaMi(it) } }
+                }) { Text("Borrar", color = Coral) }
+            },
+            dismissButton = { TextButton(onClick = { confirmarBorrarSeleccion = false }) { Text("Cancelar", color = Cian) } },
+        )
+    }
+
+    if (verDestacados) {
+        HojaDestacados(
+            conversacionId = conversacionId,
+            onIr = { _, m ->
+                verDestacados = false
+                ambito.launch { runCatching { lista.animateScrollToItem(enLista(app.repo.posicionDe(conversacionId, m))) } }
+            },
+            onCerrar = { verDestacados = false },
+        )
+    }
 
     infoDe?.let { id -> HojaInfoMensaje(id, onCerrar = { infoDe = null }) }
 
@@ -1724,7 +1809,12 @@ private fun ChatAbierto(
             },
             onReenviar = {
                 accionesDe = null
-                reenviando = m
+                reenviando = listOf(m)
+            },
+            onSeleccionar = { accionesDe = null; seleccion = setOf(m.id) },
+            onDestacar = {
+                accionesDe = null
+                ambito.launch { app.repo.destacar(listOf(m.id), !m.destacado) }
             },
             onGuardarSticker = {
                 accionesDe = null
@@ -1978,6 +2068,10 @@ private fun Burbuja(
     m: MensajeEnt,
     /** La traduccion hecha en el telefono, si se pidio. Ver `Traductor`. */
     traduccion: String? = null,
+    /** Modo seleccion: un toque marca o desmarca, en vez de lo de siempre. */
+    enSeleccion: Boolean = false,
+    marcado: Boolean = false,
+    onAlternar: () -> Unit = {},
     esGrupo: Boolean,
     /** En minusculas, para saber cual mencion es a mi. Vacio si aun no se sabe. */
     miUsuario: String,
@@ -2085,10 +2179,29 @@ private fun Burbuja(
 
     // Deslizar para responder. Un mensaje retirado no se responde: no queda
     // nada a que responder, y ofrecerlo seria citar un hueco.
-    ParaResponder(habilitado = !m.retirado, onResponder = onResponder) {
+    val alternar by rememberUpdatedState(onAlternar)
+    ParaResponder(habilitado = !m.retirado && !enSeleccion, onResponder = onResponder) {
     Column(
         Modifier
             .fillMaxWidth()
+            // En modo seleccion el toque es de la fila entera, y gana sobre
+            // todo lo de adentro -enlaces, fotos, audios-: se mira en la
+            // pasada `Initial` y se consume antes de que llegue a ellos.
+            .then(
+                if (enSeleccion) Modifier.pointerInput(Unit) {
+                    awaitEachGesture {
+                        val abajo = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        abajo.consume()
+                        while (true) {
+                            val c = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                .changes.firstOrNull { it.id == abajo.id } ?: break
+                            c.consume()
+                            if (!c.pressed) { alternar(); break }
+                        }
+                    }
+                } else Modifier
+            )
+            .background(if (marcado) Cian.copy(alpha = 0.16f) else Color.Transparent)
             // El resaltado va en el CONTENEDOR y no en la burbuja: pintarlo
             // dentro obligaria a cambiarle el fondo, que es justamente lo que
             // dice de quien es el mensaje.
@@ -2279,6 +2392,14 @@ private fun Burbuja(
 
             Spacer(Modifier.height(3.dp))
             Row(Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                if (m.destacado && !m.retirado) {
+                    Icon(
+                        Icons.Filled.Star, "Destacado",
+                        tint = if (sobreAcento) TextoSobreAcento.copy(alpha = 0.7f) else Ambar,
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
                 if (m.editado && !m.retirado) {
                     Text(
                         "editado",
@@ -2456,4 +2577,43 @@ private fun NotaVacia() {
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
     }
+}
+
+
+/** La barra de arriba mientras se seleccionan mensajes. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BarraSeleccionMensajes(
+    cuantos: Int,
+    todosDestacados: Boolean,
+    puedeReenviar: Boolean,
+    onSalir: () -> Unit,
+    onCopiar: () -> Unit,
+    onReenviar: () -> Unit,
+    onDestacar: () -> Unit,
+    onBorrar: () -> Unit,
+) {
+    TopAppBar(
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = BgElev),
+        navigationIcon = {
+            IconButton(onClick = onSalir) { Icon(Icons.Filled.Close, "Salir de la selección", tint = TextoPrimario) }
+        },
+        title = { Text("$cuantos", color = TextoPrimario) },
+        actions = {
+            IconButton(onClick = onCopiar) { Icon(Icons.Filled.ContentCopy, "Copiar", tint = TextoSecundario) }
+            if (puedeReenviar) {
+                IconButton(onClick = onReenviar) {
+                    Icon(Icons.AutoMirrored.Filled.Send, "Reenviar", tint = TextoSecundario)
+                }
+            }
+            IconButton(onClick = onDestacar) {
+                Icon(
+                    if (todosDestacados) Icons.Filled.StarBorder else Icons.Filled.Star,
+                    if (todosDestacados) "Quitar destacado" else "Destacar",
+                    tint = TextoSecundario,
+                )
+            }
+            IconButton(onClick = onBorrar) { Icon(Icons.Filled.DeleteOutline, "Borrar para mí", tint = Coral) }
+        },
+    )
 }

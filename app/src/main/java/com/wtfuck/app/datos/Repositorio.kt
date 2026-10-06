@@ -386,6 +386,13 @@ class Repositorio(
         }
     }
 
+    // --- Destacados: solo en este telefono ------------------------------------
+
+    fun destacados(convId: String = ""): Flow<List<MensajeEnt>> = dao.destacados(convId)
+
+    suspend fun destacar(ids: Collection<String>, destacado: Boolean) =
+        dao.fijarDestacado(ids.toList(), destacado)
+
     /** "Info del mensaje" de uno mio en un grupo. Ver `Mensajes.info` en el servidor. */
     suspend fun infoMensaje(id: String): InfoMensaje = api.infoMensaje(id)
 

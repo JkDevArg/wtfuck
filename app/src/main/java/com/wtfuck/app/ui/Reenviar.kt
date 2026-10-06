@@ -43,14 +43,17 @@ private const val MAX_DESTINOS = 5
  * "Reenviar a...": elegir a donde va un mensaje. Ver [ElegirChats].
  */
 @Composable
-fun HojaReenviar(mensaje: MensajeEnt, onCerrar: () -> Unit) {
+fun HojaReenviar(mensajes: List<MensajeEnt>, onCerrar: () -> Unit) {
     val app = LocalContext.current.applicationContext as WtfuckApp
+    // En el orden en que se dijeron: reenviar una conversacion desordenada
+    // la vuelve otra conversacion.
+    val enOrden = remember(mensajes) { mensajes.sortedBy { it.creadoEn } }
     ElegirChats(
-        titulo = "Reenviar a",
+        titulo = if (enOrden.size == 1) "Reenviar a" else "Reenviar ${enOrden.size} mensajes a",
         verbo = "Reenviar",
         hecho = "Reenviado",
         onCerrar = onCerrar,
-        accion = { destino -> app.repo.reenviar(mensaje, destino) },
+        accion = { destino -> enOrden.forEach { app.repo.reenviar(it, destino) } },
     )
 }
 

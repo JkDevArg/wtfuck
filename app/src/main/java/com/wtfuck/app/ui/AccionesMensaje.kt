@@ -1,5 +1,8 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Info
@@ -90,6 +93,10 @@ fun HojaAccionesMensaje(
     onTranscribir: (() -> Unit)? = null,
     /** Traducir el texto, en el telefono. Null = no se ofrece. */
     onTraducir: (() -> Unit)? = null,
+    /** Entrar al modo de seleccion con este mensaje marcado. */
+    onSeleccionar: (() -> Unit)? = null,
+    /** Poner o quitar la estrella. */
+    onDestacar: (() -> Unit)? = null,
 ) {
     var confirmandoBorrado by remember { mutableStateOf(false) }
     val puedeRetirar = mensaje.esMio || puedeBorrarAjeno
@@ -146,6 +153,16 @@ fun HojaAccionesMensaje(
                 }
                 if (onInfo != null) {
                     Opcion("Info", Icons.Filled.Info, onClick = onInfo)
+                }
+                if (onDestacar != null) {
+                    Opcion(
+                        if (mensaje.destacado) "Quitar destacado" else "Destacar",
+                        if (mensaje.destacado) Icons.Filled.StarBorder else Icons.Filled.Star,
+                        onClick = onDestacar,
+                    )
+                }
+                if (onSeleccionar != null) {
+                    Opcion("Seleccionar", Icons.Filled.Checklist, onClick = onSeleccionar)
                 }
                 if (onTranscribir != null) {
                     Opcion("Transcribir", Icons.Filled.Subtitles, onClick = onTranscribir)

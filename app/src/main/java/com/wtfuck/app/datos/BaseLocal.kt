@@ -373,6 +373,8 @@ data class MensajeEnt(
     val adjuntoForma: String = "",
     /** El texto de una nota de voz, sacado en el telefono. Ver `Transcriptor`. */
     val transcripcion: String = "",
+    /** Destacado (la estrella). Solo en este telefono. */
+    val destacado: Boolean = false,
 )
 
 /**
@@ -936,6 +938,21 @@ interface ChatDao {
     @Query("DELETE FROM carpeta_chat")
     suspend fun borrarChatsEnCarpetas()
 
+    @Query("UPDATE mensaje SET destacado = :destacado WHERE id IN (:ids)")
+    suspend fun fijarDestacado(ids: List<String>, destacado: Boolean)
+
+    /**
+     * Los destacados, del mas nuevo al mas viejo. `conv` vacio = de todos los
+     * chats, salvo los protegidos: la lista se ve sin la huella.
+     */
+    @Query(
+        """SELECT m.* FROM mensaje m JOIN conversacion c ON c.id = m.conversacionId
+           WHERE m.destacado = 1 AND m.retirado = 0
+             AND (:conv = '' AND c.protegido = 0 OR m.conversacionId = :conv)
+           ORDER BY m.creadoEn DESC"""
+    )
+    fun destacados(conv: String = ""): Flow<List<MensajeEnt>>
+
     @Query("UPDATE mensaje SET transcripcion = :texto WHERE id = :id")
     suspend fun guardarTranscripcion(id: String, texto: String)
 
@@ -1457,7 +1474,7 @@ interface ChatDao {
         CarpetaEnt::class,
         CarpetaChatEnt::class,
     ],
-    version = 29,
+    version = 30,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1477,7 +1494,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1649,6 +1666,13 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Mensajes destacados. */
+        private val DE_29_A_30 = object : Migration(29, 30) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN destacado INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         /** Transcripcion de notas de voz. */
         private val DE_28_A_29 = object : Migration(28, 29) {
             override fun migrate(db: SupportSQLiteDatabase) {
