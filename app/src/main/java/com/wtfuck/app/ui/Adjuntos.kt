@@ -657,9 +657,10 @@ private fun VistaUnaVez(m: MensajeEnt, sobreAcento: Boolean, onVer: () -> Unit) 
     val bajando = m.adjuntoEstado == "DESCARGANDO"
     val texto = if (sobreAcento) TextoSobreAcento else TextoPrimario
     val (titulo, detalle) = when {
-        m.esMio -> "$que · ver una vez" to when (m.estado) {
-            EstadoEnvio.PENDIENTE.name -> "enviando..."
-            EstadoEnvio.FALLIDO.name -> "no se envió"
+        m.esMio -> "$que · ver una vez" to when {
+            m.estado == EstadoEnvio.PENDIENTE.name -> "enviando..."
+            m.estado == EstadoEnvio.FALLIDO.name -> "no se envió"
+            m.unaVezAbierta -> "abierta"
             else -> "enviada · ya no está en este teléfono"
         }
         m.unaVezAbierta -> "Abierta" to "$que de ver una vez"

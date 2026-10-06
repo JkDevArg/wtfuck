@@ -125,10 +125,14 @@ console.log('\n=== al vencer, el servidor borra su rastro ===');
 // pasado lo violaba, y esta bien que lo haga: una fila asi no tiene sentido.
 // Lo que se modela aqui es un chat creado hace una hora que vencio hace un
 // minuto, que es una fila perfectamente posible.
-psql(`UPDATE conversacion SET creada_en = now() - interval '1 hour', ` +
-     `expira_en = now() - interval '1 minute' WHERE id='${TEMP}'`);
+// Se cuenta ANTES de mover el reloj. Contarlo despues era una carrera: si el
+// barrido del servidor -cada 10 s- caia justo entre el UPDATE y el conteo, ya
+// no quedaba nadie y la prueba fallaba por llegar tarde, no por un defecto.
+// Paso en la corrida completa del 2026-10-06.
 ck('quedan participantes antes de barrer',
    Number(psql(`SELECT count(*) FROM participante WHERE conversacion_id='${TEMP}'`)) > 0);
+psql(`UPDATE conversacion SET creada_en = now() - interval '1 hour', ` +
+     `expira_en = now() - interval '1 minute' WHERE id='${TEMP}'`);
 
 // El barrido corre cada 10 s en el servidor: se SONDEA en vez de dormir 12 s.
 //

@@ -318,6 +318,28 @@ object Mensajes {
         InfoMensaje(mensajeId.toString(), miembros, lecturasVisibles = comparto)
     }
 
+    /**
+     * Quien recibio un "ver una vez" avisa que lo abrio. Ver V47.
+     *
+     * Lo pide un miembro de la conversacion que NO es quien lo escribio. El
+     * aviso va a quien lo escribio solo si los dos comparten confirmaciones
+     * de lectura -es una confirmacion de lectura con otro nombre- y a mis
+     * propios aparatos siempre, para que lo cierren tambien.
+     */
+    fun unaVezAbierta(yo: Auth, mensajeId: UUID): List<Pair<UUID, Bajada.Evento>> = Db.tx { c ->
+        val m = cabecera(c, mensajeId) ?: throw ErrorNegocio(404, "Ese mensaje no existe.")
+        Autz.exigir(c, yo.usuarioId, m.conversacionId, Permisos.MIEMBRO_VER)
+        if (m.autorId == yo.usuarioId) throw ErrorNegocio(400, "Ese mensaje es tuyo.")
+        val comparten = c.prepareStatement(
+            "SELECT bool_and(priv_lectura) FROM usuario WHERE id = ANY(?)"
+        ).use { st ->
+            st.setArray(1, c.createArrayOf("uuid", arrayOf(yo.usuarioId, m.autorId)))
+            st.executeQuery().use { rs -> rs.primero { it.getBoolean(1) } } ?: false
+        }
+        val a = if (comparten) listOf(yo.usuarioId, m.autorId) else listOf(yo.usuarioId)
+        Eventos.emitir(c, a, "una_vez_abierta", m.conversacionId, yo.username, mensajeId.toString())
+    }
+
     fun fijados(yo: Auth, convId: UUID): List<MensajeMeta> = Db.query { c ->
         Autz.exigir(c, yo.usuarioId, convId, Permisos.MIEMBRO_VER)
         c.prepareStatement(

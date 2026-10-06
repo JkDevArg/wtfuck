@@ -261,6 +261,10 @@ const FILAS = [
 
   // --- mensajes -------------------------------------------------------
   { n: 'retirar un mensaje ajeno', m: 'POST', ruta: (w) => `/v1/mensajes/${w.M}/retirar` },
+  // El control lo hace un miembro que NO es el autor: abrir el propio es un
+  // 400 por diseno, no un acceso legitimo.
+  { n: 'avisar que se abrio un "ver una vez" de un chat ajeno', m: 'POST', ruta: (w) => `/v1/mensajes/${w.M}/abierto`,
+    quien: (w) => w.socio },
   { n: 'editar un mensaje ajeno', m: 'POST', ruta: (w) => `/v1/mensajes/${w.M}/editar` },
   { n: 'fijar un mensaje ajeno', m: 'POST', ruta: (w) => `/v1/mensajes/${w.M}/fijar`,
     cuerpo: () => ({ fijar: true }) },

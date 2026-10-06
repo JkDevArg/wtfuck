@@ -382,6 +382,10 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun mensajeMeta(id: String): MensajeMeta =
         pedir("$RUTA_MENSAJES/$id", "GET", null, true)
 
+    /** Avisa que se abrio un "ver una vez". Ver V47. */
+    suspend fun unaVezAbierta(id: String): Unit =
+        pedir("$RUTA_MENSAJES/$id/abierto", "POST", null, true)
+
     suspend fun retirarMensaje(id: String): Unit =
         pedir("$RUTA_MENSAJES/$id/retirar", "POST", null, true)
 

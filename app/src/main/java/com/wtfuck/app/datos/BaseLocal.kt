@@ -969,6 +969,10 @@ interface ChatDao {
     @Query("DELETE FROM mensaje WHERE id = :id AND estado = 'PROGRAMADO'")
     suspend fun cancelarProgramado(id: String)
 
+    /** Mi "ver una vez" ya lo abrieron. Ver V47 en el servidor. */
+    @Query("UPDATE mensaje SET unaVezAbierta = 1 WHERE id = :id AND esMio = 1")
+    suspend fun miUnaVezAbierta(id: String)
+
     /** Suelta el archivo de un "ver una vez": ya se borro del disco. */
     @Query("UPDATE mensaje SET rutaLocal = NULL WHERE id = :id")
     suspend fun soltarArchivo(id: String)

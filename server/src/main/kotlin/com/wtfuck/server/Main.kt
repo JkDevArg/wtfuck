@@ -1668,6 +1668,12 @@ fun Application.modulo() {
             call.respond(Mensajes.info(call.autenticar(), call.idRuta()))
         }
 
+        post("$RUTA_MENSAJES/{id}/abierto") {
+            val yo = call.autenticar()
+            Mensajes.unaVezAbierta(yo, call.idRuta()).forEach { (d, ev) -> Hub.empujar(d, ev) }
+            call.respond(HttpStatusCode.NoContent)
+        }
+
         post("$RUTA_MENSAJES/{id}/retirar") {
             val yo = call.autenticar()
             Mensajes.retirar(yo, call.idRuta()).forEach { (d, ev) -> Hub.empujar(d, ev) }

@@ -1353,6 +1353,21 @@ class Repositorio(
         // Acciones del modulo C: no son una linea en el chat, modifican un
         // mensaje que ya esta. Se aplican y se sale.
         when (e.tipo) {
+            // Ver V47: lo abrio quien lo recibio, o yo desde otro aparato.
+            "una_vez_abierta" -> {
+                val id = e.detalle.orEmpty()
+                dao.mensaje(id)?.let { m ->
+                    when {
+                        m.esMio -> dao.miUnaVezAbierta(id)
+                        !m.unaVezAbierta -> {
+                            dao.abrirUnaVez(id)
+                            soltarUnaVez(m)
+                        }
+                    }
+                }
+                socket.enviar(Subida.AcuseEvento(listOf(e.eventoId)))
+                return
+            }
             "mensaje_retirado" -> {
                 dao.marcarRetirado(e.detalle.orEmpty())
                 socket.enviar(Subida.AcuseEvento(listOf(e.eventoId)))
@@ -2951,6 +2966,9 @@ class Repositorio(
         }
         val archivo = m.rutaLocal?.let { File(it) }?.takeIf { it.exists() } ?: return null
         dao.abrirUnaVez(id)
+        // El aviso: a quien lo mando y a mis otros aparatos. Sin esperarlo y
+        // sin que su falta impida verlo: es un aviso, no un permiso.
+        ambito.launch { runCatching { api.unaVezAbierta(id) } }
         return archivo
     }
 
