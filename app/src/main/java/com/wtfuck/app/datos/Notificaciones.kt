@@ -233,7 +233,7 @@ object Notificaciones {
         if (protegido) {
             publicar(
                 ctx,
-                canal = if (esGrupo) CANAL_GRUPOS else CANAL_MENSAJES,
+                canal = canalPara(ctx, conversacionId, esGrupo),
                 id = conversacionId.hashCode(),
                 titulo = "wtfuck",
                 texto = "Mensaje nuevo en un chat protegido",
@@ -257,7 +257,7 @@ object Notificaciones {
 
         publicar(
             ctx,
-            canal = if (esGrupo) CANAL_GRUPOS else CANAL_MENSAJES,
+            canal = canalPara(ctx, conversacionId, esGrupo),
             id = conversacionId.hashCode(),
             titulo = quien,
             texto = cuerpo,
@@ -400,6 +400,64 @@ object Notificaciones {
      * "Recordarme este mensaje". Lleva al mensaje, no solo al chat. De un chat
      * protegido no dice ni de donde ni que: ver `ConversacionEnt.protegido`.
      */
+    // --- Un sonido propio para un chat ------------------------------------------
+    //
+    // Es un canal de notificacion del sistema con el chat como dueno: el sonido
+    // lo elige la persona en los ajustes de Android, que son los que ya conoce y
+    // los unicos que pueden cambiar el sonido de un canal. Se crea solo si se
+    // pide; sin el, el chat usa el canal general de siempre.
+
+    private fun canalDeChat(conversacionId: String) = "chat-$conversacionId"
+
+    /** El canal propio del chat si lo tiene -es el que lleva su sonido-; si no, el general. */
+    private fun canalPara(ctx: Context, conversacionId: String, esGrupo: Boolean): String =
+        if (tieneSonidoPropio(ctx, conversacionId)) canalDeChat(conversacionId)
+        else if (esGrupo) CANAL_GRUPOS else CANAL_MENSAJES
+
+    fun tieneSonidoPropio(ctx: Context, conversacionId: String): Boolean =
+        ctx.getSystemService(NotificationManager::class.java)
+            ?.getNotificationChannel(canalDeChat(conversacionId)) != null
+
+    /**
+     * Crea el canal del chat -si no estaba- y devuelve el Intent que abre su
+     * ajuste en el sistema. El nombre se ve en los ajustes de Android: de un
+     * chat protegido no se dice cual es.
+     */
+    fun sonidoPropio(ctx: Context, conversacionId: String, nombre: String, protegido: Boolean): Intent {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        val id = canalDeChat(conversacionId)
+        if (nm != null && nm.getNotificationChannel(id) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    id,
+                    if (protegido) "Chat protegido" else "Chat: $nombre",
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply { description = "El sonido propio de este chat" }
+            )
+        }
+        return Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+            .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, id)
+    }
+
+    fun quitarSonidoPropio(ctx: Context, conversacionId: String) {
+        runCatching {
+            ctx.getSystemService(NotificationManager::class.java)?.deleteNotificationChannel(canalDeChat(conversacionId))
+        }
+    }
+
+    /**
+     * Al cerrar sesion se van todos: el nombre de cada canal dice con quien
+     * hablaba esta cuenta, y los ajustes de Android lo muestran a cualquiera.
+     */
+    fun quitarSonidosPropios(ctx: Context) {
+        runCatching {
+            val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+            nm.notificationChannels.filter { it.id.startsWith("chat-") }
+                .forEach { nm.deleteNotificationChannel(it.id) }
+        }
+    }
+
     fun recordatorio(
         ctx: Context,
         conversacionId: String,

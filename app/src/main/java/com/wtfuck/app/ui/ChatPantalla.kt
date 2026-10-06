@@ -1,5 +1,7 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ContentCopy
@@ -290,6 +292,8 @@ private fun ChatAbierto(
     var seleccion by remember(conversacionId) { mutableStateOf(setOf<String>()) }
     var confirmarBorrarSeleccion by remember { mutableStateOf(false) }
     var verDestacados by remember { mutableStateOf(false) }
+    var eligiendoFondo by remember { mutableStateOf(false) }
+    var eligiendoSonido by remember { mutableStateOf(false) }
     /** El mensaje para el que se elige la hora del recordatorio. */
     var recordarDe by remember { mutableStateOf<MensajeEnt?>(null) }
     val recordatorios by app.repo.recordatoriosDe(conversacionId).collectAsStateWithLifecycle(emptyList())
@@ -434,6 +438,13 @@ private fun ChatAbierto(
     var hojaLlamarGrupo by remember { mutableStateOf(false) }
     val lista = rememberLazyListState()
     val contexto = LocalContext.current
+    var sonidoPropio by remember(conversacionId) {
+        mutableStateOf(com.wtfuck.app.datos.Notificaciones.tieneSonidoPropio(contexto, conversacionId))
+    }
+    // Al volver de los ajustes del sistema puede haber cambiado.
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        sonidoPropio = com.wtfuck.app.datos.Notificaciones.tieneSonidoPropio(contexto, conversacionId)
+    }
 
     // --- modulo M: buscador dentro de la conversacion ---
     //
@@ -998,6 +1009,17 @@ private fun ChatAbierto(
                             menuAbierto = false; verDestacados = true
                         }
 
+                        OpcionMenu("Fondo de este chat", Icons.Filled.Wallpaper) {
+                            menuAbierto = false; eligiendoFondo = true
+                        }
+
+                        OpcionMenu(
+                            if (sonidoPropio) "Sonido de este chat · propio" else "Sonido de este chat",
+                            Icons.Filled.MusicNote,
+                        ) {
+                            menuAbierto = false; eligiendoSonido = true
+                        }
+
                         OpcionMenu("Vaciar chat", Icons.Filled.DeleteSweep) {
                             menuAbierto = false
                             ambito.launch { app.repo.vaciarChat(conversacionId) }
@@ -1431,7 +1453,13 @@ private fun ChatAbierto(
             modifier = Modifier
                 .fillMaxSize()
                 .weight(1f)
-                .fondoDeChat(app.ajustes.fondoChat, claroAhora(app.ajustes.tema), Cian),
+                // El del chat si tiene uno propio; si no, el general.
+                .fondoDeChat(
+                    chat?.fondo?.takeIf { it.isNotBlank() }
+                        ?.let { f -> runCatching { com.wtfuck.app.ui.theme.FondoChat.valueOf(f) }.getOrNull() }
+                        ?: app.ajustes.fondoChat,
+                    claroAhora(app.ajustes.tema), Cian,
+                ),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             // Anclada abajo, en lo mas nuevo. Ver el efecto de arriba.
             reverseLayout = true,
@@ -1744,6 +1772,73 @@ private fun ChatAbierto(
                 }
             },
             onCerrar = { recordarDe = null },
+        )
+    }
+
+    if (eligiendoFondo) {
+        val actual = chat?.fondo.orEmpty()
+        AlertDialog(
+            onDismissRequest = { eligiendoFondo = false },
+            containerColor = BgElev,
+            title = { Text("Fondo de este chat", color = TextoPrimario) },
+            text = {
+                Column {
+                    val opciones = listOf<Pair<String, String>>("" to "El de todos los chats") +
+                        com.wtfuck.app.ui.theme.FondoChat.entries.map { it.name to it.etiqueta }
+                    opciones.forEach { (clave, etiqueta) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                eligiendoFondo = false
+                                ambito.launch { app.repo.fijarFondo(conversacionId, clave.ifBlank { null }) }
+                            }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = actual == clave, onClick = null)
+                            Spacer(Modifier.width(10.dp))
+                            Text(etiqueta, color = TextoPrimario)
+                        }
+                    }
+                    Text(
+                        "Solo en este teléfono.",
+                        color = TextoTerciario, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { eligiendoFondo = false }) { Text("Listo", color = Cian) } },
+        )
+    }
+
+    if (eligiendoSonido) {
+        AlertDialog(
+            onDismissRequest = { eligiendoSonido = false },
+            containerColor = BgElev,
+            title = { Text("Sonido de este chat", color = TextoPrimario) },
+            text = {
+                Text(
+                    if (sonidoPropio) "Este chat tiene su propio sonido. Puedes cambiarlo en los ajustes de Android o volver al de siempre."
+                    else "Para que este chat suene distinto, se le crea un ajuste propio en Android, donde eliges el sonido.",
+                    color = TextoSecundario,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    eligiendoSonido = false
+                    val i = com.wtfuck.app.datos.Notificaciones.sonidoPropio(
+                        contexto, conversacionId, chat?.titulo.orEmpty(), chat?.protegido == true,
+                    )
+                    sonidoPropio = true
+                    runCatching { contexto.startActivity(i) }
+                }) { Text(if (sonidoPropio) "Cambiar sonido" else "Elegir sonido", color = Cian) }
+            },
+            dismissButton = {
+                if (sonidoPropio) {
+                    TextButton(onClick = {
+                        eligiendoSonido = false
+                        com.wtfuck.app.datos.Notificaciones.quitarSonidoPropio(contexto, conversacionId)
+                        sonidoPropio = false
+                    }) { Text("Volver al de siempre", color = Coral) }
+                }
+            },
         )
     }
 

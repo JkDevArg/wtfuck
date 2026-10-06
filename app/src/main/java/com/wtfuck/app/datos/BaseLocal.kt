@@ -91,6 +91,8 @@ data class ConversacionEnt(
      * este telefono: el servidor no tiene por que saber cuales son.
      */
     val protegido: Boolean = false,
+    /** El fondo de este chat (`FondoChat`), o vacio para el general. Solo en este telefono. */
+    val fondo: String = "",
 )
 
 /**
@@ -174,6 +176,8 @@ data class ChatFila(
     val borrador: String = "",
     /** Ver `ConversacionEnt.protegido`. */
     val protegido: Boolean = false,
+    /** Ver `ConversacionEnt.fondo`. */
+    val fondo: String = "",
 ) {
     /** El globo se pinta si hay mensajes sin leer O si la marque a mano. */
     val sinLeer: Boolean get() = noLeidos > 0 || marcadaNoLeida
@@ -654,7 +658,7 @@ interface ChatDao {
                   m.adjuntoClase AS ultimoAdjuntoClase,
                   m.adjuntoNombre AS ultimoAdjuntoNombre,
                   c.miRol, c.miJerarquia, c.silenciadoHasta, c.archivado, c.fijado,
-                  c.marcadaNoLeida, c.soyMiembro, c.expiraEn, c.temporalesSegundos, c.borrador, c.protegido,
+                  c.marcadaNoLeida, c.soyMiembro, c.expiraEn, c.temporalesSegundos, c.borrador, c.protegido, c.fondo,
                   COALESCE(k.alias, '') AS aliasContacto,
                   COALESCE(ka.alias, '') AS aliasAutor
            FROM conversacion c
@@ -989,6 +993,9 @@ interface ChatDao {
 
     @Query("UPDATE mensaje SET transcripcion = :texto WHERE id = :id")
     suspend fun guardarTranscripcion(id: String, texto: String)
+
+    @Query("UPDATE conversacion SET fondo = :fondo WHERE id = :id")
+    suspend fun fijarFondo(id: String, fondo: String)
 
     @Query("UPDATE conversacion SET protegido = :protegido WHERE id = :id")
     suspend fun fijarProtegido(id: String, protegido: Boolean)
@@ -1509,7 +1516,7 @@ interface ChatDao {
         CarpetaChatEnt::class,
         RecordatorioEnt::class,
     ],
-    version = 32,
+    version = 33,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1529,7 +1536,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31, DE_31_A_32,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31, DE_31_A_32, DE_32_A_33,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1701,6 +1708,13 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Fondo por chat. */
+        private val DE_32_A_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE conversacion ADD COLUMN fondo TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         /** Recordatorios. */
         private val DE_31_A_32 = object : Migration(31, 32) {
             override fun migrate(db: SupportSQLiteDatabase) {

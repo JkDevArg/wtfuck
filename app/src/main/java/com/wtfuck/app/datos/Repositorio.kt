@@ -423,6 +423,9 @@ class Repositorio(
 
     fun tomarRespuestaPendiente(convId: String): MensajeEnt? = respuestasPendientes.remove(convId)
 
+    /** El fondo de un chat; null = el general. Solo en este telefono. */
+    suspend fun fijarFondo(convId: String, fondo: String?) = dao.fijarFondo(convId, fondo.orEmpty())
+
     // --- Destacados: solo en este telefono ------------------------------------
 
     fun destacados(convId: String = ""): Flow<List<MensajeEnt>> = dao.destacados(convId)
@@ -870,6 +873,7 @@ class Repositorio(
                 borrador = previa?.borrador.orEmpty(),
                 marcadaNoLeida = previa?.marcadaNoLeida ?: false,
                 protegido = previa?.protegido ?: false,
+                fondo = previa?.fondo.orEmpty(),
             )
         )
     }
@@ -1481,6 +1485,7 @@ class Repositorio(
                 }.getOrNull() ?: e.conversacionId
                 runCatching { vaciarChat(cual) }
                 runCatching { dao.borrarConversacion(cual) }
+                Notificaciones.quitarSonidoPropio(contexto, cual)
                 socket.enviar(Subida.AcuseEvento(listOf(e.eventoId)))
                 return
             }
@@ -4181,6 +4186,7 @@ class Repositorio(
             // medio, y esos ya no los encuentra nadie para borrarlos.
             runCatching { vaciarChat(conv.id) }
             runCatching { dao.borrarConversacion(conv.id) }
+            Notificaciones.quitarSonidoPropio(contexto, conv.id)
         }
         return vencidas.size
     }
@@ -5337,6 +5343,7 @@ class Repositorio(
         // quien eran.
         dao.borrarChatsEnCarpetas()
         dao.borrarCarpetas()
+        Notificaciones.quitarSonidosPropios(contexto)
     }
 
     /**
@@ -5536,6 +5543,7 @@ class Repositorio(
         runCatching { api.salir(convId) }
         dao.borrarMensajesDe(convId)
         dao.borrarConversacion(convId)
+        Notificaciones.quitarSonidoPropio(contexto, convId)
     }
 
     suspend fun salirDe(convId: String) {
@@ -5563,6 +5571,7 @@ class Repositorio(
         dao.borrarChatsEnCarpetas()
         dao.borrarCarpetas()
         dao.borrarRecordatorios()
+        Notificaciones.quitarSonidosPropios(contexto)
         // Los atajos y el widget hablan de esta cuenta.
         Atajos.borrarTodos(contexto)
         WidgetWtfuck.actualizar(contexto, 0)
