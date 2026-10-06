@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +36,7 @@ import androidx.core.content.ContextCompat
 import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.datos.TransporteCerca
 import com.wtfuck.app.ui.theme.*
+import kotlinx.coroutines.launch
 
 /**
  * Los permisos que hacen falta, segun la version de Android.
@@ -91,6 +93,7 @@ fun DialogoCerca(onCerrar: () -> Unit) {
     // que ya está en `true` no vuelve a disparar nada.
     var intento by remember { mutableIntStateOf(0) }
     var aviso by remember { mutableStateOf<String?>(null) }
+    val ambito = rememberCoroutineScope()
 
     fun arrancar() {
         when {
@@ -106,7 +109,13 @@ fun DialogoCerca(onCerrar: () -> Unit) {
                 }
             }
             !cerca.encender() -> aviso = "No se pudo encender el modo cerca."
-            else -> aviso = null
+            else -> {
+                aviso = null
+                // Los bloqueos hechos desde otro aparato mio, al dia antes de
+                // que alguien se enlace. Sin red no pasa nada: queda la lista
+                // que ya habia.
+                ambito.launch { app.repo.bloqueados() }
+            }
         }
     }
 

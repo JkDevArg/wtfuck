@@ -464,6 +464,8 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun desbloquear(username: String): Unit =
         pedir("$RUTA_BLOQUEOS/$username", "DELETE", null, true)
 
+    suspend fun bloqueados(): List<Bloqueado> = pedir(RUTA_BLOQUEOS, "GET", null, true)
+
     suspend fun privacidad(): Privacidad = pedir(RUTA_PRIVACIDAD, "GET", null, true)
 
     suspend fun guardarPrivacidad(p: Privacidad): Privacidad =

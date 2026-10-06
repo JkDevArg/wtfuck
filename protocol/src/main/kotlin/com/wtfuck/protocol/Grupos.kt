@@ -12,6 +12,20 @@ import kotlinx.serialization.Serializable
 const val RUTA_BLOQUEOS = "/v1/bloqueos"
 const val RUTA_INVITACIONES = "/v1/invitaciones"
 
+/**
+ * Alguien a quien bloqueé: `GET /v1/bloqueos`, el más reciente primero.
+ *
+ * Solo el username, sin foto ni nombre: esos datos los rige la privacidad del
+ * otro, y la lista existe para poder desbloquear, no para seguir mirando.
+ */
+@Serializable
+data class Bloqueado(
+    val usuarioId: String,
+    val username: String,
+    /** Cuándo lo bloqueé, epoch ms. */
+    val desde: Long,
+)
+
 // ============================================================
 //  Configuracion del grupo
 // ============================================================

@@ -48,6 +48,7 @@ import com.wtfuck.app.ui.CapaLlamada
 import com.wtfuck.app.ui.HistorialLlamadasPantalla
 import com.wtfuck.app.ui.BitacoraPantalla
 import com.wtfuck.app.ui.ConsolaWebPantalla
+import com.wtfuck.app.ui.BloqueadosPantalla
 import com.wtfuck.app.ui.ExcepcionesPantalla
 import com.wtfuck.app.ui.ConversacionesPanelPantalla
 import com.wtfuck.app.ui.Inicio
@@ -432,6 +433,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
             PrivacidadPantalla(
                 onAtras = { nav.popBackStack() },
                 onExcepciones = { nav.navigate("excepciones") },
+                onBloqueados = { nav.navigate("bloqueados") },
                 // Igual que desde Seguridad: pedir el borrado cierra las
                 // sesiones en el servidor, y quedarse dentro con un token
                 // muerto solo daria errores sin explicacion.
@@ -441,6 +443,10 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
 
         composable("excepciones") {
             ExcepcionesPantalla(onAtras = { nav.popBackStack() })
+        }
+
+        composable("bloqueados") {
+            BloqueadosPantalla(onAtras = { nav.popBackStack() })
         }
 
         composable("comunidades") {

@@ -93,10 +93,13 @@ object Novedades {
             version = "0.6.4",
             fecha = "06/10/2026",
             cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "Bloqueados, en Privacidad: a quiénes bloqueaste y desbloquearlos. También desde su perfil, que ahora dice si lo bloqueaste."),
                 Cambio(TipoCambio.MEJORA, "Modo cerca sin emparejar: con Android 12 o más nuevo te encuentras por Bluetooth con tus contactos sin pasar por los ajustes. Solo te reconoce quien tiene tu clave de cercanía, que viaja sola en tus chats directos; para cualquier otro, tu teléfono es un número que cambia cada cuarto de hora."),
                 Cambio(TipoCambio.MEJORA, "Modo cerca con varias personas a la vez, hasta cuatro: para un grupo en la misma sala."),
                 Cambio(TipoCambio.SEGURIDAD, "El enlace del modo cerca va cifrado y autenticado con las claves de tus chats, y estrena claves en cada conexión."),
                 Cambio(TipoCambio.SEGURIDAD, "Al bloquear a alguien cambia tu clave de cercanía: deja de reconocerte por Bluetooth, y el enlace con esa persona se corta si estaba abierto."),
+                Cambio(TipoCambio.MEJORA, "El botón Nuevo de la lista de chats estrena ícono, a tono con el nombre de la app."),
+                Cambio(TipoCambio.ARREGLO, "No se podía bloquear a alguien con quien tienes un chat si se ocultaba de la búsqueda, ni desbloquear a quien se ocultaba. Ya se puede."),
             ),
         ),
         NotasVersion(

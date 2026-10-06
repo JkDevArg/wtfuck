@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Contacts
@@ -50,10 +49,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.Crossfade
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -1580,9 +1578,6 @@ private fun MenuDeCreacion(
     onNota: () -> Unit,
     onEscanear: () -> Unit = {},
 ) {
-    // El icono gira 45 grados: el mismo "+" se convierte en una X sin cambiar
-    // de icono. Lo que cambia no es la forma, es lo que significa.
-    val giro by animateFloatAsState(if (abierto) 45f else 0f, label = "giro")
 
     Column(horizontalAlignment = Alignment.End) {
         if (abierto) {
@@ -1608,7 +1603,13 @@ private fun MenuDeCreacion(
                 stateDescription = if (abierto) "desplegado" else "plegado"
             },
         ) {
-            Icon(Icons.Filled.Add, null, modifier = Modifier.rotate(giro))
+            // Cerrado, el dedo del medio, como el nombre de la app (ver
+            // `IconoDedo`); abierto, la X para cerrar. Antes era un "+" que
+            // giraba hasta ser X, pero el dedo girado no dice nada: se cambia
+            // de icono, con un fundido.
+            Crossfade(abierto, label = "icono-nuevo") { a ->
+                Icon(if (a) Icons.Filled.Close else IconoDedo, null)
+            }
             Spacer(Modifier.width(8.dp))
             Text(if (abierto) "Cerrar" else "Nuevo", fontWeight = FontWeight.Medium)
         }

@@ -1863,19 +1863,31 @@ fun Application.modulo() {
 
         // --- bloqueos ------------------------------------------------
 
+        get(RUTA_BLOQUEOS) {
+            val yo = call.autenticar()
+            call.respond(Db.query { c -> Autz.bloqueados(c, yo.usuarioId) })
+        }
+
+        // Bloquear: por la busqueda O por una conversacion en comun. Ver
+        // `Autz.conocidoPorNombre`.
         post("$RUTA_BLOQUEOS/{username}") {
             val yo = call.autenticar()
-            val otro = Repo.buscar(yo, call.parameters["username"].orEmpty())
+            val nombre = call.parameters["username"].orEmpty()
+            val otro = Repo.buscar(yo, nombre)?.let { UUID.fromString(it.usuarioId) }
+                ?: Db.query { c -> Autz.conocidoPorNombre(c, yo.usuarioId, nombre) }
                 ?: throw ErrorNegocio(404, "No existe ese usuario.")
-            Db.tx { c -> Autz.bloquear(c, yo.usuarioId, UUID.fromString(otro.usuarioId)) }
+            Db.tx { c -> Autz.bloquear(c, yo.usuarioId, otro) }
             call.respond(HttpStatusCode.NoContent)
         }
 
+        // Desbloquear: primero entre MIS bloqueos. Ver `Autz.bloqueadoPorNombre`.
         delete("$RUTA_BLOQUEOS/{username}") {
             val yo = call.autenticar()
-            val otro = Repo.buscar(yo, call.parameters["username"].orEmpty())
+            val nombre = call.parameters["username"].orEmpty()
+            val otro = Db.query { c -> Autz.bloqueadoPorNombre(c, yo.usuarioId, nombre) }
+                ?: Repo.buscar(yo, nombre)?.let { UUID.fromString(it.usuarioId) }
                 ?: throw ErrorNegocio(404, "No existe ese usuario.")
-            Db.tx { c -> Autz.desbloquear(c, yo.usuarioId, UUID.fromString(otro.usuarioId)) }
+            Db.tx { c -> Autz.desbloquear(c, yo.usuarioId, otro) }
             call.respond(HttpStatusCode.NoContent)
         }
 

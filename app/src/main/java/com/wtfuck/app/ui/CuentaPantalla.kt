@@ -431,7 +431,7 @@ fun CuentaPantalla(
                 // se dice que no se pudo mirar, que es lo unico cierto.
                 EstadoDeError(
                     titulo = "No se pudo comprobar",
-                    detalle = "No pudimos preguntarle al servidor que sesiones tenes " +
+                    detalle = "No pudimos preguntarle al servidor qué sesiones tienes " +
                         "abiertas. Esto NO quiere decir que no haya ninguna.",
                     onReintentar = { cargando = true; ambito.launch { recargar() } },
                 )

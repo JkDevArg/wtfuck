@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Campaign
@@ -52,6 +53,7 @@ import androidx.compose.material.icons.filled.Map
 fun PrivacidadPantalla(
     onAtras: () -> Unit,
     onExcepciones: () -> Unit,
+    onBloqueados: () -> Unit = {},
     /** Se pidio borrar la cuenta: las sesiones ya estan cerradas en el servidor. */
     onCuentaBorrada: () -> Unit = {},
 ) {
@@ -369,7 +371,7 @@ fun PrivacidadPantalla(
                 Column(Modifier.weight(1f)) {
                     Text("Aceptar solicitudes de mensaje", color = TextoPrimario)
                     Text(
-                        "Quien no puede escribirte directamente puede mandar una solicitud. Vive aparte y la aceptas o la rechazas vos.",
+                        "Quien no puede escribirte directamente puede mandar una solicitud. Vive aparte y tú la aceptas o la rechazas.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
                     )
@@ -463,6 +465,33 @@ fun PrivacidadPantalla(
                     Text(
                         "\"Todos menos...\" y \"Solo...\", para los ajustes que pongas en " +
                             "Personalizado",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoTerciario,
+                    )
+                }
+                Icon(
+                    Icons.Filled.ChevronRight,
+                    null,
+                    tint = TextoTerciario,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+
+            // Bloqueados va con los ajustes de la cuenta: lo aplica el
+            // servidor y vale en todos los aparatos.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onBloqueados)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Block, null, tint = Coral, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Bloqueados", color = TextoPrimario)
+                    Text(
+                        "A quiénes bloqueaste, y desbloquearlos",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
                     )
@@ -814,11 +843,11 @@ fun PrivacidadPantalla(
                             "Es reciproco: con \"nadie\" tampoco ves la última conexión de " +
                                 "los demas."
                         "nombre" ->
-                            "Tu usuario NO se puede ocultar: es la direccion con la que " +
-                                "existis aquí. Quien no vea tu nombre verá @tu_usuario."
+                            "Tu usuario NO se puede ocultar: es la dirección con la que " +
+                                "existes aquí. Quien no vea tu nombre verá @tu_usuario."
                         "busqueda" ->
-                            "Con \"nadie\" no dejas de ser alcanzable: quien ya habla con vos " +
-                                "sigue escribiendote y los enlaces de invitacion siguen " +
+                            "Con \"nadie\" no dejas de ser alcanzable: quien ya habla contigo " +
+                                "sigue escribiéndote y los enlaces de invitación siguen " +
                                 "funcionando. Solo deja de encontrarte quien teclea tu nombre."
                         "llamadas" ->
                             "Una llamada suena, interrumpe y despierta. Por eso este empieza " +

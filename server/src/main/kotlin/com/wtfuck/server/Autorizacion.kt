@@ -361,6 +361,66 @@ object Autz {
         ).use { st -> st.setObject(1, bloqueador); st.setObject(2, bloqueado); st.executeUpdate() }
     }
 
+    /** A quienes bloqueo, el mas reciente primero. Solo los ve quien bloqueo. */
+    fun bloqueados(c: Connection, bloqueador: UUID): List<com.wtfuck.protocol.Bloqueado> =
+        c.prepareStatement(
+            """SELECT u.id, u.username, (extract(epoch FROM b.creado_en) * 1000)::bigint
+               FROM bloqueo b JOIN usuario u ON u.id = b.bloqueado_id
+               WHERE b.bloqueador_id = ?
+               ORDER BY b.creado_en DESC, u.username"""
+        ).use { st ->
+            st.setObject(1, bloqueador)
+            st.executeQuery().use { rs ->
+                buildList {
+                    while (rs.next()) {
+                        add(com.wtfuck.protocol.Bloqueado(rs.getObject(1, UUID::class.java).toString(), rs.getString(2), rs.getLong(3)))
+                    }
+                }
+            }
+        }
+
+    /**
+     * Alguien a quien YO bloquee, por su username: para desbloquear.
+     *
+     * No pasa por la busqueda a proposito. La busqueda respeta "quien me
+     * encuentra" del otro, y con eso quien se ocultaba no se podia desbloquear
+     * nunca. Aqui no hay nada que averiguar: solo encuentra a quien ya bloquee.
+     */
+    fun bloqueadoPorNombre(c: Connection, bloqueador: UUID, username: String): UUID? =
+        c.prepareStatement(
+            """SELECT u.id FROM bloqueo b JOIN usuario u ON u.id = b.bloqueado_id
+               WHERE b.bloqueador_id = ? AND u.username = ?"""
+        ).use { st ->
+            st.setObject(1, bloqueador); st.setString(2, username.lowercase().trim())
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+        }
+
+    /**
+     * Alguien con quien comparto, o comparti, una conversacion: para bloquear.
+     *
+     * Bloquear se resolvia solo con la busqueda, y quien se oculta de ella no
+     * se podia bloquear aunque estuviera molestando en un chat, que es el caso
+     * para el que existe bloquear. Tampoco se resuelve por el username a secas:
+     * la ruta serviria para averiguar si un usuario existe. Con una
+     * conversacion en comun, ya se que existe.
+     *
+     * Cuenta tambien una conversacion de la que alguno ya salio: borrar el chat
+     * con quien molesta no deberia impedir bloquearlo despues.
+     */
+    fun conocidoPorNombre(c: Connection, yo: UUID, username: String): UUID? =
+        c.prepareStatement(
+            """SELECT u.id FROM usuario u
+               WHERE u.username = ? AND u.desactivado_en IS NULL
+                 AND EXISTS (
+                   SELECT 1 FROM participante pa
+                     JOIN participante pb ON pb.conversacion_id = pa.conversacion_id
+                   WHERE pa.usuario_id = ? AND pb.usuario_id = u.id
+                 )"""
+        ).use { st ->
+            st.setString(1, username.lowercase().trim()); st.setObject(2, yo)
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+        }
+
     /**
      * ¿`duenio` considera conocido a `otro`?
      *

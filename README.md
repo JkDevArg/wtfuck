@@ -17,14 +17,14 @@ docs/       decisiones de arquitectura, hoja de ruta, API, despliegue
 ## Estado
 
 Versión publicada: **0.6.3**. La **0.6.4**, sin publicar todavía, trae el modo
-cerca sin emparejar (Bluetooth LE). Lo que cambió en cada versión está en
+cerca sin emparejar (Bluetooth LE) y la pantalla de Bloqueados. Lo que cambió en cada versión está en
 [CHANGELOG.md](CHANGELOG.md), que se genera desde la pantalla de Novedades de la
 app con `python despliegue/changelog.py`.
 
-Servidor y app funcionando, verificados en dos emuladores. Hay **2544 pruebas
+Servidor y app funcionando, verificados en dos emuladores. Hay **2568 pruebas
 en verde** en la configuración mínima (una instancia, sin Redis):
 
-- 1781 de integración, en 46 suites;
+- 1805 de integración, en 47 suites;
 - 87 de JUnit en el servidor;
 - 676 en la app.
 

@@ -140,6 +140,9 @@ fun PersonaPantalla(
     var editandoAlias by remember { mutableStateOf(false) }
     var confirmando by remember { mutableStateOf<String?>(null) }
     var aviso by remember { mutableStateOf<String?>(null) }
+    // Si lo bloqueé: entonces la fila de abajo ofrece desbloquear. Lo dice el
+    // servidor, que es donde vive el bloqueo; sin red queda en "no".
+    var bloqueado by remember { mutableStateOf(false) }
 
     // La llamada la arranca ESTA pantalla y no quien la abrio: el router no
     // tiene por que saber de llamadas, y este es el mismo ayudante que usa la
@@ -171,6 +174,8 @@ fun PersonaPantalla(
             val c = libreta.firstOrNull { it.username.equals(user, ignoreCase = true) }
             enLibreta = c != null
             alias = c?.alias.orEmpty()
+            bloqueado = app.repo.bloqueados().getOrNull()
+                ?.any { it.username.equals(user, ignoreCase = true) } == true
         }
     }
 
@@ -381,8 +386,8 @@ fun PersonaPantalla(
             if (enLibreta) {
                 FilaDato(
                     Icons.Filled.Edit,
-                    if (alias.isBlank()) "Ponerle un nombre" else "Lo llamás \"$alias\"",
-                    "Sólo lo ves vos",
+                    if (alias.isBlank()) "Ponerle un nombre" else "Lo llamas \"$alias\"",
+                    "Solo lo ves tú",
                     onClick = { editandoAlias = true },
                 )
                 FilaDato(
@@ -414,13 +419,23 @@ fun PersonaPantalla(
                 color = Coral,
                 onClick = onDenunciar,
             )
-            FilaDato(
-                Icons.Filled.Block,
-                "Bloquear a @$usuario",
-                null,
-                color = Coral,
-                onClick = { confirmando = "bloquear" },
-            )
+            if (bloqueado) {
+                FilaDato(
+                    Icons.Filled.Block,
+                    "Desbloquear a @$usuario",
+                    "Lo bloqueaste",
+                    color = Cian,
+                    onClick = { confirmando = "desbloquear" },
+                )
+            } else {
+                FilaDato(
+                    Icons.Filled.Block,
+                    "Bloquear a @$usuario",
+                    null,
+                    color = Coral,
+                    onClick = { confirmando = "bloquear" },
+                )
+            }
 
             Spacer(Modifier.height(32.dp))
         }
@@ -432,11 +447,11 @@ fun PersonaPantalla(
         AlertDialog(
             onDismissRequest = { editandoAlias = false },
             containerColor = BgSurface,
-            title = { Text("Cómo lo llamás", color = TextoPrimario) },
+            title = { Text("Cómo lo llamas", color = TextoPrimario) },
             text = {
                 Column {
                     Text(
-                        "Este nombre no le llega a nadie: sólo cambia cómo lo ves vos.",
+                        "Este nombre no le llega a nadie: solo cambia cómo lo ves tú.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextoTerciario,
                     )
@@ -481,6 +496,11 @@ fun PersonaPantalla(
                 "No va a poder escribirte ni llamarte, y no se le avisa.",
                 "Bloquear",
             )
+            "desbloquear" -> Triple(
+                "¿Desbloquear a @$usuario?",
+                "Podrá volver a escribirte y llamarte, según lo que permita tu privacidad. No se le avisa.",
+                "Desbloquear",
+            )
             "quitar" -> Triple(
                 "¿Quitarlo de contactos?",
                 "El chat y los mensajes se quedan como están. Se pierde el nombre que le pusiste.",
@@ -506,13 +526,16 @@ fun PersonaPantalla(
                             "bloquear" -> runCatching { app.repo.bloquear(usuario) }
                                 .onSuccess { onAtras() }
                                 .onFailure { aviso = it.message }
+                            "desbloquear" -> runCatching { app.repo.desbloquear(usuario) }
+                                .onSuccess { bloqueado = false }
+                                .onFailure { aviso = it.message }
                             "quitar" -> app.repo.borrarContacto(usuario)
                                 .onSuccess { enLibreta = false; alias = "" }
                                 .onFailure { aviso = it.message }
-                            else -> aviso = "Elegí el chat desde el botón de adjuntar"
+                            else -> aviso = "Elige el chat desde el botón de adjuntar"
                         }
                     }
-                }) { Text(etiqueta, color = Coral) }
+                }) { Text(etiqueta, color = if (que == "desbloquear") Cian else Coral) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmando = null }) {

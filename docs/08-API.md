@@ -386,7 +386,12 @@ Las rutas completas, agrupadas. El detalle de cada decisión está en
 `GET`/`PUT .../config`, `.../miembros`, `.../miembros/{usuario}/rol`,
 `.../expulsar`, `.../silenciar`, `.../roles`, `.../invitaciones`,
 `.../solicitudes`, `.../preferencias`, `.../salir`, `/v1/invitaciones/{codigo}`,
-`/v1/bloqueos/{username}`.
+`GET /v1/bloqueos` *(a quiénes bloqueé)*, `POST`/`DELETE /v1/bloqueos/{username}`.
+
+> Bloquear resuelve el usuario por la búsqueda **o** por una conversación en
+> común; desbloquear, entre los propios bloqueos. Ninguna de las dos depende de
+> que el otro se deje encontrar, y ninguna sirve para averiguar si un usuario
+> existe. Ver `docs/evidencias/bloqueados/`.
 
 **Canales** — `POST /v1/canales`, `GET /v1/canales/directorio` *(la lista
 curada; es la puerta normal)*, `GET /v1/canales/buscar` *(el filtro)*,

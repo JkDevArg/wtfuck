@@ -170,12 +170,13 @@ class Repositorio(
     private val miBaliza = MiBaliza(contexto)
 
     /**
-     * A quienes bloquee DESDE ESTE TELEFONO, para el modo cerca.
+     * A quienes bloquee, para el modo cerca.
      *
      * Con internet el bloqueo lo aplica el servidor; por el aire no hay
      * servidor, y sin esta lista un enlace con alguien bloqueado seguiria
-     * entregando sus mensajes. Un bloqueo hecho desde otro aparato mio no esta
-     * aqui hasta que se repita en este.
+     * entregando sus mensajes. Un bloqueo hecho desde otro aparato mio llega
+     * aqui al abrir la lista de bloqueados o al encender el modo cerca: ver
+     * [bloqueados].
      */
     private val bloqueadosCerca = contexto.getSharedPreferences("wtfuck_cerca_bloqueos", android.content.Context.MODE_PRIVATE)
 
@@ -5909,19 +5910,47 @@ class Repositorio(
 
     suspend fun bloquear(username: String) {
         api.bloquear(username)
-        // Modo cerca: esa persona se queda con mi clave vieja y con la nueva ya
-        // no me reconoce. Los demas la reciben con el proximo mensaje. Y las
-        // suyas se olvidan: no se busca a quien se bloqueo.
-        runCatching { dao.borrarBalizasDe(username.lowercase().trim()) }
-        miBaliza.rotar()
-        bloqueadosCerca.edit().putBoolean(username.lowercase().trim(), true).apply()
-        cerca.cortarCon(username)
+        aislarPorCerca(listOf(username))
         sincronizar()
     }
+
     suspend fun desbloquear(username: String) {
         api.desbloquear(username)
         bloqueadosCerca.edit().remove(username.lowercase().trim()).apply()
         sincronizar()
+    }
+
+    /**
+     * Modo cerca, al bloquear: esas personas se quedan con mi clave vieja y con
+     * la nueva ya no me reconocen. Los demas la reciben con el proximo mensaje.
+     * Las suyas se olvidan, porque no se busca a quien se bloqueo, y el enlace
+     * con ellas se corta. La clave rota UNA vez aunque sean varias.
+     */
+    private suspend fun aislarPorCerca(usernames: Collection<String>) {
+        val nombres = usernames.map { it.lowercase().trim() }.filter { it.isNotEmpty() }
+        if (nombres.isEmpty()) return
+        nombres.forEach { runCatching { dao.borrarBalizasDe(it) } }
+        miBaliza.rotar()
+        bloqueadosCerca.edit().apply { nombres.forEach { putBoolean(it, true) } }.apply()
+        nombres.forEach { cerca.cortarCon(it) }
+    }
+
+    /**
+     * A quienes bloquee, el mas reciente primero. Ver `Bloqueado`.
+     *
+     * De paso pone al dia la lista del modo cerca con la del servidor, que es
+     * la verdad: un bloqueo hecho desde otro aparato mio entra aqui -y se aisla
+     * igual que si se hubiera hecho en este-, y uno que se deshizo en otro
+     * aparato sale.
+     */
+    suspend fun bloqueados(): Result<List<Bloqueado>> = runCatching {
+        val lista = api.bloqueados()
+        val servidor = lista.map { it.username.lowercase().trim() }.toSet()
+        val locales = bloqueadosCerca.all.keys.toSet()
+        aislarPorCerca(servidor - locales)
+        val fuera = locales - servidor
+        if (fuera.isNotEmpty()) bloqueadosCerca.edit().apply { fuera.forEach { remove(it) } }.apply()
+        lista
     }
 
     suspend fun miembros(convId: String) = api.miembros(convId)

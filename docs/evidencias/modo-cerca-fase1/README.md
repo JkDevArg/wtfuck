@@ -206,9 +206,10 @@ pila Bluetooth del sistema.
 - **Un aparato nuevo de un contacto no recibe mi clave** hasta que yo la rote:
   `baliza_enviada` se anota por chat, no por aparato. Con que uno de los dos
   tenga la clave del otro alcanza, porque llama ese.
-- **No hay pantalla para desbloquear.** `Repositorio.desbloquear` existe, pero
-  ninguna pantalla lo llama; el defecto ya existía antes de esta fase. Hoy
-  desbloquear exige tocar la base.
+- ~~**No hay pantalla para desbloquear.**~~ Resuelto después de esta fase:
+  pantalla "Bloqueados" en Privacidad, y "Desbloquear" en la ficha. Ver
+  `docs/evidencias/bloqueados/`. La misma lista pone al día los bloqueos del
+  modo cerca hechos desde otro aparato.
 - **Por ahora solo texto,** como en la fase 0.
 
 ## Lo que sigue
