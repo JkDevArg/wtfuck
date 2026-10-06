@@ -30,6 +30,8 @@ sealed interface Pedido {
     data object AbrirNota : Pedido
     /** La notificacion de una copia automatica fallida. */
     data object AbrirCopias : Pedido
+    /** `wtfuck://c/<codigo>`: el enlace de contacto de alguien. */
+    data class AbrirEnlace(val codigo: String) : Pedido
     /** [destino]: el chat que se eligio en la fila de compartir del sistema, si fue asi. */
     data class Compartir(val compartido: Compartido, val destino: String?) : Pedido
 }
@@ -45,6 +47,12 @@ object Pedidos {
     fun simple(i: Intent): Pedido? {
         i.getStringExtra("conversacionId")?.takeIf { it.isNotBlank() }?.let {
             return Pedido.AbrirChat(it, i.getStringExtra("mensajeId")?.takeIf { m -> m.isNotBlank() })
+        }
+        // El codigo sale validado o no sale: lo que llega por un enlace lo
+        // escribio cualquiera.
+        if (i.action == Intent.ACTION_VIEW && i.data?.scheme == "wtfuck") {
+            return com.wtfuck.app.datos.EnlaceDeContacto.codigoDe(i.dataString.orEmpty())
+                ?.let { Pedido.AbrirEnlace(it) }
         }
         return when (i.action) {
             Atajos.ACCION_NOTA -> Pedido.AbrirNota

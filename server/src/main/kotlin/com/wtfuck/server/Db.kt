@@ -85,6 +85,7 @@ object Db {
         45 to "/db/V45__nota_para_mi.sql",
         46 to "/db/V46__entrega_en_grupos.sql",
         47 to "/db/V47__una_vez_abierta.sql",
+        48 to "/db/V48__enlace_contacto.sql",
     )
 
     /**

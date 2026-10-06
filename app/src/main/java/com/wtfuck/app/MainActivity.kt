@@ -244,6 +244,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
 
     // Lo que se pidio desde afuera. Ver `Pedidos`.
     var compartiendo by remember { mutableStateOf<Pedido.Compartir?>(null) }
+    var enlaceAbierto by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(pedido) {
         val p = pedido ?: return@LaunchedEffect
         onAtendido()
@@ -252,6 +253,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
         when (p) {
             is Pedido.AbrirChat -> nav.navigate(if (p.mensaje != null) "chat/${p.id}?m=${p.mensaje}" else "chat/${p.id}")
             Pedido.AbrirCopias -> nav.navigate("copia-seguridad")
+            is Pedido.AbrirEnlace -> enlaceAbierto = p.codigo
             Pedido.AbrirNota -> runCatching { app.repo.abrirNotaParaMi() }
                 .onSuccess { nav.navigate("chat/$it") }
             is Pedido.Compartir -> compartiendo = p
@@ -289,6 +291,17 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
                 compartido = c.compartido,
                 preseleccion = c.destino,
                 onCerrar = { compartiendo = null },
+                onAbrirChat = { nav.navigate("chat/$it") },
+            )
+        }
+    }
+
+    enlaceAbierto?.let { c ->
+        // Igual que compartir: nunca encima de la pantalla de bloqueo.
+        if (!bloqueada) {
+            com.wtfuck.app.ui.HojaContactoPorEnlace(
+                codigo = c,
+                onCerrar = { enlaceAbierto = null },
                 onAbrirChat = { nav.navigate("chat/$it") },
             )
         }
@@ -348,6 +361,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
                     onPanel = { nav.navigate("panel") },
                     onNovedades = { nav.navigate("novedades") },
                     onCopiaSeguridad = { nav.navigate("copia-seguridad") },
+                    onMiEnlace = { nav.navigate("mi-enlace") },
                     onSeguridad = { nav.navigate("seguridad") },
                     onAbrirEnMensaje = { id, m -> nav.navigate("chat/$id?m=$m") },
                     onLlamadas = { nav.navigate("llamadas") },
@@ -480,6 +494,10 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
 
         composable("copia-seguridad") {
             CopiaSeguridadPantalla(onAtras = { nav.popBackStack() })
+        }
+
+        composable("mi-enlace") {
+            com.wtfuck.app.ui.MiEnlacePantalla(onAtras = { nav.popBackStack() })
         }
 
         composable("limites") {

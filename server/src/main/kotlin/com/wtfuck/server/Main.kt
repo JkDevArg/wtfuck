@@ -506,6 +506,17 @@ fun Application.modulo() {
          * proteger- y obligaria a inventar un ingreso web, que es justo lo que
          * el modelo evita.
          */
+        // Lo que abre el enlace de contacto fuera de la app. Sin autenticar y sin
+        // consultar la base: ver `EnlaceContacto.pagina`.
+        get("/c/{codigo}") {
+            call.response.headers.append("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+            call.response.headers.append("Referrer-Policy", "no-referrer")
+            call.respondText(
+                EnlaceContacto.pagina(call.parameters["codigo"].orEmpty(), System.getenv("WTFUCK_DESCARGA_URL")),
+                ContentType.Text.Html,
+            )
+        }
+
         get("/consola") {
             val html = Consola::class.java.getResourceAsStream("/consola/index.html")
                 ?.bufferedReader()?.use { it.readText() }
@@ -636,6 +647,24 @@ fun Application.modulo() {
 
         // --- perfil ---------------------------------------------------
 
+        // --- Enlace de contacto. Ver `EnlaceContacto`. ---------------------
+        get(RUTA_MI_ENLACE) { call.respond(MiEnlace(EnlaceContacto.actual(call.autenticar()))) }
+        post(RUTA_MI_ENLACE) {
+            val yo = call.autenticar()
+            Limitador.exigir(yo.usuarioId, yo.usuarioId.toString(), "rotar_enlace", Limitador.ROTAR_ENLACE)
+            call.respond(MiEnlace(EnlaceContacto.crear(yo)))
+        }
+        delete(RUTA_MI_ENLACE) {
+            EnlaceContacto.borrar(call.autenticar())
+            call.respond(HttpStatusCode.NoContent)
+        }
+        get("$RUTA_ENLACES/{codigo}") {
+            val yo = call.autenticar()
+            // El mismo cupo que buscar: es una forma de encontrar a alguien.
+            Limitador.exigir(yo.usuarioId, yo.usuarioId.toString(), "resolver_enlace", Limitador.BUSCAR)
+            call.respond(EnlaceContacto.resolver(yo, call.parameters["codigo"].orEmpty()))
+        }
+
         get(RUTA_PERFIL) {
             val yo = call.autenticar()
             call.respond(Repo.porId(yo.usuarioId) ?: throw ErrorNegocio(404, "Perfil no encontrado."))
@@ -703,7 +732,7 @@ fun Application.modulo() {
         post(RUTA_DIRECTA) {
             val yo = call.autenticar()
             val req = call.receive<DirectaReq>()
-            call.respond(Repo.crearDirecta(yo, req.usernameDestino, req.duracionMs))
+            call.respond(Repo.crearDirecta(yo, req.usernameDestino, req.duracionMs, req.enlace))
         }
 
         post(RUTA_NOTAS) { call.respond(Repo.notaParaMi(call.autenticar())) }

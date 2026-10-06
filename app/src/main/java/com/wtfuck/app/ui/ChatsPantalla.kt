@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
@@ -117,6 +118,35 @@ fun ChatsPantalla(
     var cercaAbierto by remember { mutableStateOf(false) }
     val cercaEstado by app.repo.cerca.estado.collectAsStateWithLifecycle()
     val ambito = rememberCoroutineScope()
+    // Escanear el QR del enlace de alguien. Ver `HojaContactoPorEnlace`.
+    var escaneandoEnlace by remember { mutableStateOf(false) }
+    var enlaceLeido by remember { mutableStateOf<String?>(null) }
+    if (escaneandoEnlace) {
+        EscanerQr(
+            onCodigo = { texto ->
+                if (escaneandoEnlace) {
+                    escaneandoEnlace = false
+                    val c = com.wtfuck.app.datos.EnlaceDeContacto.codigoDe(texto)
+                    if (c == null) {
+                        Toast.makeText(app, "Ese código no es un enlace de wtfuck.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        enlaceLeido = c
+                    }
+                }
+            },
+            onCerrar = { escaneandoEnlace = false },
+            titulo = "Escanear un enlace",
+            explicacion = "Apunta al QR de la otra persona: está en su Perfil, en \"Mi enlace y QR\".",
+            ayuda = null,
+        )
+    }
+    enlaceLeido?.let { c ->
+        HojaContactoPorEnlace(
+            codigo = c,
+            onCerrar = { enlaceLeido = null },
+            onAbrirChat = { onAbrir(it, "directa") },
+        )
+    }
     val contextoLista = LocalContext.current
 
     // Los estados (modulo O) ya no viven aqui: se mudaron a la pestaña
@@ -478,6 +508,7 @@ fun ChatsPantalla(
                     onGrupo = { arrancarEnGrupo = true; mostrarNueva = true },
                     onCanal = onNuevoCanal,
                     onContactos = onContactos,
+                    onEscanear = { escaneandoEnlace = true },
                     onNota = {
                         ambito.launch {
                             runCatching { app.repo.abrirNotaParaMi() }
@@ -1541,6 +1572,7 @@ private fun MenuDeCreacion(
     onCanal: () -> Unit,
     onContactos: () -> Unit,
     onNota: () -> Unit,
+    onEscanear: () -> Unit = {},
 ) {
     // El icono gira 45 grados: el mismo "+" se convierte en una X sin cambiar
     // de icono. Lo que cambia no es la forma, es lo que significa.
@@ -1554,6 +1586,8 @@ private fun MenuDeCreacion(
             // Arriba de todo y aparte: no es empezar algo con alguien, es el
             // sitio propio donde apuntar y reenviarse cosas.
             OpcionDeCreacion("Nota para mí", Icons.Filled.Bookmark) { onAbrir(false); onNota() }
+            // El enlace de alguien, en QR: "agregame" sin dictar el usuario.
+            OpcionDeCreacion("Escanear código", Icons.Filled.QrCodeScanner) { onAbrir(false); onEscanear() }
             OpcionDeCreacion("Contactos", Icons.Filled.Contacts) { onAbrir(false); onContactos() }
             OpcionDeCreacion("Canal", Icons.Filled.Campaign) { onAbrir(false); onCanal() }
             OpcionDeCreacion("Grupo", Icons.Filled.Group) { onAbrir(false); onGrupo() }

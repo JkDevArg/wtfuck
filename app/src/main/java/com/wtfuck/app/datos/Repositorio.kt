@@ -5432,6 +5432,25 @@ class Repositorio(
     suspend fun nuevaDirecta(username: String, duracionMs: Long = 0): String =
         api.crearDirecta(username, duracionMs).also { guardarResumen(it) }.id
 
+    // --- Enlace de contacto -------------------------------------------------
+
+    suspend fun miEnlace(): String? = api.miEnlace().codigo
+
+    /** Lo crea, o lo cambia por uno nuevo: el anterior deja de servir. */
+    suspend fun crearEnlace(): String? = api.crearEnlace().codigo
+
+    suspend fun apagarEnlace() = api.borrarEnlace()
+
+    suspend fun resolverEnlace(codigo: String): UsuarioPublico = api.resolverEnlace(codigo)
+
+    /**
+     * El chat con quien me dio su enlace. Si ya existe se reusa; si no, se
+     * crea presentando el codigo, que es lo que le deja al servidor abrirlo
+     * como solicitud aunque esa cuenta no las acepte de desconocidos.
+     */
+    suspend fun abrirPorEnlace(username: String, codigo: String): String =
+        directaCon(username)?.id ?: api.crearDirecta(username, 0, codigo).also { guardarResumen(it) }.id
+
     suspend fun nuevoGrupo(
         nombre: String,
         usernames: List<String>,

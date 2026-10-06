@@ -938,6 +938,17 @@ object Repo {
             }
         }
 
+    /** El perfil publico de [usuarioId] tal como lo ve [observador]. */
+    internal fun publicoPorId(c: Connection, usuarioId: UUID, observador: UUID): UsuarioPublico? {
+        val username = c.prepareStatement(
+            "SELECT username FROM usuario WHERE id = ? AND desactivado_en IS NULL"
+        ).use { st ->
+            st.setObject(1, usuarioId)
+            st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+        } ?: return null
+        return publicoPorUsername(c, username, observador)
+    }
+
     fun porId(usuarioId: UUID): UsuarioPublico? = Db.query { c ->
         c.prepareStatement(
             """SELECT $COLS_PUBLICO
@@ -1051,6 +1062,8 @@ object Repo {
         yo: Auth,
         usernameDestino: String,
         duracionMs: Long = 0,
+        /** El codigo del enlace de contacto de esa persona, si se llego por el. */
+        enlace: String? = null,
     ): ConversacionResumen = Db.tx { c ->
         if (!DuracionChat.valida(duracionMs)) {
             throw ErrorNegocio(400, "Esa duracion no esta permitida.")
@@ -1078,7 +1091,11 @@ object Repo {
         }.isSuccess
 
         val otroId = UUID.fromString(otro.usuarioId)
-        if (!puedeEscribirDirecto && !aceptaSolicitudes(c, otroId)) {
+        // Con su enlace, la puerta de las solicitudes queda abierta aunque no
+        // las acepte: repartir el enlace es invitar. Lo que no se salta es que
+        // sea SOLICITUD -decide ella- ni el bloqueo de arriba.
+        val porEnlace = enlace != null && EnlaceContacto.duenoDe(c, enlace) == otroId
+        if (!puedeEscribirDirecto && !porEnlace && !aceptaSolicitudes(c, otroId)) {
             // Sin solicitudes, el portazo de siempre. Se repite la llamada para
             // que el mensaje de error salga de un solo sitio.
             exigirPermiso(c, yo.usuarioId, otro, "escribe")

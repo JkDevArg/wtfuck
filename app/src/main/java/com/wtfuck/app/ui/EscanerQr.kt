@@ -65,6 +65,9 @@ import java.util.concurrent.Executors
 fun EscanerQr(
     onCodigo: (String) -> Unit,
     onCerrar: () -> Unit,
+    titulo: String = "Escanear el código",
+    explicacion: String = "Apunta al QR que muestra el otro aparato.",
+    ayuda: String? = "Si no funciona, el código también se puede escribir a mano.",
 ) {
     val ctx = LocalContext.current
     var permiso by remember {
@@ -93,13 +96,13 @@ fun EscanerQr(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.QrCodeScanner, null, tint = Cian, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("Escanear el código", color = TextoPrimario)
+                Text(titulo, color = TextoPrimario)
             }
         },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "Apunta al QR que muestra el otro aparato.",
+                    explicacion,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextoTerciario,
                 )
@@ -124,12 +127,14 @@ fun EscanerQr(
                         )
                     }
                 }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Si no funciona, el código también se puede escribir a mano.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextoTerciario,
-                )
+                ayuda?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextoTerciario,
+                    )
+                }
             }
         },
         confirmButton = {

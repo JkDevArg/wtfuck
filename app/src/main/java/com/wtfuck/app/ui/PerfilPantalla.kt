@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Image
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -130,6 +131,7 @@ fun PerfilPantalla(
     onDiagnostico: () -> Unit,
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
+    onMiEnlace: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val app = ctx.applicationContext as WtfuckApp
@@ -356,6 +358,18 @@ fun PerfilPantalla(
             }
 
             Spacer(Modifier.height(20.dp))
+
+            // --- que te encuentren -------------------------------------------
+            SeccionAjustes("Que te escriban") {
+                FilaAjuste(
+                    icono = Icons.Filled.QrCode2,
+                    titulo = "Mi enlace y QR",
+                    detalle = "Para que te escriban sin tener que buscarte",
+                    conDivisor = false,
+                    onClick = onMiEnlace,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
 
             // --- que sale de este telefono y hacia quien -------------------
             SeccionAjustes("Privacidad y avisos") {

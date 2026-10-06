@@ -40,6 +40,15 @@ const val RUTA_WS = "/v1/ws"
 const val RUTA_PERFIL = "/v1/perfil"
 const val RUTA_PRIVACIDAD = "/v1/perfil/privacidad"
 
+/**
+ * Mi enlace de contacto: GET lo lee, POST lo crea o lo cambia por uno nuevo,
+ * DELETE lo apaga. Ver `EnlaceContacto` en el servidor.
+ */
+const val RUTA_MI_ENLACE = "/v1/perfil/enlace"
+
+/** `GET /v1/enlaces/{codigo}`: a quien lleva el enlace de otra persona. */
+const val RUTA_ENLACES = "/v1/enlaces"
+
 // ============================================================
 //  Autenticacion
 // ============================================================
@@ -506,7 +515,17 @@ data class DirectaReq(
     val usernameDestino: String,
     /** Cuanto vive, en ms. `0` = para siempre. Ver [DuracionChat]. */
     val duracionMs: Long = 0,
+    /**
+     * El codigo del enlace de contacto de [usernameDestino], si se llego por
+     * el. Con el, un desconocido puede escribir como SOLICITUD aunque esa
+     * cuenta no acepte solicitudes. Ver `EnlaceContacto`.
+     */
+    val enlace: String? = null,
 )
+
+/** Mi enlace de contacto. `codigo` null = no tengo. */
+@Serializable
+data class MiEnlace(val codigo: String? = null)
 
 @Serializable
 data class GrupoReq(

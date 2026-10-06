@@ -68,6 +68,12 @@ object Limitador {
     val BUSCAR get() = efectiva("buscar", Regla(60, Duration.ofMinutes(1)))
 
     /**
+     * Cambiar el enlace de contacto. No es peligroso, pero cada cambio
+     * invalida todos los QR repartidos: diez por hora sobran para una persona.
+     */
+    val ROTAR_ENLACE get() = efectiva("rotar_enlace", Regla(10, Duration.ofHours(1)))
+
+    /**
      * Guardar la ficha de empresa. **La rafaga, no el uso sostenido.**
      *
      * La ficha es lo unico que una cuenta escribe y otra gente lee como dato

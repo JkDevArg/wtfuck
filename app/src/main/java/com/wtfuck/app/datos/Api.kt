@@ -350,8 +350,18 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun conversaciones(): List<ConversacionResumen> =
         pedir(RUTA_CONVERSACIONES, "GET", null, true)
 
-    suspend fun crearDirecta(username: String, duracionMs: Long = 0): ConversacionResumen =
-        pedir(RUTA_DIRECTA, "POST", jsonApp.encodeToString(DirectaReq(username, duracionMs)), true)
+    suspend fun crearDirecta(username: String, duracionMs: Long = 0, enlace: String? = null): ConversacionResumen =
+        pedir(RUTA_DIRECTA, "POST", jsonApp.encodeToString(DirectaReq(username, duracionMs, enlace)), true)
+
+    // --- Enlace de contacto. Ver `EnlaceDeContacto`. ---------------------------
+    suspend fun miEnlace(): MiEnlace = pedir(RUTA_MI_ENLACE, "GET", null, true)
+
+    suspend fun crearEnlace(): MiEnlace = pedir(RUTA_MI_ENLACE, "POST", null, true)
+
+    suspend fun borrarEnlace(): Unit = pedir(RUTA_MI_ENLACE, "DELETE", null, true)
+
+    suspend fun resolverEnlace(codigo: String): UsuarioPublico =
+        pedir("$RUTA_ENLACES/$codigo", "GET", null, true)
 
     suspend fun notaParaMi(): ConversacionResumen = pedir(RUTA_NOTAS, "POST", null, true)
 
