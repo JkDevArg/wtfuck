@@ -281,13 +281,16 @@ chown --reference="$DOCROOT" "$DOCROOT/$NOMBRE_ARCHIVO" "$DOCROOT/index.html" 2>
 cd "$OPT_DIR"
 $([ "$CON_SERVIDOR" = 1 ] && echo 'git pull')
 # Se borran las WTFUCK_APK_* viejas y se anaden las nuevas: ni duplicados ni
-# mezcla con una publicacion anterior.
-sed -i '/^WTFUCK_APK_/d' .env.produccion
+# mezcla con una publicacion anterior. WTFUCK_DESCARGA_URL va con ellas: es
+# a donde manda el "Descargalo aqui" de la pagina del enlace de contacto
+# (/c/<codigo>, ver EnlaceContacto), que es la pagina de descarga.
+sed -i '/^WTFUCK_APK_/d; /^WTFUCK_DESCARGA_URL=/d' .env.produccion
 cat >> .env.produccion <<VARS
 WTFUCK_APK_VERSION=$CODE
 WTFUCK_APK_NOMBRE=$VERSION_NOMBRE
 WTFUCK_APK_URL=$URL
 WTFUCK_APK_SHA256=$SHA
+WTFUCK_DESCARGA_URL=$DOMINIO_DESCARGA/
 VARS
 docker compose --env-file .env.produccion -f "$COMPOSE" $RECREA
 REMOTE

@@ -556,6 +556,11 @@ WTFUCK_APK_NOTAS=""                                     # opcional
 
 Sin `WTFUCK_APK_VERSION` el endpoint contesta apagado y la app no hace nada.
 
+`WTFUCK_DESCARGA_URL` (opcional, `https://`) es la página de descarga. La usa
+la página pública del enlace de contacto (`/c/<codigo>`) para ofrecer
+"Descárgalo aquí" a quien todavía no tiene la app; sin ella, esa línea no
+aparece. `despliegue/lanzar.sh` la escribe sola con `DOMINIO_DESCARGA`.
+
 **El reinicio del servidor es parte del mecanismo.** Corta los sockets, los
 teléfonos reconectan y en la reconexión preguntan por la versión. Por eso no
 hace falta ningún push para avisar.
