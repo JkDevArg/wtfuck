@@ -1,5 +1,7 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.NotificationAdd
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.StarBorder
@@ -100,6 +102,9 @@ fun HojaAccionesMensaje(
     onDestacar: (() -> Unit)? = null,
     /** En un grupo, contestarle a quien lo escribio en una directa. */
     onResponderEnPrivado: (() -> Unit)? = null,
+    /** "Recordarme..." o, si ya hay uno, "Quitar recordatorio". */
+    onRecordar: (() -> Unit)? = null,
+    conRecordatorio: Boolean = false,
 ) {
     var confirmandoBorrado by remember { mutableStateOf(false) }
     val puedeRetirar = mensaje.esMio || puedeBorrarAjeno
@@ -165,6 +170,13 @@ fun HojaAccionesMensaje(
                         if (mensaje.destacado) "Quitar destacado" else "Destacar",
                         if (mensaje.destacado) Icons.Filled.StarBorder else Icons.Filled.Star,
                         onClick = onDestacar,
+                    )
+                }
+                if (onRecordar != null) {
+                    Opcion(
+                        if (conRecordatorio) "Quitar recordatorio" else "Recordarme…",
+                        if (conRecordatorio) Icons.Filled.NotificationsOff else Icons.Filled.NotificationAdd,
+                        onClick = onRecordar,
                     )
                 }
                 if (onSeleccionar != null) {

@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.StarBorder
@@ -289,6 +290,10 @@ private fun ChatAbierto(
     var seleccion by remember(conversacionId) { mutableStateOf(setOf<String>()) }
     var confirmarBorrarSeleccion by remember { mutableStateOf(false) }
     var verDestacados by remember { mutableStateOf(false) }
+    /** El mensaje para el que se elige la hora del recordatorio. */
+    var recordarDe by remember { mutableStateOf<MensajeEnt?>(null) }
+    val recordatorios by app.repo.recordatoriosDe(conversacionId).collectAsStateWithLifecycle(emptyList())
+    val conRecordatorio = remember(recordatorios) { recordatorios.map { it.mensajeId }.toSet() }
     var grabandoVideonota by remember { mutableStateOf(false) }
     /** Varias fotos o videos elegidos a la vez, esperando confirmacion. */
     var variosAEnviar by remember { mutableStateOf<List<android.net.Uri>?>(null) }
@@ -1460,6 +1465,7 @@ private fun ChatAbierto(
                         traduccion = traducciones[m.id],
                         enSeleccion = seleccion.isNotEmpty(),
                         marcado = m.id in seleccion,
+                        conRecordatorio = m.id in conRecordatorio,
                         onAlternar = {
                             seleccion = if (m.id in seleccion) seleccion - m.id else seleccion + m.id
                         },
@@ -1720,6 +1726,27 @@ private fun ChatAbierto(
         )
     }
 
+    recordarDe?.let { m ->
+        ElegirMomento(
+            titulo = "Recordarme este mensaje",
+            nota = "Te llega una notificación a esa hora que te trae aquí. Solo en este teléfono.",
+            onElegir = { cuando ->
+                recordarDe = null
+                ambito.launch {
+                    app.repo.recordar(m, cuando)
+                    android.widget.Toast.makeText(
+                        contexto,
+                        "Te lo recuerdo " + com.wtfuck.app.datos.MomentoProgramado.etiqueta(
+                            cuando, com.wtfuck.app.datos.MomentoProgramado.ahora(),
+                        ),
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
+            onCerrar = { recordarDe = null },
+        )
+    }
+
     if (verDestacados) {
         HojaDestacados(
             conversacionId = conversacionId,
@@ -1870,6 +1897,12 @@ private fun ChatAbierto(
                 reenviando = listOf(m)
             },
             onSeleccionar = { accionesDe = null; seleccion = setOf(m.id) },
+            conRecordatorio = m.id in conRecordatorio,
+            onRecordar = if (m.retirado) null else ({
+                accionesDe = null
+                if (m.id in conRecordatorio) ambito.launch { app.repo.quitarRecordatorio(m.id) }
+                else recordarDe = m
+            }),
             onResponderEnPrivado = if (chat?.tipo == "grupo" && !m.esMio && !m.retirado) ({
                 accionesDe = null
                 ambito.launch {
@@ -2134,6 +2167,8 @@ private fun Burbuja(
     m: MensajeEnt,
     /** La traduccion hecha en el telefono, si se pidio. Ver `Traductor`. */
     traduccion: String? = null,
+    /** Tiene un recordatorio pendiente: se ve una campanita. */
+    conRecordatorio: Boolean = false,
     /** Modo seleccion: un toque marca o desmarca, en vez de lo de siempre. */
     enSeleccion: Boolean = false,
     marcado: Boolean = false,
@@ -2460,6 +2495,14 @@ private fun Burbuja(
 
             Spacer(Modifier.height(3.dp))
             Row(Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                if (conRecordatorio && !m.retirado) {
+                    Icon(
+                        Icons.Filled.NotificationsActive, "Con recordatorio",
+                        tint = if (sobreAcento) TextoSobreAcento.copy(alpha = 0.7f) else Cian,
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
                 if (m.destacado && !m.retirado) {
                     Icon(
                         Icons.Filled.Star, "Destacado",

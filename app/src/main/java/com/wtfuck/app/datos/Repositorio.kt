@@ -1626,6 +1626,8 @@ class Repositorio(
      * apagado una hora.
      */
     suspend fun liberarProgramados() {
+        // La misma alarma despierta a los recordatorios. Ver `rearmarProgramados`.
+        runCatching { dispararRecordatorios() }
         val vencidos = dao.programadosVencidos(System.currentTimeMillis())
         for (m in vencidos) dao.liberarProgramado(m.id, horaParaMio(m.conversacionId))
         if (vencidos.isNotEmpty()) {
@@ -1647,9 +1649,50 @@ class Repositorio(
         rearmarProgramados()
     }
 
+    /**
+     * Una sola alarma para programados y recordatorios: la de lo que toque
+     * primero. Cuando suena, se atienden los dos (`liberarProgramados`).
+     */
     private suspend fun rearmarProgramados() {
-        runCatching { Programados.armar(contexto, dao.proximoProgramado()) }
+        val proximo = listOfNotNull(dao.proximoProgramado(), dao.proximoRecordatorio()).minOrNull()
+        runCatching { Programados.armar(contexto, proximo) }
             .onFailure { Log.w(TAG, "No se pudo armar la alarma: ${it.message}") }
+    }
+
+    // --- Recordatorios: ver `RecordatorioEnt` -----------------------------------
+
+    fun recordatoriosDe(convId: String): Flow<List<RecordatorioEnt>> = dao.recordatoriosDe(convId)
+
+    suspend fun recordar(m: MensajeEnt, cuando: Long) {
+        dao.guardarRecordatorio(RecordatorioEnt(m.id, m.conversacionId, cuando))
+        rearmarProgramados()
+    }
+
+    suspend fun quitarRecordatorio(mensajeId: String) {
+        dao.borrarRecordatorio(mensajeId)
+        rearmarProgramados()
+    }
+
+    /** Los que ya tocan: una notificacion cada uno, y fuera de la lista. */
+    private suspend fun dispararRecordatorios() {
+        for (r in dao.recordatoriosVencidos(System.currentTimeMillis())) {
+            val m = dao.mensaje(r.mensajeId)
+            val conv = dao.conversacion(r.conversacionId)
+            val texto = when {
+                m == null || m.retirado -> "El mensaje ya no está"
+                m.adjuntoClase.isNotBlank() -> Media.resumen(m.adjuntoClase, m.texto, m.adjuntoNombre)
+                else -> m.texto
+            }
+            Notificaciones.recordatorio(
+                contexto,
+                conversacionId = r.conversacionId,
+                mensajeId = r.mensajeId,
+                donde = conv?.let { it.nombreMostrado.ifBlank { it.nombre } } ?: "un chat",
+                texto = texto,
+                protegido = conv?.protegido == true,
+            )
+            dao.borrarRecordatorio(r.mensajeId)
+        }
     }
 
     // ============================================================
@@ -5519,6 +5562,7 @@ class Repositorio(
         // quien eran.
         dao.borrarChatsEnCarpetas()
         dao.borrarCarpetas()
+        dao.borrarRecordatorios()
         // Los atajos y el widget hablan de esta cuenta.
         Atajos.borrarTodos(contexto)
         WidgetWtfuck.actualizar(contexto, 0)

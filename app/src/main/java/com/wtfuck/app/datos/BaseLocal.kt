@@ -603,6 +603,18 @@ data class AjusteLocalEnt(
     val valor: String,
 )
 
+/**
+ * "Recordarme este mensaje": a esa hora, una notificacion que lleva al
+ * mensaje. Solo en este telefono. El texto no se copia aqui: se lee del
+ * mensaje al avisar, y si ya no existe, el aviso lo dice.
+ */
+@Entity(tableName = "recordatorio")
+data class RecordatorioEnt(
+    @PrimaryKey val mensajeId: String,
+    val conversacionId: String,
+    val cuando: Long,
+)
+
 /** Una carpeta de chats. Ver `Carpetas`. */
 @Entity(tableName = "carpeta")
 data class CarpetaEnt(
@@ -939,6 +951,26 @@ interface ChatDao {
 
     @Query("DELETE FROM carpeta_chat")
     suspend fun borrarChatsEnCarpetas()
+
+    // --- Recordatorios. Ver `RecordatorioEnt`. ---
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarRecordatorio(r: RecordatorioEnt)
+
+    @Query("DELETE FROM recordatorio WHERE mensajeId = :mensajeId")
+    suspend fun borrarRecordatorio(mensajeId: String)
+
+    @Query("SELECT * FROM recordatorio WHERE cuando <= :ahora ORDER BY cuando")
+    suspend fun recordatoriosVencidos(ahora: Long): List<RecordatorioEnt>
+
+    @Query("SELECT MIN(cuando) FROM recordatorio")
+    suspend fun proximoRecordatorio(): Long?
+
+    @Query("SELECT * FROM recordatorio WHERE conversacionId = :conv")
+    fun recordatoriosDe(conv: String): Flow<List<RecordatorioEnt>>
+
+    @Query("DELETE FROM recordatorio")
+    suspend fun borrarRecordatorios()
 
     @Query("UPDATE mensaje SET destacado = :destacado WHERE id IN (:ids)")
     suspend fun fijarDestacado(ids: List<String>, destacado: Boolean)
@@ -1475,8 +1507,9 @@ interface ChatDao {
         AjusteLocalEnt::class,
         CarpetaEnt::class,
         CarpetaChatEnt::class,
+        RecordatorioEnt::class,
     ],
-    version = 31,
+    version = 32,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1496,7 +1529,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31, DE_31_A_32,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1668,6 +1701,16 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Recordatorios. */
+        private val DE_31_A_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `recordatorio` (`mensajeId` TEXT NOT NULL, " +
+                        "`conversacionId` TEXT NOT NULL, `cuando` INTEGER NOT NULL, PRIMARY KEY(`mensajeId`))"
+                )
+            }
+        }
+
         /** Fotos y videos spoiler. */
         private val DE_30_A_31 = object : Migration(30, 31) {
             override fun migrate(db: SupportSQLiteDatabase) {

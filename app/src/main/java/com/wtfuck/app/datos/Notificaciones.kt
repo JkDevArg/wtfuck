@@ -84,6 +84,7 @@ object Notificaciones {
     }
 
     private const val CANAL_MENSAJES = "mensajes"
+    private const val CANAL_RECORDATORIOS = "recordatorios"
     private const val CANAL_GRUPOS = "grupos"
     private const val CANAL_CANALES = "canales"
     const val CANAL_LLAMADAS = "llamadas"
@@ -114,6 +115,13 @@ object Notificaciones {
 
     fun crearCanales(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CANAL_RECORDATORIOS,
+                "Recordatorios",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply { description = "Los mensajes que pediste que te recuerde" }
+        )
         nm.createNotificationChannel(
             NotificationChannel(
                 CANAL_MENSAJES,
@@ -385,6 +393,41 @@ object Notificaciones {
             b.addAction(accionLeido(ctx, id, conversacionId))
         }
         val n = b.build()
+        runCatching { NotificationManagerCompat.from(ctx).notify(id, n) }
+    }
+
+    /**
+     * "Recordarme este mensaje". Lleva al mensaje, no solo al chat. De un chat
+     * protegido no dice ni de donde ni que: ver `ConversacionEnt.protegido`.
+     */
+    fun recordatorio(
+        ctx: Context,
+        conversacionId: String,
+        mensajeId: String,
+        donde: String,
+        texto: String,
+        protegido: Boolean,
+    ) {
+        if (!permitido(ctx)) return
+        val id = ("recordatorio" + mensajeId).hashCode()
+        val intent = Intent(ctx, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("conversacionId", conversacionId)
+            putExtra("mensajeId", mensajeId)
+        }
+        val pi = android.app.PendingIntent.getActivity(
+            ctx, id, intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+        val n = NotificationCompat.Builder(ctx, CANAL_RECORDATORIOS)
+            .setSmallIcon(R.drawable.ic_notificacion)
+            .setContentTitle(if (protegido) "Recordatorio" else "Recordatorio · $donde")
+            .setContentText(if (protegido) "Un mensaje de un chat protegido" else texto)
+            .setStyle(if (protegido) null else NotificationCompat.BigTextStyle().bigText(texto))
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .build()
         runCatching { NotificationManagerCompat.from(ctx).notify(id, n) }
     }
 

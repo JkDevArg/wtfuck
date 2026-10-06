@@ -250,7 +250,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
         // Sin sesion no hay a donde ir: el pedido se descarta.
         if (!app.sesion.hayS) return@LaunchedEffect
         when (p) {
-            is Pedido.AbrirChat -> nav.navigate("chat/${p.id}")
+            is Pedido.AbrirChat -> nav.navigate(if (p.mensaje != null) "chat/${p.id}?m=${p.mensaje}" else "chat/${p.id}")
             Pedido.AbrirNota -> runCatching { app.repo.abrirNotaParaMi() }
                 .onSuccess { nav.navigate("chat/$it") }
             is Pedido.Compartir -> compartiendo = p

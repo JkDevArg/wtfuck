@@ -25,7 +25,8 @@ data class Compartido(val texto: String?, val archivos: List<File>)
  * atajo del icono o del widget, o compartir algo desde otra app.
  */
 sealed interface Pedido {
-    data class AbrirChat(val id: String) : Pedido
+    /** [mensaje]: si viene, se salta a ese mensaje (un recordatorio). */
+    data class AbrirChat(val id: String, val mensaje: String? = null) : Pedido
     data object AbrirNota : Pedido
     /** [destino]: el chat que se eligio en la fila de compartir del sistema, si fue asi. */
     data class Compartir(val compartido: Compartido, val destino: String?) : Pedido
@@ -40,7 +41,9 @@ object Pedidos {
 
     /** Lo facil, sin tocar disco. Compartir va aparte: ver [compartido]. */
     fun simple(i: Intent): Pedido? {
-        i.getStringExtra("conversacionId")?.takeIf { it.isNotBlank() }?.let { return Pedido.AbrirChat(it) }
+        i.getStringExtra("conversacionId")?.takeIf { it.isNotBlank() }?.let {
+            return Pedido.AbrirChat(it, i.getStringExtra("mensajeId")?.takeIf { m -> m.isNotBlank() })
+        }
         return when (i.action) {
             Atajos.ACCION_NOTA -> Pedido.AbrirNota
             else -> null

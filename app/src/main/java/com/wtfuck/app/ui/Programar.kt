@@ -33,7 +33,13 @@ import java.time.LocalTime
  * horas sin que haya que preguntarlo.
  */
 @Composable
-fun ElegirMomento(onElegir: (Long) -> Unit, onCerrar: () -> Unit) {
+fun ElegirMomento(
+    onElegir: (Long) -> Unit,
+    onCerrar: () -> Unit,
+    titulo: String = "Programar envío",
+    nota: String = "Sale desde este teléfono: si a esa hora está apagado o sin red, sale cuando vuelva. " +
+        "El servidor no se entera de que hay algo programado.",
+) {
     val ctx = LocalContext.current
     val ahora = remember { MomentoProgramado.ahora() }
     val atajos = remember(ahora) { MomentoProgramado.atajos(ahora) }
@@ -54,7 +60,7 @@ fun ElegirMomento(onElegir: (Long) -> Unit, onCerrar: () -> Unit) {
     AlertDialog(
         onDismissRequest = onCerrar,
         containerColor = BgElev,
-        title = { Text("Programar envío", color = TextoPrimario) },
+        title = { Text(titulo, color = TextoPrimario) },
         text = {
             Column {
                 atajos.forEach { o ->
@@ -62,12 +68,7 @@ fun ElegirMomento(onElegir: (Long) -> Unit, onCerrar: () -> Unit) {
                 }
                 FilaMomento("Otra fecha y hora", "elige en el calendario", Icons.Filled.CalendarMonth) { aMano() }
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Sale desde este teléfono: si a esa hora está apagado o sin red, sale cuando vuelva. " +
-                        "El servidor no se entera de que hay algo programado.",
-                    color = TextoTerciario,
-                    fontSize = 12.sp,
-                )
+                Text(nota, color = TextoTerciario, fontSize = 12.sp)
             }
         },
         confirmButton = {},
