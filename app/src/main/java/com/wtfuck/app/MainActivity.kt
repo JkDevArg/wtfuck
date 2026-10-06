@@ -108,11 +108,14 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
               TecladoIncognito(activo = app.ajustes.tecladoIncognito) {
                 PedirPermisoNotificaciones()
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Raiz(
-                        bloqueada = bloqueada.value,
-                        pedido = pedido.value,
-                        onAtendido = { pedido.value = null },
-                    )
+                    // Todo enlace que se toque pregunta antes. Ver `ConfirmarEnlaces`.
+                    com.wtfuck.app.ui.ConfirmarEnlaces {
+                        Raiz(
+                            bloqueada = bloqueada.value,
+                            pedido = pedido.value,
+                            onAtendido = { pedido.value = null },
+                        )
+                    }
                     // ENCIMA de Raiz y dentro del mismo Surface: tapa lo que
                     // haya, incluido un chat abierto o una llamada en curso, y
                     // Atras no la puede quitar porque no es un destino.

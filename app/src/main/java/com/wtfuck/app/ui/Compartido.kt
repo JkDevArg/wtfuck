@@ -272,6 +272,7 @@ fun CompartidoPantalla(
                 }
             }
         } else {
+            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
             LazyColumn(Modifier.fillMaxSize().padding(pad)) {
                 items(lista, key = { it.id }) { m ->
                     val enlace = if (clase == CLASE_ENLACE) primerEnlace(m.texto) else null
@@ -282,10 +283,9 @@ fun CompartidoPantalla(
                                 // Un enlace se abre; todo lo demás lleva a su
                                 // sitio en el chat, que es donde está el
                                 // contexto de quién lo mandó y por qué.
+                                // Con el mismo "¿abrir?" que en el chat.
                                 if (enlace != null) {
-                                    runCatching {
-                                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(enlace)))
-                                    }
+                                    runCatching { uriHandler.openUri(enlace) }
                                 } else {
                                     onVerEnElChat(m.id)
                                 }
