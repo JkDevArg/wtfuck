@@ -16,11 +16,21 @@ docs/       decisiones de arquitectura, hoja de ruta, API, despliegue
 
 ## Estado
 
-Servidor y app funcionando, verificados en dos emuladores.
-**1959 pruebas en verde** con todo levantado (1548 de integración en 37 suites,
-75 de JUnit en el servidor, 270 en la app). En la configuración mínima —una
-instancia, sin Redis— son **1845**: dos suites se omiten cuando les falta el
-entorno, y el runner las marca `OMIT` en vez de `OK`.
+Versión **0.6.3**. Lo que cambió en cada versión está en
+[CHANGELOG.md](CHANGELOG.md), que se genera desde la pantalla de Novedades de la
+app con `python despliegue/changelog.py`.
+
+Servidor y app funcionando, verificados en dos emuladores. Hay **2529 pruebas
+en verde** en la configuración mínima (una instancia, sin Redis):
+
+- 1781 de integración, en 46 suites;
+- 87 de JUnit en el servidor;
+- 661 en la app.
+
+Las dos suites del bus se omiten cuando les falta el entorno, y el runner las
+marca `OMIT` en vez de `OK`. Las pruebas JUnit del servidor necesitan la misma
+base que el servidor local (`WTFUCK_DB_URL`); sin ella fallan al conectar, no
+por el código.
 
 Tres de ellas **hacen ataques de verdad**:
 
