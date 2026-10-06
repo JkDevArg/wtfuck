@@ -1686,6 +1686,11 @@ fun Application.modulo() {
 
         post(RUTA_MENSAJES) {
             val yo = call.autenticar()
+            // El cupo de mensajes estaba declarado -y ajustable desde el
+            // panel- pero ninguna ruta lo aplicaba: el panel prometia un tope
+            // que no existia. Por persona y no por aparato, como dice su
+            // KDoc. El cliente trata el 429 como espera, no como rechazo.
+            Limitador.exigir(yo.usuarioId, yo.usuarioId.toString(), "enviar_mensaje", Limitador.ENVIAR_MENSAJE)
             call.respond(Mensajes.registrar(yo, call.receive()))
         }
 
