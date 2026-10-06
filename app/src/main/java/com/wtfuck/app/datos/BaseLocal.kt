@@ -381,6 +381,11 @@ data class MensajeEnt(
     val destacado: Boolean = false,
     /** Ver `CargaAdjunto.spoiler`. */
     val spoiler: Boolean = false,
+    /**
+     * Los aparatos que ya lo recibieron por el modo cerca, separados por coma.
+     * Ver `EnvioCerca`. El mensaje sigue en la cola: con red sale al resto.
+     */
+    val cercaEntregado: String = "",
 )
 
 /**
@@ -1021,6 +1026,9 @@ interface ChatDao {
 
     // --- Listas de difusion ---------------------------------------------------
 
+    @Query("UPDATE mensaje SET cercaEntregado = :lista WHERE id = :id")
+    suspend fun fijarCerca(id: String, lista: String)
+
     @Query("SELECT * FROM difusion ORDER BY creadaEn DESC")
     fun difusiones(): Flow<List<DifusionEnt>>
 
@@ -1593,7 +1601,7 @@ interface ChatDao {
         DifusionEnt::class,
         DifusionEnvioEnt::class,
     ],
-    version = 34,
+    version = 35,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1613,7 +1621,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31, DE_31_A_32, DE_32_A_33, DE_33_A_34,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31, DE_31_A_32, DE_32_A_33, DE_33_A_34, DE_34_A_35,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1764,6 +1772,13 @@ abstract class BaseLocal : RoomDatabase() {
          * unica copia del historial. Dejar que Room la recree por una columna
          * nueva borraria todos los mensajes de todo el mundo.
          */
+        /** Lo que llego por el modo cerca. Ver `MensajeEnt.cercaEntregado`. */
+        private val DE_34_A_35 = object : Migration(34, 35) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN cercaEntregado TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         /** Listas de difusion. Ver `DifusionEnt`. */
         private val DE_33_A_34 = object : Migration(33, 34) {
             override fun migrate(db: SupportSQLiteDatabase) {

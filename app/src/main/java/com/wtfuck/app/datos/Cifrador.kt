@@ -63,6 +63,18 @@ interface Cifrador {
     suspend fun haySesionCon(usuarioId: String, dispositivoId: String): Boolean = false
 
     /**
+     * Una copia para UN aparato, por pares, solo si ya hay sesion con el.
+     *
+     * Es lo que usa el modo cerca sin red. Por pares aunque sea un grupo: la
+     * clave de emisor lleva la cuenta de a quien se repartio, y cifrar para un
+     * solo miembro la haria creer que salieron todos los demas -y la rotaria
+     * en cada mensaje-. Sin red no se abre sesion: si no la hay, `null`.
+     *
+     * Por defecto `null`: un cifrador que no sabe hacerlo no manda nada.
+     */
+    suspend fun cifrarSoloPara(destino: DestinoDispositivo, carga: Carga): CopiaCifrada? = null
+
+    /**
      * El transporte acepto el envio.
      *
      * Existe por las claves de emisor: hasta que el servidor no acepta, no se

@@ -183,6 +183,16 @@ class CifradorSignal(
         else cifrarPorPares(destinos, carga)
     }
 
+    override suspend fun cifrarSoloPara(destino: DestinoDispositivo, carga: Carga): CopiaCifrada? =
+        withContext(Dispatchers.IO) {
+            if (!almacen.containsSession(dir(destino.dispositivoId))) return@withContext null
+            cifrarPorPares(listOf(destino), carga).firstOrNull()
+                // Una sesion que todavia no recibio respuesta cifra como
+                // "preparado" -abre sesion-, y por el aire eso se rechaza
+                // siempre. Mejor no mandarlo que mandar algo que no va a entrar.
+                ?.takeIf { it.tipo == TipoCifrado.SESION }
+        }
+
     /**
      * Uno a uno: un cuerpo por dispositivo.
      *

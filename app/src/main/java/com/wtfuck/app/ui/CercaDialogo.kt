@@ -136,19 +136,28 @@ fun DialogoCerca(onCerrar: () -> Unit) {
                             "Manda y recibe mensajes por Bluetooth, sin internet, con alguien " +
                                 "que esté a unos metros."
                         TransporteCerca.Estado.ESCUCHANDO ->
-                            "Buscando… deja esta pantalla abierta en los dos teléfonos."
+                            "Buscando… Sigue funcionando con la pantalla apagada, y se apaga " +
+                                "solo tras media hora sin nadie."
                         TransporteCerca.Estado.ENLAZADO ->
-                            "Conectado con ${conQuien ?: "alguien"}. Lo que escribas sale por aquí."
+                            "Conectado con @${conQuien ?: "alguien"}. Los mensajes de texto para " +
+                                "esa persona salen por aquí; al resto les llegan cuando vuelva la red."
                     },
                     color = TextoSecundario,
                     fontSize = 14.sp,
                 )
                 Spacer(Modifier.height(14.dp))
-                // La frase que evita el rato de pensar que está roto.
+                // Las frases que evitan el rato de pensar que está roto.
+                Text(
+                    "Antes, una vez: empareja los dos teléfonos en los ajustes de Bluetooth " +
+                        "de Android. Así el enlace va cifrado y solo con quien elegiste.",
+                    color = TextoTerciario,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(6.dp))
                 Text(
                     "Sólo funciona con gente con la que ya hablaste antes: las claves para " +
                         "empezar una conversación nueva viven en el servidor, y aquí no hay " +
-                        "servidor.",
+                        "servidor. Por ahora solo texto: las fotos y archivos salen al volver la red.",
                     color = TextoTerciario,
                     fontSize = 12.sp,
                 )

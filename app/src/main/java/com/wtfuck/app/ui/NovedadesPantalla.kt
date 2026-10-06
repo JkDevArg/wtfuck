@@ -119,6 +119,7 @@ object Novedades {
                 Cambio(TipoCambio.NUEVO, "Copia de seguridad automática: cada día o cada semana, cifrada con tu frase, en la carpeta que elijas. Se guardan las dos últimas."),
                 Cambio(TipoCambio.NUEVO, "Tu enlace y QR para que te escriban sin buscarte, en Perfil. Lo cambias o lo apagas cuando quieras, y el de otros se escanea desde Nuevo."),
                 Cambio(TipoCambio.NUEVO, "Listas de difusión: un mensaje a varias personas, cada una en su chat contigo y sin ver a quién más le llegó. En el menú de la lista de chats."),
+                Cambio(TipoCambio.MEJORA, "Modo cerca: ahora sí manda mensajes sin internet a quien tengas al lado, por Bluetooth (antes solo recibía). Empareja los teléfonos una vez; sigue funcionando con la pantalla apagada y te dice cuáles llegaron así."),
                 Cambio(TipoCambio.MEJORA, "Las fotos del chat pasan por el editor: recorte, giro, filtros, textos y stickers. Si no tocas nada, sale la original."),
                 Cambio(TipoCambio.MEJORA, "Lo que dejas escrito sin enviar se guarda por chat, y la lista te lo recuerda."),
                 Cambio(TipoCambio.MEJORA, "Teclado incógnito, encendido: le pide al teclado que no aprenda lo que escribes."),

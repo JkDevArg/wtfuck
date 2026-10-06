@@ -166,14 +166,31 @@ class Repositorio(
      * mensajeria. Se enciende desde la pantalla, para la sala en la que uno
      * esta.
      */
-    val cerca: TransporteCerca = TransporteCerca(contexto, sesion) { sobre ->
-        recibirDeCerca(sobre)
-    }
+    val cerca: TransporteCerca = TransporteCerca(
+        contexto, sesion,
+        alRecibir = { sobre -> recibirDeCerca(sobre) },
+        alAcuse = { a -> acuseDeCerca(a) },
+        // Recien enlazado: lo que espera sale ya, sin esperar a que alguien
+        // escriba otra cosa.
+        alEnlazar = { enVueloCerca.clear(); despachar() },
+        alCortar = { enVueloCerca.clear() },
+    )
 
-    /** Transportes por prioridad. */
+    /**
+     * Lo que salio por el enlace y todavia no volvio acusado. Evita mandarlo
+     * dos veces en el mismo enlace; si el enlace se corta se olvida, y en el
+     * proximo vuelve a salir. Quien recibe descarta el repetido por su id.
+     */
+    private val enVueloCerca: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /**
+     * Transportes por prioridad. Solo el buzon: el modo cerca tiene su propio
+     * camino (`despacharPorCerca`). Estaba en esta lista y con el WebSocket
+     * caido se llevaba las ediciones, el historial y la señalizacion -que
+     * necesitan llegar a TODOS- a un solo aparato.
+     */
     private val transportes: List<Transporte> = listOf(
         TransporteWebSocket(socket),
-        cerca,
     ).sortedBy { it.prioridad }
 
     val conversaciones: Flow<List<ChatFila>> = dao.conversaciones(archivados = false)
@@ -968,7 +985,18 @@ class Repositorio(
                 creadoEn = s.creadoEn,
             )
         )
-        return true
+        // Se acusa solo si quedo GUARDADO. `manejar` no lo dice -un sobre que
+        // no se pudo abrir se deja pasar en silencio-, asi que se mira la base:
+        // acusar algo que no esta haria creer al otro lado que llego.
+        return dao.mensaje(s.mensajeId.ifBlank { s.sobreId }) != null
+    }
+
+    /** El otro lado guardo un mensaje mio que salio por el enlace. */
+    private suspend fun acuseDeCerca(a: com.wtfuck.protocol.MensajeCerca.Acuse) {
+        enVueloCerca.remove(a.mensajeId)
+        val m = dao.mensaje(a.mensajeId) ?: return
+        if (!m.esMio) return
+        dao.fijarCerca(m.id, EnvioCerca.con(m.cercaEntregado, a.dispositivoId))
     }
 
     private suspend fun manejar(msg: Bajada) {
@@ -5148,7 +5176,9 @@ class Repositorio(
 
         val activo = transportes.firstOrNull { it.disponible() }
         if (activo == null) {
-            Log.i(TAG, "${pendientes.size} en cola, ningun transporte disponible")
+            // Sin servidor. Lo que se pueda, por el modo cerca.
+            despacharPorCerca(pendientes)
+            Log.i(TAG, "${pendientes.size} en cola, sin conexion con el servidor")
             return
         }
 
@@ -5170,7 +5200,7 @@ class Repositorio(
         // conversacion: sin red no sale ninguna.
         val atascadas = mutableSetOf<String>()
 
-        for (m in pendientes) {
+        for ((i, m) in pendientes.withIndex()) {
             if (m.conversacionId in atascadas) continue
             // Primero se registra el METADATO por HTTP. Es ahi donde el servidor
             // comprueba el permiso de enviar: si esta silenciado o expulsado, el
@@ -5221,8 +5251,11 @@ class Repositorio(
                     continue
                 }
                 // Fallo de red: el mensaje sigue PENDIENTE y se corta el bucle
-                // para no romper el orden de envio.
+                // para no romper el orden de envio. Lo que quede, si hay
+                // alguien enlazado, sale por el modo cerca: este era el
+                // `return` que no lo dejaba enviar nunca sin red.
                 Log.w(TAG, "Sin red para registrar ${m.id}")
+                despacharPorCerca(pendientes.subList(i, pendientes.size))
                 return
             }
             // El vencimiento de MI copia.
@@ -5303,6 +5336,71 @@ class Repositorio(
             // Si vuelve a atascarse mas adelante, se vuelve a avisar.
             avisadosSinCifrado.remove(m.conversacionId)
             limpiarAtasco(m.conversacionId)
+        }
+    }
+
+    /**
+     * Sin servidor: lo que pueda salir por el modo cerca, sale.
+     *
+     * ## Que sale, y a quien
+     *
+     * Hacia el aparato que esta enfrente, y solo lo que es para el: su directa,
+     * los grupos donde esta, o todo si es otro aparato mio. Ver `EnvioCerca`.
+     * Solo texto: un adjunto vive en el servidor y sin red no se podria bajar.
+     *
+     * ## Por pares, sin registro y sin salir de la cola
+     *
+     * Se cifra para ESE aparato con la sesion que ya existe (sin red no se
+     * abre ninguna). No se registra en el servidor ni se marca enviado: el
+     * mensaje sigue PENDIENTE y, cuando vuelva la red, sale por el camino de
+     * siempre a todos los demas -mis otros aparatos y los del resto del grupo-.
+     * Al que ya lo tiene le llega repetido y lo descarta por su id, sin volver
+     * a avisar (ver el `filas != -1L` de `manejar`).
+     *
+     * Lo que se anota es el acuse del otro lado (`cercaEntregado`), para que
+     * la burbuja diga que llego y no "en cola".
+     */
+    private suspend fun despacharPorCerca(pendientes: List<MensajeEnt>) {
+        if (!cerca.disponible()) return
+        val par = cerca.par ?: return
+        val yo = sesion.usuarioId.orEmpty()
+        val destino = DestinoDispositivo(
+            usuarioId = par.usuarioId,
+            username = par.username,
+            dispositivoId = par.dispositivoId,
+            registrationId = 0,
+            identidad = "",
+        )
+        // Si uno de una conversacion no puede salir, los que siguen de esa
+        // misma esperan: llegarian desordenados.
+        val frenadas = mutableSetOf<String>()
+        for (m in pendientes) {
+            if (m.conversacionId in frenadas) continue
+            if (EnvioCerca.tiene(m.cercaEntregado, par.dispositivoId) || m.id in enVueloCerca) continue
+            if (!EnvioCerca.esTexto(m.adjuntoId, m.adjuntoClase, m.especialJson)) continue
+            val c = dao.conversacion(m.conversacionId) ?: continue
+            if (!EnvioCerca.va(c.tipo, c.nombre, c.participantes, yo, par.usuarioId, par.username)) continue
+            val copia = runCatching { cifrador.cifrarSoloPara(destino, cargaDe(m)) }.getOrNull()
+            if (copia == null) {
+                frenadas += m.conversacionId
+                continue
+            }
+            val ok = cerca.mandar(
+                com.wtfuck.protocol.MensajeCerca.Sobre(
+                    sobreId = m.id,
+                    mensajeId = m.id,
+                    conversacionId = m.conversacionId,
+                    origenUsuarioId = yo,
+                    origenUsername = sesion.username.orEmpty(),
+                    origenDispositivo = sesion.dispositivoId.orEmpty(),
+                    destinoDispositivo = par.dispositivoId,
+                    cuerpo = copia.cuerpo,
+                    tipo = copia.tipo,
+                    creadoEn = m.creadoEn,
+                )
+            )
+            if (!ok) return
+            enVueloCerca += m.id
         }
     }
 

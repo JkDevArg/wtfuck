@@ -59,6 +59,8 @@
          declarado en el momento de arrancar, y si no, no arranca. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- El modo cerca en primer plano mientras esta encendido. Ver `ServicioCerca`. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <!--
       Modulo AV · Modo cine.
@@ -140,6 +142,17 @@
         <receiver
             android:name=".datos.Programados$Receptor"
             android:exported="false" />
+
+        <!--
+          El modo cerca mientras esta encendido. `connectedDevice` es el tipo
+          de un enlace con otro aparato; `stopWithTask="false"` para que cerrar
+          la app desde recientes no corte a quien esta hablando por aqui.
+        -->
+        <service
+            android:name=".datos.ServicioCerca"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false" />
 
         <service
             android:name=".datos.ServicioLlamadaFg"

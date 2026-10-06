@@ -139,7 +139,10 @@ saldrá cuando haya alguien o algo.
 
 ## 4. Propuesta por fases
 
-**Fase 0: que el modo cerca funcione (esfuerzo bajo-medio).**
+**Fase 0: que el modo cerca funcione (esfuerzo bajo-medio).** **Hecha el
+2026-10-06:** ver `docs/evidencias/modo-cerca-fase0/`. Se probó de punta a punta
+entre dos emuladores con el servidor desenchufado, usando un puente TCP que solo
+existe en debug. Falta repetirla con dos teléfonos reales y la radio de verdad.
 
 1. Si el registro HTTP falla por red y el enlace cerca está activo, entregar
    igual por cerca. Marcar el mensaje como "registro pendiente" y registrarlo al

@@ -1,5 +1,16 @@
 # Módulo AZ · Modo cerca — mensajería por Bluetooth, sin internet
 
+> **Actualizado en la fase 0 (2026-10-06):** ver
+> [`../modo-cerca-fase0/README.md`](../modo-cerca-fase0/README.md).
+>
+> - Este módulo **recibía** pero **no podía enviar sin internet**: el registro
+>   HTTP iba antes que el transporte.
+> - La sección "Enlace sin emparejar" de abajo **ya no rige**: el código solo
+>   buscaba entre aparatos emparejados, y ahora el enlace es RFCOMM seguro y
+>   exige emparejar.
+> - Lo demás —la regla de aceptación, el marco de las tramas y el filtro de
+>   audífonos— sigue igual.
+
 Mandar y recibir mensajes entre dos teléfonos que están a unos metros, sin
 servidor y sin señal.
 

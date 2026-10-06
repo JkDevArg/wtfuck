@@ -2,6 +2,7 @@ package com.wtfuck.protocol
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.io.EOFException
 import java.io.InputStream
 import java.io.OutputStream
@@ -87,8 +88,110 @@ sealed interface MensajeCerca {
         val creadoEn: Long,
     ) : MensajeCerca
 
+    /**
+     * "Ya lo tengo": quien recibio un sobre por el enlace avisa que lo GUARDO.
+     *
+     * Sin esto, lo que salia por aqui quedaba en la cola de quien lo mando
+     * -el "enviado" solo lo da el servidor- y se volvia a mandar en cada
+     * pasada. Se manda solo despues de guardar, nunca al leer: un acuse de algo
+     * que despues no se pudo abrir haria creer que llego.
+     */
+    @Serializable
+    @SerialName("acuse")
+    data class Acuse(
+        val mensajeId: String,
+        /** El aparato que lo guardo: quien lo recibe lo anota por aparato. */
+        val dispositivoId: String,
+    ) : MensajeCerca
+
     companion object {
-        const val VERSION = 1
+        /**
+         * 2 desde que hay [Acuse]. Una version 1 ignora el acuse -no sabe
+         * leerlo y lo salta- y sigue funcionando como antes.
+         */
+        const val VERSION = 2
+    }
+}
+
+/**
+ * Una conversacion por el enlace: el saludo, los sobres y los acuses.
+ *
+ * ## Por que aparte del Bluetooth
+ *
+ * Las reglas que importan viven aqui y no en la radio: que un sobre para otro
+ * aparato no se toque, que un sobre tenga que venir de quien saludo, que solo
+ * se acuse lo que quedo guardado. Sobre dos flujos cualesquiera esto se prueba
+ * con dos tuberias en una JVM; con la radio, solo con dos telefonos.
+ *
+ * El transporte pone los flujos -los de un socket RFCOMM, o los de un socket
+ * TCP en el puente de pruebas- y nada mas.
+ */
+class CharlaCerca(
+    private val entrada: InputStream,
+    private val salida: OutputStream,
+    private val yo: MensajeCerca.Saludo,
+) {
+    /** Quien dijo ser el otro lado. `null` hasta que saluda. */
+    @Volatile
+    var suyo: MensajeCerca.Saludo? = null
+        private set
+
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val candado = Any()
+
+    fun saludar(): Boolean = mandar(yo)
+
+    /** Escribe una trama. `false` si el enlace ya no sirve. */
+    fun mandar(m: MensajeCerca): Boolean = runCatching {
+        // Dos escrituras a la vez -un acuse desde el hilo que lee y un sobre
+        // desde el que despacha- intercalarian sus bytes y desincronizarian
+        // el flujo para siempre.
+        synchronized(candado) {
+            Trama.escribir(salida, json.encodeToString(MensajeCerca.serializer(), m).toByteArray())
+        }
+        true
+    }.getOrDefault(false)
+
+    /**
+     * Lee hasta que el enlace se corte, y entonces lanza. Bloquea: va en un
+     * hilo de entrada y salida.
+     *
+     * @param alSobre devuelve si el sobre quedo GUARDADO. Solo entonces se acusa.
+     */
+    suspend fun escuchar(
+        alSaludo: suspend (MensajeCerca.Saludo) -> Unit,
+        alSobre: suspend (MensajeCerca.Sobre) -> Boolean,
+        alAcuse: suspend (MensajeCerca.Acuse) -> Unit,
+    ) {
+        while (true) {
+            val crudo = Trama.leer(entrada)
+            // Una trama que no se entiende se salta, no corta: puede ser de una
+            // version mas nueva con un tipo que esta todavia no conoce.
+            val msg = runCatching { json.decodeFromString(MensajeCerca.serializer(), String(crudo)) }
+                .getOrNull() ?: continue
+            when (msg) {
+                is MensajeCerca.Saludo -> {
+                    suyo = msg
+                    alSaludo(msg)
+                }
+                is MensajeCerca.Sobre -> {
+                    // Para otro aparato: se descarta sin mirarlo.
+                    if (msg.destinoDispositivo != yo.dispositivoId) continue
+                    // Tiene que venir de quien saludo. Un sobre "de parte de"
+                    // otro seria llevar mensajes ajenos, y eso es otra cosa
+                    // -con otras reglas- que este enlace no hace.
+                    val s = suyo ?: continue
+                    if (msg.origenDispositivo != s.dispositivoId || msg.origenUsuarioId != s.usuarioId) continue
+                    if (alSobre(msg)) mandar(MensajeCerca.Acuse(msg.mensajeId, yo.dispositivoId))
+                }
+                is MensajeCerca.Acuse -> {
+                    // Solo del aparato que saludo, y solo a su nombre.
+                    val s = suyo ?: continue
+                    if (msg.dispositivoId != s.dispositivoId) continue
+                    alAcuse(msg)
+                }
+            }
+        }
     }
 }
 

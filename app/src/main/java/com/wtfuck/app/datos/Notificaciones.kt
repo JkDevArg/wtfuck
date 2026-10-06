@@ -86,6 +86,8 @@ object Notificaciones {
     private const val CANAL_MENSAJES = "mensajes"
     private const val CANAL_RECORDATORIOS = "recordatorios"
     private const val CANAL_COPIAS = "copias"
+    /** El aviso fijo mientras el modo cerca esta encendido. Ver `ServicioCerca`. */
+    const val CANAL_CERCA = "cerca"
     const val ACCION_COPIAS = "com.wtfuck.app.COPIAS"
     private const val CANAL_GRUPOS = "grupos"
     private const val CANAL_CANALES = "canales"
@@ -117,6 +119,14 @@ object Notificaciones {
 
     fun crearCanales(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CANAL_CERCA,
+                "Modo cerca",
+                // Baja: no avisa de nada nuevo, dice que la radio escucha.
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply { description = "Mientras el modo cerca esta encendido" }
+        )
         nm.createNotificationChannel(
             NotificationChannel(
                 CANAL_COPIAS,

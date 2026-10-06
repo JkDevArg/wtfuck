@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -2297,7 +2298,10 @@ private fun Burbuja(
 ) {
     val estado = runCatching { EstadoEnvio.valueOf(m.estado) }.getOrDefault(EstadoEnvio.PENDIENTE)
     val fallido = estado == EstadoEnvio.FALLIDO
-    val pendiente = estado == EstadoEnvio.PENDIENTE
+    // Llego por el modo cerca a quien estaba enfrente y espera la red para el
+    // resto: no es "en cola" para quien lo mira, ya lo tiene la otra persona.
+    val porCerca = estado == EstadoEnvio.PENDIENTE && m.cercaEntregado.isNotBlank()
+    val pendiente = estado == EstadoEnvio.PENDIENTE && !porCerca
 
     // La semantica de color del sistema de diseno, aplicada:
     //   cian  = va bien    ambar = esperando    coral = se rompio
@@ -2629,6 +2633,7 @@ private fun Burbuja(
                         // reintentando, y quien lo lee necesita saberlo.
                         fallido -> m.motivoFallo ?: "no se envio - toca para reintentar"
                         pendiente -> "en cola"
+                        porCerca -> "por Bluetooth"
                         else -> hora(m.creadoEn)
                     },
                     fontSize = 11.sp,
@@ -2649,7 +2654,8 @@ private fun Burbuja(
                 // si.
                 if (m.esMio && !m.retirado && m.especial != ClaseContenido.LLAMADA) {
                     Spacer(Modifier.width(4.dp))
-                    val (icono, tinteBase) = iconoEstado(estado)
+                    val (icono, tinteBase) =
+                        if (porCerca) Icons.Filled.Bluetooth to TextoTerciario else iconoEstado(estado)
                     // Sobre la burbuja propia -que es CIAN- el estado no
                     // puede pintarse en cian.
                     //
