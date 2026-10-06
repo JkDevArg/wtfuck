@@ -116,6 +116,7 @@ object Novedades {
                 Cambio(TipoCambio.ARREGLO, "Los borradores se perdían cada vez que abrías la app. Ya no."),
                 Cambio(TipoCambio.ARREGLO, "Mantener pulsado un enlace o una foto abre el menú del mensaje, en vez de abrir el enlace o la foto."),
                 Cambio(TipoCambio.ARREGLO, "Lo que escribes en otro de tus aparatos se ve como tuyo, y ya no te llega como una notificación."),
+                Cambio(TipoCambio.ARREGLO, "Ya no aparece un aviso de \"fallo\" cuando el teléfono cierra wtfuck en segundo plano para liberar memoria, como hacen Honor y Huawei. No era un fallo."),
             ),
         ),
         NotasVersion(
