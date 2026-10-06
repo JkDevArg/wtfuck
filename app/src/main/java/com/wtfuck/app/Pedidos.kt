@@ -28,6 +28,8 @@ sealed interface Pedido {
     /** [mensaje]: si viene, se salta a ese mensaje (un recordatorio). */
     data class AbrirChat(val id: String, val mensaje: String? = null) : Pedido
     data object AbrirNota : Pedido
+    /** La notificacion de una copia automatica fallida. */
+    data object AbrirCopias : Pedido
     /** [destino]: el chat que se eligio en la fila de compartir del sistema, si fue asi. */
     data class Compartir(val compartido: Compartido, val destino: String?) : Pedido
 }
@@ -46,6 +48,7 @@ object Pedidos {
         }
         return when (i.action) {
             Atajos.ACCION_NOTA -> Pedido.AbrirNota
+            com.wtfuck.app.datos.Notificaciones.ACCION_COPIAS -> Pedido.AbrirCopias
             else -> null
         }
     }

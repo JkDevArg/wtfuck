@@ -3571,6 +3571,14 @@ class Repositorio(
      */
     private suspend fun identidadSellada(codigo: String?): CopiaSeguridad.IdentidadRespaldo? {
         val limpio = codigo?.let { CodigoRecuperacion.normalizar(it) } ?: return null
+        return identidadSellada(CodigoRecuperacion.claveDeIdentidad(limpio))
+    }
+
+    /**
+     * Lo mismo, con la llave ya derivada: es lo que guarda la copia
+     * automatica, que no guarda el codigo. Ver `CopiaAutomatica`.
+     */
+    private suspend fun identidadSellada(clave: ByteArray): CopiaSeguridad.IdentidadRespaldo? {
         val mia = withContext(Dispatchers.IO) { signalDao.identidadPropia() } ?: return null
         return CopiaSeguridad.sellarIdentidad(
             CopiaSeguridad.IdentidadClara(
@@ -3580,7 +3588,7 @@ class Repositorio(
                 proximoFirmadaId = mia.proximoFirmadaId,
                 proximoKyberId = mia.proximoKyberId,
             ),
-            CodigoRecuperacion.claveDeIdentidad(limpio),
+            clave,
         )
     }
 
@@ -3661,6 +3669,10 @@ class Repositorio(
         salida: java.io.OutputStream,
         frase: CharArray,
         codigo: String? = null,
+        /** Sin fotos ni archivos: solo el texto. Lo elige la copia automatica. */
+        conAdjuntos: Boolean = true,
+        /** La llave del sello de identidad, si no se da el codigo. Ver `CopiaAutomatica`. */
+        claveIdentidad: ByteArray? = null,
     ) {
         val convs = mutableListOf<CopiaSeguridad.ConversacionRespaldo>()
         java.util.zip.ZipOutputStream(salida.buffered()).use { zip ->
@@ -3672,7 +3684,7 @@ class Repositorio(
                     if (m.texto.isBlank() && m.adjuntoId == null) continue
 
                     var adj: CopiaSeguridad.AdjuntoRespaldo? = null
-                    if (m.adjuntoId != null && m.adjuntoNombre.isNotBlank()) {
+                    if (conAdjuntos && m.adjuntoId != null && m.adjuntoNombre.isNotBlank()) {
                         val f = archivos.archivoDe(m.id, m.adjuntoNombre)
                         if (f.exists()) {
                             // Se cifra a un temporal y de ahi al zip: CifradorArchivo
@@ -3715,12 +3727,64 @@ class Repositorio(
                 creado = System.currentTimeMillis(),
                 cuenta = sesion.username.orEmpty(),
                 conversaciones = convs,
-                identidad = identidadSellada(codigo),
+                identidad = if (codigo != null) identidadSellada(codigo)
+                else claveIdentidad?.let { identidadSellada(it) },
             )
             val json = jsonApp.encodeToString(CopiaSeguridad.Respaldo.serializer(), respaldo)
             zip.putNextEntry(java.util.zip.ZipEntry("manifiesto"))
             zip.write(CopiaSeguridad.cifrar(json.toByteArray(), frase))
             zip.closeEntry()
+        }
+    }
+
+    // --- Copia automatica ---------------------------------------------------
+
+    /** Una sola copia a la vez: la periodica y "hacer una ahora" pueden coincidir. */
+    private val candadoCopia = Mutex()
+
+    /**
+     * Hace la copia automatica en la carpeta elegida y poda las viejas.
+     *
+     * Si algo falla a mitad, el archivo a medias se BORRA: una copia cortada
+     * con el nombre de una buena seria peor que ninguna, porque desplazaria a
+     * una buena de las dos que se conservan. Por lo mismo la poda va despues
+     * de escribir, nunca antes.
+     */
+    suspend fun copiaAutomatica(): CopiaAutomatica.Resultado = candadoCopia.withLock {
+        withContext(Dispatchers.IO) {
+            val cfg = CopiaAutomatica.Config(contexto)
+            val carpeta = cfg.carpeta ?: return@withContext CopiaAutomatica.Resultado.SIN_CONFIGURAR
+            val frase = cfg.frase() ?: return@withContext CopiaAutomatica.Resultado.SIN_CONFIGURAR
+            val cr = contexto.contentResolver
+            val arbol = android.net.Uri.parse(carpeta)
+            val doc = try {
+                CopiaAutomatica.crearArchivo(cr, arbol, CopiaAutomatica.nombre(java.time.ZonedDateTime.now()))
+            } catch (e: Exception) {
+                Log.w(TAG, "Copia automatica: carpeta perdida: ${e.message}")
+                cfg.ultimoError = "No se encuentra la carpeta, o ya no hay permiso para escribir en ella."
+                frase.fill('\u0000')
+                return@withContext CopiaAutomatica.Resultado.CARPETA_PERDIDA
+            }
+            try {
+                (cr.openOutputStream(doc, "w") ?: throw java.io.IOException("sin flujo")).use {
+                    exportarCopiaA(it, frase, conAdjuntos = cfg.conAdjuntos, claveIdentidad = cfg.claveIdentidad())
+                }
+            } catch (e: Throwable) {
+                CopiaAutomatica.borrar(cr, doc)
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w(TAG, "Copia automatica fallida: ${e.message}")
+                cfg.ultimoError = "No se pudo escribir la copia" +
+                    (e.message?.let { m -> ": $m" } ?: ".")
+                return@withContext CopiaAutomatica.Resultado.FALLO
+            } finally {
+                frase.fill('\u0000')
+            }
+            CopiaAutomatica.podar(cr, arbol)
+            val ahora = System.currentTimeMillis()
+            cfg.ultimaHecha = ahora
+            cfg.ultimoError = null
+            ajustes.ultimaCopia = ahora
+            CopiaAutomatica.Resultado.HECHA
         }
     }
 
@@ -5348,6 +5412,8 @@ class Repositorio(
         dao.borrarChatsEnCarpetas()
         dao.borrarCarpetas()
         Notificaciones.quitarSonidosPropios(contexto)
+        CopiaAutomatica.cancelar(contexto)
+        CopiaAutomatica.Config(contexto).borrarTodo()
     }
 
     /**
@@ -5576,6 +5642,10 @@ class Repositorio(
         dao.borrarCarpetas()
         dao.borrarRecordatorios()
         Notificaciones.quitarSonidosPropios(contexto)
+        // La copia automatica guarda la frase de ESTA cuenta: seguir copiando
+        // con ella los chats de la siguiente seria mezclar dos personas.
+        CopiaAutomatica.cancelar(contexto)
+        CopiaAutomatica.Config(contexto).borrarTodo()
         // Los atajos y el widget hablan de esta cuenta.
         Atajos.borrarTodos(contexto)
         WidgetWtfuck.actualizar(contexto, 0)

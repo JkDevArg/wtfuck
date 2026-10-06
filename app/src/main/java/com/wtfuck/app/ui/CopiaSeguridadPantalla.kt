@@ -1,5 +1,7 @@
 package com.wtfuck.app.ui
 
+import com.wtfuck.app.datos.CopiaAutomatica
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -104,6 +106,66 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) pidiendoFraseImport = uri }
 
+    // --- copia automatica ---------------------------------------------
+    val cfg = remember { CopiaAutomatica.Config(ctx) }
+    var activa by remember { mutableStateOf(cfg.activa) }
+    var carpeta by remember { mutableStateOf<String?>(null) }
+    var frecuencia by remember { mutableStateOf(cfg.frecuencia) }
+    var conAdjuntos by remember { mutableStateOf(cfg.conAdjuntos) }
+    var ultimaAuto by remember { mutableStateOf(cfg.ultimaHecha) }
+    var errorAuto by remember { mutableStateOf(cfg.ultimoError) }
+    var conIdentidadAuto by remember { mutableStateOf(cfg.llevaIdentidad) }
+    val enCurso by remember { CopiaAutomatica.enCurso(ctx) }.collectAsState(initial = false)
+    var activando by remember { mutableStateOf(false) }
+    var cambiandoFrase by remember { mutableStateOf(false) }
+    var desactivando by remember { mutableStateOf(false) }
+    // Entre "pedir frase" y "elegir carpeta", igual que en la manual.
+    var fraseAuto by remember { mutableStateOf<CharArray?>(null) }
+    var codigoAuto by remember { mutableStateOf<String?>(null) }
+
+    fun refrescar() {
+        activa = cfg.activa
+        carpeta = cfg.carpeta?.let { CopiaAutomatica.nombreCarpeta(ctx.contentResolver, android.net.Uri.parse(it)) }
+        frecuencia = cfg.frecuencia
+        conAdjuntos = cfg.conAdjuntos
+        ultimaAuto = cfg.ultimaHecha
+        errorAuto = cfg.ultimoError
+        conIdentidadAuto = cfg.llevaIdentidad
+        ultimaCopia = app.ajustes.ultimaCopia
+    }
+    LaunchedEffect(enCurso) { if (!enCurso) refrescar() }
+
+    val elegirCarpeta = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        val frase = fraseAuto
+        fraseAuto = null
+        if (uri == null) { codigoAuto = null; return@rememberLauncherForActivityResult }
+        // Persistente: sin esto el permiso muere con la pantalla, y la copia
+        // de manana no podria escribir.
+        val banderas = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { ctx.contentResolver.takePersistableUriPermission(uri, banderas) }
+        // La carpeta anterior, si se esta cambiando, ya no se necesita.
+        cfg.carpeta?.takeIf { it != uri.toString() }?.let { vieja ->
+            runCatching { ctx.contentResolver.releasePersistableUriPermission(android.net.Uri.parse(vieja), banderas) }
+        }
+        cfg.carpeta = uri.toString()
+        cfg.ultimoError = null
+        if (frase != null) {
+            cfg.guardarFrase(frase)
+            frase.fill('\u0000')
+            cfg.guardarClaveIdentidad(
+                codigoAuto?.let { com.wtfuck.app.datos.CodigoRecuperacion.normalizar(it) }
+                    ?.let { com.wtfuck.app.datos.CodigoRecuperacion.claveDeIdentidad(it) }
+            )
+            codigoAuto = null
+        }
+        CopiaAutomatica.programar(ctx, cfg.frecuencia)
+        CopiaAutomatica.ahora(ctx)
+        refrescar()
+    }
+
     Scaffold(
         containerColor = BgBase,
         topBar = {
@@ -170,6 +232,29 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
                 habilitado = !trabajando,
             )
 
+            Spacer(Modifier.height(24.dp))
+            SeccionCopiaAutomatica(
+                activa = activa,
+                carpeta = carpeta,
+                frecuencia = frecuencia,
+                conAdjuntos = conAdjuntos,
+                ultima = ultimaAuto,
+                error = errorAuto,
+                conIdentidad = conIdentidadAuto,
+                enCurso = enCurso,
+                onActivar = { activando = true },
+                onFrecuencia = { f ->
+                    cfg.frecuencia = f
+                    CopiaAutomatica.programar(ctx, f)
+                    frecuencia = f
+                },
+                onAdjuntos = { v -> cfg.conAdjuntos = v; conAdjuntos = v },
+                onAhora = { CopiaAutomatica.ahora(ctx) },
+                onCambiarCarpeta = { elegirCarpeta.launch(null) },
+                onCambiarFrase = { cambiandoFrase = true },
+                onDesactivar = { desactivando = true },
+            )
+
             if (trabajando) {
                 Spacer(Modifier.height(20.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -228,6 +313,73 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
                 fraseExport = frase
                 codigoExport = codigo
                 guardarArchivo.launch("wtfuck-copia-${System.currentTimeMillis() / 1000}.wtfbackup")
+            },
+        )
+    }
+
+    // --- copia automatica: la frase, al activar o al cambiarla -----------
+    if (activando || cambiandoFrase) {
+        DialogoFrase(
+            titulo = "Frase de las copias automáticas",
+            confirmar = if (activando) "Elegir carpeta" else "Guardar",
+            pedirDosVeces = true,
+            ofrecerCodigo = true,
+            explicacionCodigo =
+                "Si lo añades, las copias llevarán tu identidad cifrada. No se guarda el " +
+                    "código: solo la llave que sella la identidad, que no sirve para " +
+                    "entrar a tu cuenta.",
+            onCerrar = { activando = false; cambiandoFrase = false },
+            onFrase = { frase, codigo ->
+                if (activando) {
+                    activando = false
+                    fraseAuto = frase
+                    codigoAuto = codigo
+                    elegirCarpeta.launch(null)
+                } else {
+                    cambiandoFrase = false
+                    cfg.guardarFrase(frase)
+                    frase.fill('\u0000')
+                    cfg.guardarClaveIdentidad(
+                        codigo?.let { com.wtfuck.app.datos.CodigoRecuperacion.normalizar(it) }
+                            ?.let { com.wtfuck.app.datos.CodigoRecuperacion.claveDeIdentidad(it) }
+                    )
+                    refrescar()
+                    aviso = "Frase cambiada. Las copias que ya estaban siguen abriéndose con la anterior."
+                }
+            },
+        )
+    }
+
+    if (desactivando) {
+        AlertDialog(
+            containerColor = BgElev,
+            onDismissRequest = { desactivando = false },
+            title = { Text("Desactivar la copia automática", color = TextoPrimario) },
+            text = {
+                Text(
+                    "Se olvidan la frase y la carpeta. Las copias que ya están en la carpeta se quedan allí.",
+                    color = TextoSecundario,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    desactivando = false
+                    CopiaAutomatica.cancelar(ctx)
+                    cfg.carpeta?.let { vieja ->
+                        runCatching {
+                            ctx.contentResolver.releasePersistableUriPermission(
+                                android.net.Uri.parse(vieja),
+                                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                            )
+                        }
+                    }
+                    cfg.borrarTodo()
+                    refrescar()
+                }) { Text("Desactivar", color = Coral) }
+            },
+            dismissButton = {
+                TextButton(onClick = { desactivando = false }) { Text("Cancelar", color = TextoSecundario) }
             },
         )
     }
@@ -298,6 +450,116 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
             confirmButton = { TextButton(onClick = { aviso = null }) { Text("Entendido", color = Cian) } },
             text = { Text(msg, color = TextoPrimario) },
         )
+    }
+}
+
+/**
+ * La copia automatica: apagada, un boton; encendida, todo lo que se puede
+ * cambiar y como le fue a la ultima.
+ */
+@Composable
+private fun SeccionCopiaAutomatica(
+    activa: Boolean,
+    carpeta: String?,
+    frecuencia: CopiaAutomatica.Frecuencia,
+    conAdjuntos: Boolean,
+    ultima: Long,
+    error: String?,
+    conIdentidad: Boolean,
+    enCurso: Boolean,
+    onActivar: () -> Unit,
+    onFrecuencia: (CopiaAutomatica.Frecuencia) -> Unit,
+    onAdjuntos: (Boolean) -> Unit,
+    onAhora: () -> Unit,
+    onCambiarCarpeta: () -> Unit,
+    onCambiarFrase: () -> Unit,
+    onDesactivar: () -> Unit,
+) {
+    if (!activa) {
+        Tarjeta(
+            icono = Icons.Filled.Autorenew,
+            titulo = "Copia automática",
+            detalle = "Desactivada. Actívala y no dependerás de acordarte.",
+            onClick = onActivar,
+            habilitado = true,
+        )
+        return
+    }
+    Surface(color = BgSurface, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Autorenew, null, tint = Cian, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Copia automática · activada", color = TextoPrimario, style = MaterialTheme.typography.bodyLarge)
+            }
+            Spacer(Modifier.height(10.dp))
+            val estado = when {
+                enCurso -> "Haciendo una copia…"
+                error != null -> error
+                ultima == 0L -> "Todavía no se ha hecho ninguna."
+                else -> "Última: " + cuandoFueCopia(ultima) + "."
+            }
+            Text(
+                estado,
+                color = if (error != null && !enCurso) Coral else TextoSecundario,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Carpeta: " + (carpeta ?: "no disponible"),
+                color = if (carpeta == null) Coral else TextoTerciario,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                if (conIdentidad) "Lleva tu identidad cifrada." else "No lleva tu identidad.",
+                color = TextoTerciario, style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row {
+                CopiaAutomatica.Frecuencia.entries.forEach { f ->
+                    FilterChip(
+                        selected = f == frecuencia,
+                        onClick = { onFrecuencia(f) },
+                        label = { Text(f.etiqueta) },
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Incluir fotos y archivos", color = TextoPrimario, modifier = Modifier.weight(1f))
+                Switch(checked = conAdjuntos, onCheckedChange = onAdjuntos)
+            }
+            Spacer(Modifier.height(6.dp))
+            Row {
+                TextButton(onClick = onAhora, enabled = !enCurso) { Text("Hacer una ahora", color = Cian) }
+                TextButton(onClick = onCambiarCarpeta) { Text("Cambiar carpeta", color = Cian) }
+            }
+            Row {
+                TextButton(onClick = onCambiarFrase) { Text("Cambiar frase", color = Cian) }
+                TextButton(onClick = onDesactivar) { Text("Desactivar", color = Coral) }
+            }
+            Spacer(Modifier.height(4.dp))
+            // Lo que no resuelve, donde se decide. Ver `CopiaAutomatica`.
+            Text(
+                "Se guardan las dos últimas. Si la carpeta está en este teléfono y lo pierdes, " +
+                    "se pierden con él: para eso, elige una tarjeta SD o una carpeta que otra " +
+                    "app sincronice con la nube.",
+                color = TextoTerciario, style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+/** "hoy, 01:30", "ayer, 22:10" o "hace 5 días". */
+private fun cuandoFueCopia(ms: Long): String {
+    val zona = java.time.ZoneId.systemDefault()
+    val dia = java.time.Instant.ofEpochMilli(ms).atZone(zona)
+    val hoy = java.time.LocalDate.now(zona)
+    val hora = dia.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+    val dias = java.time.temporal.ChronoUnit.DAYS.between(dia.toLocalDate(), hoy)
+    return when {
+        dias <= 0L -> "hoy, $hora"
+        dias == 1L -> "ayer, $hora"
+        else -> "hace $dias días"
     }
 }
 

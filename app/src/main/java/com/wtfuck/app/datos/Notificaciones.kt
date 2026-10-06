@@ -85,6 +85,8 @@ object Notificaciones {
 
     private const val CANAL_MENSAJES = "mensajes"
     private const val CANAL_RECORDATORIOS = "recordatorios"
+    private const val CANAL_COPIAS = "copias"
+    const val ACCION_COPIAS = "com.wtfuck.app.COPIAS"
     private const val CANAL_GRUPOS = "grupos"
     private const val CANAL_CANALES = "canales"
     const val CANAL_LLAMADAS = "llamadas"
@@ -115,6 +117,13 @@ object Notificaciones {
 
     fun crearCanales(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CANAL_COPIAS,
+                "Copias de seguridad",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply { description = "Cuando la copia automática no se pudo hacer" }
+        )
         nm.createNotificationChannel(
             NotificationChannel(
                 CANAL_RECORDATORIOS,
@@ -474,6 +483,32 @@ object Notificaciones {
             nm.notificationChannels.filter { it.id.startsWith("chat-") }
                 .forEach { nm.deleteNotificationChannel(it.id) }
         }
+    }
+
+    /**
+     * La copia automatica fallo. Solo se avisa del fallo: una copia que sale
+     * bien todos los dias no tiene por que interrumpir a nadie.
+     */
+    fun copiaFallida(ctx: Context, texto: String) {
+        if (!permitido(ctx)) return
+        val intent = Intent(ctx, MainActivity::class.java).apply {
+            action = ACCION_COPIAS
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pi = android.app.PendingIntent.getActivity(
+            ctx, "copias".hashCode(), intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+        val n = NotificationCompat.Builder(ctx, CANAL_COPIAS)
+            .setSmallIcon(R.drawable.ic_notificacion)
+            .setContentTitle("Copia de seguridad")
+            .setContentText(texto)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(texto))
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .build()
+        runCatching { NotificationManagerCompat.from(ctx).notify("copias".hashCode(), n) }
     }
 
     fun recordatorio(
