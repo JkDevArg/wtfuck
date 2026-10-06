@@ -1581,13 +1581,15 @@ class Repositorio(
         previa: VistaPreviaEnlace? = null,
         /** Si es > 0, no sale ahora sino a esa hora. Ver `Programados`. */
         programadoPara: Long = 0,
+        /** El id, si quien llama necesita saberlo antes. Ver `enviarADifusion`. */
+        idNuevo: String? = null,
     ) {
         val limpio = texto.trim()
         if (limpio.isEmpty()) return
         val programado = programadoPara > 0
 
         val m = MensajeEnt(
-            id = UUID.randomUUID().toString(),
+            id = idNuevo ?: UUID.randomUUID().toString(),
             conversacionId = convId,
             autor = sesion.username.orEmpty(),
             esMio = true,
@@ -2848,9 +2850,11 @@ class Repositorio(
         forma: String = "",
         /** Ver `CargaAdjunto.spoiler`. */
         spoiler: Boolean = false,
+        /** El id, si quien llama necesita saberlo antes. Ver `enviarADifusion`. */
+        idNuevo: String? = null,
     ) {
         val pie = if (unaVez) "" else pie
-        val mensajeId = UUID.randomUUID().toString()
+        val mensajeId = idNuevo ?: UUID.randomUUID().toString()
         val original = archivos.datosDe(uri, clase)
 
         // El limite, ANTES de crear el mensaje.
@@ -5106,6 +5110,21 @@ class Repositorio(
     private val _atascos = MutableStateFlow<Map<String, String>>(emptyMap())
     val atascos: StateFlow<Map<String, String>> = _atascos.asStateFlow()
 
+    private var retoma: Job? = null
+
+    /** Vuelve a intentar la cola dentro de [segundos]. Una sola espera a la vez. */
+    private fun retomarColaEn(segundos: Long) {
+        if (retoma?.isActive == true) return
+        retoma = ambito.launch {
+            kotlinx.coroutines.delay(segundos * 1000 + 500)
+            // Antes de despachar: si este intento vuelve a recibir un 429,
+            // tiene que poder programar el siguiente. Con la referencia puesta
+            // se veia a si mismo "activo" y la cadena se cortaba ahi.
+            retoma = null
+            runCatching { despachar() }
+        }
+    }
+
     private fun anotarAtasco(conv: String, motivo: String) {
         if (_atascos.value[conv] != motivo) _atascos.value = _atascos.value + (conv to motivo)
     }
@@ -5176,6 +5195,19 @@ class Repositorio(
             val fallo = registro.exceptionOrNull()
             if (fallo != null) {
                 val api = fallo as? ApiError
+                if (api?.codigo == 429) {
+                    // "Vas muy rapido" NO es un rechazo: el servidor pide
+                    // esperar. Caia en el 4xx de abajo y el mensaje quedaba
+                    // FALLIDO para siempre -escribiendo muy rapido, o con una
+                    // lista de difusion de mas de 30, todos los que pasaban del
+                    // cupo-. Sigue PENDIENTE, se corta el bucle para no romper
+                    // el orden, y la cola se retoma sola pasada la espera.
+                    val espera = Difusiones.esperaDe(api.message)
+                    Log.w(TAG, "429 al registrar ${m.id}: se retoma en $espera s")
+                    anotarAtasco(m.conversacionId, "El servidor pidió ir más despacio: sale en $espera s.")
+                    retomarColaEn(espera)
+                    return
+                }
                 if (api != null && api.codigo in 400..499) {
                     // Rechazo definitivo: te sacaron del grupo, estas silenciado,
                     // te bloquearon. Reintentar no va a cambiar nada.
@@ -5411,6 +5443,8 @@ class Repositorio(
         // quien eran.
         dao.borrarChatsEnCarpetas()
         dao.borrarCarpetas()
+        dao.borrarTodosLosEnvios()
+        dao.borrarDifusiones()
         Notificaciones.quitarSonidosPropios(contexto)
         CopiaAutomatica.cancelar(contexto)
         CopiaAutomatica.Config(contexto).borrarTodo()
@@ -5431,6 +5465,97 @@ class Repositorio(
 
     suspend fun nuevaDirecta(username: String, duracionMs: Long = 0): String =
         api.crearDirecta(username, duracionMs).also { guardarResumen(it) }.id
+
+    // --- Listas de difusion. Ver `DifusionEnt`. -----------------------------
+
+    val difusiones: Flow<List<DifusionEnt>> = dao.difusiones()
+
+    fun difusion(id: String): Flow<DifusionEnt?> = dao.difusion(id)
+
+    fun enviosDifusion(id: String): Flow<List<DifusionEnvioEnt>> = dao.enviosDifusion(id)
+
+    fun estadosDe(ids: List<String>): Flow<List<EstadoDeMensaje>> = dao.estadosDe(ids)
+
+    /** Crea ([id] null) o edita una lista. Devuelve su id. */
+    suspend fun guardarDifusion(id: String?, nombre: String, miembros: List<String>): String {
+        val limpios = miembros.map { it.lowercase().trim() }.filter { it.isNotBlank() }
+            .distinct().take(Difusiones.MAX_MIEMBROS)
+        val previa = id?.let { dao.difusion(it).first() }
+        val d = DifusionEnt(
+            id = id ?: UUID.randomUUID().toString(),
+            nombre = nombre.trim().ifBlank { "Lista de difusión" },
+            miembros = limpios.joinToString(","),
+            creadaEn = previa?.creadaEn ?: System.currentTimeMillis(),
+        )
+        dao.guardarDifusion(d)
+        return d.id
+    }
+
+    suspend fun borrarDifusion(id: String) {
+        dao.borrarEnviosDifusion(id)
+        dao.borrarDifusion(id)
+    }
+
+    /**
+     * Manda lo mismo a cada persona de la lista, en SU chat conmigo: un
+     * mensaje directo normal, cifrado para ella. Nadie ve a quien mas le
+     * llego, y para el servidor no hay ninguna "lista".
+     *
+     * Va en el ambito del repositorio y no en el de la pantalla: con fotos,
+     * salir de la pantalla a mitad no debe dejar la lista a medio mandar.
+     * A quien ya no tiene chat conmigo -lo borre- no se le crea uno: se avisa.
+     */
+    fun difundir(id: String, texto: String, uris: List<Uri> = emptyList()) {
+        ambito.launch {
+            val sinChat = runCatching { enviarADifusion(id, texto, uris) }.getOrDefault(emptyList())
+            if (sinChat.isNotEmpty()) {
+                _rechazos.tryEmit(
+                    "No se mandó a " + sinChat.joinToString(", ") { "@$it" } + ": ya no tienes chat con " +
+                        (if (sinChat.size == 1) "esa persona." else "esas personas.")
+                )
+            }
+        }
+    }
+
+    private suspend fun enviarADifusion(id: String, texto: String, uris: List<Uri>): List<String> {
+        val d = dao.difusion(id).first() ?: return emptyList()
+        val limpio = texto.trim()
+        if (limpio.isEmpty() && uris.isEmpty()) return emptyList()
+        val ids = mutableListOf<String>()
+        val sinChat = mutableListOf<String>()
+        val clases = uris.map { Media.claseDe(contexto.contentResolver.getType(it).orEmpty()) }
+        for (u in d.lista) {
+            val conv = directaCon(u)?.id
+            if (conv == null) { sinChat += u; continue }
+            if (uris.isEmpty()) {
+                val mid = UUID.randomUUID().toString()
+                enviarTexto(conv, limpio, idNuevo = mid)
+                ids += mid
+            } else {
+                uris.forEachIndexed { i, uri ->
+                    val mid = UUID.randomUUID().toString()
+                    runCatching { enviarAdjunto(conv, uri, clases[i], if (i == 0) limpio else "", idNuevo = mid) }
+                    ids += mid
+                }
+            }
+        }
+        val resumen = when {
+            uris.isEmpty() -> limpio
+            uris.size == 1 -> when (clases.single()) {
+                ClaseAdjunto.IMAGEN -> "Foto"
+                ClaseAdjunto.VIDEO -> "Video"
+                else -> "Archivo"
+            }
+            else -> "${uris.size} fotos y videos"
+        }
+        dao.guardarEnvioDifusion(
+            DifusionEnvioEnt(
+                id = UUID.randomUUID().toString(), difusionId = id, texto = limpio, resumen = resumen,
+                creadoEn = System.currentTimeMillis(), mensajes = ids.joinToString(","),
+            )
+        )
+        return sinChat
+    }
 
     // --- Enlace de contacto -------------------------------------------------
 
@@ -5660,6 +5785,9 @@ class Repositorio(
         dao.borrarChatsEnCarpetas()
         dao.borrarCarpetas()
         dao.borrarRecordatorios()
+        // Las listas de difusion nombran a quien le escribia esta cuenta.
+        dao.borrarTodosLosEnvios()
+        dao.borrarDifusiones()
         Notificaciones.quitarSonidosPropios(contexto)
         // La copia automatica guarda la frase de ESTA cuenta: seguir copiando
         // con ella los chats de la siguiente seria mezclar dos personas.

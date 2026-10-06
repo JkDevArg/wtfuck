@@ -68,6 +68,7 @@ fun Inicio(
     onCopiaSeguridad: () -> Unit,
     onSeguridad: () -> Unit,
     onMiEnlace: () -> Unit = {},
+    onDifusiones: () -> Unit = {},
     /** Abrir un chat saltando a un mensaje: lo pide el aviso de "no se envio". */
     onAbrirEnMensaje: (conversacionId: String, mensajeId: String) -> Unit,
     onLlamadas: () -> Unit,
@@ -153,6 +154,7 @@ fun Inicio(
                     onNuevoCanal = { pedirNuevoCanal = true; pestana = Pestana.CANALES },
                     onContactos = onContactos,
                     modifier = hueco,
+                    onDifusiones = onDifusiones,
                 )
 
                 Pestana.SOCIAL -> SocialPantalla(

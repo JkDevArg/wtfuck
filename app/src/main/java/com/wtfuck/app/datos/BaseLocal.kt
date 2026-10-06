@@ -619,6 +619,43 @@ data class RecordatorioEnt(
     val cuando: Long,
 )
 
+/**
+ * Una lista de difusion: un mensaje a varias personas, que cada una recibe en
+ * su chat conmigo, sin crear un grupo y sin ver a quien mas le llego.
+ *
+ * Vive SOLO en este telefono -como en WhatsApp-: para el servidor y para
+ * quien recibe son mensajes directos normales, cifrados uno por uno. Los
+ * miembros van como usernames separados por coma; un username no lleva comas.
+ */
+@Entity(tableName = "difusion")
+data class DifusionEnt(
+    @PrimaryKey val id: String,
+    val nombre: String,
+    val miembros: String,
+    val creadaEn: Long,
+) {
+    val lista: List<String> get() = miembros.split(',').filter { it.isNotBlank() }
+}
+
+/**
+ * Lo que se mando a una lista: el texto o el resumen ("Foto"), y los ids de
+ * los mensajes que salieron -uno por persona-, para contar entregados y leidos.
+ */
+@Entity(tableName = "difusion_envio", indices = [Index("difusionId")])
+data class DifusionEnvioEnt(
+    @PrimaryKey val id: String,
+    val difusionId: String,
+    val texto: String,
+    val resumen: String,
+    val creadoEn: Long,
+    val mensajes: String,
+) {
+    val ids: List<String> get() = mensajes.split(',').filter { it.isNotBlank() }
+}
+
+/** El estado de un mensaje, para contar como le fue a un envio. */
+data class EstadoDeMensaje(val id: String, val estado: String)
+
 /** Una carpeta de chats. Ver `Carpetas`. */
 @Entity(tableName = "carpeta")
 data class CarpetaEnt(
@@ -906,7 +943,13 @@ interface ChatDao {
      * mirar quien es alguien no es empezar a hablarle, y crear el chat al
      * mirar llenaria la lista de conversaciones vacias con gente de un grupo.
      */
-    @Query("SELECT * FROM conversacion WHERE tipo = 'directa' AND nombre = :username LIMIT 1")
+    // La de siempre antes que una temporal con la misma persona: un chat
+    // temporal convive con el normal (ver `crearDirecta` en el servidor), y
+    // mandar algo "a su chat" no debe caer en uno que se borra solo.
+    @Query(
+        "SELECT * FROM conversacion WHERE tipo = 'directa' AND nombre = :username " +
+            "ORDER BY (expiraEn = 0) DESC LIMIT 1"
+    )
     suspend fun directaCon(username: String): ConversacionEnt?
 
     /**
@@ -975,6 +1018,38 @@ interface ChatDao {
 
     @Query("DELETE FROM recordatorio")
     suspend fun borrarRecordatorios()
+
+    // --- Listas de difusion ---------------------------------------------------
+
+    @Query("SELECT * FROM difusion ORDER BY creadaEn DESC")
+    fun difusiones(): Flow<List<DifusionEnt>>
+
+    @Query("SELECT * FROM difusion WHERE id = :id")
+    fun difusion(id: String): Flow<DifusionEnt?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarDifusion(d: DifusionEnt)
+
+    @Query("DELETE FROM difusion WHERE id = :id")
+    suspend fun borrarDifusion(id: String)
+
+    @Query("SELECT * FROM difusion_envio WHERE difusionId = :id ORDER BY creadoEn")
+    fun enviosDifusion(id: String): Flow<List<DifusionEnvioEnt>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarEnvioDifusion(e: DifusionEnvioEnt)
+
+    @Query("DELETE FROM difusion_envio WHERE difusionId = :id")
+    suspend fun borrarEnviosDifusion(id: String)
+
+    @Query("DELETE FROM difusion")
+    suspend fun borrarDifusiones()
+
+    @Query("DELETE FROM difusion_envio")
+    suspend fun borrarTodosLosEnvios()
+
+    @Query("SELECT id, estado FROM mensaje WHERE id IN (:ids)")
+    fun estadosDe(ids: List<String>): Flow<List<EstadoDeMensaje>>
 
     @Query("UPDATE mensaje SET destacado = :destacado WHERE id IN (:ids)")
     suspend fun fijarDestacado(ids: List<String>, destacado: Boolean)
@@ -1515,8 +1590,10 @@ interface ChatDao {
         CarpetaEnt::class,
         CarpetaChatEnt::class,
         RecordatorioEnt::class,
+        DifusionEnt::class,
+        DifusionEnvioEnt::class,
     ],
-    version = 33,
+    version = 34,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1536,7 +1613,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31, DE_31_A_32, DE_32_A_33,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31, DE_31_A_32, DE_32_A_33, DE_33_A_34,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1687,27 +1764,24 @@ abstract class BaseLocal : RoomDatabase() {
          * unica copia del historial. Dejar que Room la recree por una columna
          * nueva borraria todos los mensajes de todo el mundo.
          */
-        /**
-         * La silueta de las notas de voz.
-         *
-         * Las notas que ya estaban se quedan con la cadena vacia y se siguen
-         * dibujando como antes, con la figura derivada del id. No se puede
-         * hacer mejor: la onda real de una nota vieja solo se podria sacar
-         * decodificandola, y ninguna migracion deberia abrir mil archivos de
-         * audio.
-         */
-        /**
-         * Los indices que faltaban en `mensaje`. Ver el KDoc de [MensajeEnt].
-         *
-         * No cambia ni una columna: solo crea indices. Es una migracion barata
-         * y hace falta igual, porque los `indices` de la anotacion solo se
-         * aplican al CREAR la tabla — en una base que ya existe, declararlos
-         * sin migracion no crea nada y Room falla la validacion del esquema.
-         *
-         * `IF NOT EXISTS` porque una base recien creada por la version 21 ya
-         * los trae de la anotacion, y esta migracion tambien corre en el salto
-         * desde cualquier version anterior.
-         */
+        /** Listas de difusion. Ver `DifusionEnt`. */
+        private val DE_33_A_34 = object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `difusion` (`id` TEXT NOT NULL, `nombre` TEXT NOT NULL, " +
+                        "`miembros` TEXT NOT NULL, `creadaEn` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `difusion_envio` (`id` TEXT NOT NULL, `difusionId` TEXT NOT NULL, " +
+                        "`texto` TEXT NOT NULL, `resumen` TEXT NOT NULL, `creadoEn` INTEGER NOT NULL, " +
+                        "`mensajes` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_difusion_envio_difusionId` ON `difusion_envio` (`difusionId`)"
+                )
+            }
+        }
+
         /** Fondo por chat. */
         private val DE_32_A_33 = object : Migration(32, 33) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -1804,6 +1878,18 @@ abstract class BaseLocal : RoomDatabase() {
             }
         }
 
+        /**
+         * Los indices que faltaban en `mensaje`. Ver el KDoc de [MensajeEnt].
+         *
+         * No cambia ni una columna: solo crea indices. Es una migracion barata
+         * y hace falta igual, porque los `indices` de la anotacion solo se
+         * aplican al CREAR la tabla — en una base que ya existe, declararlos
+         * sin migracion no crea nada y Room falla la validacion del esquema.
+         *
+         * `IF NOT EXISTS` porque una base recien creada por la version 21 ya
+         * los trae de la anotacion, y esta migracion tambien corre en el salto
+         * desde cualquier version anterior.
+         */
         private val DE_20_A_21 = object : Migration(20, 21) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -1836,6 +1922,15 @@ abstract class BaseLocal : RoomDatabase() {
             }
         }
 
+        /**
+         * La silueta de las notas de voz.
+         *
+         * Las notas que ya estaban se quedan con la cadena vacia y se siguen
+         * dibujando como antes, con la figura derivada del id. No se puede
+         * hacer mejor: la onda real de una nota vieja solo se podria sacar
+         * decodificandola, y ninguna migracion deberia abrir mil archivos de
+         * audio.
+         */
         private val DE_18_A_19 = object : Migration(18, 19) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE mensaje ADD COLUMN adjuntoOnda TEXT NOT NULL DEFAULT ''")

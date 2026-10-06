@@ -113,6 +113,8 @@ fun ChatsPantalla(
     /** La libreta, que salio de la barra de abajo. */
     onContactos: () -> Unit = {},
     modifier: Modifier = Modifier,
+    /** Las listas de difusion. Ver `DifusionesPantalla`. */
+    onDifusiones: () -> Unit = {},
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     var cercaAbierto by remember { mutableStateOf(false) }
@@ -431,6 +433,10 @@ fun ChatsPantalla(
                             OpcionMenu("Mensajes destacados", Icons.Filled.Star) {
                                 menuAbierto = false
                                 verDestacados = true
+                            }
+                            OpcionMenu("Listas de difusión", Icons.Filled.Campaign) {
+                                menuAbierto = false
+                                onDifusiones()
                             }
                             OpcionMenu("Carpetas", Icons.Filled.Folder) {
                                 menuAbierto = false
