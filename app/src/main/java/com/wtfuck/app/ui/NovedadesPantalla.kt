@@ -90,6 +90,16 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.6.4",
+            fecha = "06/10/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.MEJORA, "Modo cerca sin emparejar: con Android 12 o más nuevo te encuentras por Bluetooth con tus contactos sin pasar por los ajustes. Solo te reconoce quien tiene tu clave de cercanía, que viaja sola en tus chats directos; para cualquier otro, tu teléfono es un número que cambia cada cuarto de hora."),
+                Cambio(TipoCambio.MEJORA, "Modo cerca con varias personas a la vez, hasta cuatro: para un grupo en la misma sala."),
+                Cambio(TipoCambio.SEGURIDAD, "El enlace del modo cerca va cifrado y autenticado con las claves de tus chats, y estrena claves en cada conexión."),
+                Cambio(TipoCambio.SEGURIDAD, "Al bloquear a alguien cambia tu clave de cercanía: deja de reconocerte por Bluetooth, y el enlace con esa persona se corta si estaba abierto."),
+            ),
+        ),
+        NotasVersion(
             version = "0.6.3",
             fecha = "05/10/2026",
             cambios = listOf(

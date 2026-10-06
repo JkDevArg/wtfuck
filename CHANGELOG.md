@@ -8,6 +8,35 @@ Lo que cambió en cada versión de wtfuck, contado para quien usa la app.
 > `despliegue/notas/<versión>.md`. El detalle técnico de cada cambio está en
 > el historial de git y en `docs/evidencias/`.
 
+## 0.6.4 · 2026-10-06
+
+### Mejoras
+
+- Modo cerca sin emparejar: con Android 12 o más nuevo te encuentras por Bluetooth con tus contactos sin pasar por los ajustes. Solo te reconoce quien tiene tu clave de cercanía, que viaja sola en tus chats directos; para cualquier otro, tu teléfono es un número que cambia cada cuarto de hora.
+- Modo cerca con varias personas a la vez, hasta cuatro: para un grupo en la misma sala.
+
+### Seguridad
+
+- El enlace del modo cerca va cifrado y autenticado con las claves de tus chats, y estrena claves en cada conexión.
+- Al bloquear a alguien cambia tu clave de cercanía: deja de reconocerte por Bluetooth, y el enlace con esa persona se corta si estaba abierto.
+
+### Para desplegar
+
+- **Publicar solo la app:** `bash despliegue/lanzar.sh 0.6.4`, sin
+  `--con-servidor`. El servidor no cambia: no hay migraciones ni variables
+  nuevas.
+- **App:** la base local pasa a Room 36, con las tablas `baliza` y
+  `baliza_enviada`. La migración es automática.
+- **Compatibilidad con 0.6.3:** la clave de cercanía viaja como un campo
+  opcional (`baliza`) dentro de los mensajes de texto y de adjunto. Un cliente
+  0.6.3 lo ignora y muestra el mensaje normal.
+- **Modo cerca entre versiones:** emparejados por Bluetooth, un 0.6.4 y un
+  0.6.3 se siguen hablando, porque ese enlace no cambió. Sin emparejar hacen
+  falta los dos en 0.6.4 y Android 12 o más nuevo.
+- **Permisos nuevos:** `BLUETOOTH_ADVERTISE`. Se pide al encender el modo
+  cerca, no al instalar.
+- **Evidencias:** `docs/evidencias/modo-cerca-fase1/`.
+
 ## 0.6.3 · 2026-10-05
 
 ### Nuevo

@@ -16,16 +16,17 @@ docs/       decisiones de arquitectura, hoja de ruta, API, despliegue
 
 ## Estado
 
-Versión **0.6.3**. Lo que cambió en cada versión está en
+Versión publicada: **0.6.3**. La **0.6.4**, sin publicar todavía, trae el modo
+cerca sin emparejar (Bluetooth LE). Lo que cambió en cada versión está en
 [CHANGELOG.md](CHANGELOG.md), que se genera desde la pantalla de Novedades de la
 app con `python despliegue/changelog.py`.
 
-Servidor y app funcionando, verificados en dos emuladores. Hay **2529 pruebas
+Servidor y app funcionando, verificados en dos emuladores. Hay **2544 pruebas
 en verde** en la configuración mínima (una instancia, sin Redis):
 
 - 1781 de integración, en 46 suites;
 - 87 de JUnit en el servidor;
-- 661 en la app.
+- 676 en la app.
 
 Las dos suites del bus se omiten cuando les falta el entorno, y el runner las
 marca `OMIT` en vez de `OK`. Las pruebas JUnit del servidor necesitan la misma
@@ -180,8 +181,9 @@ marcado en verde sin haberse hecho sería el peor resultado posible.
    denuncia porque su teléfono ya lo descifró y es el único que puede.
 
 2. **Un sobre no sabe por dónde viaja.** La app encola; el despachador elige
-   transporte. Por eso `msg off` —malla entre teléfonos cercanos— se agrega
-   registrando un transporte más, sin tocar la cola, el esquema ni la interfaz.
+   transporte. El modo cerca (`msg off`) usa la misma cola: sin red, el texto
+   sale por Bluetooth al aparato enlazado y el mensaje sigue pendiente hasta
+   que el servidor lo registra para los demás. Ver `docs/11-SIN-INTERNET.md`.
 
 3. **Los permisos no viajan en el token.** Se resuelven contra la base en cada
    petición, por eso degradar a un administrador surte efecto de inmediato en

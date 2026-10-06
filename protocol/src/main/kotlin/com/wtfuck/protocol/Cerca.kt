@@ -130,6 +130,16 @@ class CharlaCerca(
     private val entrada: InputStream,
     private val salida: OutputStream,
     private val yo: MensajeCerca.Saludo,
+    /**
+     * Fase 1: el cifrado del enlace sin emparejar (ver [Apreton]). `null` en
+     * un enlace emparejado, que ya lo cifra el sistema.
+     */
+    private val sello: Sello? = null,
+    /**
+     * Fase 1: el aparato que el apretón ya AUTENTICO. Un saludo que diga ser
+     * otro se ignora, y sin saludo valido no se acepta ningun sobre.
+     */
+    private val autenticado: String? = null,
 ) {
     /** Quien dijo ser el otro lado. `null` hasta que saluda. */
     @Volatile
@@ -147,7 +157,8 @@ class CharlaCerca(
         // desde el que despacha- intercalarian sus bytes y desincronizarian
         // el flujo para siempre.
         synchronized(candado) {
-            Trama.escribir(salida, json.encodeToString(MensajeCerca.serializer(), m).toByteArray())
+            val plano = json.encodeToString(MensajeCerca.serializer(), m).toByteArray()
+            Trama.escribir(salida, sello?.cerrar(plano) ?: plano)
         }
         true
     }.getOrDefault(false)
@@ -164,13 +175,16 @@ class CharlaCerca(
         alAcuse: suspend (MensajeCerca.Acuse) -> Unit,
     ) {
         while (true) {
-            val crudo = Trama.leer(entrada)
+            // Con sello, una trama que no abre corta el enlace: no es ruido,
+            // es alguien en el medio o un enlace desincronizado.
+            val crudo = Trama.leer(entrada).let { sello?.abrir(it) ?: it }
             // Una trama que no se entiende se salta, no corta: puede ser de una
             // version mas nueva con un tipo que esta todavia no conoce.
             val msg = runCatching { json.decodeFromString(MensajeCerca.serializer(), String(crudo)) }
                 .getOrNull() ?: continue
             when (msg) {
                 is MensajeCerca.Saludo -> {
+                    if (autenticado != null && msg.dispositivoId != autenticado) continue
                     suyo = msg
                     alSaludo(msg)
                 }

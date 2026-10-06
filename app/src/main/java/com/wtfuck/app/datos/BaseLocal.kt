@@ -658,6 +658,27 @@ data class DifusionEnvioEnt(
     val ids: List<String> get() = mensajes.split(',').filter { it.isNotBlank() }
 }
 
+/**
+ * La clave de baliza de un aparato de un contacto (modo cerca, fase 1). Llega
+ * dentro de sus mensajes en nuestro chat directo. Ver `MiBaliza`.
+ */
+@Entity(tableName = "baliza")
+data class BalizaEnt(
+    @PrimaryKey val dispositivoId: String,
+    val usuarioId: String,
+    val username: String,
+    /** Base64 de los 32 bytes. */
+    val clave: String,
+    val recibidaEn: Long,
+)
+
+/** A que chats ya les mande MI clave vigente (la `version` de `MiBaliza`). */
+@Entity(tableName = "baliza_enviada")
+data class BalizaEnviadaEnt(
+    @PrimaryKey val conversacionId: String,
+    val version: Long,
+)
+
 /** El estado de un mensaje, para contar como le fue a un envio. */
 data class EstadoDeMensaje(val id: String, val estado: String)
 
@@ -1025,6 +1046,29 @@ interface ChatDao {
     suspend fun borrarRecordatorios()
 
     // --- Listas de difusion ---------------------------------------------------
+
+    // --- Modo cerca, fase 1 ---------------------------------------------------
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarBaliza(b: BalizaEnt)
+
+    @Query("SELECT * FROM baliza")
+    suspend fun balizas(): List<BalizaEnt>
+
+    @Query("DELETE FROM baliza WHERE username = :username")
+    suspend fun borrarBalizasDe(username: String)
+
+    @Query("DELETE FROM baliza")
+    suspend fun borrarBalizas()
+
+    @Query("SELECT version FROM baliza_enviada WHERE conversacionId = :conv")
+    suspend fun balizaEnviada(conv: String): Long?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun marcarBalizaEnviada(b: BalizaEnviadaEnt)
+
+    @Query("DELETE FROM baliza_enviada")
+    suspend fun borrarBalizasEnviadas()
 
     @Query("UPDATE mensaje SET cercaEntregado = :lista WHERE id = :id")
     suspend fun fijarCerca(id: String, lista: String)
@@ -1600,8 +1644,10 @@ interface ChatDao {
         RecordatorioEnt::class,
         DifusionEnt::class,
         DifusionEnvioEnt::class,
+        BalizaEnt::class,
+        BalizaEnviadaEnt::class,
     ],
-    version = 35,
+    version = 36,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1621,7 +1667,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31, DE_31_A_32, DE_32_A_33, DE_33_A_34, DE_34_A_35,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31, DE_31_A_32, DE_32_A_33, DE_33_A_34, DE_34_A_35, DE_35_A_36,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1772,6 +1818,21 @@ abstract class BaseLocal : RoomDatabase() {
          * unica copia del historial. Dejar que Room la recree por una columna
          * nueva borraria todos los mensajes de todo el mundo.
          */
+        /** Modo cerca, fase 1: balizas. Ver `BalizaEnt`. */
+        private val DE_35_A_36 = object : Migration(35, 36) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `baliza` (`dispositivoId` TEXT NOT NULL, `usuarioId` TEXT NOT NULL, " +
+                        "`username` TEXT NOT NULL, `clave` TEXT NOT NULL, `recibidaEn` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`dispositivoId`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `baliza_enviada` (`conversacionId` TEXT NOT NULL, " +
+                        "`version` INTEGER NOT NULL, PRIMARY KEY(`conversacionId`))"
+                )
+            }
+        }
+
         /** Lo que llego por el modo cerca. Ver `MensajeEnt.cercaEntregado`. */
         private val DE_34_A_35 = object : Migration(34, 35) {
             override fun migrate(db: SupportSQLiteDatabase) {

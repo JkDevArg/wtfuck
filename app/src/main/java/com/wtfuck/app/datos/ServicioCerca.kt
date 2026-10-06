@@ -60,7 +60,7 @@ class ServicioCerca : Service() {
         if (observando) return START_NOT_STICKY
         observando = true
         ambito.launch {
-            combine(app.repo.cerca.estado, app.repo.cerca.conQuien) { e, q -> e to q }.collect { (e, q) ->
+            combine(app.repo.cerca.estado, app.repo.cerca.conQuienes) { e, q -> e to q }.collect { (e, q) ->
                 if (e == TransporteCerca.Estado.APAGADO) parar() else mostrar(q, e)
             }
         }
@@ -70,10 +70,10 @@ class ServicioCerca : Service() {
         return START_NOT_STICKY
     }
 
-    private fun mostrar(conQuien: String?, estado: TransporteCerca.Estado) {
+    private fun mostrar(conQuienes: List<String>?, estado: TransporteCerca.Estado) {
         runCatching {
             ServiceCompat.startForeground(
-                this, ID_AVISO, aviso(conQuien, estado),
+                this, ID_AVISO, aviso(conQuienes.orEmpty(), estado),
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
                 } else {
@@ -83,7 +83,7 @@ class ServicioCerca : Service() {
         }.onFailure { Log.w(TAG, "No se pudo pasar a primer plano: ${it.message}") }
     }
 
-    private fun aviso(conQuien: String?, estado: TransporteCerca.Estado): Notification {
+    private fun aviso(conQuienes: List<String>, estado: TransporteCerca.Estado): Notification {
         val abrir = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -94,8 +94,8 @@ class ServicioCerca : Service() {
             Intent(this, ServicioCerca::class.java).setAction(ACCION_APAGAR),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val texto = if (estado == TransporteCerca.Estado.ENLAZADO && conQuien != null) {
-            "Conectado con @$conQuien. Lo que le escribas sale por Bluetooth."
+        val texto = if (estado == TransporteCerca.Estado.ENLAZADO && conQuienes.isNotEmpty()) {
+            "Conectado con " + conQuienes.joinToString(", ") { "@$it" } + ". Lo que les escribas sale por Bluetooth."
         } else {
             "Buscando a alguien cerca. Se apaga solo tras media hora sin nadie."
         }

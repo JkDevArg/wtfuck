@@ -46,7 +46,12 @@ import com.wtfuck.app.ui.theme.*
  */
 private val PERMISOS_CERCA: Array<String> =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+        arrayOf(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_SCAN,
+            // Fase 1: anunciar la baliza para que los contactos te encuentren.
+            Manifest.permission.BLUETOOTH_ADVERTISE,
+        )
     } else {
         emptyArray()
     }
@@ -79,7 +84,7 @@ fun DialogoCerca(onCerrar: () -> Unit) {
     val cerca = app.repo.cerca
 
     val estado by cerca.estado.collectAsState()
-    val conQuien by cerca.conQuien.collectAsState()
+    val conQuienes by cerca.conQuienes.collectAsState()
 
     var permisos by remember { mutableStateOf(tienePermisosCerca(ctx)) }
     // Un contador y no un booleano: hay que poder reintentar, y un booleano
@@ -139,8 +144,10 @@ fun DialogoCerca(onCerrar: () -> Unit) {
                             "Buscando… Sigue funcionando con la pantalla apagada, y se apaga " +
                                 "solo tras media hora sin nadie."
                         TransporteCerca.Estado.ENLAZADO ->
-                            "Conectado con @${conQuien ?: "alguien"}. Los mensajes de texto para " +
-                                "esa persona salen por aquí; al resto les llegan cuando vuelva la red."
+                            "Conectado con " + conQuienes.joinToString(", ") { "@$it" }.ifBlank { "alguien" } +
+                                ". Los mensajes de texto para " +
+                                (if (conQuienes.size == 1) "esa persona" else "esas personas") +
+                                " salen por aquí; al resto les llegan cuando vuelva la red."
                     },
                     color = TextoSecundario,
                     fontSize = 14.sp,
@@ -148,8 +155,15 @@ fun DialogoCerca(onCerrar: () -> Unit) {
                 Spacer(Modifier.height(14.dp))
                 // Las frases que evitan el rato de pensar que está roto.
                 Text(
-                    "Antes, una vez: empareja los dos teléfonos en los ajustes de Bluetooth " +
-                        "de Android. Así el enlace va cifrado y solo con quien elegiste.",
+                    if (cerca.sinEmparejarDisponible()) {
+                        "Sin emparejar: te encuentras con los contactos que ya tienen tu clave de " +
+                            "cercanía, que viaja sola en tus mensajes de chat directo. Nadie más sabe " +
+                            "que eres tú. Con quien todavía no la tenga, empareja los teléfonos en los " +
+                            "ajustes de Bluetooth de Android."
+                    } else {
+                        "Antes, una vez: empareja los dos teléfonos en los ajustes de Bluetooth " +
+                            "de Android. Así el enlace va cifrado y solo con quien elegiste."
+                    },
                     color = TextoTerciario,
                     fontSize = 12.sp,
                 )

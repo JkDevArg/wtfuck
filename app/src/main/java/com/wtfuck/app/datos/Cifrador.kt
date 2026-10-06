@@ -75,6 +75,20 @@ interface Cifrador {
     suspend fun cifrarSoloPara(destino: DestinoDispositivo, carga: Carga): CopiaCifrada? = null
 
     /**
+     * Modo cerca, fase 1: la curva de las claves efimeras del enlace. `null`
+     * en un cifrador sin identidad -el de desarrollo-, y entonces no hay enlace
+     * sin emparejar. Ver `Apreton`.
+     */
+    val curvaCerca: com.wtfuck.protocol.Curva? get() = null
+
+    /** La identidad publica de un aparato (32 bytes), si la conozco. */
+    fun identidadCerca(dispositivoId: String): ByteArray? = null
+
+    /** DH entre MI identidad y una clave publica. La privada no sale de aqui. */
+    fun acordarConMiIdentidad(publica: ByteArray): ByteArray =
+        throw UnsupportedOperationException("Este cifrador no tiene identidad")
+
+    /**
      * El transporte acepto el envio.
      *
      * Existe por las claves de emisor: hasta que el servidor no acepta, no se

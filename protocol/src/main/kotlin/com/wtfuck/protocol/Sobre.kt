@@ -179,6 +179,14 @@ sealed interface Carga {
          * que enlace se mando. Ver `VistaPreviaHtml` en la app.
          */
         val previa: VistaPreviaEnlace? = null,
+        /**
+         * Modo cerca, fase 1: la clave de baliza de quien escribe, en base64.
+         * Va solo en chats directos y solo hasta que ese chat tiene la clave
+         * vigente. Un cliente viejo no la conoce y la ignora: por eso viaja
+         * aqui y no en un tipo de carga nuevo, que un cliente viejo mostraria
+         * como "(no se pudo descifrar)". Ver `MiBaliza`.
+         */
+        val baliza: String? = null,
     ) : Carga
 
     /**

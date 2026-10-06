@@ -4,17 +4,30 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.le.AdvertiseCallback
+import android.bluetooth.le.AdvertiseData
+import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import com.wtfuck.app.BuildConfig
+import com.wtfuck.protocol.Apreton
+import com.wtfuck.protocol.Baliza
 import com.wtfuck.protocol.CharlaCerca
 import com.wtfuck.protocol.ClaseBt
 import com.wtfuck.protocol.MensajeCerca
+import com.wtfuck.protocol.Sello
 import com.wtfuck.protocol.valeLaPenaIntentar
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,10 +37,11 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Mensajería entre dos teléfonos que están cerca, sin internet.
+ * Mensajería entre teléfonos que están cerca, sin internet.
  *
  * ## Qué es esto en una frase
  *
@@ -35,36 +49,25 @@ import java.util.concurrent.atomic.AtomicBoolean
  * tonto que mueve bytes que no puede abrir; este enlace hace lo mismo a diez
  * metros. Los sobres que llegan por aquí entran por donde entran los del buzón.
  *
- * ## Qué cambió en la fase 0 (ver `docs/11-SIN-INTERNET.md`)
+ * ## Dos formas de encontrarse
  *
- *  - **Ya no es un `Transporte` del despachador.** Estaba en la misma lista que
- *    el WebSocket y eso tenía dos defectos: sin red el despachador moría en el
- *    registro HTTP antes de llegar aquí -recibía pero nunca ENVIABA-, y con el
- *    WebSocket caído pero HTTP vivo mandaba la copia de UNO y daba el resto por
- *    hecho. Ahora el repositorio tiene un camino propio para cuando no hay
- *    servidor (`despacharPorCerca`), y lo demás -ediciones, historial,
- *    llamadas- no lo toca nunca.
- *  - **Enlace cifrado y solo con aparatos emparejados.** El código ya solo
- *    buscaba entre los emparejados del sistema: la promesa de "sin emparejar"
- *    no se cumplía. Con RFCOMM seguro el enlace lo cifra y autentica la clave
- *    del emparejamiento, y el saludo -usuario, aparato- deja de viajar en claro
- *    para cualquiera que se conecte. Quitar el emparejamiento es la fase 1
- *    (balizas BLE), no un ajuste de este archivo.
- *  - **Acuses por el enlace** ([MensajeCerca.Acuse]).
- *  - **Un servicio en primer plano** mientras esté encendido, para que el
- *    enlace no muera al apagar la pantalla, y **se apaga solo** tras media hora
- *    sin nadie: una radio escuchando no puede quedarse olvidada.
+ *  - **Fase 1, sin emparejar (Android 12+).** Cada teléfono anuncia por
+ *    Bluetooth LE una baliza que solo sus contactos reconocen (`Baliza`), y el
+ *    que reconoce a alguien abre un canal L2CAP y hace el apretón de manos
+ *    (`Apreton`): cifrado y autenticado con las identidades de Signal, sin
+ *    pasar por los ajustes del sistema. Hasta [MAX_ENLACES] a la vez, para un
+ *    grupo en la misma sala.
+ *  - **Fase 0, emparejados.** RFCOMM seguro con los aparatos emparejados en
+ *    los ajustes de Android. Sigue para Android anteriores y para quien todavía
+ *    no recibió la baliza del otro.
  *
- * ## Por qué RFCOMM y no BLE
+ * Ver `docs/11-SIN-INTERNET.md` y `docs/evidencias/modo-cerca-fase0/`.
  *
- * Porque un sobre pesa: entre 256 bytes y 60 KiB. Por BLE eso son cientos de
- * paquetes y una máquina de estados para rearmarlos; RFCOMM es un flujo con
- * cientos de kbit/s. El precio es el alcance -unos diez metros- y el consumo.
+ * ## Lo que NO hace
  *
- * ## Las dos cosas que NO hace
- *
- *  - **No sirve con alguien con quien nunca hablaste.** Abrir una sesión de
- *    Signal necesita las claves públicas del otro, y viven en el servidor.
+ *  - **No sirve con alguien con quien nunca hablaste.** Hacen falta su
+ *    identidad de Signal (para el apretón y para cifrar) y, sin emparejar,
+ *    su baliza: las dos llegan con internet.
  *  - **No reemplaza al servidor para el resto.** Avisos, llamadas, canales,
  *    adjuntos e historial siguen necesitándolo. Esto mueve mensajes de texto.
  */
@@ -75,10 +78,12 @@ class TransporteCerca(
     private val alRecibir: suspend (MensajeCerca.Sobre) -> Boolean,
     /** El otro lado acusó un sobre mío. */
     private val alAcuse: suspend (MensajeCerca.Acuse) -> Unit,
-    /** Hay enlace y ya se sabe con quién: momento de mandar lo que espera. */
+    /** Hay un enlace nuevo y ya se sabe con quién: momento de mandar lo que espera. */
     private val alEnlazar: suspend () -> Unit,
-    /** Se cortó: lo que estaba "en vuelo" no llegó a acusarse. */
-    private val alCortar: () -> Unit,
+    /** Se cortó el enlace con ese aparato. */
+    private val alCortar: (String) -> Unit,
+    /** Lo que hace falta para el enlace sin emparejar. `null` = solo fase 0. */
+    private val llaves: LlavesCerca? = null,
 ) {
     private val TAG = "Cerca"
 
@@ -87,19 +92,33 @@ class TransporteCerca(
     private val _estado = MutableStateFlow(Estado.APAGADO)
     val estado: StateFlow<Estado> = _estado.asStateFlow()
 
+    private val _conQuienes = MutableStateFlow<List<String>>(emptyList())
+    /** Con quiénes hay enlace ahora (usernames). */
+    val conQuienes: StateFlow<List<String>> = _conQuienes.asStateFlow()
+
     private val _conQuien = MutableStateFlow<String?>(null)
-    /** Username del otro lado mientras hay enlace, o `null`. */
+    /** El primero de [conQuienes], o `null`. */
     val conQuien: StateFlow<String?> = _conQuien.asStateFlow()
 
     enum class Estado { APAGADO, ESCUCHANDO, ENLAZADO }
 
+    /** Un enlace vivo. */
+    private class Enlace(
+        val charla: CharlaCerca,
+        val cerrar: () -> Unit,
+        /** Si lo abrí yo: decide cuál queda si hay dos con el mismo aparato. */
+        val soyIniciador: Boolean,
+        val porBle: Boolean,
+    )
+
+    private val enlaces = CopyOnWriteArrayList<Enlace>()
+    private val trabajos = CopyOnWriteArrayList<Job>()
     private var servidor: BluetoothServerSocket? = null
+    private var servidorBle: BluetoothServerSocket? = null
     private var servidorTcp: java.net.ServerSocket? = null
-    @Volatile private var cerrarEnlace: (() -> Unit)? = null
-    @Volatile private var charla: CharlaCerca? = null
-    /** Un solo enlace a la vez: el primero que conecta gana. */
-    private val ocupado = AtomicBoolean(false)
-    private var trabajos = mutableListOf<Job>()
+
+    /** Cuándo se intentó llamar por BLE a cada aparato: no se insiste en cada anuncio. */
+    private val intentos = ConcurrentHashMap<String, Long>()
 
     /** Cuándo hubo enlace por última vez, para apagarse solo. */
     @Volatile private var ultimaVezAcompanado = 0L
@@ -107,11 +126,22 @@ class TransporteCerca(
     private val adaptador: BluetoothAdapter?
         get() = ctx.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter
 
-    /** Si hay enlace Y el otro ya saludó: recién ahí se sabe a quién mandar. */
-    fun disponible(): Boolean = _estado.value == Estado.ENLAZADO && charla?.suyo != null
+    /** Los aparatos del otro lado que ya saludaron. */
+    val pares: List<MensajeCerca.Saludo> get() = enlaces.mapNotNull { it.charla.suyo }
 
-    /** Quién está del otro lado, si ya saludó. */
-    val par: MensajeCerca.Saludo? get() = charla?.suyo
+    /** Si hay al menos un enlace con alguien que ya saludó. */
+    fun disponible(): Boolean = pares.isNotEmpty()
+
+    /**
+     * Si este teléfono puede usar el modo sin emparejar: Android 12 o más
+     * -antes, buscar por BLE exige el permiso de ubicación-, un adaptador que
+     * sepa anunciar y una identidad de Signal para el apretón.
+     */
+    @SuppressLint("MissingPermission")
+    fun sinEmparejarDisponible(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            llaves?.curva != null &&
+            runCatching { adaptador?.bluetoothLeAdvertiser != null }.getOrDefault(false)
 
     // ------------------------------------------------------------------
     // Encender y apagar
@@ -121,10 +151,8 @@ class TransporteCerca(
     fun hayRadio(): Boolean = puente() != null || adaptador != null
 
     /**
-     * Si la radio está encendida.
-     *
-     * Se pregunta y no se enciende sola: prender la radio de alguien sin
-     * avisar es del sistema, no de una app de mensajería.
+     * Si la radio está encendida. Se pregunta y no se enciende sola: prender la
+     * radio de alguien sin avisar es del sistema, no de una app de mensajería.
      */
     @SuppressLint("MissingPermission")
     fun radioEncendida(): Boolean =
@@ -140,14 +168,21 @@ class TransporteCerca(
         }
         _estado.value = Estado.ESCUCHANDO
         ultimaVezAcompanado = System.currentTimeMillis()
-        // Los dos lados escuchan Y buscan a la vez: el primero que conecta
-        // gana. Que uno haga de servidor obligaria a ponerse de acuerdo en
-        // quién es quién justo cuando no hay por dónde.
-        trabajos += if (p != null) {
+        if (p != null) {
             Log.w(TAG, "PUENTE DE PRUEBAS: TCP ${p.first} / ${p.second} en vez de Bluetooth")
-            listOf(ambito.launch { escucharTcp(p.first) }, ambito.launch { buscarTcp(p.second) })
+            trabajos += ambito.launch { escucharTcp(p.first) }
+            trabajos += ambito.launch { buscarTcp(p.second) }
         } else {
-            listOf(ambito.launch { escuchar() }, ambito.launch { buscar() })
+            // Fase 0: emparejados, por RFCOMM seguro.
+            trabajos += ambito.launch { escuchar() }
+            trabajos += ambito.launch { buscar() }
+            // Fase 1: sin emparejar, por BLE. La comprobacion de version va aqui
+            // a la vista y no solo dentro de `sinEmparejarDisponible`: es la
+            // que deja llamar a las funciones de Android 12.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && sinEmparejarDisponible()) {
+                trabajos += ambito.launch { escucharBle() }
+                trabajos += ambito.launch { buscarBle() }
+            }
         }
         trabajos += ambito.launch { vigilarSoledad() }
         ServicioCerca.iniciar(ctx)
@@ -159,22 +194,25 @@ class TransporteCerca(
         trabajos.forEach { it.cancel() }
         trabajos.clear()
         runCatching { servidor?.close() }
+        runCatching { servidorBle?.close() }
         runCatching { servidorTcp?.close() }
         servidor = null
+        servidorBle = null
         servidorTcp = null
-        cortar()
+        enlaces.toList().forEach { cortar(it) }
+        intentos.clear()
         ServicioCerca.detener(ctx)
     }
 
     /**
      * Media hora sin nadie del otro lado y se apaga. Se enciende para una sala
-     * y un momento; dejarlo escuchando conexiones toda la noche porque alguien
-     * se olvidó es justo lo que el modo apagado por defecto quiere evitar.
+     * y un momento; dejarlo escuchando toda la noche porque alguien se olvidó
+     * es justo lo que el modo apagado por defecto quiere evitar.
      */
     private suspend fun vigilarSoledad() {
         while (_estado.value != Estado.APAGADO) {
             delay(60_000)
-            if (_estado.value == Estado.ENLAZADO) ultimaVezAcompanado = System.currentTimeMillis()
+            if (enlaces.isNotEmpty()) ultimaVezAcompanado = System.currentTimeMillis()
             if (System.currentTimeMillis() - ultimaVezAcompanado > SOLEDAD_MS) {
                 Log.i(TAG, "Media hora sin nadie: se apaga solo")
                 apagar()
@@ -183,29 +221,31 @@ class TransporteCerca(
     }
 
     // ------------------------------------------------------------------
-    // Bluetooth: el lado que espera y el que busca
+    // Fase 0: emparejados, por RFCOMM seguro
     // ------------------------------------------------------------------
 
     @SuppressLint("MissingPermission")
     private suspend fun escuchar() {
         val a = adaptador ?: return
         while (_estado.value != Estado.APAGADO) {
-            // SEGURO (con emparejamiento): el enlace lo cifra y lo autentica
-            // la clave que Android guardó al emparejar. Ver la nota de la clase.
+            // SEGURO: el enlace lo cifra y lo autentica la clave que Android
+            // guardó al emparejar.
             val s = runCatching { a.listenUsingRfcommWithServiceRecord(SERVICIO, UUID_APP) }
                 .getOrNull() ?: return
             servidor = s
             val cliente = runCatching { s.accept() }.getOrNull()
             runCatching { s.close() }
             if (cliente == null) continue
-            // Solo un aparato emparejado. Con RFCOMM seguro uno sin emparejar
-            // dispararía el diálogo del sistema; se corta antes.
-            if (cliente.remoteDevice?.bondState != BluetoothDevice.BOND_BONDED) {
+            // Solo un aparato emparejado: con RFCOMM seguro uno sin emparejar
+            // dispararía el diálogo del sistema.
+            if (cliente.remoteDevice?.bondState != BluetoothDevice.BOND_BONDED || lleno()) {
                 runCatching { cliente.close() }
                 continue
             }
-            if (!ocupado.compareAndSet(false, true)) { runCatching { cliente.close() }; continue }
-            atender(cliente.inputStream, cliente.outputStream) { runCatching { cliente.close() } }
+            ambito.launch {
+                atender(cliente.inputStream, cliente.outputStream, { runCatching { cliente.close() } },
+                    soyIniciador = false, porBle = false)
+            }
         }
     }
 
@@ -213,9 +253,9 @@ class TransporteCerca(
     private suspend fun buscar() {
         val a = adaptador ?: return
         while (_estado.value != Estado.APAGADO) {
-            if (_estado.value == Estado.ESCUCHANDO) {
+            if (!lleno()) {
                 for (d in runCatching { a.bondedDevices }.getOrNull().orEmpty()) {
-                    if (_estado.value != Estado.ESCUCHANDO) break
+                    if (_estado.value == Estado.APAGADO || lleno()) break
                     // Los audífonos, el carro y el reloj se descartan ANTES de
                     // abrir un socket: un `connect()` contra un enlace de audio
                     // en uso se oye. Ver `valeLaPenaIntentar`.
@@ -225,15 +265,12 @@ class TransporteCerca(
                     intentar(d)
                 }
             }
-            // Quince segundos: cada vuelta abre un socket por candidato, y dos
-            // personas que se acaban de sentar juntas lo toleran de sobra.
             delay(15_000)
         }
     }
 
     @SuppressLint("MissingPermission")
-    private suspend fun intentar(d: BluetoothDevice) {
-        if (ocupado.get()) return
+    private fun intentar(d: BluetoothDevice) {
         val s = runCatching { d.createRfcommSocketToServiceRecord(UUID_APP) }.getOrNull() ?: return
         try {
             s.connect()
@@ -242,25 +279,199 @@ class TransporteCerca(
             runCatching { s.close() }
             return
         }
-        if (!ocupado.compareAndSet(false, true)) { runCatching { s.close() }; return }
-        atender(s.inputStream, s.outputStream) { runCatching { s.close() } }
+        ambito.launch {
+            atender(s.inputStream, s.outputStream, { runCatching { s.close() } }, soyIniciador = true, porBle = false)
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Fase 1: sin emparejar, por Bluetooth LE
+    // ------------------------------------------------------------------
+
+    /**
+     * Abre el canal L2CAP que atiende las llamadas y anuncia la baliza con su
+     * número. Inseguro a propósito: el cifrado no lo pone el sistema -que
+     * exigiría emparejar- sino el apretón.
+     */
+    @SuppressLint("MissingPermission")
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private suspend fun escucharBle() {
+        val a = adaptador ?: return
+        val s = runCatching { a.listenUsingInsecureL2capChannel() }
+            .getOrElse { Log.w(TAG, "No se pudo abrir el canal L2CAP: ${it.message}"); return }
+        servidorBle = s
+        trabajos += ambito.launch { anunciar(s.psm) }
+        while (_estado.value != Estado.APAGADO) {
+            val c = runCatching { s.accept() }.getOrNull() ?: break
+            if (lleno()) { runCatching { c.close() }; continue }
+            ambito.launch { atenderBle(c.inputStream, c.outputStream) { runCatching { c.close() } } }
+        }
+    }
+
+    /**
+     * La baliza, que cambia cada cuarto de hora. Sin el nombre del aparato: el
+     * nombre de Bluetooth suele ser el de la persona.
+     */
+    @SuppressLint("MissingPermission")
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private suspend fun anunciar(psm: Int) {
+        val anunciante = adaptador?.bluetoothLeAdvertiser ?: return
+        val ll = llaves ?: return
+        while (_estado.value != Estado.APAGADO) {
+            val ahora = System.currentTimeMillis()
+            val version = ll.versionBaliza()
+            val token = Baliza.token(ll.miBaliza(), Baliza.epoca(ahora))
+            val datos = AdvertiseData.Builder()
+                .addManufacturerData(Baliza.EMPRESA, Baliza.anuncio(token, psm))
+                .setIncludeDeviceName(false)
+                .setIncludeTxPowerLevel(false)
+                .build()
+            val ajustes = AdvertiseSettings.Builder()
+                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
+                // Conectable: el que llama abre una conexión LE para el canal.
+                .setConnectable(true)
+                .build()
+            val cb = object : AdvertiseCallback() {
+                override fun onStartFailure(errorCode: Int) {
+                    Log.w(TAG, "No se pudo anunciar la baliza: $errorCode")
+                }
+            }
+            runCatching { anunciante.startAdvertising(ajustes, datos, cb) }
+                .onFailure { Log.w(TAG, "No se pudo anunciar: ${it.message}") }
+            try {
+                // Hasta el próximo cuarto de hora, y un segundo más. O hasta
+                // que la clave rote -al bloquear a alguien-: seguir anunciando
+                // la vieja hasta fin del cuarto de hora le dejaría a esa
+                // persona ver que sigo cerca, aunque ya no pueda enlazarse.
+                val hasta = ahora - ahora % Baliza.EPOCA_MS + Baliza.EPOCA_MS + 1_000
+                while (System.currentTimeMillis() < hasta &&
+                    ll.versionBaliza() == version &&
+                    _estado.value != Estado.APAGADO
+                ) delay(3_000)
+            } finally {
+                runCatching { anunciante.stopAdvertising(cb) }
+            }
+        }
+    }
+
+    /**
+     * Busca balizas de contactos. Solo se filtra por la marca: reconocer a
+     * quién pertenece cada una es cuenta de este teléfono, con las claves que
+     * conoce. Un anuncio que no se reconoce no lleva a ninguna conexión.
+     */
+    @SuppressLint("MissingPermission")
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private suspend fun buscarBle() {
+        val escaner = adaptador?.bluetoothLeScanner ?: return
+        val ll = llaves ?: return
+        val vistos = Channel<ScanResult>(64, BufferOverflow.DROP_OLDEST)
+        val cb = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                vistos.trySend(result)
+            }
+
+            override fun onBatchScanResults(results: MutableList<ScanResult>) {
+                results.forEach { vistos.trySend(it) }
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                Log.w(TAG, "La búsqueda BLE falló: $errorCode")
+            }
+        }
+        val filtro = ScanFilter.Builder()
+            .setManufacturerData(Baliza.EMPRESA, Baliza.PREFIJO, byteArrayOf(-1, -1))
+            .build()
+        val ajustes = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build()
+        runCatching { escaner.startScan(listOf(filtro), ajustes, cb) }
+            .onFailure { Log.w(TAG, "No se pudo buscar por BLE: ${it.message}"); return }
+        var indice = emptyMap<String, String>()
+        var indiceEn = 0L
+        try {
+            for (r in vistos) {
+                if (_estado.value == Estado.APAGADO) break
+                val a = Baliza.leer(r.scanRecord?.getManufacturerSpecificData(Baliza.EMPRESA)) ?: continue
+                val ahora = System.currentTimeMillis()
+                // El índice se rehace cada minuto: cambia el cuarto de hora y
+                // llegan claves nuevas de contactos.
+                if (ahora - indiceEn > 60_000) {
+                    indice = Baliza.indice(ll.conocidas(), ahora)
+                    indiceEn = ahora
+                }
+                val aparato = indice[a.token] ?: continue
+                if (pares.any { it.dispositivoId == aparato } || lleno()) continue
+                // Un anuncio se oye varias veces por segundo: un intento cada
+                // veinte segundos por aparato.
+                if (ahora - (intentos[aparato] ?: 0L) < 20_000) continue
+                intentos[aparato] = ahora
+                ambito.launch { llamarBle(r.device, a.psm, aparato) }
+            }
+        } finally {
+            runCatching { escaner.stopScan(cb) }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private suspend fun llamarBle(d: BluetoothDevice, psm: Int, aparato: String) {
+        val ll = llaves ?: return
+        val curva = ll.curva ?: return
+        val suBaliza = ll.conocidas()[aparato] ?: return
+        val suIdentidad = ll.identidadDe(aparato) ?: run {
+            Log.w(TAG, "Tengo la baliza de $aparato pero no su identidad: no se llama")
+            return
+        }
+        val s = runCatching { d.createInsecureL2capChannel(psm) }.getOrNull() ?: return
+        // Un apretón que no termina en quince segundos se corta: cerrar el
+        // socket es lo único que desbloquea una lectura de Bluetooth.
+        val vigia = ambito.launch { delay(15_000); runCatching { s.close() } }
+        val sello = runCatching {
+            s.connect()
+            Apreton(curva).llamar(
+                s.inputStream, s.outputStream,
+                yo = sesion.dispositivoId.orEmpty(), el = aparato,
+                suBaliza = suBaliza, suIdentidad = suIdentidad, miEstatico = ll::miEstatico,
+            )
+        }.onFailure {
+            Log.i(TAG, "No se pudo enlazar con $aparato: ${it.message}")
+        }.getOrNull()
+        vigia.cancel()
+        if (sello == null) { runCatching { s.close() }; return }
+        atender(s.inputStream, s.outputStream, { runCatching { s.close() } },
+            soyIniciador = true, porBle = true, sello = sello, autenticado = aparato)
+    }
+
+    private suspend fun atenderBle(entrada: InputStream, salida: OutputStream, cerrar: () -> Unit) {
+        val ll = llaves ?: return cerrar()
+        val curva = ll.curva ?: return cerrar()
+        val vigia = ambito.launch { delay(15_000); cerrar() }
+        val r = runCatching {
+            Apreton(curva).atender(
+                entrada, salida,
+                yo = sesion.dispositivoId.orEmpty(), miBaliza = ll.miBaliza(),
+                identidadDe = ll::identidadDe, miEstatico = ll::miEstatico,
+            )
+        }.onFailure {
+            // Un extraño, alguien sin la identidad del otro o un apretón a
+            // medias: se corta sin más. No se dice por qué al otro lado.
+            Log.i(TAG, "Apretón rechazado: ${it.message}")
+        }.getOrNull()
+        vigia.cancel()
+        if (r == null) return cerrar()
+        val (quien, sello) = r
+        atender(entrada, salida, cerrar, soyIniciador = false, porBle = true, sello = sello, autenticado = quien)
     }
 
     // ------------------------------------------------------------------
     // El puente de pruebas: TCP en vez de Bluetooth, SOLO en debug
     // ------------------------------------------------------------------
     //
-    // Las radios de los emuladores están aisladas: dos emuladores no se ven
-    // nunca, y sin esto el modo cerca solo se podía probar con dos teléfonos.
-    // Con un archivo `puente-cerca.txt` ("escucho:conecto") en la carpeta de la
-    // app, el enlace va por dos puertos TCP que `adb reverse`/`adb forward`
-    // cruzan entre los emuladores. Todo lo de arriba del enlace -saludo,
-    // sobres, acuses, el despacho sin red- es el código de verdad.
-    //
-    // El archivo va en la carpeta INTERNA de la app y se escribe con
-    // `adb shell run-as`, que solo funciona con una app depurable. Y además
-    // `BuildConfig.DEBUG`: en la versión publicada esto no existe -R8 se lleva
-    // la rama entera- y un archivo con ese nombre no hace nada.
+    // Por si las radios de los emuladores no se ven. Con un archivo
+    // `puente-cerca.txt` ("escucho:conecto") en la carpeta INTERNA de la app,
+    // escrito con `adb shell run-as` -solo funciona con una app depurable-,
+    // el enlace va por dos puertos TCP que `adb reverse`/`adb forward` cruzan.
+    // Ver `pruebas/puente-cerca.sh`. En la versión publicada esto no existe:
+    // `BuildConfig.DEBUG` es falso y R8 se lleva la rama entera.
 
     private fun puente(): Pair<Int, Int>? {
         if (!BuildConfig.DEBUG) return null
@@ -276,20 +487,22 @@ class TransporteCerca(
         servidorTcp = s
         while (_estado.value != Estado.APAGADO) {
             val c = runCatching { s.accept() }.getOrNull() ?: continue
-            if (!ocupado.compareAndSet(false, true)) { runCatching { c.close() }; continue }
-            atender(c.getInputStream(), c.getOutputStream()) { runCatching { c.close() } }
+            if (lleno()) { runCatching { c.close() }; continue }
+            ambito.launch {
+                atender(c.getInputStream(), c.getOutputStream(), { runCatching { c.close() } },
+                    soyIniciador = false, porBle = false)
+            }
         }
     }
 
     private suspend fun buscarTcp(puerto: Int) {
         while (_estado.value != Estado.APAGADO) {
-            if (_estado.value == Estado.ESCUCHANDO && !ocupado.get()) {
+            if (enlaces.isEmpty()) {
                 val c = runCatching { java.net.Socket("127.0.0.1", puerto) }.getOrNull()
                 if (c != null) {
-                    if (ocupado.compareAndSet(false, true)) {
-                        atender(c.getInputStream(), c.getOutputStream()) { runCatching { c.close() } }
-                    } else {
-                        runCatching { c.close() }
+                    ambito.launch {
+                        atender(c.getInputStream(), c.getOutputStream(), { runCatching { c.close() } },
+                            soyIniciador = true, porBle = false)
                     }
                 }
             }
@@ -301,11 +514,17 @@ class TransporteCerca(
     // El enlace
     // ------------------------------------------------------------------
 
-    private suspend fun atender(entrada: InputStream, salida: OutputStream, cerrar: () -> Unit) {
-        cerrarEnlace = cerrar
-        _estado.value = Estado.ENLAZADO
-        ultimaVezAcompanado = System.currentTimeMillis()
-        Log.i(TAG, "Enlazado")
+    private fun lleno(): Boolean = enlaces.size >= MAX_ENLACES
+
+    private suspend fun atender(
+        entrada: InputStream,
+        salida: OutputStream,
+        cerrar: () -> Unit,
+        soyIniciador: Boolean,
+        porBle: Boolean,
+        sello: Sello? = null,
+        autenticado: String? = null,
+    ) {
         val c = CharlaCerca(
             entrada, salida,
             MensajeCerca.Saludo(
@@ -313,14 +532,24 @@ class TransporteCerca(
                 username = sesion.username.orEmpty(),
                 dispositivoId = sesion.dispositivoId.orEmpty(),
             ),
+            sello = sello,
+            autenticado = autenticado,
         )
-        charla = c
+        val e = Enlace(c, cerrar, soyIniciador, porBle)
+        enlaces += e
+        _estado.value = Estado.ENLAZADO
+        ultimaVezAcompanado = System.currentTimeMillis()
+        Log.i(TAG, "Enlazado (${if (porBle) "BLE sin emparejar" else "emparejado"})")
         if (c.saludar()) {
             runCatching {
                 c.escuchar(
                     alSaludo = { s ->
-                        _conQuien.value = s.username
-                        Log.i(TAG, "Del otro lado dice ser @${s.username}")
+                        if (!quedarseCon(e, s)) {
+                            cerrar()
+                            return@escuchar
+                        }
+                        publicar()
+                        Log.i(TAG, "Del otro lado: @${s.username}")
                         runCatching { alEnlazar() }
                     },
                     alSobre = { s -> runCatching { alRecibir(s) }.getOrDefault(false) },
@@ -328,36 +557,60 @@ class TransporteCerca(
                 )
             }.onFailure { Log.i(TAG, "Enlace terminado: ${it.message}") }
         }
-        cortar()
+        cortar(e)
     }
 
-    private fun cortar() {
-        runCatching { cerrarEnlace?.invoke() }
-        cerrarEnlace = null
-        charla = null
-        _conQuien.value = null
-        runCatching { alCortar() }
-        ocupado.set(false)
-        if (_estado.value == Estado.ENLAZADO) _estado.value = Estado.ESCUCHANDO
+    /**
+     * Si ya había un enlace con ese aparato -los dos se llamaron a la vez-,
+     * queda UNO. Gana el que abrió el de id menor: los dos lados conocen los
+     * dos ids, así que los dos eligen el mismo y cierran el otro.
+     */
+    private fun quedarseCon(e: Enlace, s: MensajeCerca.Saludo): Boolean {
+        val otros = enlaces.filter { it !== e && it.charla.suyo?.dispositivoId == s.dispositivoId }
+        if (otros.isEmpty()) return true
+        val miId = sesion.dispositivoId.orEmpty()
+        val ganaEste = e.soyIniciador == (miId < s.dispositivoId)
+        if (ganaEste) otros.forEach { it.cerrar() }
+        return ganaEste
+    }
+
+    private fun cortar(e: Enlace) {
+        val quien = e.charla.suyo?.dispositivoId
+        runCatching { e.cerrar() }
+        if (!enlaces.remove(e)) return
+        quien?.let { d -> runCatching { alCortar(d) } }
+        publicar()
+        if (_estado.value != Estado.APAGADO) {
+            _estado.value = if (enlaces.isEmpty()) Estado.ESCUCHANDO else Estado.ENLAZADO
+        }
+    }
+
+    private fun publicar() {
+        val nombres = pares.map { it.username }.distinct()
+        _conQuienes.value = nombres
+        _conQuien.value = nombres.firstOrNull()
     }
 
     // ------------------------------------------------------------------
     // Mandar
     // ------------------------------------------------------------------
 
+    /** Corta los enlaces con esa persona: al bloquearla. */
+    fun cortarCon(username: String) {
+        enlaces.filter { it.charla.suyo?.username.equals(username, ignoreCase = true) }.forEach { cortar(it) }
+    }
+
     /**
-     * Manda un sobre por el enlace, si hay y si es para quien está del otro
-     * lado.
+     * Manda un sobre por el enlace de su aparato, si lo hay.
      *
      * @return `false` si no se pudo. Quien llama lo deja en la cola: el enlace
      *   se cae cada vez que alguien se aleja.
      */
     fun mandar(sobre: MensajeCerca.Sobre): Boolean {
-        val c = charla ?: return false
-        if (c.suyo?.dispositivoId != sobre.destinoDispositivo) return false
-        if (!c.mandar(sobre)) {
+        val e = enlaces.firstOrNull { it.charla.suyo?.dispositivoId == sobre.destinoDispositivo } ?: return false
+        if (!e.charla.mandar(sobre)) {
             Log.w(TAG, "No se pudo mandar por el enlace")
-            cortar()
+            cortar(e)
             return false
         }
         return true
@@ -368,6 +621,9 @@ class TransporteCerca(
 
         /** Media hora sin nadie del otro lado. Ver [vigilarSoledad]. */
         const val SOLEDAD_MS = 30 * 60 * 1000L
+
+        /** Enlaces a la vez: un grupo en la misma sala, no una red. */
+        const val MAX_ENLACES = 4
 
         /**
          * El UUID del servicio RFCOMM. Fijo y propio de esta app: distingue un

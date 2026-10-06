@@ -183,6 +183,24 @@ class CifradorSignal(
         else cifrarPorPares(destinos, carga)
     }
 
+    override val curvaCerca: com.wtfuck.protocol.Curva = object : com.wtfuck.protocol.Curva {
+        override fun par(): Pair<ByteArray, ByteArray> {
+            val kp = org.signal.libsignal.protocol.ecc.ECKeyPair.generate()
+            return kp.privateKey.serialize() to kp.publicKey.publicKeyBytes
+        }
+
+        override fun acordar(privada: ByteArray, publica: ByteArray): ByteArray =
+            org.signal.libsignal.protocol.ecc.ECPrivateKey(privada)
+                .calculateAgreement(org.signal.libsignal.protocol.ecc.ECPublicKey.fromPublicKeyBytes(publica))
+    }
+
+    override fun identidadCerca(dispositivoId: String): ByteArray? =
+        runCatching { almacen.getIdentity(dir(dispositivoId))?.publicKey?.publicKeyBytes }.getOrNull()
+
+    override fun acordarConMiIdentidad(publica: ByteArray): ByteArray =
+        almacen.identityKeyPair.privateKey
+            .calculateAgreement(org.signal.libsignal.protocol.ecc.ECPublicKey.fromPublicKeyBytes(publica))
+
     override suspend fun cifrarSoloPara(destino: DestinoDispositivo, carga: Carga): CopiaCifrada? =
         withContext(Dispatchers.IO) {
             if (!almacen.containsSession(dir(destino.dispositivoId))) return@withContext null

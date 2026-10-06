@@ -156,12 +156,16 @@ existe en debug. Falta repetirla con dos teléfonos reales y la radio de verdad.
 6. Servicio en primer plano `connectedDevice` mientras el modo esté encendido,
    con autoapagado.
 7. Mientras no exista la Fase 1, que el diálogo diga que hay que emparejar en
-   Ajustes.
+   Ajustes. (Con la fase 1, el diálogo explica las dos formas.)
 8. Prueba con **dos teléfonos reales en modo avión**, en un chat directo y en
    uno de grupo. Al volver la red: sin duplicados, y los demás aparatos lo
    reciben.
 
-**Fase 1: Bluetooth LE sin emparejar (medio).**
+**Fase 1: Bluetooth LE sin emparejar (medio).** **Hecha el 2026-10-06:** ver
+`docs/evidencias/modo-cerca-fase1/`. Se probó entre dos emuladores con BLE de
+verdad (netsim), sin emparejar y con el servidor desenchufado. Solo Android 12+;
+los anteriores siguen con la fase 0. No se hizo el respaldo por GATT. Falta
+repetirla con dos teléfonos reales.
 
 - Cada aparato reparte por Signal una "clave de baliza" a sus contactos.
 - Anuncia un HMAC de esa clave y la época, truncado: los contactos lo reconocen

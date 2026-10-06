@@ -173,6 +173,8 @@ data class CargaAdjunto(
      * cliente viejo lo ignora y lo muestra como siempre.
      */
     val spoiler: Boolean = false,
+    /** Ver `Carga.Texto.baliza`. */
+    val baliza: String? = null,
 ) : Carga
 
 // ============================================================

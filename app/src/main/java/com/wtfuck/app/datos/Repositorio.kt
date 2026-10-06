@@ -166,20 +166,54 @@ class Repositorio(
      * mensajeria. Se enciende desde la pantalla, para la sala en la que uno
      * esta.
      */
+    /** Mi clave de baliza del modo cerca. Ver `MiBaliza`. */
+    private val miBaliza = MiBaliza(contexto)
+
+    /**
+     * A quienes bloquee DESDE ESTE TELEFONO, para el modo cerca.
+     *
+     * Con internet el bloqueo lo aplica el servidor; por el aire no hay
+     * servidor, y sin esta lista un enlace con alguien bloqueado seguiria
+     * entregando sus mensajes. Un bloqueo hecho desde otro aparato mio no esta
+     * aqui hasta que se repita en este.
+     */
+    private val bloqueadosCerca = contexto.getSharedPreferences("wtfuck_cerca_bloqueos", android.content.Context.MODE_PRIVATE)
+
+    private fun estaBloqueadoCerca(username: String): Boolean =
+        bloqueadosCerca.getBoolean(username.lowercase().trim(), false)
+
+    /** Lo que el enlace sin emparejar necesita de Signal y de la base. */
+    private val llavesCerca = object : LlavesCerca {
+        override val curva get() = cifrador.curvaCerca
+        override fun miBaliza(): ByteArray = this@Repositorio.miBaliza.clave()
+        override fun versionBaliza(): Long = this@Repositorio.miBaliza.version
+        override suspend fun conocidas(): Map<String, ByteArray> =
+            dao.balizas().filter { it.dispositivoId != sesion.dispositivoId }
+                .mapNotNull { b -> runCatching { b.dispositivoId to Base64Util.dec(b.clave) }.getOrNull() }
+                .filter { it.second.size == com.wtfuck.protocol.Baliza.LARGO_CLAVE }
+                .toMap()
+        override fun identidadDe(dispositivo: String): ByteArray? = cifrador.identidadCerca(dispositivo)
+        override fun miEstatico(publica: ByteArray): ByteArray = cifrador.acordarConMiIdentidad(publica)
+    }
+
     val cerca: TransporteCerca = TransporteCerca(
         contexto, sesion,
         alRecibir = { sobre -> recibirDeCerca(sobre) },
         alAcuse = { a -> acuseDeCerca(a) },
         // Recien enlazado: lo que espera sale ya, sin esperar a que alguien
         // escriba otra cosa.
-        alEnlazar = { enVueloCerca.clear(); despachar() },
-        alCortar = { enVueloCerca.clear() },
+        alEnlazar = { despachar() },
+        // Lo que estaba en vuelo hacia ESE aparato no llego a acusarse: en el
+        // proximo enlace vuelve a salir. Los de los demas enlaces siguen.
+        alCortar = { dispositivo -> enVueloCerca.removeIf { it.endsWith(":$dispositivo") } },
+        llaves = llavesCerca,
     )
 
     /**
-     * Lo que salio por el enlace y todavia no volvio acusado. Evita mandarlo
-     * dos veces en el mismo enlace; si el enlace se corta se olvida, y en el
-     * proximo vuelve a salir. Quien recibe descarta el repetido por su id.
+     * Lo que salio por un enlace y todavia no volvio acusado, como
+     * "mensajeId:aparato". Evita mandarlo dos veces por el mismo enlace; si ese
+     * enlace se corta se olvida, y en el proximo vuelve a salir. Quien recibe
+     * descarta el repetido por su id.
      */
     private val enVueloCerca: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
@@ -967,6 +1001,10 @@ class Repositorio(
      *   lo devuelve para que un rechazo se pueda contar y no sea invisible.
      */
     private suspend fun recibirDeCerca(s: com.wtfuck.protocol.MensajeCerca.Sobre): Boolean {
+        if (estaBloqueadoCerca(s.origenUsername)) {
+            Log.i(TAG, "Sobre de cerca de alguien bloqueado: se descarta")
+            return false
+        }
         val hay = cifrador.haySesionCon(s.origenUsuarioId, s.origenDispositivo)
         if (!com.wtfuck.protocol.aceptable(s.tipo, hay)) {
             Log.w(TAG, "Sobre de cerca rechazado: tipo=${s.tipo} sesion=$hay")
@@ -993,7 +1031,7 @@ class Repositorio(
 
     /** El otro lado guardo un mensaje mio que salio por el enlace. */
     private suspend fun acuseDeCerca(a: com.wtfuck.protocol.MensajeCerca.Acuse) {
-        enVueloCerca.remove(a.mensajeId)
+        enVueloCerca.remove("${a.mensajeId}:${a.dispositivoId}")
         val m = dao.mensaje(a.mensajeId) ?: return
         if (!m.esMio) return
         dao.fijarCerca(m.id, EnvioCerca.con(m.cercaEntregado, a.dispositivoId))
@@ -1172,6 +1210,7 @@ class Repositorio(
 
                 val cita = carga as? Carga.Texto
                 val adj = carga as? CargaAdjunto
+                (cita?.baliza ?: adj?.baliza)?.let { runCatching { guardarBalizaDe(msg, it) } }
                 val silenciosoEntrante = cita?.silencioso == true || adj?.silencioso == true
 
                 // La cita de una historia **la escribio la otra persona** y el
@@ -5283,7 +5322,8 @@ class Repositorio(
             // Si es grupo cambia el esquema de cifrado: clave de emisor en vez
             // de una sesion por dispositivo.
             val esGrupo = dao.conversacion(m.conversacionId)?.tipo == "grupo"
-            val copias = runCatching { cifrador.cifrar(m.conversacionId, esGrupo, destinos, cargaDe(m)) }
+            val baliza = balizaPara(m)
+            val copias = runCatching { cifrador.cifrar(m.conversacionId, esGrupo, destinos, cargaDe(m, baliza)) }
                 .getOrElse {
                     Log.w(TAG, "No se pudo cifrar ${m.id}: ${it.message}")
                     anotarAtasco(m.conversacionId, "No se pudo cifrar: ${it.message ?: "error desconocido"}.")
@@ -5333,6 +5373,7 @@ class Repositorio(
             // Recien con la entrega aceptada se da la clave de emisor por
             // repartida. Ver `Cifrador.confirmarEnvio`.
             cifrador.confirmarEnvio(m.conversacionId, destinos)
+            if (baliza != null) dao.marcarBalizaEnviada(BalizaEnviadaEnt(m.conversacionId, miBaliza.version))
             // Si vuelve a atascarse mas adelante, se vuelve a avisar.
             avisadosSinCifrado.remove(m.conversacionId)
             limpiarAtasco(m.conversacionId)
@@ -5361,8 +5402,15 @@ class Repositorio(
      * la burbuja diga que llego y no "en cola".
      */
     private suspend fun despacharPorCerca(pendientes: List<MensajeEnt>) {
-        if (!cerca.disponible()) return
-        val par = cerca.par ?: return
+        // Con la fase 1 puede haber varios enlaces a la vez: a cada uno, lo suyo.
+        for (par in cerca.pares) despacharPorCercaA(par, pendientes)
+    }
+
+    private suspend fun despacharPorCercaA(
+        par: com.wtfuck.protocol.MensajeCerca.Saludo,
+        pendientes: List<MensajeEnt>,
+    ) {
+        if (estaBloqueadoCerca(par.username)) return
         val yo = sesion.usuarioId.orEmpty()
         val destino = DestinoDispositivo(
             usuarioId = par.usuarioId,
@@ -5376,11 +5424,11 @@ class Repositorio(
         val frenadas = mutableSetOf<String>()
         for (m in pendientes) {
             if (m.conversacionId in frenadas) continue
-            if (EnvioCerca.tiene(m.cercaEntregado, par.dispositivoId) || m.id in enVueloCerca) continue
+            if (EnvioCerca.tiene(m.cercaEntregado, par.dispositivoId) || "${m.id}:${par.dispositivoId}" in enVueloCerca) continue
             if (!EnvioCerca.esTexto(m.adjuntoId, m.adjuntoClase, m.especialJson)) continue
             val c = dao.conversacion(m.conversacionId) ?: continue
             if (!EnvioCerca.va(c.tipo, c.nombre, c.participantes, yo, par.usuarioId, par.username)) continue
-            val copia = runCatching { cifrador.cifrarSoloPara(destino, cargaDe(m)) }.getOrNull()
+            val copia = runCatching { cifrador.cifrarSoloPara(destino, cargaDe(m, balizaPara(m))) }.getOrNull()
             if (copia == null) {
                 frenadas += m.conversacionId
                 continue
@@ -5400,8 +5448,42 @@ class Repositorio(
                 )
             )
             if (!ok) return
-            enVueloCerca += m.id
+            enVueloCerca += "${m.id}:${par.dispositivoId}"
         }
+    }
+
+    /**
+     * Mi clave de baliza para este mensaje, o `null`.
+     *
+     * Solo en chats directos y en la nota para mi -mis otros aparatos-: es la
+     * clave con la que me reconocen cerca, y un grupo tiene gente con la que no
+     * hablo. Y solo hasta que ese chat tiene la vigente.
+     */
+    private suspend fun balizaPara(m: MensajeEnt): String? {
+        if (m.especialJson.isNotEmpty()) return null
+        val c = dao.conversacion(m.conversacionId) ?: return null
+        if (c.tipo != "directa" && c.tipo != "notas") return null
+        val clave = miBaliza.clave()
+        if (dao.balizaEnviada(m.conversacionId) == miBaliza.version) return null
+        return Base64Util.enc(clave)
+    }
+
+    /** Guarda la clave de baliza que vino en un mensaje de un chat directo. */
+    private suspend fun guardarBalizaDe(msg: Bajada.Entrega, b64: String) {
+        if (msg.origenDispositivo.isBlank() || msg.origenDispositivo == sesion.dispositivoId) return
+        val clave = runCatching { Base64Util.dec(b64) }.getOrNull() ?: return
+        if (clave.size != com.wtfuck.protocol.Baliza.LARGO_CLAVE) return
+        val c = dao.conversacion(msg.conversacionId) ?: return
+        if (c.tipo != "directa" && c.tipo != "notas") return
+        dao.guardarBaliza(
+            BalizaEnt(
+                dispositivoId = msg.origenDispositivo,
+                usuarioId = msg.origenUsuarioId,
+                username = msg.origenUsername,
+                clave = b64,
+                recibidaEn = System.currentTimeMillis(),
+            )
+        )
     }
 
     /**
@@ -5410,7 +5492,7 @@ class Repositorio(
      * Un adjunto no es "un texto con un archivo pegado": es otra carga, con la
      * clave del archivo adentro. El texto que la persona escribio va como pie.
      */
-    private fun cargaDe(m: MensajeEnt): Carga =
+    private fun cargaDe(m: MensajeEnt, baliza: String? = null): Carga =
         if (m.especialJson.isNotEmpty()) {
             // Sale tal como entro. No se vuelve a armar campo por campo: si se
             // armara, cualquier campo que la pantalla no hubiera copiado a la
@@ -5433,6 +5515,7 @@ class Repositorio(
                 previa = if (m.previaJson.isBlank()) null else runCatching {
                     jsonApp.decodeFromString(VistaPreviaEnlace.serializer(), m.previaJson)
                 }.getOrNull(),
+                baliza = baliza,
             )
         } else {
             CargaAdjunto(
@@ -5454,6 +5537,7 @@ class Repositorio(
                 unaVez = m.unaVez,
                 forma = m.adjuntoForma,
                 spoiler = m.spoiler,
+                baliza = baliza,
             )
         }
 
@@ -5546,6 +5630,9 @@ class Repositorio(
         Notificaciones.quitarSonidosPropios(contexto)
         CopiaAutomatica.cancelar(contexto)
         CopiaAutomatica.Config(contexto).borrarTodo()
+        dao.borrarBalizas()
+        dao.borrarBalizasEnviadas()
+        miBaliza.borrar()
     }
 
     /**
@@ -5820,8 +5907,22 @@ class Repositorio(
         sincronizar()
     }
 
-    suspend fun bloquear(username: String) { api.bloquear(username); sincronizar() }
-    suspend fun desbloquear(username: String) { api.desbloquear(username); sincronizar() }
+    suspend fun bloquear(username: String) {
+        api.bloquear(username)
+        // Modo cerca: esa persona se queda con mi clave vieja y con la nueva ya
+        // no me reconoce. Los demas la reciben con el proximo mensaje. Y las
+        // suyas se olvidan: no se busca a quien se bloqueo.
+        runCatching { dao.borrarBalizasDe(username.lowercase().trim()) }
+        miBaliza.rotar()
+        bloqueadosCerca.edit().putBoolean(username.lowercase().trim(), true).apply()
+        cerca.cortarCon(username)
+        sincronizar()
+    }
+    suspend fun desbloquear(username: String) {
+        api.desbloquear(username)
+        bloqueadosCerca.edit().remove(username.lowercase().trim()).apply()
+        sincronizar()
+    }
 
     suspend fun miembros(convId: String) = api.miembros(convId)
 
@@ -5891,6 +5992,11 @@ class Repositorio(
         // con ella los chats de la siguiente seria mezclar dos personas.
         CopiaAutomatica.cancelar(contexto)
         CopiaAutomatica.Config(contexto).borrarTodo()
+        // Las balizas dicen con quien hablaba esta cuenta, y la mia es suya.
+        dao.borrarBalizas()
+        dao.borrarBalizasEnviadas()
+        miBaliza.borrar()
+        bloqueadosCerca.edit().clear().apply()
         // Los atajos y el widget hablan de esta cuenta.
         Atajos.borrarTodos(contexto)
         WidgetWtfuck.actualizar(contexto, 0)
