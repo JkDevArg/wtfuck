@@ -47,9 +47,12 @@ function limpiarLimites() {
       { stdio: 'ignore' },
     );
   } catch {
-    // Sin Redis no hay nada que limpiar: el limitador vive en el proceso y el
-    // servidor se reinicia entre corridas.
+    // Sin Redis no hay nada que limpiar.
   }
+  // OJO: esto borra los limites de FALLO, que son los que viven en Redis. Los
+  // de FRECUENCIA -el del SMS, por ejemplo- viven en la memoria del servidor y
+  // de aqui no se alcanzan: dos corridas completas dentro de su ventana hacen
+  // caer a `recuperacion`. Ver el aviso del final.
 }
 limpiarLimites();
 
@@ -150,7 +153,21 @@ for (const r of rotas) {
 const cuantas = suites.length - omitidas.length;
 console.log(
   `\n=== ${cuantas} suites \u00b7 ${pasan} pasan, ${fallan} fallan` +
+  // Las rotas van en la linea final aunque no sumen "fallan": una suite que
+  // murio a mitad no conto sus fallos, y un "0 fallan" con una rota encima es
+  // el resumen que todo el mundo lee y nadie cuestiona.
+  (rotas.length ? ` \u00b7 ${rotas.length} con problemas (${rotas.map((r) => r.nombre).join(', ')})` : '') +
   (omitidas.length ? ` \u00b7 ${omitidas.length} omitidas (${omitidas.join(', ')})` : '') +
   ' ==='
 );
+if (rotas.length) {
+  // Paso de verdad: dos corridas completas seguidas y `recuperacion` cayo en
+  // 400 y null sin decir por que. El limitador de FRECUENCIA (el del SMS, por
+  // ejemplo) vive en la memoria del servidor, no en Redis: `limpiarLimites`
+  // no lo toca, y solo se vacia reiniciando el servidor o esperando su ventana.
+  console.log(
+    'Si algo fallo por un 429 ("Vas muy rapido"), el limitador de frecuencia ' +
+    'del servidor guarda la corrida anterior en memoria: reinicia el servidor o espera unos minutos.'
+  );
+}
 process.exit(fallan === 0 && rotas.length === 0 ? 0 : 1);
