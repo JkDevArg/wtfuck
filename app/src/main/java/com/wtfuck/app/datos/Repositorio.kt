@@ -496,6 +496,10 @@ class Repositorio(
     suspend fun proteger(id: String, protegido: Boolean) {
         dao.fijarProtegido(id, protegido)
         if (protegido) abiertosHasta.remove(id)
+        dao.conversacion(id)?.let { c ->
+            val nombre = if (c.tipo == "directa") c.nombre else c.nombreMostrado.ifBlank { c.nombre }
+            Notificaciones.renombrarSonidoPropio(contexto, id, nombre, protegido)
+        }
     }
 
     /** Motivos por los que el servidor rechazo un envio, para mostrarlos. */

@@ -430,7 +430,7 @@ object Notificaciones {
             nm.createNotificationChannel(
                 NotificationChannel(
                     id,
-                    if (protegido) "Chat protegido" else "Chat: $nombre",
+                    nombreDeCanal(nombre, protegido),
                     NotificationManager.IMPORTANCE_HIGH,
                 ).apply { description = "El sonido propio de este chat" }
             )
@@ -438,6 +438,24 @@ object Notificaciones {
         return Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
             .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
             .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, id)
+    }
+
+    private fun nombreDeCanal(nombre: String, protegido: Boolean) =
+        if (protegido) "Chat protegido" else "Chat: $nombre"
+
+    /**
+     * Al proteger -o desproteger- un chat que ya tiene su sonido, el canal se
+     * renombra con el: si no, los ajustes de Android seguirian diciendo con
+     * quien es el chat que se acaba de esconder. Crear un canal que ya existe
+     * solo le cambia el nombre; el sonido elegido se queda.
+     */
+    fun renombrarSonidoPropio(ctx: Context, conversacionId: String, nombre: String, protegido: Boolean) {
+        runCatching {
+            val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+            val canal = nm.getNotificationChannel(canalDeChat(conversacionId)) ?: return
+            canal.name = nombreDeCanal(nombre, protegido)
+            nm.createNotificationChannel(canal)
+        }
     }
 
     fun quitarSonidoPropio(ctx: Context, conversacionId: String) {
