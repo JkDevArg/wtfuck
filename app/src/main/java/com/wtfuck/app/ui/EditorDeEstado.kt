@@ -1,5 +1,7 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
@@ -1125,12 +1127,13 @@ private fun EditorAudio(publicando: Boolean, error: String?, onPublicar: (Estado
 fun EditorFotoChat(
     foto: Uri,
     pieInicial: String,
-    /** El tercer valor es "ver una vez". Ver `CargaAdjunto.unaVez`. */
-    onEnviar: (Uri, String, Boolean) -> Unit,
+    /** El tercer valor es "ver una vez" y el cuarto "spoiler". Ver `CargaAdjunto`. */
+    onEnviar: (Uri, String, Boolean, Boolean) -> Unit,
     onCerrar: () -> Unit,
     unaVezInicial: Boolean = false,
 ) {
     var unaVez by remember { mutableStateOf(unaVezInicial) }
+    var spoiler by remember { mutableStateOf(false) }
     var hayTrabajo by remember { mutableStateOf(false) }
     var confirmarSalir by remember { mutableStateOf(false) }
     val intentarCerrar: () -> Unit = { if (hayTrabajo) confirmarSalir = true else onCerrar() }
@@ -1147,6 +1150,17 @@ fun EditorFotoChat(
                     IconButton(onClick = intentarCerrar) { Icon(Icons.Filled.Close, "Cerrar", tint = Color.White) }
                     Text("Editar foto", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.weight(1f))
+                    // Spoiler: quien la recibe la ve difuminada hasta tocarla.
+                    // Con "ver una vez" no hace falta: esa ya va tapada.
+                    if (!unaVez) {
+                        IconButton(onClick = { spoiler = !spoiler }) {
+                            Icon(
+                                if (spoiler) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                if (spoiler) "Spoiler: encendido" else "Spoiler: apagado",
+                                tint = if (spoiler) Cian else Color.White,
+                            )
+                        }
+                    }
                     // El "1" de WhatsApp: encendido, la foto se ve una vez.
                     Box(
                         Modifier
@@ -1179,7 +1193,7 @@ fun EditorFotoChat(
                         publicando = false,
                         error = null,
                         onTrabajo = { hayTrabajo = true },
-                        onListo = { uri, _, pie -> onEnviar(uri, if (unaVez) "" else pie, unaVez) },
+                        onListo = { uri, _, pie -> onEnviar(uri, if (unaVez) "" else pie, unaVez, spoiler && !unaVez) },
                         fotoInicial = foto,
                         proporciones = Proporcion.entries,
                         etiqueta = if (unaVez) "Enviar · ver una vez" else "Enviar",

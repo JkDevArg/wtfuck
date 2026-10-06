@@ -168,6 +168,11 @@ data class CargaAdjunto(
      * exactamente lo que es.
      */
     val forma: String = "",
+    /**
+     * Foto o video "spoiler": quien recibe lo ve difuminado hasta tocarlo. Un
+     * cliente viejo lo ignora y lo muestra como siempre.
+     */
+    val spoiler: Boolean = false,
 ) : Carga
 
 // ============================================================

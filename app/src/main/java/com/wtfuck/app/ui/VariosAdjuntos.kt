@@ -23,8 +23,9 @@ import com.wtfuck.app.ui.theme.*
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HojaVariosAdjuntos(uris: List<Uri>, pieInicial: String, onEnviar: (String) -> Unit, onCerrar: () -> Unit) {
+fun HojaVariosAdjuntos(uris: List<Uri>, pieInicial: String, onEnviar: (String, Boolean) -> Unit, onCerrar: () -> Unit) {
     var pie by remember { mutableStateOf(pieInicial) }
+    var spoiler by remember { mutableStateOf(false) }
     val hoja = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onCerrar, sheetState = hoja, containerColor = BgSurface) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
@@ -49,8 +50,15 @@ fun HojaVariosAdjuntos(uris: List<Uri>, pieInicial: String, onEnviar: (String) -
                 placeholder = { Text("Añade un pie (va con el primero)") },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text("Como spoiler: difuminadas hasta tocarlas", color = TextoSecundario, modifier = Modifier.weight(1f))
+                Switch(checked = spoiler, onCheckedChange = { spoiler = it })
+            }
             Button(
-                onClick = { onEnviar(pie.trim()) },
+                onClick = { onEnviar(pie.trim(), spoiler) },
                 colors = ButtonDefaults.buttonColors(containerColor = Cian, contentColor = TextoSobreAcento),
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
             ) { Text("Enviar ${uris.size}") }

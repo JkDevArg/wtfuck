@@ -391,11 +391,11 @@ class Repositorio(
      * plano, en el ambito del repositorio: diez videos tardan, y salir del
      * chat no tiene que cortarlos. El pie va con el primero.
      */
-    fun enviarVarios(convId: String, uris: List<Uri>, pie: String) {
+    fun enviarVarios(convId: String, uris: List<Uri>, pie: String, spoiler: Boolean = false) {
         ambito.launch {
             uris.forEachIndexed { i, uri ->
                 val clase = Media.claseDe(contexto.contentResolver.getType(uri).orEmpty())
-                runCatching { enviarAdjunto(convId, uri, clase, if (i == 0) pie else "") }
+                runCatching { enviarAdjunto(convId, uri, clase, if (i == 0) pie else "", spoiler = spoiler) }
                     .onFailure { _rechazos.tryEmit(it.message ?: "No se pudo enviar uno de los archivos.") }
             }
         }
@@ -1202,6 +1202,8 @@ class Repositorio(
                         adjuntoNonce = adj?.nonce.orEmpty(),
                         adjuntoMiniatura = if (adj?.unaVez == true) "" else adj?.miniatura.orEmpty(),
                         unaVez = adj?.unaVez == true,
+                        spoiler = adj?.spoiler == true &&
+                            (adj.clase == ClaseAdjunto.IMAGEN || adj.clase == ClaseAdjunto.VIDEO),
                         // Solo las formas que se saben dibujar: el resto es un
                         // video normal. Lo escribio otra persona.
                         adjuntoForma = adj?.forma?.takeIf { it == "circulo" && adj.clase == ClaseAdjunto.VIDEO }.orEmpty(),
@@ -2792,6 +2794,8 @@ class Repositorio(
         unaVez: Boolean = false,
         /** Ver `CargaAdjunto.forma`. */
         forma: String = "",
+        /** Ver `CargaAdjunto.spoiler`. */
+        spoiler: Boolean = false,
     ) {
         val pie = if (unaVez) "" else pie
         val mensajeId = UUID.randomUUID().toString()
@@ -2862,6 +2866,7 @@ class Repositorio(
                 adjuntoEstado = "SUBIENDO",
                 unaVez = unaVez,
                 adjuntoForma = forma,
+                spoiler = spoiler && (clase == ClaseAdjunto.IMAGEN || clase == ClaseAdjunto.VIDEO),
             )
         )
 
@@ -2985,6 +2990,7 @@ class Repositorio(
                 rutaLocal = local.absolutePath,
                 adjuntoEstado = "SUBIENDO",
                 adjuntoForma = m.adjuntoForma,
+                spoiler = m.spoiler,
             )
         )
         val datos = DatosArchivo(
@@ -5200,6 +5206,7 @@ class Repositorio(
                 reenviadoDe = m.reenviadoDe,
                 unaVez = m.unaVez,
                 forma = m.adjuntoForma,
+                spoiler = m.spoiler,
             )
         }
 

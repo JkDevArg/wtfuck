@@ -26,6 +26,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -115,6 +116,9 @@ fun ContenidoAdjunto(
 @Composable
 private fun VistaImagen(m: MensajeEnt, local: File?, alTocar: () -> Unit) {
     var visor by remember { mutableStateOf(false) }
+    // Un spoiler se destapa tocandolo, y queda destapado mientras dure la
+    // pantalla. Lo mio no se tapa: ya se lo que mande.
+    var destapado by remember(m.id) { mutableStateOf(m.esMio || !m.spoiler) }
 
     // Hay archivo y es una imagen: entonces se dibuja el archivo, y lo dibuja
     // Coil. Ver la nota de abajo.
@@ -141,6 +145,10 @@ private fun VistaImagen(m: MensajeEnt, local: File?, alTocar: () -> Unit) {
             .fillMaxWidth()
             .aspectRatio(proporcion)
             .clickable {
+                if (!destapado) {
+                    destapado = true
+                    return@clickable
+                }
                 // Una imagen lista se ve aqui mismo; un video lo abre el
                 // reproductor del sistema. Lo demas lo decide alTocar.
                 if (local != null && m.adjuntoClase == ClaseAdjunto.IMAGEN &&
@@ -176,7 +184,7 @@ private fun VistaImagen(m: MensajeEnt, local: File?, alTocar: () -> Unit) {
             coil3.compose.AsyncImage(
                 model = local,
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().then(if (destapado) Modifier else Modifier.blur(32.dp)),
                 contentScale = ContentScale.Crop,
             )
         } else if (mini != null) {
@@ -184,9 +192,21 @@ private fun VistaImagen(m: MensajeEnt, local: File?, alTocar: () -> Unit) {
             // `miniaturaAjena` en vez de por Coil. Ver `MiniaturaSegura.kt`.
             Image(
                 mini, null,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().then(if (destapado) Modifier else Modifier.blur(32.dp)),
                 contentScale = ContentScale.Crop,
             )
+        }
+
+        if (!destapado) {
+            // Antes de Android 12 `blur` no hace nada: ahi se tapa entera.
+            val sinDifuminado = android.os.Build.VERSION.SDK_INT < 31
+            Box(
+                Modifier.fillMaxSize().background(if (sinDifuminado) BgElev else BgBase.copy(alpha = 0.35f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                InsigniaCentral(Icons.Filled.VisibilityOff, "Spoiler · toca para ver", Cian)
+            }
+            return@Box
         }
 
         // Un velo sobre la miniatura: marca que lo que se ve no es el archivo

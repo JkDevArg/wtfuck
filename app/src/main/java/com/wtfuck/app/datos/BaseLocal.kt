@@ -375,6 +375,8 @@ data class MensajeEnt(
     val transcripcion: String = "",
     /** Destacado (la estrella). Solo en este telefono. */
     val destacado: Boolean = false,
+    /** Ver `CargaAdjunto.spoiler`. */
+    val spoiler: Boolean = false,
 )
 
 /**
@@ -1474,7 +1476,7 @@ interface ChatDao {
         CarpetaEnt::class,
         CarpetaChatEnt::class,
     ],
-    version = 30,
+    version = 31,
     exportSchema = false,
 )
 abstract class BaseLocal : RoomDatabase() {
@@ -1494,7 +1496,7 @@ abstract class BaseLocal : RoomDatabase() {
                 .addMigrations(
                     DE_9_A_10, DE_10_A_11, DE_11_A_12, DE_12_A_13, DE_13_A_14, DE_14_A_15,
                     DE_15_A_16, DE_16_A_17, DE_17_A_18, DE_18_A_19, DE_19_A_20,
-                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30,
+                    DE_20_A_21, DE_21_A_22, DE_22_A_23, DE_23_A_24, DE_24_A_25, DE_25_A_26, DE_26_A_27, DE_27_A_28, DE_28_A_29, DE_29_A_30, DE_30_A_31,
                 )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
@@ -1666,6 +1668,13 @@ abstract class BaseLocal : RoomDatabase() {
          * los trae de la anotacion, y esta migracion tambien corre en el salto
          * desde cualquier version anterior.
          */
+        /** Fotos y videos spoiler. */
+        private val DE_30_A_31 = object : Migration(30, 31) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE mensaje ADD COLUMN spoiler INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         /** Mensajes destacados. */
         private val DE_29_A_30 = object : Migration(29, 30) {
             override fun migrate(db: SupportSQLiteDatabase) {

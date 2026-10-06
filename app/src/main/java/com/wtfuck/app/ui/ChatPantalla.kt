@@ -509,12 +509,14 @@ private fun ChatAbierto(
             foto = foto,
             pieInicial = texto.text.trim(),
             unaVezInicial = fotoUnaVez,
-            onEnviar = { lista, pie, unaVez ->
+            onEnviar = { lista, pie, unaVez, spoiler ->
                 fotoAEditar = null
                 if (!unaVez) texto = TextFieldValue("")
                 ambito.launch {
                     runCatching {
-                        app.repo.enviarAdjunto(conversacionId, lista, ClaseAdjunto.IMAGEN, pie, unaVez = unaVez)
+                        app.repo.enviarAdjunto(
+                            conversacionId, lista, ClaseAdjunto.IMAGEN, pie, unaVez = unaVez, spoiler = spoiler,
+                        )
                     }.onFailure { aviso = it.message }
                 }
             },
@@ -1735,10 +1737,10 @@ private fun ChatAbierto(
         HojaVariosAdjuntos(
             uris = uris,
             pieInicial = texto.text.trim(),
-            onEnviar = { pie ->
+            onEnviar = { pie, spoiler ->
                 variosAEnviar = null
                 texto = TextFieldValue("")
-                app.repo.enviarVarios(conversacionId, uris, pie)
+                app.repo.enviarVarios(conversacionId, uris, pie, spoiler)
             },
             onCerrar = { variosAEnviar = null },
         )
