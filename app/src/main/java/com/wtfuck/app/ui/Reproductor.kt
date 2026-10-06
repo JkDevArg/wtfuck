@@ -55,6 +55,12 @@ class Reproductor(private val ambito: CoroutineScope) {
     private var reloj: Job? = null
 
     /**
+     * Lo que pasa cuando una nota TERMINA sola -no cuando se la para-: recibe
+     * su id. La pantalla lo usa para seguir con la siguiente.
+     */
+    var alTerminar: ((String) -> Unit)? = null
+
+    /**
      * Empieza a sonar.
      *
      * ## Por que `prepareAsync` y no `prepare`
@@ -77,7 +83,11 @@ class Reproductor(private val ambito: CoroutineScope) {
         val p = runCatching {
             MediaPlayer().apply {
                 setDataSource(archivo.absolutePath)
-                setOnCompletionListener { detener() }
+                setOnCompletionListener {
+                    val termino = sonando
+                    detener()
+                    termino?.let { id -> alTerminar?.invoke(id) }
+                }
                 // Un archivo que el decodificador no entiende NO puede dejar la
                 // burbuja marcada como sonando para siempre.
                 setOnErrorListener { _, que, extra ->

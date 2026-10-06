@@ -386,6 +386,43 @@ class Repositorio(
         }
     }
 
+    /**
+     * Varias fotos o videos a la vez. Salen en el orden elegido y en segundo
+     * plano, en el ambito del repositorio: diez videos tardan, y salir del
+     * chat no tiene que cortarlos. El pie va con el primero.
+     */
+    fun enviarVarios(convId: String, uris: List<Uri>, pie: String) {
+        ambito.launch {
+            uris.forEachIndexed { i, uri ->
+                val clase = Media.claseDe(contexto.contentResolver.getType(uri).orEmpty())
+                runCatching { enviarAdjunto(convId, uri, clase, if (i == 0) pie else "") }
+                    .onFailure { _rechazos.tryEmit(it.message ?: "No se pudo enviar uno de los archivos.") }
+            }
+        }
+    }
+
+    // --- Responder en privado ------------------------------------------------
+
+    /**
+     * La cita que espera en un chat que se esta por abrir: "Responder en
+     * privado" crea o abre la directa y la deja aqui, y la pantalla del chat la
+     * toma al abrirse. En memoria: es un paso de una pantalla a otra.
+     */
+    private val respuestasPendientes = java.util.concurrent.ConcurrentHashMap<String, MensajeEnt>()
+
+    /**
+     * Abre -o crea- la directa con quien escribio [m] en un grupo, con la cita
+     * puesta. Devuelve el id del chat. Lanza si esa persona no deja que le
+     * escriban: se aplica su "quien me escribe", como en cualquier directa.
+     */
+    suspend fun responderEnPrivado(m: MensajeEnt): String {
+        val id = dao.directaCon(m.autor)?.id ?: nuevaDirecta(m.autor)
+        respuestasPendientes[id] = m
+        return id
+    }
+
+    fun tomarRespuestaPendiente(convId: String): MensajeEnt? = respuestasPendientes.remove(convId)
+
     // --- Destacados: solo en este telefono ------------------------------------
 
     fun destacados(convId: String = ""): Flow<List<MensajeEnt>> = dao.destacados(convId)
@@ -1549,7 +1586,11 @@ class Repositorio(
             silencioso = silencioso,
             previaJson = previa?.takeIf { it.url in limpio }
                 ?.let { jsonApp.encodeToString(VistaPreviaEnlace.serializer(), it) }.orEmpty(),
-            respondeA = respondeA?.id,
+            // El id solo si la cita es de ESTE chat. "Responder en privado"
+            // cita un mensaje de un grupo, y el servidor rechaza -con razon-
+            // un respondeA de otra conversacion: viaja solo la copia de la
+            // cita, dentro del sobre, que es lo que se dibuja.
+            respondeA = respondeA?.id?.takeIf { respondeA.conversacionId == convId },
             // La cita se copia: si el original se borra despues, el hilo sigue
             // teniendo sentido.
             respondeTexto = respondeA?.texto?.take(140),
@@ -2805,7 +2846,7 @@ class Repositorio(
                 texto = pie,
                 creadoEn = horaParaMio(convId),
                 estado = EstadoEnvio.PENDIENTE.name,
-                respondeA = respondeA?.id,
+                respondeA = respondeA?.id?.takeIf { respondeA.conversacionId == convId },
                 respondeTexto = respondeA?.texto?.take(140),
                 respondeAutor = respondeA?.autor,
                 adjuntoClase = clase,

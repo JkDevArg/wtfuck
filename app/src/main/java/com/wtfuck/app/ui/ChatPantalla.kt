@@ -290,6 +290,8 @@ private fun ChatAbierto(
     var confirmarBorrarSeleccion by remember { mutableStateOf(false) }
     var verDestacados by remember { mutableStateOf(false) }
     var grabandoVideonota by remember { mutableStateOf(false) }
+    /** Varias fotos o videos elegidos a la vez, esperando confirmacion. */
+    var variosAEnviar by remember { mutableStateOf<List<android.net.Uri>?>(null) }
     /** Lo proximo que se elija en la galeria va como "ver una vez". */
     var proximoUnaVez by remember { mutableStateOf(false) }
     /** Con que valor arranca el interruptor del editor de fotos. */
@@ -300,6 +302,10 @@ private fun ChatAbierto(
     var enviandoDenuncia by remember { mutableStateOf(false) }
     var denunciaHecha by remember { mutableStateOf(false) }
     var respondiendoA by remember { mutableStateOf<MensajeEnt?>(null) }
+    // "Responder en privado" desde un grupo deja la cita esperando aqui.
+    LaunchedEffect(conversacionId) {
+        app.repo.tomarRespuestaPendiente(conversacionId)?.let { respondiendoA = it }
+    }
     var editando by remember { mutableStateOf<MensajeEnt?>(null) }
 
     // --- borrador -------------------------------------------------------
@@ -459,6 +465,22 @@ private fun ChatAbierto(
         Reproductor(ambito).also { it.recordarVelocidad(app.ajustes.velocidadAudio) }
     }
     val grabadora = remember { Grabadora(contexto) }
+
+    // Notas de voz encadenadas, como en WhatsApp: al terminar una, suena la
+    // siguiente si es el mensaje que viene justo despues. Solo si ya esta en
+    // el telefono: bajarla en ese momento seria un silencio sin explicacion.
+    val mensajesAhora by rememberUpdatedState(mensajes)
+    DisposableEffect(reproductor) {
+        reproductor.alTerminar = { id ->
+            val lista = mensajesAhora.filter { !it.esSistema }
+            val i = lista.indexOfFirst { it.id == id }
+            lista.getOrNull(i + 1)
+                ?.takeIf { it.adjuntoClase == ClaseAdjunto.NOTA_VOZ && !it.unaVez && !it.retirado }
+                ?.let { sig -> sig.rutaLocal?.let { java.io.File(it) }?.takeIf { it.exists() }?.let { sig to it } }
+                ?.let { (sig, archivo) -> reproductor.reproducir(sig.id, archivo) }
+        }
+        onDispose { reproductor.alTerminar = null }
+    }
     var grabando by remember { mutableStateOf(false) }
     var segundosGrabados by remember { mutableIntStateOf(0) }
 
@@ -550,6 +572,27 @@ private fun ChatAbierto(
                 fotoUnaVez = unaVez
                 fotoAEditar = it
             } else mandarArchivo(it, Media.claseDe(mime), unaVez = unaVez)
+        }
+    }
+
+    /**
+     * La galeria con varios a la vez, hasta diez. Con uno se hace lo de
+     * siempre -la foto pasa por el editor-; con mas, se muestran y salen todos.
+     */
+    val elegirVarios = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { uris ->
+        when {
+            uris.isEmpty() -> Unit
+            uris.size == 1 -> {
+                val it = uris[0]
+                val mime = contexto.contentResolver.getType(it).orEmpty()
+                if (Media.claseDe(mime) == ClaseAdjunto.IMAGEN && mime != "image/gif") {
+                    fotoUnaVez = false
+                    fotoAEditar = it
+                } else mandarArchivo(it, Media.claseDe(mime))
+            }
+            else -> variosAEnviar = uris
         }
     }
 
@@ -1485,7 +1528,7 @@ private fun ChatAbierto(
     if (hojaAdjuntar) {
         HojaAdjuntar(
             onGaleria = {
-                elegirMedia.launch(
+                elegirVarios.launch(
                     androidx.activity.result.PickVisualMediaRequest(
                         ActivityResultContracts.PickVisualMedia.ImageAndVideo
                     )
@@ -1688,6 +1731,19 @@ private fun ChatAbierto(
 
     infoDe?.let { id -> HojaInfoMensaje(id, onCerrar = { infoDe = null }) }
 
+    variosAEnviar?.let { uris ->
+        HojaVariosAdjuntos(
+            uris = uris,
+            pieInicial = texto.text.trim(),
+            onEnviar = { pie ->
+                variosAEnviar = null
+                texto = TextFieldValue("")
+                app.repo.enviarVarios(conversacionId, uris, pie)
+            },
+            onCerrar = { variosAEnviar = null },
+        )
+    }
+
     if (grabandoVideonota) {
         GrabadorVideonota(
             onListo = { archivo ->
@@ -1812,6 +1868,14 @@ private fun ChatAbierto(
                 reenviando = listOf(m)
             },
             onSeleccionar = { accionesDe = null; seleccion = setOf(m.id) },
+            onResponderEnPrivado = if (chat?.tipo == "grupo" && !m.esMio && !m.retirado) ({
+                accionesDe = null
+                ambito.launch {
+                    runCatching { app.repo.responderEnPrivado(m) }
+                        .onSuccess { onAbrirChatCon(it) }
+                        .onFailure { aviso = it.message ?: "No se pudo abrir el chat con @${m.autor}." }
+                }
+            }) else null,
             onDestacar = {
                 accionesDe = null
                 ambito.launch { app.repo.destacar(listOf(m.id), !m.destacado) }
@@ -2285,7 +2349,9 @@ private fun Burbuja(
                 Spacer(Modifier.height(4.dp))
             }
 
-            if (m.respondeA != null && m.respondeTexto != null && !m.retirado) {
+            // Por la copia y no por el id: una respuesta en privado a algo de un
+            // grupo trae la cita sin id. Ver `Repositorio.enviarTexto`.
+            if (m.respondeTexto != null && !m.retirado) {
                 CitaMensaje(m.respondeAutor.orEmpty(), m.respondeTexto, sobreAcento)
             }
 

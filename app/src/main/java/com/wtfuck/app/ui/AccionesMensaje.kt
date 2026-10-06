@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Star
@@ -97,6 +98,8 @@ fun HojaAccionesMensaje(
     onSeleccionar: (() -> Unit)? = null,
     /** Poner o quitar la estrella. */
     onDestacar: (() -> Unit)? = null,
+    /** En un grupo, contestarle a quien lo escribio en una directa. */
+    onResponderEnPrivado: (() -> Unit)? = null,
 ) {
     var confirmandoBorrado by remember { mutableStateOf(false) }
     val puedeRetirar = mensaje.esMio || puedeBorrarAjeno
@@ -146,6 +149,9 @@ fun HojaAccionesMensaje(
 
             if (!mensaje.retirado) {
                 Opcion("Responder", Icons.AutoMirrored.Filled.Reply, onClick = onResponder)
+                if (onResponderEnPrivado != null) {
+                    Opcion("Responder en privado", Icons.Filled.PersonOutline, onClick = onResponderEnPrivado)
+                }
                 // Sin texto no hay nada que copiar: una foto sin pie, un
                 // "ver una vez".
                 if (mensaje.texto.isNotBlank()) {
