@@ -229,4 +229,35 @@ class FallosTest {
             Thread.setDefaultUncaughtExceptionHandler(original)
         }
     }
+
+    // --- muertes que en realidad son el sistema liberando memoria ---
+
+    @Test
+    fun `el caso real del Honor no es un fallo`() {
+        // Tal cual llego de un HONOR DNY-NX9 con Android 16.
+        assertTrue(Fallos.esLimpiezaDeMemoria(2, 400, "iAwareR[LowMemQuick](cch-act) -1ms"))
+    }
+
+    @Test
+    fun `una senal en segundo plano que habla de memoria tampoco`() {
+        assertTrue(Fallos.esLimpiezaDeMemoria(2, 300, "lmk kill"))
+    }
+
+    @Test
+    fun `una senal con la app en pantalla si se reporta`() {
+        assertFalse(Fallos.esLimpiezaDeMemoria(2, 100, "iAwareR[LowMemQuick]"))
+        assertFalse(Fallos.esLimpiezaDeMemoria(2, 300, "killed by user"))
+    }
+
+    @Test
+    fun `un fallo de verdad nunca es limpieza`() {
+        // REASON_CRASH = 4 y REASON_ANR = 6, aunque la app estuviera en cache.
+        assertFalse(Fallos.esLimpiezaDeMemoria(4, 400, "memory"))
+        assertFalse(Fallos.esLimpiezaDeMemoria(6, 400, null))
+    }
+
+    @Test
+    fun `la baja memoria de Android siempre es limpieza`() {
+        assertTrue(Fallos.esLimpiezaDeMemoria(3, 100, null))
+    }
 }

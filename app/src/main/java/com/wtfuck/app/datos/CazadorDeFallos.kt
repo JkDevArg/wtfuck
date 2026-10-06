@@ -163,7 +163,10 @@ class CazadorDeFallos(
 
             // Solo lo anormal. Cerrar la app a mano o que el sistema la pare
             // por memoria no es un fallo que reportar, y avisar de eso seria
-            // ruido que ensena a cerrar el aviso sin leerlo.
+            // ruido que ensena a cerrar el aviso sin leerlo. Incluido el caso
+            // en que el fabricante lo anota como una señal: ver
+            // `Fallos.esLimpiezaDeMemoria`.
+            if (Fallos.esLimpiezaDeMemoria(ultima.reason, ultima.importance, ultima.description)) return
             val motivo = when (ultima.reason) {
                 ApplicationExitInfo.REASON_CRASH -> "excepcion no atrapada"
                 ApplicationExitInfo.REASON_CRASH_NATIVE -> "fallo nativo"

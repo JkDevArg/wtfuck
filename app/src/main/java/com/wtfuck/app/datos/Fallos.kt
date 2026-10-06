@@ -40,6 +40,44 @@ object Fallos {
     const val MAXIMO = 5
 
     /**
+     * Si una muerte que el sistema anoto fue en realidad el sistema LIBERANDO
+     * MEMORIA, que no es un fallo de la app.
+     *
+     * Android tiene su propio motivo para eso, `REASON_LOW_MEMORY`, y ese nunca
+     * se reporto. Pero hay fabricantes que matan con su propio gestor y Android
+     * lo anota como una muerte por **señal**: en un Honor llego
+     * `iAwareR[LowMemQuick](cch-act)`, que es iAware -el gestor de memoria de
+     * Huawei y Honor- cerrando una app que estaba en segundo plano sin hacer
+     * nada ("cch" = en caché). Se le mostraba a la persona como si wtfuck se
+     * hubiera roto, y asustaba por algo que es el funcionamiento normal del
+     * telefono.
+     *
+     * Cuenta como limpieza una señal con la app ya en caché, o una señal en
+     * segundo plano cuyo detalle habla de memoria. Una señal con la app en
+     * pantalla se sigue reportando: ahi si paso algo raro, y puede ser que la
+     * app este gastando demasiado.
+     *
+     * Recibe los numeros tal cual los da `ApplicationExitInfo` para poder
+     * probarse sin un telefono.
+     */
+    fun esLimpiezaDeMemoria(razon: Int, importancia: Int, detalle: String?): Boolean {
+        if (razon == RAZON_BAJA_MEMORIA) return true
+        if (razon != RAZON_SENAL) return false
+        if (importancia >= IMPORTANCIA_EN_CACHE) return true
+        val d = detalle.orEmpty().lowercase()
+        return importancia > IMPORTANCIA_VISIBLE && PISTAS_DE_MEMORIA.any { it in d }
+    }
+
+    // Los valores de Android, verificados contra android.jar (API 37):
+    // ApplicationExitInfo.REASON_SIGNALED / REASON_LOW_MEMORY y
+    // RunningAppProcessInfo.IMPORTANCE_VISIBLE / IMPORTANCE_CACHED.
+    private const val RAZON_SENAL = 2
+    private const val RAZON_BAJA_MEMORIA = 3
+    private const val IMPORTANCIA_VISIBLE = 200
+    private const val IMPORTANCIA_EN_CACHE = 400
+    private val PISTAS_DE_MEMORIA = listOf("lowmem", "low_mem", "low memory", "lmk", "memory", "oom", "cch-")
+
+    /**
      * Tope de cada mensaje de excepcion.
      *
      * 200 caracteres dan de sobra para "no se pudo abrir el archivo X" y se
