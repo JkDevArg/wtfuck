@@ -68,6 +68,7 @@ fun Inicio(
     onCopiaSeguridad: () -> Unit,
     onSeguridad: () -> Unit,
     onMiEnlace: () -> Unit = {},
+    onInvitar: () -> Unit = {},
     onDifusiones: () -> Unit = {},
     /** Abrir un chat saltando a un mensaje: lo pide el aviso de "no se envio". */
     onAbrirEnMensaje: (conversacionId: String, mensajeId: String) -> Unit,
@@ -190,6 +191,7 @@ fun Inicio(
                     onCerrarSesion = onCerrarSesion,
                     modifier = hueco,
                     onMiEnlace = onMiEnlace,
+                    onInvitar = onInvitar,
                 )
             }
         }

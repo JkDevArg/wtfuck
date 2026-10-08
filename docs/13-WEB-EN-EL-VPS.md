@@ -228,6 +228,6 @@ Cuando casi todos digan `verificada:…`, se pasa a `WTFUCK_ATESTACION=exigir` y
 se reinicia el servidor. Desde ahí, un script que se haga pasar por la app ya
 no se registra.
 
-Ojo: los teléfonos solo mandan su cadena desde la app **0.6.5** en adelante.
+Ojo: los teléfonos solo mandan su cadena desde la app **0.7.0** en adelante.
 Con la 0.6.4 todos van a salir `fallida:sin-cadena`, que es lo esperado: es la
 app vieja, no un ataque.

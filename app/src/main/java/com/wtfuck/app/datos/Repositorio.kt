@@ -5956,6 +5956,11 @@ class Repositorio(
      * igual que si se hubiera hecho en este-, y uno que se deshizo en otro
      * aparato sale.
      */
+    // W5 · Invitaciones web: ver `InvitarPantalla`.
+    suspend fun misInvitacionesWeb(): Result<MisInvitacionesWeb> = runCatching { api.misInvitacionesWeb() }
+    suspend fun crearInvitacionWeb(): Result<InvitacionResp> = runCatching { api.crearInvitacionWeb() }
+    suspend fun revocarInvitacionWeb(codigo: String): Result<Unit> = runCatching { api.revocarInvitacionWeb(codigo) }
+
     suspend fun bloqueados(): Result<List<Bloqueado>> = runCatching {
         val lista = api.bloqueados()
         val servidor = lista.map { it.username.lowercase().trim() }.toSet()

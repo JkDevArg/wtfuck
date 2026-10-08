@@ -46,3 +46,7 @@ COMPOSE="docker-compose.tras-proxy.yml"
 # Los ABIs del APK. arm64-v8a cubre el 99% de los telefonos y pesa la mitad.
 # Pon "arm64-v8a,armeabi-v7a" si necesitas incluir telefonos de 32 bits.
 ABIS="arm64-v8a"
+
+# La web en su propio subdominio (docs/13-WEB-EN-EL-VPS.md). Se usa para los
+# enlaces de invitacion de la app. Vacio = https://DOMINIO_API/web/.
+DOMINIO_WEB="web.TU-DOMINIO"

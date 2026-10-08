@@ -90,6 +90,16 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.7.0",
+            fecha = "08/10/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "Versión web: usa tu cuenta en el navegador de tu computadora. Se vincula desde Dispositivos con un código, y la puedes revocar cuando quieras."),
+                Cambio(TipoCambio.NUEVO, "Invitar a alguien, en Perfil: para amigos con iPhone o sin Android. Con tu invitación crean su cuenta en la versión web y la instalan en su pantalla de inicio como una app más. Cada invitación sirve una vez y vence en 7 días."),
+                Cambio(TipoCambio.MEJORA, "En Dispositivos, los navegadores vinculados se ven con su propio ícono."),
+                Cambio(TipoCambio.SEGURIDAD, "Al registrarte, vincular o recuperar la cuenta, el chip de seguridad del teléfono firma una prueba de que es la app original y un sistema sin modificar. Así el servidor puede frenar las cuentas creadas por programas que se hacen pasar por la app."),
+            ),
+        ),
+        NotasVersion(
             version = "0.6.4",
             fecha = "06/10/2026",
             cambios = listOf(

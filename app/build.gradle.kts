@@ -55,6 +55,12 @@ android {
         // unico que el telefono mira para no dejarse poner una version vieja.
         versionCode = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: 1
         versionName = (project.findProperty("versionName") as? String) ?: "0.1.0"
+
+        // W5 · La direccion de la web, para los enlaces de invitacion. Vacia =
+        // la del mismo servidor de la API, en /web/. Con un subdominio propio:
+        //   ./gradlew :app:assembleRelease -Papi=apiwtf.hackl4bs.com -Pweb=https://webfck.hackl4bs.com/web/
+        val web = (project.findProperty("web") as String?).orEmpty().replace("\"", "")
+        buildConfigField("String", "WEB", "\"$web\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Cert pinning, OPT-IN. Vacio = sin pinning (validacion de CA normal).

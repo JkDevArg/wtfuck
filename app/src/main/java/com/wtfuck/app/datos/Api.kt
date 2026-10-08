@@ -314,6 +314,16 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun modoRegistro(): ModoRegistroResp =
         pedir(RUTA_REGISTRO_MODO, "GET", null, false)
 
+    /** W5 · Mis invitaciones web (para quien no tiene Android) y cuantas me quedan. */
+    suspend fun misInvitacionesWeb(): MisInvitacionesWeb =
+        pedir(RUTA_INVITACIONES_WEB, "GET", null, true)
+
+    suspend fun crearInvitacionWeb(): InvitacionResp =
+        pedir(RUTA_INVITACIONES_WEB, "POST", null, true)
+
+    suspend fun revocarInvitacionWeb(codigo: String): Unit =
+        pedir("$RUTA_INVITACIONES_WEB/$codigo", "DELETE", null, true)
+
     /** W5e · El reto para la atestacion. Sin sesion: va antes de tener cuenta. */
     suspend fun retoAtestacion(): RetoAtestacion =
         pedir(RUTA_ATESTACION_RETO, "POST", null, false)

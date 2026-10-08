@@ -1,6 +1,7 @@
 package com.wtfuck.app.ui
 
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Image
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -132,6 +133,7 @@ fun PerfilPantalla(
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
     onMiEnlace: () -> Unit = {},
+    onInvitar: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val app = ctx.applicationContext as WtfuckApp
@@ -365,8 +367,14 @@ fun PerfilPantalla(
                     icono = Icons.Filled.QrCode2,
                     titulo = "Mi enlace y QR",
                     detalle = "Para que te escriban sin tener que buscarte",
-                    conDivisor = false,
                     onClick = onMiEnlace,
+                )
+                FilaAjuste(
+                    icono = Icons.Filled.PersonAdd,
+                    titulo = "Invitar a alguien",
+                    detalle = "Para quien no tiene Android: crea su cuenta desde la web",
+                    conDivisor = false,
+                    onClick = onInvitar,
                 )
             }
             Spacer(Modifier.height(16.dp))

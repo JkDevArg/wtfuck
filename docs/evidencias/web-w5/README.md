@@ -263,7 +263,7 @@ Contrato: `protocol/.../Atestacion.kt`. Verificador: `server/.../Atestacion.kt`.
 | `AtestacionTest` (JUnit) | **9 de 9**. Con una extensión armada a mano: etiquetas de número alto, largos de forma larga, campos en cualquiera de las dos listas, entradas truncadas o mentirosas que lanzan. Con la **cadena real del emulador**: la extensión se lee entera (KeyMint 4, nivel Software, el reto exacto que dio el servidor, `origin` 0, bootloader desbloqueado, arranque sin verificar, `com.wtfuck.app` y la huella del certificado de debug); las firmas verifican; la raíz "Google Test LLC" se rechaza **antes** de tocar la base; un eslabón cambiado da `firma-rota-en-0` |
 | `pruebas/atestacion.mjs` (nueva) | **25 de 25**. Contra el servidor en `registrar`: el reto (32 bytes, 5 min, distinto cada vez, guardado sin usar); el registro pasa y queda anotado sin cadena, ilegible, demasiado larga o con raíz que no es de Google; un TEE declarado sin cadena pasa y se anota; vincular un teléfono anota, y un navegador queda `no-aplica`. Contra una segunda instancia en `exigir`: un TEE sin cadena y un STRONGBOX con raíz ajena dan 403 con el motivo y no dejan cuentas a medias; el emulador en desarrollo sigue entrando |
 | Captura en el emulador (API 37) | La app pidió el reto, el Keystore devolvió 3 certificados y el servidor anotó `fallida:raiz-desconocida` |
-| La app 0.6.5-dev en el emulador | Se instaló sobre la 0.6.4 conservando los datos y abre normal |
+| La app 0.7.0 de desarrollo en el emulador | Se instaló sobre la 0.6.4 conservando los datos y abre normal |
 
 ## Lo que NO se probó
 

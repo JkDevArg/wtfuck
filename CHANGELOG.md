@@ -8,6 +8,52 @@ Lo que cambió en cada versión de wtfuck, contado para quien usa la app.
 > `despliegue/notas/<versión>.md`. El detalle técnico de cada cambio está en
 > el historial de git y en `docs/evidencias/`.
 
+## 0.7.0 · 2026-10-08
+
+### Nuevo
+
+- Versión web: usa tu cuenta en el navegador de tu computadora. Se vincula desde Dispositivos con un código, y la puedes revocar cuando quieras.
+- Invitar a alguien, en Perfil: para amigos con iPhone o sin Android. Con tu invitación crean su cuenta en la versión web y la instalan en su pantalla de inicio como una app más. Cada invitación sirve una vez y vence en 7 días.
+
+### Mejoras
+
+- En Dispositivos, los navegadores vinculados se ven con su propio ícono.
+
+### Seguridad
+
+- Al registrarte, vincular o recuperar la cuenta, el chip de seguridad del teléfono firma una prueba de que es la app original y un sistema sin modificar. Así el servidor puede frenar las cuentas creadas por programas que se hacen pasar por la app.
+
+### Para desplegar
+
+- **Publicar con el servidor:** primero las variables nuevas en
+  `.env.produccion` (abajo), después
+  `bash despliegue/lanzar.sh 0.7.0 --con-servidor`. Con `DOMINIO_WEB` en
+  `despliegue.conf`, los enlaces de invitación de la app apuntan a ese
+  subdominio.
+- **Migraciones:** V49 (nivel NAVEGADOR), V50 (contador por red del registro),
+  V51 (Web Push), V52 (registro web: huella del correo, invitaciones con
+  alcance) y V53 (Key Attestation). Corren solas al arrancar. Hacer un
+  respaldo antes (`despliegue/backup-db.sh`).
+- **Variables nuevas:**
+  - `WTFUCK_VAPID_PUBLICA`, `WTFUCK_VAPID_PRIVADA` y `WTFUCK_VAPID_CONTACTO`
+    (`node despliegue/generar-vapid.mjs`);
+  - `WTFUCK_CORREO_*`: sin ellas el registro web queda cerrado;
+  - `WTFUCK_ATESTACION=registrar` y `WTFUCK_ATESTACION_FIRMAS`.
+
+  Detalle en `docs/13-WEB-EN-EL-VPS.md`.
+- **La web:** se sube aparte con `despliegue/publicar-web.sh` y el paquete en
+  `/opt/wtfuck/web-publicada`; `lanzar.sh` no la sube. Su subdominio propio se
+  configura en CloudPanel (`docs/13-WEB-EN-EL-VPS.md`, paso 4).
+- **Compatibilidad con 0.6.4:** todo lo nuevo del servidor es opcional para
+  la app vieja. Una 0.6.4 no manda la cadena de atestación y queda anotada
+  `fallida:sin-cadena`; en modo `registrar` entra igual. **No pasar a
+  `WTFUCK_ATESTACION=exigir` mientras queden 0.6.4 en uso**: no podrían
+  registrarse ni vincular.
+- **App:** sin migraciones locales. Nueva pantalla "Invitar a alguien"
+  (Perfil); la clave de atestación se crea y se borra en cada alta, y no toca
+  la clave de identidad.
+- **Evidencias:** `docs/evidencias/web-w5/` (W5a a W5e) y `web-w4/`.
+
 ## 0.6.4 · 2026-10-06
 
 ### Nuevo

@@ -224,8 +224,11 @@ if ! command -v java >/dev/null 2>&1 && [ -z "${JAVA_HOME:-}" ]; then
 fi
 
 echo "==> Compilando el APK de release..."
+# DOMINIO_WEB (opcional): la web en su propio subdominio, para los enlaces de
+# invitacion. Sin el, la app usa https://$DOMINIO_API/web/.
 ./gradlew :app:assembleRelease \
-  "-Papi=$DOMINIO_API" "-PversionCode=$CODE" "-PversionName=$VERSION_NOMBRE" "-Pabi=$ABIS" -q
+  "-Papi=$DOMINIO_API" "-PversionCode=$CODE" "-PversionName=$VERSION_NOMBRE" "-Pabi=$ABIS" \
+  ${DOMINIO_WEB:+"-Pweb=https://$DOMINIO_WEB/web/"} -q
 
 echo "==> Generando la pagina de descarga y la huella..."
 bash despliegue/publicar-apk.sh >/dev/null

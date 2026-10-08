@@ -366,6 +366,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
                     onNovedades = { nav.navigate("novedades") },
                     onCopiaSeguridad = { nav.navigate("copia-seguridad") },
                     onMiEnlace = { nav.navigate("mi-enlace") },
+                    onInvitar = { nav.navigate("invitar") },
                     onDifusiones = { nav.navigate("difusiones") },
                     onSeguridad = { nav.navigate("seguridad") },
                     onAbrirEnMensaje = { id, m -> nav.navigate("chat/$id?m=$m") },
@@ -508,6 +509,10 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
 
         composable("mi-enlace") {
             com.wtfuck.app.ui.MiEnlacePantalla(onAtras = { nav.popBackStack() })
+        }
+
+        composable("invitar") {
+            com.wtfuck.app.ui.InvitarPantalla(onAtras = { nav.popBackStack() })
         }
 
         composable("difusiones") {
