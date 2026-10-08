@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
-  aBytes, b64, deBytes, esConClave, esHistorial, esTexto, mencionesEn, quitarRelleno, rellenar, texto, TIPO_CON_CLAVE,
+  aBytes, adjunto, b64, deBytes, edicion, esAdjunto, esConClave, esHistorial, esTexto, mencionesEn, quitarRelleno,
+  rellenar, respuesta, texto, TIPO_CON_CLAVE,
 } from './protocolo';
 
 const oro = (n: string) => readFileSync(join(__dirname, 'oro', n), 'utf8').trim();
@@ -29,6 +30,26 @@ describe('Carga en JSON, igual que Kotlin', () => {
     const h = JSON.parse(oro('historial.json'));
     expect(esHistorial(h)).toBe(true);
     expect(h.mensajes.map((m: { id: string }) => m.id)).toEqual(['m1', 'm2']);
+  });
+});
+
+describe('W3: adjunto, edición y respuesta, igual que Kotlin', () => {
+  test('adjunto con su @SerialName y todos los campos', () => {
+    const a = adjunto({
+      adjuntoId: '0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000', clase: 'imagen',
+      clave: 'q3VhbGNsYXZlZGUzMmJ5dGVzcGFyYWxhcHJ1ZWJhIQ==', nonce: 'AbCdEfGhIjKlMnOp',
+      mime: 'image/jpeg', nombre: 'foto.jpg', bytes: 245760, ancho: 1600, alto: 1200, pie: 'Mira esto', miniatura: '/9j/4AAQ',
+    });
+    expect(JSON.stringify(a)).toBe(oro('adjunto.json'));
+    expect(esAdjunto(JSON.parse(oro('adjunto.json')))).toBe(true);
+  });
+
+  test('edición', () => {
+    expect(JSON.stringify(edicion('m1', 'texto corregido'))).toBe(oro('edicion.json'));
+  });
+
+  test('respuesta: la cita viaja escrita', () => {
+    expect(JSON.stringify(respuesta('Sí', { id: 'm1', texto: '¿Vienes?', autor: 'tatiana' }))).toBe(oro('respuesta.json'));
   });
 });
 

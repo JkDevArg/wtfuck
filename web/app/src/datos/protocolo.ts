@@ -16,6 +16,9 @@
 export const TIPO_TEXTO = 'com.wtfuck.protocol.Carga.Texto';
 export const TIPO_CON_CLAVE = 'com.wtfuck.protocol.Carga.ConClaveGrupo';
 export const TIPO_HISTORIAL = 'com.wtfuck.protocol.Carga.Historial';
+export const TIPO_EDICION = 'com.wtfuck.protocol.Carga.Edicion';
+/** El único con @SerialName propio en el contrato (Adjuntos.kt). */
+export const TIPO_ADJUNTO = 'adjunto';
 
 export interface CargaTexto {
   type: typeof TIPO_TEXTO;
@@ -45,6 +48,38 @@ export interface CargaHistorial {
   hayMas: boolean;
 }
 
+export interface CargaEdicion {
+  type: typeof TIPO_EDICION;
+  mensajeId: string;
+  textoNuevo: string;
+}
+
+/** `CargaAdjunto` (protocol/Adjuntos.kt), en el mismo orden de campos. */
+export interface CargaAdjunto {
+  type: typeof TIPO_ADJUNTO;
+  adjuntoId: string;
+  clase: string;
+  clave: string;
+  nonce: string;
+  mime: string;
+  nombre: string;
+  /** Tamaño EN CLARO. */
+  bytes: number;
+  ancho: number;
+  alto: number;
+  duracionMs: number;
+  onda: string;
+  pie: string;
+  /** JPEG en base64, 240 px como mucho. Viaja cifrado con el mensaje. */
+  miniatura: string;
+  silencioso: boolean;
+  reenviadoDe: string | null;
+  unaVez: boolean;
+  forma: string;
+  spoiler: boolean;
+  baliza: string | null;
+}
+
 export interface CargaConClave {
   type: typeof TIPO_CON_CLAVE;
   distribucion: string;
@@ -57,7 +92,7 @@ export interface CargaOtra {
   [campo: string]: unknown;
 }
 
-export type Carga = CargaTexto | CargaHistorial | CargaConClave | CargaOtra;
+export type Carga = CargaTexto | CargaHistorial | CargaConClave | CargaEdicion | CargaAdjunto | CargaOtra;
 
 /** Un texto con los campos en el orden y con los null que pone Kotlin. */
 export function texto(cuerpo: string): CargaTexto {
@@ -75,9 +110,45 @@ export function texto(cuerpo: string): CargaTexto {
   };
 }
 
+/** Un texto que cita otro mensaje: la cita viaja escrita, igual que en la app. */
+export function respuesta(cuerpo: string, a: { id: string; texto: string; autor: string }): CargaTexto {
+  return { ...texto(cuerpo), respondeA: a.id, respondeTexto: a.texto.slice(0, 140), respondeAutor: a.autor };
+}
+
+export function edicion(mensajeId: string, textoNuevo: string): CargaEdicion {
+  return { type: TIPO_EDICION, mensajeId, textoNuevo };
+}
+
+export function adjunto(c: Pick<CargaAdjunto, 'adjuntoId' | 'clase' | 'clave' | 'nonce'> & Partial<CargaAdjunto>): CargaAdjunto {
+  return {
+    type: TIPO_ADJUNTO,
+    adjuntoId: c.adjuntoId,
+    clase: c.clase,
+    clave: c.clave,
+    nonce: c.nonce,
+    mime: c.mime ?? '',
+    nombre: c.nombre ?? '',
+    bytes: c.bytes ?? 0,
+    ancho: c.ancho ?? 0,
+    alto: c.alto ?? 0,
+    duracionMs: c.duracionMs ?? 0,
+    onda: c.onda ?? '',
+    pie: c.pie ?? '',
+    miniatura: c.miniatura ?? '',
+    silencioso: c.silencioso ?? false,
+    reenviadoDe: c.reenviadoDe ?? null,
+    unaVez: c.unaVez ?? false,
+    forma: c.forma ?? '',
+    spoiler: c.spoiler ?? false,
+    baliza: c.baliza ?? null,
+  };
+}
+
 export const esTexto = (c: Carga): c is CargaTexto => c.type === TIPO_TEXTO;
 export const esHistorial = (c: Carga): c is CargaHistorial => c.type === TIPO_HISTORIAL;
 export const esConClave = (c: Carga): c is CargaConClave => c.type === TIPO_CON_CLAVE;
+export const esEdicion = (c: Carga): c is CargaEdicion => c.type === TIPO_EDICION;
+export const esAdjunto = (c: Carga): c is CargaAdjunto => c.type === TIPO_ADJUNTO;
 
 // ---------------------------------------------------------------------------
 //  Relleno (protocol/Relleno.kt): esconder el largo del mensaje

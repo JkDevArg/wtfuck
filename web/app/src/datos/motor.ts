@@ -11,10 +11,15 @@ import { ErrorApi, cuandoSePierdaLaSesion, pedir, usarToken } from './api';
 import { borrar, guardar, leer, todas, vaciarTodo } from './boveda';
 import * as cripto from './cripto';
 import {
-  aBytes, b64, deBytes, esConClave, esHistorial, esTexto, mencionesEn, nuevoId, texto, TIPO_CIFRADO,
+  aBytes, adjunto, b64, deBytes, edicion, esAdjunto, esConClave, esEdicion, esHistorial, esTexto, mencionesEn,
+  nuevoId, respuesta, texto, TIPO_CIFRADO,
   type Bajada, type Carga, type ConversacionResumen, type CopiaCifrada, type Destino, type PaqueteClaves,
   type Subida, type VincularHecho,
 } from './protocolo';
+import {
+  cifrarArchivo, claseDe, descifrarArchivo, LIMITES, miniaturaSegura, nombreSeguro, prepararImagen, SOBRECOSTO,
+  tamanoLegible, type Clase,
+} from './archivos';
 
 // ---------------------------------------------------------------------------
 //  Estado
@@ -32,12 +37,40 @@ export interface Sesion {
 
 export type EstadoMensaje = 'pendiente' | 'enviado' | 'entregado' | 'leido' | 'fallido';
 
+/** Un archivo del mensaje: lo que dice la carga, más si ya se subió. */
+export interface AdjuntoLocal {
+  adjuntoId?: string;
+  clase: Clase;
+  clave?: string;
+  nonce?: string;
+  mime: string;
+  nombre: string;
+  bytes: number;
+  ancho: number;
+  alto: number;
+  duracionMs: number;
+  miniatura: string;
+  unaVez: boolean;
+  spoiler: boolean;
+  /** Mío: ya está subido y confirmado, se puede mandar el mensaje. */
+  listo: boolean;
+}
+
+export interface Reaccion { emoji: string; total: number; mia: boolean; quienes: string[] }
+
 export interface Mensaje {
   id: string;
   conversacionId: string;
   autor: string;
   esMio: boolean;
+  /** El texto, o el pie de un archivo. */
   texto: string;
+  adjunto?: AdjuntoLocal;
+  /** A qué mensaje responde. La cita viaja escrita: no hace falta tenerlo. */
+  cita?: { id: string; texto: string; autor: string };
+  editado?: boolean;
+  retirado?: boolean;
+  reacciones?: Reaccion[];
   creadoEn: number;
   estado: EstadoMensaje;
   motivo?: string;
@@ -49,19 +82,46 @@ export interface Mensaje {
 export interface Conversacion extends ConversacionResumen {
   noLeidos: number;
   ultimo?: { texto: string; creadoEn: number; esMio: boolean };
+  /** Aparatos de esta conversación cuya identidad cambió y nadie miró. */
+  identidadCambio?: { dispositivo: string; username: string }[];
 }
 
 export type Conexion = 'sin-vincular' | 'conectando' | 'en-linea' | 'sin-red' | 'otra-pestana' | 'desvinculado';
 
+/** Un archivo descargado y descifrado: vive en memoria mientras dure la pestaña. */
+export interface Archivo { estado: 'bajando' | 'listo' | 'error'; url?: string; error?: string }
+
 export interface Instantanea {
+  archivos: Record<string, Archivo>;
   sesion: Sesion | null;
   conexion: Conexion;
   conversaciones: Conversacion[];
   mensajes: Record<string, Mensaje[]>;
   aviso: string | null;
+  /** Avisos del navegador: el permiso y si dicen quién escribió. */
+  avisos: { permiso: NotificationPermission | 'sin-soporte'; mostrarQuien: boolean };
 }
 
-let estado: Instantanea = { sesion: null, conexion: 'sin-vincular', conversaciones: [], mensajes: {}, aviso: null };
+const PREF_QUIEN = 'wtfuck-avisos-sin-quien';
+
+/** Como la app: por defecto el aviso dice QUIÉN escribió, nunca QUÉ. */
+function prefQuien(): boolean {
+  try {
+    return localStorage.getItem(PREF_QUIEN) !== '1';
+  } catch {
+    return true;
+  }
+}
+
+let estado: Instantanea = {
+  archivos: {},
+  sesion: null,
+  conexion: 'sin-vincular',
+  conversaciones: [],
+  mensajes: {},
+  aviso: null,
+  avisos: { permiso: 'Notification' in window ? Notification.permission : 'sin-soporte', mostrarQuien: prefQuien() },
+};
 const oyentes = new Set<() => void>();
 
 function cambiar(p: Partial<Instantanea>): void {
@@ -76,6 +136,61 @@ export const motor = {
   },
   instantanea: () => estado,
 };
+
+// ---------------------------------------------------------------------------
+//  Entre pestañas
+// ---------------------------------------------------------------------------
+//
+// Solo UNA pestaña tiene el socket y el almacén de Signal (ver `conectar`).
+// Las demás leen la bóveda: la titular les avisa por este canal cada vez que
+// guarda algo, y ellas le piden lo que necesita el socket (mandar lo que
+// escribieron, marcar un chat como leído). Así ninguna toca el ratchet a la
+// vez que otra, que lo corrompería.
+
+type MensajeCanal = { tipo: 'cambio' } | { tipo: 'despachar' } | { tipo: 'leer'; conversacionId: string };
+
+const canal: BroadcastChannel | null = 'BroadcastChannel' in window ? new BroadcastChannel('wtfuck-web') : null;
+let soyTitular = false;
+let avisoPendiente: ReturnType<typeof setTimeout> | null = null;
+
+function avisarCambio(): void {
+  if (!soyTitular || !canal || avisoPendiente) return;
+  avisoPendiente = setTimeout(() => {
+    avisoPendiente = null;
+    canal.postMessage({ tipo: 'cambio' } satisfies MensajeCanal);
+  }, 120);
+}
+
+let releyendo: ReturnType<typeof setTimeout> | null = null;
+
+if (canal) {
+  canal.onmessage = (ev: MessageEvent<MensajeCanal>) => {
+    const m = ev.data;
+    if (m.tipo === 'cambio' && !soyTitular) {
+      if (releyendo) clearTimeout(releyendo);
+      releyendo = setTimeout(() => void releerBoveda(), 80);
+    } else if (m.tipo === 'despachar' && soyTitular) {
+      void releerBoveda().then(() => despachar());
+    } else if (m.tipo === 'leer' && soyTitular) {
+      void releerBoveda().then(() => marcarLeida(m.conversacionId));
+    }
+  };
+}
+
+/** Rehace el estado desde la bóveda: lo que guardó la otra pestaña. */
+async function releerBoveda(): Promise<void> {
+  const convs = await todas<Conversacion>('conversaciones');
+  const msjs = await todas<Mensaje>('mensajes');
+  const mensajes: Record<string, Mensaje[]> = {};
+  porId.clear();
+  for (const m of msjs) {
+    porId.set(m.id, m);
+    (mensajes[m.conversacionId] ??= []).push(m);
+  }
+  for (const l of Object.values(mensajes)) l.sort((a, b) => a.creadoEn - b.creadoEn);
+  const orden = [...convs].sort((a, b) => (b.ultimo?.creadoEn ?? 0) - (a.ultimo?.creadoEn ?? 0));
+  cambiar({ conversaciones: orden, mensajes });
+}
 
 const PREKEYS_OBJETIVO = 100;
 const PREKEYS_MINIMO = 20;
@@ -93,6 +208,7 @@ async function guardarMensaje(m: Mensaje): Promise<boolean> {
   if (ya && ya !== m) return false; // repetido: el buzón reentrega por diseño
   porId.set(m.id, m);
   await guardar('mensajes', claveMsj(m), m);
+  avisarCambio();
   const lista = [...(estado.mensajes[m.conversacionId] ?? []).filter((x) => x.id !== m.id), m].sort(
     (a, b) => a.creadoEn - b.creadoEn,
   );
@@ -112,8 +228,21 @@ async function actualizarMensaje(id: string, cambio: Partial<Mensaje>): Promise<
   const nuevo = { ...m, ...cambio };
   porId.set(id, nuevo);
   await guardar('mensajes', claveMsj(nuevo), nuevo);
+  avisarCambio();
   const lista = (estado.mensajes[m.conversacionId] ?? []).map((x) => (x.id === id ? nuevo : x));
   cambiar({ mensajes: { ...estado.mensajes, [m.conversacionId]: lista } });
+  // Si es el último del chat, la vista previa de la lista tiene que decir lo
+  // mismo: el texto editado, o que se eliminó.
+  const c = estado.conversaciones.find((x) => x.id === m.conversacionId);
+  if (c?.ultimo && c.ultimo.creadoEn === nuevo.creadoEn && (cambio.texto !== undefined || cambio.retirado)) {
+    await publicarConversaciones(estado.conversaciones.map((x) => (x.id === c.id ? { ...x, ultimo: { ...c.ultimo!, texto: resumenDe(nuevo) } } : x)));
+  }
+}
+
+/** Lo que dice la lista de chats de un mensaje. */
+function resumenDe(m: Mensaje): string {
+  if (m.retirado) return 'Mensaje eliminado';
+  return m.texto || (m.adjunto ? (m.adjunto.clase === 'imagen' ? 'Foto' : m.adjunto.nombre) : '');
 }
 
 async function tocarConversacion(m: Mensaje): Promise<void> {
@@ -124,7 +253,9 @@ async function tocarConversacion(m: Mensaje): Promise<void> {
     return {
       ...c,
       noLeidos: c.noLeidos + sumar,
-      ultimo: masNuevo ? { texto: m.texto, creadoEn: m.creadoEn, esMio: m.esMio } : c.ultimo,
+      ultimo: masNuevo
+        ? { texto: resumenDe(m), creadoEn: m.creadoEn, esMio: m.esMio }
+        : c.ultimo,
     };
   });
   await publicarConversaciones(convs);
@@ -134,6 +265,7 @@ async function publicarConversaciones(convs: Conversacion[]): Promise<void> {
   const orden = [...convs].sort((a, b) => (b.ultimo?.creadoEn ?? 0) - (a.ultimo?.creadoEn ?? 0));
   cambiar({ conversaciones: orden });
   await Promise.all(orden.map((c) => guardar('conversaciones', c.id, c)));
+  avisarCambio();
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +452,7 @@ function mandar(s: Subida): boolean {
 function conectar(): void {
   if (soltarCandado || !estado.sesion) return;
   if (!('locks' in navigator)) {
+    soyTitular = true;
     abrirSocket();
     return;
   }
@@ -327,11 +460,22 @@ function conectar(): void {
     if (!candado) {
       cambiar({ conexion: 'otra-pestana' });
       // Esperar a que la otra se cierre, sin pelearle el socket.
-      void navigator.locks.request('wtfuck-socket', () => new Promise<void>((r) => { soltarCandado = r; abrirSocket(); }));
+      void navigator.locks.request('wtfuck-socket', async () => {
+        // Le toca: lo que guardó la otra pestaña es la verdad, también el
+        // almacén de Signal.
+        cripto.recargar();
+        await releerBoveda();
+        await new Promise<void>((r) => {
+          soltarCandado = r;
+          soyTitular = true;
+          abrirSocket();
+        });
+      });
       return;
     }
     await new Promise<void>((r) => {
       soltarCandado = r;
+      soyTitular = true;
       abrirSocket();
     });
   });
@@ -400,6 +544,11 @@ async function manejar(b: Bajada): Promise<void> {
     case 'evento':
       if (['agregado_grupo', 'sacado_grupo', 'expulsado', 'grupo_renombrado'].includes(b.tipo)) {
         await sincronizarConversaciones().catch(() => undefined);
+      } else if (b.tipo === 'mensaje_retirado' && b.detalle) {
+        await actualizarMensaje(b.detalle, { retirado: true, texto: '', adjunto: undefined, cita: undefined });
+      } else if (b.tipo === 'mensaje_reaccion' && b.detalle) {
+        // "msgId:emoji:true|false": se relee el mensaje para tener el total.
+        await refrescarReacciones(b.detalle.split(':')[0]).catch(() => undefined);
       }
       mandar({ type: 'acuse_evento', eventoIds: [b.eventoId] });
       return;
@@ -448,6 +597,7 @@ async function recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
   if (e.conversacionId && !estado.conversaciones.some((c) => c.id === e.conversacionId)) {
     await sincronizarConversaciones().catch(() => undefined);
   }
+  if (carga !== null && e.conversacionId) await revisarIdentidad(e.conversacionId, e.origenDispositivo, e.origenUsername);
 
   const esMio = e.origenUsername.toLowerCase() === s.username.toLowerCase();
   if (carga === null) {
@@ -457,13 +607,39 @@ async function recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
       id: e.mensajeId || e.sobreId, conversacionId: e.conversacionId, autor: e.origenUsername, esMio,
       texto: '(no se pudo descifrar)', creadoEn: e.creadoEn, estado: esMio ? 'enviado' : 'entregado',
     });
-  } else if (esTexto(carga)) {
-    await guardarMensaje({
+  } else if (esTexto(carga) || esAdjunto(carga)) {
+    const m: Mensaje = {
       id: e.mensajeId || e.sobreId, conversacionId: e.conversacionId, autor: e.origenUsername, esMio,
-      texto: carga.cuerpo, creadoEn: e.creadoEn, estado: esMio ? 'enviado' : 'entregado',
+      texto: '', creadoEn: e.creadoEn, estado: esMio ? 'enviado' : 'entregado',
       leidoPorMi: esMio ? true : undefined,
-    });
+    };
+    if (esTexto(carga)) {
+      m.texto = carga.cuerpo;
+      if (carga.respondeA && carga.respondeTexto != null) {
+        m.cita = { id: carga.respondeA, texto: carga.respondeTexto, autor: carga.respondeAutor ?? '' };
+      }
+    } else {
+      const clase = (Object.keys(LIMITES).includes(carga.clase) ? carga.clase : 'documento') as Clase;
+      // Igual que la app: "ver una vez" no trae ni pie ni miniatura que mostrar,
+      // y el spoiler y la forma solo valen donde tienen sentido.
+      m.texto = carga.unaVez ? '' : carga.pie;
+      m.adjunto = {
+        adjuntoId: carga.adjuntoId, clase, clave: carga.clave, nonce: carga.nonce,
+        mime: carga.mime, nombre: nombreSeguro(carga.nombre), bytes: carga.bytes, ancho: carga.ancho, alto: carga.alto,
+        duracionMs: carga.duracionMs, miniatura: carga.unaVez ? '' : miniaturaSegura(carga.miniatura),
+        unaVez: carga.unaVez, spoiler: carga.spoiler && (clase === 'imagen' || clase === 'video'), listo: true,
+      };
+    }
+    const nuevo = await guardarMensaje(m);
+    if (!esMio && nuevo) avisar(m);
     if (!esMio && abierta === e.conversacionId) void marcarLeida(e.conversacionId);
+  } else if (esEdicion(carga)) {
+    // DIFERENCIA con la app: solo el AUTOR puede editar su mensaje. La app no
+    // lo comprueba, y cualquiera en el grupo podría reescribir lo de otro.
+    const original = porId.get(carga.mensajeId);
+    if (original && original.autor.toLowerCase() === e.origenUsername.toLowerCase() && !original.retirado) {
+      await actualizarMensaje(original.id, { texto: carga.textoNuevo, editado: true });
+    }
   } else if (esHistorial(carga)) {
     for (const h of carga.mensajes) {
       await guardarMensaje({
@@ -473,6 +649,98 @@ async function recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
     }
   }
   mandar({ type: 'acuse', sobreIds: [e.sobreId] });
+}
+
+// ---------------------------------------------------------------------------
+//  Avisos del navegador
+// ---------------------------------------------------------------------------
+//
+// Solo con la página abierta (en otra pestaña o minimizada): con el navegador
+// cerrado haría falta Web Push. Igual que la app (Notificaciones.kt): el
+// texto NUNCA va en el aviso, porque un aviso se ve en la pantalla aunque
+// nadie haya abierto nada. Lo único que se elige es si dice quién escribió.
+
+let alTocarAviso: (conversacionId: string) => void = () => {};
+export function cuandoSeToqueUnAviso(f: (conversacionId: string) => void): void {
+  alTocarAviso = f;
+}
+
+export async function pedirPermisoDeAvisos(): Promise<void> {
+  if (!('Notification' in window)) return;
+  const p = await Notification.requestPermission();
+  cambiar({ avisos: { ...estado.avisos, permiso: p } });
+}
+
+export function avisosConQuien(si: boolean): void {
+  try {
+    localStorage.setItem(PREF_QUIEN, si ? '0' : '1');
+  } catch {
+    // Sin localStorage, vale hasta recargar.
+  }
+  cambiar({ avisos: { ...estado.avisos, mostrarQuien: si } });
+}
+
+function avisar(m: Mensaje): void {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!document.hidden && abierta === m.conversacionId) return;
+  const c = estado.conversaciones.find((x) => x.id === m.conversacionId);
+  const esGrupo = c?.tipo === 'grupo';
+  // Los mismos textos que la app.
+  const [titulo_, cuerpo] = !estado.avisos.mostrarQuien
+    ? ['wtfuck', 'Tienes un mensaje nuevo']
+    : esGrupo
+      ? [c ? titulo(c) : 'Grupo', `@${m.autor} escribió en el grupo`]
+      : [`@${m.autor}`, 'Te escribió'];
+  try {
+    const n = new Notification(titulo_, { body: cuerpo, tag: m.conversacionId });
+    n.onclick = () => {
+      window.focus();
+      alTocarAviso(m.conversacionId);
+      n.close();
+    };
+  } catch {
+    // Algunos navegadores solo avisan desde un service worker.
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Cambio de identidad
+// ---------------------------------------------------------------------------
+//
+// Igual que la app: se confía al primer uso y, si la identidad de un aparato
+// cambia, se avisa en el chat. Puede ser una reinstalación o un aparato nuevo;
+// si no, alguien en el medio. Comparar la huella es lo único que lo descarta.
+
+async function revisarIdentidad(conversacionId: string, dispositivo: string, username: string): Promise<void> {
+  if (!(await cripto.identidadCambio(dispositivo))) return;
+  const c = estado.conversaciones.find((x) => x.id === conversacionId);
+  if (!c || c.identidadCambio?.some((x) => x.dispositivo === dispositivo)) return;
+  const nuevo = { ...c, identidadCambio: [...(c.identidadCambio ?? []), { dispositivo, username }] };
+  await publicarConversaciones(estado.conversaciones.map((x) => (x.id === c.id ? nuevo : x)));
+}
+
+export async function identidadRevisada(conversacionId: string): Promise<void> {
+  const c = estado.conversaciones.find((x) => x.id === conversacionId);
+  if (!c?.identidadCambio?.length) return;
+  for (const d of c.identidadCambio) await cripto.identidadVista(d.dispositivo);
+  await publicarConversaciones(estado.conversaciones.map((x) => (x.id === c.id ? { ...x, identidadCambio: [] } : x)));
+}
+
+/** Las huellas con cada aparato de la otra persona, para comparar en voz alta. */
+export async function huellasDe(conversacionId: string): Promise<{ username: string; etiqueta: string; digitos: string }[]> {
+  const ds = await destinos(conversacionId, true);
+  const s = estado.sesion!;
+  const out: { username: string; etiqueta: string; digitos: string }[] = [];
+  for (const d of ds) {
+    if (d.usuarioId === s.usuarioId) continue;
+    try {
+      const h = await cripto.huella(s.usuarioId, d.usuarioId, d.dispositivoId);
+      out.push({ username: d.username, etiqueta: d.etiqueta, digitos: h.digitos });
+    } catch {
+      // Sin sesión con ese aparato todavía: no hay identidad que comparar.
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -487,6 +755,10 @@ export async function abrirConversacion(id: string | null): Promise<void> {
 }
 
 async function marcarLeida(conversacionId: string): Promise<void> {
+  if (!soyTitular) {
+    canal?.postMessage({ tipo: 'leer', conversacionId } satisfies MensajeCanal);
+    return;
+  }
   const sinLeer = (estado.mensajes[conversacionId] ?? []).filter((m) => !m.esMio && !m.leidoPorMi);
   const c = estado.conversaciones.find((x) => x.id === conversacionId);
   if (c && c.noLeidos) await publicarConversaciones(estado.conversaciones.map((x) => (x.id === conversacionId ? { ...x, noLeidos: 0 } : x)));
@@ -500,16 +772,123 @@ async function marcarLeida(conversacionId: string): Promise<void> {
 //  Enviar
 // ---------------------------------------------------------------------------
 
-export async function enviarTexto(conversacionId: string, cuerpo: string): Promise<void> {
-  const s = estado.sesion;
-  if (!s || !cuerpo.trim()) return;
+function siguienteHora(conversacionId: string): number {
   const ultimos = estado.mensajes[conversacionId] ?? [];
   const ultimo = ultimos.length ? ultimos[ultimos.length - 1].creadoEn : 0;
+  return Math.max(ahora(), ultimo + 1);
+}
+
+function pedirDespacho(): void {
+  if (soyTitular) void despachar();
+  else canal?.postMessage({ tipo: 'despachar' } satisfies MensajeCanal);
+}
+
+export async function enviarTexto(conversacionId: string, cuerpo: string, citado?: Mensaje): Promise<void> {
+  const s = estado.sesion;
+  if (!s || !cuerpo.trim()) return;
   await guardarMensaje({
     id: nuevoId(), conversacionId, autor: s.username, esMio: true, texto: cuerpo,
-    creadoEn: Math.max(ahora(), ultimo + 1), estado: 'pendiente', leidoPorMi: true,
+    creadoEn: siguienteHora(conversacionId), estado: 'pendiente', leidoPorMi: true,
+    // Como la app: solo se cita dentro de la misma conversación.
+    cita: citado && citado.conversacionId === conversacionId
+      ? { id: citado.id, texto: (citado.texto || citado.adjunto?.nombre || '').slice(0, 140), autor: citado.autor }
+      : undefined,
   });
-  void despachar();
+  pedirDespacho();
+}
+
+/**
+ * Un archivo: se prepara, se cifra, se sube DIRECTO al almacén con la URL
+ * firmada (los bytes no pasan por el servidor, como en la app) y recién
+ * entonces sale el mensaje con la clave.
+ */
+export async function enviarArchivo(conversacionId: string, f: File, pie: string): Promise<void> {
+  const s = estado.sesion;
+  if (!s) return;
+  const clase = claseDe(f.type);
+  let datos: ArrayBuffer;
+  let mime = f.type || 'application/octet-stream';
+  let ancho = 0;
+  let alto = 0;
+  let miniatura = '';
+  if (clase === 'imagen') {
+    const p = await prepararImagen(f);
+    ({ datos, mime, ancho, alto, miniatura } = p);
+  } else {
+    datos = await f.arrayBuffer();
+  }
+  if (datos.byteLength + SOBRECOSTO > LIMITES[clase]) {
+    throw new Error(`El límite para ${clase} es ${tamanoLegible(LIMITES[clase])}.`);
+  }
+  const id = nuevoId();
+  const adj: AdjuntoLocal = {
+    clase, mime, nombre: nombreSeguro(f.name), bytes: datos.byteLength, ancho, alto, duracionMs: 0,
+    miniatura, unaVez: false, spoiler: false, listo: false,
+  };
+  await guardarMensaje({
+    id, conversacionId, autor: s.username, esMio: true, texto: pie, adjunto: adj,
+    creadoEn: siguienteHora(conversacionId), estado: 'pendiente', leidoPorMi: true,
+  });
+  // Lo mío se ve al instante, sin bajarlo de vuelta.
+  cambiar({ archivos: { ...estado.archivos, [id]: { estado: 'listo', url: URL.createObjectURL(new Blob([datos], { type: mime })) } } });
+  try {
+    const c = await cifrarArchivo(datos);
+    const r = await pedir<{ adjuntoId: string; urlSubida: string }>('POST', '/v1/adjuntos', {
+      conversacionId, historiaId: null, clase, bytes: c.cifrado.byteLength, mime, nombre: adj.nombre, ancho, alto, duracionMs: 0,
+    });
+    const subida = await fetch(r.urlSubida, { method: 'PUT', body: c.cifrado, headers: { 'Content-Type': 'application/octet-stream' } });
+    if (!subida.ok) throw new Error(`El almacén rechazó el archivo (${subida.status}).`);
+    await pedir('POST', `/v1/adjuntos/${r.adjuntoId}/confirmar`);
+    await actualizarMensaje(id, { adjunto: { ...adj, adjuntoId: r.adjuntoId, clave: c.clave, nonce: c.nonce, listo: true } });
+    pedirDespacho();
+  } catch (x) {
+    await actualizarMensaje(id, { estado: 'fallido', motivo: x instanceof Error ? x.message : 'No se pudo subir el archivo.' });
+  }
+}
+
+/** Baja, verifica y descifra un archivo. Queda en memoria, nunca en la bóveda. */
+export async function descargar(m: Mensaje): Promise<void> {
+  const a = m.adjunto;
+  if (!a?.adjuntoId || !a.clave || !a.nonce || estado.archivos[m.id]) return;
+  const poner = (x: Archivo) => cambiar({ archivos: { ...estado.archivos, [m.id]: x } });
+  poner({ estado: 'bajando' });
+  try {
+    const info = await pedir<{ urlDescarga: string }>('GET', `/v1/adjuntos/${a.adjuntoId}`);
+    const r = await fetch(info.urlDescarga);
+    if (!r.ok) throw new Error(`No se pudo bajar (${r.status}).`);
+    const claro = await descifrarArchivo(await r.arrayBuffer(), a.clave, a.nonce);
+    poner({ estado: 'listo', url: URL.createObjectURL(new Blob([claro], { type: a.mime || 'application/octet-stream' })) });
+  } catch (x) {
+    poner({ estado: 'error', error: x instanceof Error ? x.message : 'No se pudo bajar.' });
+  }
+}
+
+/** Editar: el servidor lo autoriza y la edición viaja cifrada, como en la app. */
+export async function editar(m: Mensaje, nuevo: string): Promise<void> {
+  if (!m.esMio || m.retirado || !nuevo.trim() || nuevo === m.texto) return;
+  await pedir('POST', `/v1/mensajes/${m.id}/editar`);
+  await actualizarMensaje(m.id, { texto: nuevo, editado: true });
+  // Sin registrar: no es un mensaje nuevo, es el cambio de uno que existe.
+  await cifrarYMandar(m.conversacionId, nuevoId(), edicion(m.id, nuevo), ahora());
+}
+
+/** "Eliminar para todos". El servidor decide si se puede. */
+export async function retirar(m: Mensaje): Promise<void> {
+  await pedir('POST', `/v1/mensajes/${m.id}/retirar`);
+  await actualizarMensaje(m.id, { retirado: true, texto: '', adjunto: undefined, cita: undefined });
+}
+
+/** Una reacción por persona: otra reemplaza la anterior; la misma la quita. */
+export async function reaccionar(m: Mensaje, emoji: string): Promise<void> {
+  const ya = m.reacciones?.some((r) => r.emoji === emoji && r.mia) ?? false;
+  const meta = await pedir<{ reacciones: Reaccion[] }>('POST', '/v1/mensajes/reaccion', { mensajeId: m.id, emoji, poner: !ya });
+  await actualizarMensaje(m.id, { reacciones: meta.reacciones });
+}
+
+async function refrescarReacciones(mensajeId: string): Promise<void> {
+  if (!porId.has(mensajeId)) return;
+  const meta = await pedir<{ reacciones: Reaccion[] }>('GET', `/v1/mensajes/${mensajeId}`);
+  await actualizarMensaje(mensajeId, { reacciones: meta.reacciones });
 }
 
 let despachando = false;
@@ -519,7 +898,10 @@ async function despachar(): Promise<void> {
   if (despachando) return;
   despachando = true;
   try {
-    const pendientes = [...porId.values()].filter((m) => m.esMio && m.estado === 'pendiente').sort((a, b) => a.creadoEn - b.creadoEn);
+    // Un archivo que todavía se está subiendo espera: el mensaje lleva su clave.
+    const pendientes = [...porId.values()]
+      .filter((m) => m.esMio && m.estado === 'pendiente' && (!m.adjunto || m.adjunto.listo))
+      .sort((a, b) => a.creadoEn - b.creadoEn);
     for (const m of pendientes) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       try {
@@ -553,11 +935,12 @@ async function destinos(conversacionId: string, forzar = false): Promise<Destino
   return r.destinos;
 }
 
-async function asegurarSesion(d: Destino): Promise<boolean> {
+async function asegurarSesion(d: Destino, conversacionId: string): Promise<boolean> {
   if (await cripto.tieneSesion(d.dispositivoId)) return true;
   try {
     const p = await pedir<PaqueteClaves>('GET', `/v1/claves/dispositivo/${d.dispositivoId}`);
     await cripto.abrirSesion(d.dispositivoId, p);
+    await revisarIdentidad(conversacionId, d.dispositivoId, d.username);
     return true;
   } catch (x) {
     console.warn(`sin sesión con ${d.username} (${d.etiqueta})`, x);
@@ -565,18 +948,41 @@ async function asegurarSesion(d: Destino): Promise<boolean> {
   }
 }
 
+function cargaDe(m: Mensaje): Carga {
+  const a = m.adjunto;
+  if (a?.adjuntoId && a.clave && a.nonce) {
+    return adjunto({
+      adjuntoId: a.adjuntoId, clase: a.clase, clave: a.clave, nonce: a.nonce, mime: a.mime, nombre: a.nombre,
+      bytes: a.bytes, ancho: a.ancho, alto: a.alto, duracionMs: a.duracionMs, pie: m.texto, miniatura: a.miniatura,
+    });
+  }
+  return m.cita ? respuesta(m.texto, m.cita) : texto(m.texto);
+}
+
 async function despacharUno(m: Mensaje): Promise<void> {
-  const s = estado.sesion!;
   await pedir('POST', '/v1/mensajes', {
-    mensajeId: m.id, conversacionId: m.conversacionId, respondeA: null, menciones: mencionesEn(m.texto),
-    reenviadoDe: null, adjuntoId: null, clase: '',
+    mensajeId: m.id, conversacionId: m.conversacionId, respondeA: m.cita?.id ?? null, menciones: mencionesEn(m.texto),
+    reenviadoDe: null, adjuntoId: m.adjunto?.adjuntoId ?? null, clase: '',
   });
+  const r = await cifrarYMandar(m.conversacionId, m.id, cargaDe(m), m.creadoEn);
+  if (r === 'sin-claves') {
+    await actualizarMensaje(m.id, { estado: 'fallido', motivo: 'Nadie en esa conversación publicó sus claves todavía.' });
+  }
+}
+
+/**
+ * Cifra una carga para todos los aparatos de la conversación y la manda. Por
+ * pares, o con clave de emisor en un grupo. No registra nada en el servidor:
+ * eso lo hace quien llama, si corresponde.
+ */
+async function cifrarYMandar(conversacionId: string, sobreId: string, carga: Carga, creadoEn: number): Promise<'ok' | 'sin-claves'> {
+  const s = estado.sesion!;
+  const m = { conversacionId, id: sobreId, creadoEn };
   const conv = estado.conversaciones.find((c) => c.id === m.conversacionId);
   const ds = await destinos(m.conversacionId);
   const conSesion: Destino[] = [];
-  for (const d of ds) if (await asegurarSesion(d)) conSesion.push(d);
+  for (const d of ds) if (await asegurarSesion(d, m.conversacionId)) conSesion.push(d);
 
-  const carga = texto(m.texto);
   const copias: CopiaCifrada[] = [];
   let repartirA: string[] = [];
 
@@ -607,10 +1013,7 @@ async function despacharUno(m: Mensaje): Promise<void> {
     repartirA = [];
   }
 
-  if (!copias.length && ds.length) {
-    await actualizarMensaje(m.id, { estado: 'fallido', motivo: 'Nadie en esa conversación publicó sus claves todavía.' });
-    return;
-  }
+  if (!copias.length && ds.length) return 'sin-claves';
   // DIFERENCIA con la app: la clave de emisor se da por repartida cuando el
   // servidor ACEPTA el envío, no cuando el socket lo escribe.
   enVuelo.set(m.id, { conversacionId: m.conversacionId, repartirA });
@@ -618,6 +1021,7 @@ async function despacharUno(m: Mensaje): Promise<void> {
     enVuelo.delete(m.id);
     throw new Error('sin socket');
   }
+  return 'ok';
 }
 
 async function confirmarEnvio(sobreId: string, sinCopia: string[]): Promise<void> {

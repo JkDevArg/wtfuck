@@ -140,6 +140,11 @@ impl Almacen {
     pub fn cambio(&self, a: &ProtocolAddress) -> bool {
         self.identidades.cambiaron.get(&clave(a)).copied().unwrap_or(false)
     }
+
+    /// La persona ya vio el aviso de que cambió: no se repite.
+    pub fn visto(&mut self, a: &ProtocolAddress) {
+        self.identidades.cambiaron.remove(&clave(a));
+    }
 }
 
 #[async_trait(?Send)]

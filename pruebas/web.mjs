@@ -149,6 +149,10 @@ ck('CSP: scripts solo de aqui, y compilar WebAssembly', csp.includes("script-src
 ck('CSP: nada por defecto', csp.includes("default-src 'none'"), csp);
 ck('CSP: no se deja meter en un iframe', csp.includes("frame-ancestors 'none'"), csp);
 ck('CSP: sin unsafe-inline ni unsafe-eval', !csp.includes('unsafe-inline') && !/'unsafe-eval'/.test(csp), csp);
+// W3: la pagina sube y baja los adjuntos DIRECTO del almacen con las URLs
+// firmadas. Si la CSP no lo nombrara, los adjuntos fallarian en silencio.
+const conectar = (csp.match(/connect-src ([^;]+)/) ?? [])[1] ?? '';
+ck('CSP: connect-src permite el almacen de adjuntos', /https?:\/\/[^\s']+/.test(conectar), conectar);
 ck('nosniff', r.headers.get('x-content-type-options') === 'nosniff');
 ck('sin referer', r.headers.get('referrer-policy') === 'no-referrer');
 ck('aislada de otras ventanas (COOP)', r.headers.get('cross-origin-opener-policy') === 'same-origin');

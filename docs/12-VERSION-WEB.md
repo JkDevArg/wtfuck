@@ -69,9 +69,9 @@ Tres detalles que costaron o pueden costar:
 |---|---|
 | Un nivel de hardware para navegador | Producción solo acepta `STRONGBOX`/`TEE` (rechaza `SOFTWARE_DEV`), y la base solo admitía tres valores. Ojo: el nivel lo **declara** el aparato y el servidor no lo verifica; ver `docs/04-DEVICE-BINDING.md`, "Lo que el servidor verifica hoy". El nivel nuevo se acepta **solo al vincular**, nunca para registrarse ni recuperar la cuenta: un navegador no puede ser el aparato principal. |
 | Servir la web desde el mismo origen que la API | No hay CORS en Ktor (`ktor-server-cors` está en el catálogo pero no en el servidor), en Caddy ni en el almacén. Igual que `/consola`, la web va bajo el dominio de la API y así no hay que abrir CORS. |
-| CORS en el almacén de adjuntos | Las URLs prefirmadas apuntan a otro dominio (SeaweedFS). Hace falta para W3. |
-| Varias pestañas | El servidor admite un socket por aparato, y uno nuevo cierra el anterior. Una pestaña tiene el socket y las demás le hablan por `BroadcastChannel`. |
-| Avisos con la página cerrada | Hoy el push es solo FCM. Web Push es para W3. |
+| CORS en el almacén de adjuntos | Resuelto en W3: SeaweedFS 4.47 ya refleja el origen; solo hizo falta que la CSP de `/web` nombre el almacén. En producción, verificar que Caddy deje pasar el preflight. |
+| Varias pestañas | Resuelto en W2/W3: el servidor admite un socket por aparato; una pestaña lo tiene (Web Locks) y las demás le hablan por `BroadcastChannel`. |
+| Avisos con la página cerrada | Hoy el push es solo FCM. Web Push es para W4; con la página abierta, la web ya avisa (W3). |
 
 **Formato de `Carga`, a cuidar en TypeScript:**
 
@@ -90,8 +90,8 @@ tiene que leer y producir igual.
 | **W0** | libsignal en WebAssembly + prueba contra la JVM + prueba en el navegador | **Hecha** (2026-10-07) |
 | W1 | Servidor: nivel `NAVEGADOR` solo al vincular (nunca principal, sesión de 30 días), la web servida en `/web` con CSP estricta, y pruebas | **Hecha** (2026-10-08): `docs/evidencias/web-w1/` |
 | W2 | Web mínima: vincular con el código, publicar claves, chats directos y grupos de texto, historial pedido al teléfono, almacén cifrado en IndexedDB, una pestaña con el socket | **Hecha** (2026-10-08): `docs/evidencias/web-w2/`. Probada de punta a punta contra el teléfono del emulador |
-| W3 | Fotos y archivos (con CORS en el almacén), notificaciones, avisos entre pestañas, Web Push, aviso de cambio de identidad, respuestas y reacciones | |
-| W4 | Escritorio con Tauri (el mismo código, firmado) y llamadas WebRTC | |
+| W3 | Fotos y archivos (directo al almacén; SeaweedFS ya responde CORS), respuestas, ediciones, eliminar para todos, reacciones, avisos del navegador, aviso de cambio de identidad y huella, avisos entre pestañas | **Hecha** (2026-10-08): `docs/evidencias/web-w3/`. Probada contra el teléfono, huella incluida |
+| W4 | Escritorio con Tauri (el mismo código, firmado), llamadas WebRTC, Web Push, notas de voz y miniatura de video, canales | |
 
 **Fuera de la web:** el modo cerca, porque el navegador no puede anunciar ni
 escuchar por Bluetooth así.

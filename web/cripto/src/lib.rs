@@ -352,6 +352,11 @@ impl Cliente {
     pub fn cambio_de(&self, dispositivo: &str) -> R<bool> {
         Ok(self.almacen.cambio(&dir(dispositivo)?))
     }
+
+    pub fn visto_de(&mut self, dispositivo: &str) -> R<()> {
+        self.almacen.visto(&dir(dispositivo)?);
+        Ok(())
+    }
 }
 
 fn js(x: String) -> JsError {
@@ -451,6 +456,12 @@ impl Cliente {
     #[wasm_bindgen(js_name = identidadCambio)]
     pub fn identidad_cambio(&self, dispositivo: &str) -> Result<bool, JsError> {
         self.cambio_de(dispositivo).map_err(js)
+    }
+
+    /// Ya se mostró el aviso de que la identidad de ese aparato cambió.
+    #[wasm_bindgen(js_name = identidadVista)]
+    pub fn identidad_vista(&mut self, dispositivo: &str) -> Result<(), JsError> {
+        self.visto_de(dispositivo).map_err(js)
     }
 
     /// Los 60 dígitos y la forma escaneable. `{"digitos","escaneable"}`.

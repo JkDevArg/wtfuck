@@ -49,6 +49,35 @@ class OroTest {
         )
         escribir("historial.json", json.encodeToString(Carga.serializer(), historial))
 
+        // W3: adjunto, edicion y respuesta.
+        val adjunto = com.wtfuck.protocol.CargaAdjunto(
+            adjuntoId = "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000", clase = "imagen",
+            clave = "q3VhbGNsYXZlZGUzMmJ5dGVzcGFyYWxhcHJ1ZWJhIQ==", nonce = "AbCdEfGhIjKlMnOp",
+            mime = "image/jpeg", nombre = "foto.jpg", bytes = 245_760, ancho = 1600, alto = 1200,
+            pie = "Mira esto", miniatura = "/9j/4AAQ",
+        )
+        escribir("adjunto.json", json.encodeToString(Carga.serializer(), adjunto))
+        escribir("edicion.json", json.encodeToString(Carga.serializer(), Carga.Edicion("m1", "texto corregido")))
+        escribir(
+            "respuesta.json",
+            json.encodeToString(
+                Carga.serializer(),
+                Carga.Texto(cuerpo = "Sí", respondeA = "m1", respondeTexto = "¿Vienes?", respondeAutor = "tatiana"),
+            ),
+        )
+
+        // Un archivo cifrado como CifradorArchivo de la app: AES-256-GCM en un
+        // solo mensaje, etiqueta de 16 B al final, sin cabecera ni AAD.
+        val clave = ByteArray(32) { (it * 7 + 1).toByte() }
+        val nonce = ByteArray(12) { (it * 3 + 2).toByte() }
+        val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(javax.crypto.Cipher.ENCRYPT_MODE, javax.crypto.spec.SecretKeySpec(clave, "AES"), javax.crypto.spec.GCMParameterSpec(128, nonce))
+        val b64e = Base64.getEncoder()
+        escribir(
+            "archivo.json",
+            """{"clave":"${b64e.encodeToString(clave)}","nonce":"${b64e.encodeToString(nonce)}","claro":"archivo de prueba con ñ","cifrado":"${b64e.encodeToString(c.doFinal("archivo de prueba con ñ".toByteArray()))}"}""",
+        )
+
         // Relleno: largos de entrada -> largo de salida.
         val largos = listOf(0, 1, 255, 256, 257, 8192, 8193, 16384, 16385, 61440, 61441, 70000)
         escribir(

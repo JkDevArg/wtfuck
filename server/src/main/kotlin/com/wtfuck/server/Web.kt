@@ -57,10 +57,18 @@ object Web {
     private val carpeta: File? = System.getenv("WTFUCK_WEB_DIR")
         ?.trim()?.takeIf { it.isNotEmpty() }?.let { File(it) }
 
-    /** El origen del almacen de adjuntos, si esta configurado. */
-    private val origenAlmacen: String? = System.getenv("WTFUCK_S3_PUBLICO")
-        ?.trim()?.takeIf { it.isNotEmpty() }
-        ?.let { runCatching { URI(it) }.getOrNull() }
+    /**
+     * El origen del almacen de adjuntos: a donde la pagina sube y de donde baja
+     * los archivos cifrados, con las URLs firmadas. Es el MISMO host que firma
+     * `Almacen` (el publico, o el interno si no hay publico, como en
+     * desarrollo): si no coincidieran, la CSP bloquearia justo esas URLs.
+     */
+    private val origenAlmacen: String? = (
+        System.getenv("WTFUCK_S3_PUBLICO")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: System.getenv("WTFUCK_S3_URL")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "http://127.0.0.1:9000"
+        )
+        .let { runCatching { URI(it) }.getOrNull() }
         ?.takeIf { it.scheme != null && it.authority != null }
         ?.let { "${it.scheme}://${it.authority}" }
 

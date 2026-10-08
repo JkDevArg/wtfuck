@@ -89,6 +89,13 @@ export const huella = (miUsuario: string, otroUsuario: string, otroDispositivo: 
 
 export const identidadCambio = (dispositivo: string) => enSerie((c) => c.identidadCambio(dispositivo), false);
 
+export const identidadVista = (dispositivo: string) => enSerie((c) => c.identidadVista(dispositivo), true);
+
+/** Vuelve a leer el almacén de la bóveda: otra pestaña pudo cambiarlo. */
+export function recargar(): void {
+  cliente = null;
+}
+
 /** Para olvidar todo al cerrar sesión. */
 export function olvidar(): void {
   cliente = null;
