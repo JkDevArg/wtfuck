@@ -179,3 +179,16 @@ form button[type=submit], .escribir button {
   .atras { display: inline-block; }
   .burbuja { max-width: 86%; }
 }
+
+/* --- Canales -------------------------------------------------------- */
+.muro { gap: 12px; }
+.publicacion { background: var(--elevada); border: 1px solid var(--borde); border-radius: 14px; padding: 10px 12px; display: grid; gap: 6px; max-width: 640px; width: 100%; align-self: center; white-space: pre-wrap; overflow-wrap: anywhere; }
+.publicacion .pie { justify-self: end; }
+.comentarios { display: grid; gap: 6px; border-top: 1px solid var(--borde); padding-top: 8px; }
+.comentario { font-size: 14px; }
+.comentar { display: flex; gap: 8px; }
+.comentar input { flex: 1; padding: 8px 10px; }
+.comentar button { background: var(--cian); color: var(--sobre-cian); border: 0; border-radius: 10px; padding: 0 12px; font-weight: 600; }
+.centro { align-self: center; text-align: center; }
+.canales { display: grid; max-height: 50vh; overflow-y: auto; }
+.panel input { width: 100%; }

@@ -96,6 +96,8 @@ export interface Archivo { estado: 'bajando' | 'listo' | 'error'; url?: string; 
 
 export interface Instantanea {
   archivos: Record<string, Archivo>;
+  /** Sube cuando llega una publicación a ese canal: la vista abierta recarga. */
+  canalesNuevos: Record<string, number>;
   sesion: Sesion | null;
   conexion: Conexion;
   conversaciones: Conversacion[];
@@ -118,6 +120,7 @@ function prefQuien(): boolean {
 
 let estado: Instantanea = {
   archivos: {},
+  canalesNuevos: {},
   sesion: null,
   conexion: 'sin-vincular',
   conversaciones: [],
@@ -552,6 +555,8 @@ async function manejar(b: Bajada): Promise<void> {
         await sincronizarConversaciones().catch(() => undefined);
       } else if (b.tipo === 'mensaje_retirado' && b.detalle) {
         await actualizarMensaje(b.detalle, { retirado: true, texto: '', adjunto: undefined, cita: undefined });
+      } else if (b.tipo === 'canal_publicacion' && b.conversacionId) {
+        await publicacionNueva(b.conversacionId, b.actor, b.detalle ?? '', b.creadoEn);
       } else if (b.tipo === 'mensaje_reaccion' && b.detalle) {
         // "msgId:emoji:true|false": se relee el mensaje para tener el total.
         await refrescarReacciones(b.detalle.split(':')[0]).catch(() => undefined);
@@ -694,7 +699,9 @@ function avisar(m: Mensaje): void {
   // Los mismos textos que la app.
   const [titulo_, cuerpo] = !estado.avisos.mostrarQuien
     ? ['wtfuck', 'Tienes un mensaje nuevo']
-    : esGrupo
+    : c?.tipo === 'canal'
+      ? [titulo(c), 'Publicación nueva']
+      : esGrupo
       ? [c ? titulo(c) : 'Grupo', `@${m.autor} escribió en el grupo`]
       : [`@${m.autor}`, 'Te escribió'];
   try {
@@ -887,6 +894,22 @@ export async function editar(m: Mensaje, nuevo: string): Promise<void> {
 export async function retirar(m: Mensaje): Promise<void> {
   await pedir('POST', `/v1/mensajes/${m.id}/retirar`);
   await actualizarMensaje(m.id, { retirado: true, texto: '', adjunto: undefined, cita: undefined });
+}
+
+/**
+ * Una publicación nueva en un canal: no es un mensaje (vive en el servidor),
+ * así que solo se mueve la lista, se avisa y la vista abierta recarga.
+ */
+async function publicacionNueva(canal: string, autor: string, extracto: string, creadoEn: number): Promise<void> {
+  if (!estado.conversaciones.some((c) => c.id === canal)) await sincronizarConversaciones().catch(() => undefined);
+  const convs = estado.conversaciones.map((c) => c.id !== canal ? c : {
+    ...c,
+    noLeidos: c.noLeidos + (abierta === canal ? 0 : 1),
+    ultimo: { texto: extracto, creadoEn, esMio: false },
+  });
+  await publicarConversaciones(convs);
+  cambiar({ canalesNuevos: { ...estado.canalesNuevos, [canal]: (estado.canalesNuevos[canal] ?? 0) + 1 } });
+  avisar({ id: nuevoId(), conversacionId: canal, autor, esMio: false, texto: '', creadoEn, estado: 'entregado' });
 }
 
 /** Una reacción por persona: otra reemplaza la anterior; la misma la quita. */

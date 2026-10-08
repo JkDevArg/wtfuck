@@ -5,6 +5,7 @@ import {
   type Conexion, type Conversacion, type Mensaje,
 } from './datos/motor';
 import { tamanoLegible } from './datos/archivos';
+import { Canal, DescubrirCanales } from './Canal';
 import { decodificarOnda, Grabacion, mimeDeGrabacion } from './datos/grabadora';
 import { ErrorApi } from './datos/api';
 
@@ -125,6 +126,7 @@ const TEXTO_CONEXION: Record<Conexion, string> = {
 function Principal() {
   const e = usarMotor();
   const [abierta, setAbierta] = useState<string | null>(null);
+  const [descubrir, setDescubrir] = useState(false);
 
   useEffect(() => {
     void abrirConversacion(abierta);
@@ -149,6 +151,7 @@ function Principal() {
           </button>
         </div>
         <Avisos />
+        <div className="avisos"><button className="enlace cian" onClick={() => setDescubrir(true)}>Descubrir canales</button></div>
         <ul>
           {e.conversaciones.filter((c) => !c.esSolicitud).map((c) => (
             <FilaChat key={c.id} c={c} activa={c.id === abierta} onAbrir={() => setAbierta(c.id)} />
@@ -157,13 +160,14 @@ function Principal() {
         </ul>
       </aside>
       <section className="chat">
-        {conv ? <Chat c={conv} mensajes={e.mensajes[conv.id] ?? []} onAtras={() => setAbierta(null)} /> : (
+        {conv?.tipo === 'canal' ? <Canal key={conv.id} c={conv} onAtras={() => setAbierta(null)} /> : conv ? <Chat c={conv} mensajes={e.mensajes[conv.id] ?? []} onAtras={() => setAbierta(null)} /> : (
           <div className="sin-chat">
             <p>Elige un chat.</p>
             <Confianza />
           </div>
         )}
       </section>
+      {descubrir && <DescubrirCanales onCerrar={() => setDescubrir(false)} onAbrir={(id) => { setDescubrir(false); setAbierta(id); }} />}
     </div>
   );
 }

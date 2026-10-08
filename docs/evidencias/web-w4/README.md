@@ -45,3 +45,46 @@ Plan: `docs/12-VERSION-WEB.md`. W4 va por partes; esta es la primera.
   de prueba recorre el mismo camino desde el `MediaStream`.
 - **Firefox:** no graba `audio/mp4` y caería en WebM, con el problema de
   duración en Android que se explica arriba.
+
+---
+
+# W4b: canales
+
+`web/app/src/datos/canales.ts` y `web/app/src/Canal.tsx`.
+
+- **Público:** el contenido vive en claro en el servidor (es una de las dos
+  excepciones declaradas). Se lee y se publica por HTTP, sin sobres, con una
+  barra ámbar que lo dice. Publicar y comentar es primero el metadato
+  (`POST /v1/mensajes`, donde el servidor autoriza) y después el cuerpo,
+  igual que la app.
+- **Muro:** del más nuevo al más viejo, paginado con "Ver anteriores".
+  - Las imágenes de una publicación se bajan con `fetch` y se muestran como
+    blob: la CSP no deja cargarlas directo de otro dominio, y así no hace
+    falta abrirla.
+  - Reacciones y comentarios solo si el canal los tiene encendidos.
+  - "Dejar de seguir".
+- **Descubrir:** el directorio y el buscador; tocar un canal suscribe y lo
+  abre.
+- **Evento `canal_publicacion`:** sube la lista, avisa ("Publicación nueva",
+  nunca el texto) y recarga el muro si está abierto.
+- **Privado:** la web no lo ofrece y lo dice. La app Android todavía no lo
+  termina: el servidor rechaza publicar en él y la pantalla no muestra los
+  mensajes.
+
+**Una corrección a la especificación:** para texto, la clase de contenido es
+vacía (`ClaseContenido.TEXTO = ""`), no `"texto"`. El servidor respondía
+"Clase de contenido desconocida: texto".
+
+| Prueba (contra el servidor local) | Resultado |
+|---|---|
+| Directorio | Lista los canales públicos aprobados. |
+| Suscribirse a uno | Pasa de 3 a 4 suscriptores; barra ámbar; publicación con reacción y 2 comentarios. Como suscriptora no puede publicar, y no se ofrece. |
+| Comentar | Aparece "@webpruebaadd727 Comentario desde la web". |
+| Reaccionar | ❤️ 1, junto al 👍 que ya tenía. |
+| Canal propio, creado por API | Barras de "no cifrado" y "pendiente de aprobación". Publicar desde la web aparece en el muro (`4-web-canal.png`). |
+
+**Sin probar:**
+
+- **Recibir el evento `canal_publicacion` en vivo:** hace falta otro que
+  publique en un canal que la web siga.
+- **Una publicación con imagen.**
