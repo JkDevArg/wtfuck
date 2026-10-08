@@ -16,8 +16,9 @@ import {
   type Bajada, type Carga, type ConversacionResumen, type CopiaCifrada, type Destino, type PaqueteClaves,
   type Subida, type VincularHecho,
 } from './protocolo';
+import { mimeParaReproducir, type NotaGrabada } from './grabadora';
 import {
-  cifrarArchivo, claseDe, descifrarArchivo, LIMITES, miniaturaSegura, nombreSeguro, prepararImagen, SOBRECOSTO,
+  cifrarArchivo, claseDe, descifrarArchivo, LIMITES, miniaturaSegura, nombreSeguro, prepararImagen, prepararVideo, SOBRECOSTO,
   tamanoLegible, type Clase,
 } from './archivos';
 
@@ -50,6 +51,8 @@ export interface AdjuntoLocal {
   alto: number;
   duracionMs: number;
   miniatura: string;
+  /** Notas de voz: 40 barras, ver `Onda` en el contrato. */
+  onda?: string;
   unaVez: boolean;
   spoiler: boolean;
   /** Mío: ya está subido y confirmado, se puede mandar el mensaje. */
@@ -242,7 +245,10 @@ async function actualizarMensaje(id: string, cambio: Partial<Mensaje>): Promise<
 /** Lo que dice la lista de chats de un mensaje. */
 function resumenDe(m: Mensaje): string {
   if (m.retirado) return 'Mensaje eliminado';
-  return m.texto || (m.adjunto ? (m.adjunto.clase === 'imagen' ? 'Foto' : m.adjunto.nombre) : '');
+  if (m.texto) return m.texto;
+  const a = m.adjunto;
+  if (!a) return '';
+  return { imagen: 'Foto', sticker: 'Sticker', video: 'Video', audio: 'Audio', nota_voz: 'Nota de voz' }[a.clase as string] ?? a.nombre;
 }
 
 async function tocarConversacion(m: Mensaje): Promise<void> {
@@ -626,7 +632,7 @@ async function recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
       m.adjunto = {
         adjuntoId: carga.adjuntoId, clase, clave: carga.clave, nonce: carga.nonce,
         mime: carga.mime, nombre: nombreSeguro(carga.nombre), bytes: carga.bytes, ancho: carga.ancho, alto: carga.alto,
-        duracionMs: carga.duracionMs, miniatura: carga.unaVez ? '' : miniaturaSegura(carga.miniatura),
+        duracionMs: carga.duracionMs, miniatura: carga.unaVez ? '' : miniaturaSegura(carga.miniatura), onda: carga.onda,
         unaVez: carga.unaVez, spoiler: carga.spoiler && (clase === 'imagen' || clase === 'video'), listo: true,
       };
     }
@@ -802,28 +808,33 @@ export async function enviarTexto(conversacionId: string, cuerpo: string, citado
  * firmada (los bytes no pasan por el servidor, como en la app) y recién
  * entonces sale el mensaje con la clave.
  */
-export async function enviarArchivo(conversacionId: string, f: File, pie: string): Promise<void> {
+/** Una nota de voz: un archivo de clase `nota_voz`, con su onda y su duración. */
+export const enviarNotaDeVoz = (conversacionId: string, n: NotaGrabada) => enviarArchivo(conversacionId, n.archivo, '', n);
+
+export async function enviarArchivo(conversacionId: string, f: File, pie: string, voz?: NotaGrabada): Promise<void> {
   const s = estado.sesion;
   if (!s) return;
-  const clase = claseDe(f.type);
+  const clase: Clase = voz ? 'nota_voz' : claseDe(f.type);
   let datos: ArrayBuffer;
   let mime = f.type || 'application/octet-stream';
   let ancho = 0;
   let alto = 0;
   let miniatura = '';
+  let duracionMs = voz?.duracionMs ?? 0;
   if (clase === 'imagen') {
     const p = await prepararImagen(f);
     ({ datos, mime, ancho, alto, miniatura } = p);
   } else {
     datos = await f.arrayBuffer();
+    if (clase === 'video') ({ ancho, alto, duracionMs, miniatura } = await prepararVideo(f));
   }
   if (datos.byteLength + SOBRECOSTO > LIMITES[clase]) {
     throw new Error(`El límite para ${clase} es ${tamanoLegible(LIMITES[clase])}.`);
   }
   const id = nuevoId();
   const adj: AdjuntoLocal = {
-    clase, mime, nombre: nombreSeguro(f.name), bytes: datos.byteLength, ancho, alto, duracionMs: 0,
-    miniatura, unaVez: false, spoiler: false, listo: false,
+    clase, mime, nombre: nombreSeguro(f.name), bytes: datos.byteLength, ancho, alto, duracionMs,
+    miniatura, onda: voz?.onda, unaVez: false, spoiler: false, listo: false,
   };
   await guardarMensaje({
     id, conversacionId, autor: s.username, esMio: true, texto: pie, adjunto: adj,
@@ -834,7 +845,7 @@ export async function enviarArchivo(conversacionId: string, f: File, pie: string
   try {
     const c = await cifrarArchivo(datos);
     const r = await pedir<{ adjuntoId: string; urlSubida: string }>('POST', '/v1/adjuntos', {
-      conversacionId, historiaId: null, clase, bytes: c.cifrado.byteLength, mime, nombre: adj.nombre, ancho, alto, duracionMs: 0,
+      conversacionId, historiaId: null, clase, bytes: c.cifrado.byteLength, mime, nombre: adj.nombre, ancho, alto, duracionMs,
     });
     const subida = await fetch(r.urlSubida, { method: 'PUT', body: c.cifrado, headers: { 'Content-Type': 'application/octet-stream' } });
     if (!subida.ok) throw new Error(`El almacén rechazó el archivo (${subida.status}).`);
@@ -857,7 +868,7 @@ export async function descargar(m: Mensaje): Promise<void> {
     const r = await fetch(info.urlDescarga);
     if (!r.ok) throw new Error(`No se pudo bajar (${r.status}).`);
     const claro = await descifrarArchivo(await r.arrayBuffer(), a.clave, a.nonce);
-    poner({ estado: 'listo', url: URL.createObjectURL(new Blob([claro], { type: a.mime || 'application/octet-stream' })) });
+    poner({ estado: 'listo', url: URL.createObjectURL(new Blob([claro], { type: mimeParaReproducir(a.mime, a.nombre) })) });
   } catch (x) {
     poner({ estado: 'error', error: x instanceof Error ? x.message : 'No se pudo bajar.' });
   }
@@ -954,6 +965,7 @@ function cargaDe(m: Mensaje): Carga {
     return adjunto({
       adjuntoId: a.adjuntoId, clase: a.clase, clave: a.clave, nonce: a.nonce, mime: a.mime, nombre: a.nombre,
       bytes: a.bytes, ancho: a.ancho, alto: a.alto, duracionMs: a.duracionMs, pie: m.texto, miniatura: a.miniatura,
+      onda: a.onda ?? '',
     });
   }
   return m.cita ? respuesta(m.texto, m.cita) : texto(m.texto);

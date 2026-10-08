@@ -154,6 +154,16 @@ form button[type=submit], .escribir button {
 .burbuja.suya .acciones-msj .peligro { color: var(--coral); }
 .burbuja:hover .acciones-msj, .burbuja:focus-within .acciones-msj { display: flex; }
 .contexto { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 8px 16px; background: var(--elevada); border-top: 1px solid var(--borde); font-size: 13px; color: var(--secundario); }
+.adjunto.voz { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: rgb(0 0 0 / .14); min-width: 240px; }
+.adjunto.voz audio { max-width: 100%; }
+.reproducir { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--fondo); color: var(--cian); flex-shrink: 0; }
+.onda { display: flex; align-items: center; gap: 2px; height: 28px; flex: 1; }
+.onda i { display: block; width: 3px; border-radius: 2px; background: currentColor; opacity: .7; }
+.grabando { display: flex; gap: 12px; align-items: center; flex: 1; }
+.grabando .punto { width: 10px; height: 10px; border-radius: 50%; background: var(--coral); animation: latir 1s infinite; }
+.grabando button:not(.enlace) { background: var(--cian); color: var(--sobre-cian); border: 0; border-radius: 12px; padding: 10px 14px; font-weight: 600; margin-left: auto; }
+@keyframes latir { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .grabando .punto { animation: none; } }
 .adjuntar { background: none; border: 1px solid var(--borde); border-radius: 12px; color: var(--secundario); padding: 0 10px; display: grid; place-items: center; }
 
 .escribir textarea {

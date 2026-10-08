@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
 import {
-  abrirConversacion, avisosConQuien, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarTexto,
+  abrirConversacion, avisosConQuien, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarNotaDeVoz, enviarTexto,
   huellasDe, identidadRevisada, motor, pedirPermisoDeAvisos, reaccionar, retirar, salir, titulo, vincular,
   type Conexion, type Conversacion, type Mensaje,
 } from './datos/motor';
 import { tamanoLegible } from './datos/archivos';
+import { decodificarOnda, Grabacion, mimeDeGrabacion } from './datos/grabadora';
 import { ErrorApi } from './datos/api';
 
 const usarMotor = () => useSyncExternalStore(motor.suscribir, motor.instantanea);
@@ -186,6 +187,66 @@ function Avisos() {
   );
 }
 
+function duracion(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Grabar: tocar para empezar y tocar para mandar, como la app (no mantener apretado). */
+function Grabador({ conversacionId, onError }: { conversacionId: string; onError: (e: string) => void }) {
+  const [g, setG] = useState<Grabacion | null>(null);
+  const [, setTic] = useState(0);
+  const puede = !!mimeDeGrabacion() && !!navigator.mediaDevices;
+
+  useEffect(() => {
+    if (!g) return;
+    const t = setInterval(() => setTic((x) => x + 1), 250);
+    return () => clearInterval(t);
+  }, [g]);
+
+  async function empezar() {
+    try {
+      const nueva = await Grabacion.iniciar(() => void terminar(nueva));
+      setG(nueva);
+    } catch (x) {
+      onError(x instanceof DOMException && x.name === 'NotAllowedError'
+        ? 'El navegador no deja usar el micrófono.'
+        : x instanceof Error ? x.message : 'No se pudo grabar.');
+    }
+  }
+
+  async function terminar(actual: Grabacion | null = g) {
+    if (!actual) return;
+    setG(null);
+    const nota = await actual.detener();
+    if (!nota) {
+      onError('Muy corta: una nota de voz dura al menos un segundo.');
+      return;
+    }
+    void enviarNotaDeVoz(conversacionId, nota).catch((x: Error) => onError(x.message));
+  }
+
+  if (!puede) return null;
+  if (!g) {
+    return (
+      <button className="adjuntar" onClick={() => void empezar()} aria-label="Grabar una nota de voz" title="Grabar una nota de voz">
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      </button>
+    );
+  }
+  return (
+    <div className="grabando" role="status">
+      <span className="punto" aria-hidden="true" />
+      <span>Grabando {duracion(g.transcurridoMs)}</span>
+      <button className="enlace" onClick={() => { g.cancelar(); setG(null); }}>Descartar</button>
+      <button onClick={() => void terminar()}>Enviar nota</button>
+    </div>
+  );
+}
+
 function hora(ms: number): string {
   const d = new Date(ms);
   const hoy = new Date();
@@ -300,7 +361,28 @@ function Adjunto({ m }: { m: Mensaje }) {
       </button>
     );
   }
-  if ((a.clase === 'video' || a.clase === 'audio' || a.clase === 'nota_voz') && f?.estado === 'listo') {
+  if (a.clase === 'nota_voz') {
+    const barras = decodificarOnda(a.onda ?? '');
+    return (
+      <div className="adjunto voz">
+        {f?.estado === 'listo' ? (
+          <audio src={f.url} controls autoPlay />
+        ) : (
+          <button className="reproducir" onClick={() => void descargar(m)} aria-label="Escuchar la nota de voz" disabled={f?.estado === 'bajando'}>
+            {f?.estado === 'bajando' ? '…' : '▶'}
+          </button>
+        )}
+        {f?.estado !== 'listo' && (
+          <span className="onda" aria-hidden="true">
+            {(barras ?? Array(40).fill(0.3)).map((h, i) => <i key={i} style={{ height: `${Math.max(12, h * 100)}%` }} />)}
+          </span>
+        )}
+        {f?.estado !== 'listo' && <span className="tenue">{duracion(a.duracionMs)}</span>}
+        {f?.estado === 'error' && <span className="error">{f.error}</span>}
+      </div>
+    );
+  }
+  if ((a.clase === 'video' || a.clase === 'audio') && f?.estado === 'listo') {
     return a.clase === 'video'
       ? <video className="adjunto video" src={f.url} controls style={{ aspectRatio: String(proporcion) }} />
       : <audio className="adjunto" src={f.url} controls />;
@@ -315,7 +397,7 @@ function Adjunto({ m }: { m: Mensaje }) {
         <span className="tenue">Bajando…</span>
       ) : (
         <button className="enlace cian" onClick={() => void descargar(m)}>
-          {a.clase === 'video' || a.clase === 'audio' || a.clase === 'nota_voz' ? 'Reproducir' : 'Descargar'}
+          {a.clase === 'video' || a.clase === 'audio' ? 'Reproducir' : 'Descargar'}
         </button>
       )}
       {f?.estado === 'error' && <span className="error">{f.error}</span>}
@@ -474,6 +556,7 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
             <path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6L15 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
         </button>
+        {!borrador.trim() && !editando && <Grabador conversacionId={c.id} onError={setErrorArchivo} />}
         <textarea
           ref={caja}
           value={borrador}

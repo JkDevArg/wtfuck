@@ -94,7 +94,7 @@ export function tamanoLegible(bytes: number): string {
 //  Imágenes: reducir y miniatura, como Media.kt
 // ---------------------------------------------------------------------------
 
-async function aJpeg(img: ImageBitmap, lado: number, calidad: number): Promise<{ blob: Blob; ancho: number; alto: number }> {
+async function aJpeg(img: CanvasImageSource & { width: number; height: number }, lado: number, calidad: number): Promise<{ blob: Blob; ancho: number; alto: number }> {
   const escala = Math.min(1, lado / Math.max(img.width, img.height));
   const ancho = Math.max(1, Math.round(img.width * escala));
   const alto = Math.max(1, Math.round(img.height * escala));
@@ -137,5 +137,52 @@ export async function prepararImagen(f: File): Promise<ImagenPreparada> {
     return { datos: await r.blob.arrayBuffer(), mime: 'image/jpeg', ancho: r.ancho, alto: r.alto, miniatura };
   } finally {
     img.close();
+  }
+}
+
+export interface VideoPreparado {
+  ancho: number;
+  alto: number;
+  duracionMs: number;
+  miniatura: string;
+}
+
+/**
+ * Miniatura y medidas de un video, como la app con el primer fotograma. Si el
+ * navegador no sabe decodificarlo, el video sale igual, sin miniatura.
+ */
+export async function prepararVideo(f: File): Promise<VideoPreparado> {
+  const url = URL.createObjectURL(f);
+  const v = document.createElement('video');
+  v.muted = true;
+  v.preload = 'auto';
+  v.src = url;
+  try {
+    await new Promise<void>((r, x) => {
+      v.onloadeddata = () => r();
+      v.onerror = () => x(new Error('no se pudo leer el video'));
+      setTimeout(() => x(new Error('tiempo')), 8000);
+    });
+    const t = Math.min(0.1, (v.duration || 1) / 2);
+    await new Promise<void>((r) => {
+      v.onseeked = () => r();
+      v.currentTime = t;
+      setTimeout(r, 3000);
+    });
+    const marco = { width: v.videoWidth, height: v.videoHeight };
+    const lienzo = Object.assign(v, marco);
+    let miniatura = '';
+    for (const q of [0.7, 0.5, 0.3]) {
+      const m = await aJpeg(lienzo, 240, q);
+      if (m.blob.size <= 20 * 1024 || q === 0.3) {
+        miniatura = b64.a(new Uint8Array(await m.blob.arrayBuffer()));
+        break;
+      }
+    }
+    return { ancho: v.videoWidth, alto: v.videoHeight, duracionMs: Math.round((v.duration || 0) * 1000), miniatura };
+  } catch {
+    return { ancho: 0, alto: 0, duracionMs: 0, miniatura: '' };
+  } finally {
+    URL.revokeObjectURL(url);
   }
 }

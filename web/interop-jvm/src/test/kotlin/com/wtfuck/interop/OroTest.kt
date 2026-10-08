@@ -78,6 +78,13 @@ class OroTest {
             """{"clave":"${b64e.encodeToString(clave)}","nonce":"${b64e.encodeToString(nonce)}","claro":"archivo de prueba con ñ","cifrado":"${b64e.encodeToString(c.doFinal("archivo de prueba con ñ".toByteArray()))}"}""",
         )
 
+        // La onda de una nota de voz: muestras -> 40 caracteres.
+        val muestras = List(137) { i -> ((kotlin.math.sin(i / 7.0) + 1) / 2 * (i % 11) / 10).toFloat() }
+        escribir(
+            "onda.json",
+            """{"muestras":[${muestras.joinToString(",")}],"pocas":"${com.wtfuck.protocol.Onda.codificar(listOf(0.2f, 0.9f, 0.5f))}","onda":"${com.wtfuck.protocol.Onda.codificar(muestras)}","vacia":"${com.wtfuck.protocol.Onda.codificar(emptyList())}"}""",
+        )
+
         // Relleno: largos de entrada -> largo de salida.
         val largos = listOf(0, 1, 255, 256, 257, 8192, 8193, 16384, 16385, 61440, 61441, 70000)
         escribir(
