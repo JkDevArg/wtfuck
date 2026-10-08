@@ -319,6 +319,13 @@ data class RecuperarDispositivoReq(
     val identidadPub: String,
     val hardwareHash: String,
     val hardwareNivel: String,
+    /**
+     * W5 · Para una cuenta creada desde la web: el correo y su codigo hacen el
+     * papel del telefono y del SMS. Si viene `correo`, `telefono` y `codigo` se
+     * ignoran. Las demas puertas (verificador, TOTP) son las mismas.
+     */
+    val correo: String = "",
+    val codigoCorreo: String = "",
 )
 
 // ============================================================

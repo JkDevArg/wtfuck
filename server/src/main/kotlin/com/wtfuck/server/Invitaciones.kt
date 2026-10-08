@@ -1,6 +1,8 @@
 package com.wtfuck.server
 
+import com.wtfuck.protocol.AlcanceInvitacion
 import com.wtfuck.protocol.InvitacionResp
+import com.wtfuck.protocol.MisInvitacionesWeb
 import com.wtfuck.protocol.ModoRegistroResp
 import com.wtfuck.protocol.NuevaInvitacionReq
 import java.security.SecureRandom
@@ -112,7 +114,8 @@ object Invitaciones {
      * invitacion se descubre igual intentando registrarse. Decirlo antes evita
      * que alguien rellene un formulario entero para que lo rechacen al final.
      */
-    fun modo(): ModoRegistroResp = ModoRegistroResp(requiereInvitacion = exigeInvitacion)
+    fun modo(): ModoRegistroResp =
+        ModoRegistroResp(requiereInvitacion = exigeInvitacion, registroWeb = Correos.disponible)
 
     // ------------------------------------------------------------------
     //  La puerta, antes del limite de ritmo
@@ -148,7 +151,8 @@ object Invitaciones {
                     WHERE codigo = ?
                       AND revocada_en IS NULL
                       AND (expira_en IS NULL OR expira_en > now())
-                      AND usos < usos_max"""
+                      AND usos < usos_max
+                      AND alcance = 'general'"""
             ).use { st ->
                 st.setString(1, limpio)
                 st.executeQuery().use { it.next() }
@@ -182,7 +186,7 @@ object Invitaciones {
      *
      * @return el codigo normalizado, para anotar quien lo uso.
      */
-    fun canjear(c: Connection, codigo: String): String {
+    fun canjear(c: Connection, codigo: String, alcance: String = AlcanceInvitacion.GENERAL): String {
         val limpio = normalizar(codigo)
         if (limpio.isEmpty()) {
             throw ErrorNegocio(400, "Hace falta un codigo de invitacion para registrarse.")
@@ -194,9 +198,11 @@ object Invitaciones {
                 WHERE codigo = ?
                   AND revocada_en IS NULL
                   AND (expira_en IS NULL OR expira_en > now())
-                  AND usos < usos_max"""
+                  AND usos < usos_max
+                  AND alcance = ?"""
         ).use { st ->
             st.setString(1, limpio)
+            st.setString(2, alcance)
             st.executeUpdate() == 1
         }
 
@@ -237,6 +243,7 @@ object Invitaciones {
         Moderacion.exigirStaff(c, yo.usuarioId, NIVEL_MINIMO)
 
         val usos = req.usos.coerceIn(1, 500)
+        val alcance = req.alcance.takeIf { it == AlcanceInvitacion.WEB } ?: AlcanceInvitacion.GENERAL
         val expira = req.diasValida
             .takeIf { it > 0 }
             ?.let { Instant.now().plusSeconds(it.toLong() * 86_400) }
@@ -247,8 +254,8 @@ object Invitaciones {
         repeat(5) {
             val codigo = generar()
             val puesto = c.prepareStatement(
-                """INSERT INTO invitacion_registro (codigo, creada_por, expira_en, usos_max, nota)
-                   VALUES (?, ?, ?, ?, ?)
+                """INSERT INTO invitacion_registro (codigo, creada_por, expira_en, usos_max, nota, alcance)
+                   VALUES (?, ?, ?, ?, ?, ?)
                    ON CONFLICT (codigo) DO NOTHING"""
             ).use { st ->
                 st.setString(1, codigo)
@@ -257,6 +264,7 @@ object Invitaciones {
                 else st.setObject(3, java.sql.Timestamp.from(expira))
                 st.setInt(4, usos)
                 st.setString(5, req.nota.take(120))
+                st.setString(6, alcance)
                 st.executeUpdate() == 1
             }
             if (puesto) {
@@ -274,6 +282,7 @@ object Invitaciones {
                     usosMax = usos,
                     revocada = false,
                     nota = req.nota.take(120),
+                    alcance = alcance,
                 )
             }
         }
@@ -283,7 +292,7 @@ object Invitaciones {
     fun listar(yo: Auth): List<InvitacionResp> = Db.tx { c ->
         Moderacion.exigirStaff(c, yo.usuarioId, NIVEL_MINIMO)
         c.prepareStatement(
-            """SELECT codigo, creada_en, expira_en, usos, usos_max, revocada_en, nota
+            """SELECT codigo, creada_en, expira_en, usos, usos_max, revocada_en, nota, alcance
                  FROM invitacion_registro
                 ORDER BY creada_en DESC
                 LIMIT 200"""
@@ -298,6 +307,7 @@ object Invitaciones {
                         usosMax = it.getInt(5),
                         revocada = it.getTimestamp(6) != null,
                         nota = it.getString(7).orEmpty(),
+                        alcance = it.getString(8),
                     )
                 }
             }
@@ -325,4 +335,152 @@ object Invitaciones {
             recursoId = null, detalle = normalizar(codigo),
         )
     }
+
+    // ------------------------------------------------------------------
+    //  W5 · Invitaciones WEB
+    // ------------------------------------------------------------------
+    //
+    // El registro desde el navegador pide, ademas del correo verificado, una
+    // invitacion de alcance `web`. Las crea el staff (desde el panel, con
+    // `alcance = web`) o cualquier usuario, con cupo: es la forma de que alguien
+    // con Android le abra la puerta a un amigo con iPhone.
+    //
+    // ## Por que con cupo y de un solo uso
+    //
+    // La invitacion es lo que pone el COSTO contra las cuentas automaticas: un
+    // correo se consigue gratis, una invitacion no. De un solo uso y con cupo,
+    // quien le pasa codigos a un bot le pasa pocos, y queda escrito quien
+    // invito a quien (`invitacion_uso` + `creada_por`): si aparecen bots, se
+    // corta por la raiz.
+
+    /** Vigentes a la vez por usuario. */
+    const val CUPO_WEB_VIGENTES = 5
+
+    /** Creadas por usuario en 30 dias, vigentes o no. */
+    const val CUPO_WEB_MES = 20
+
+    private const val DIAS_WEB = 7L
+
+    /** La puerta del registro web. No gasta: se gasta al registrarse. */
+    fun exigirPuertaWeb(c: Connection, codigo: String) {
+        val limpio = normalizar(codigo)
+        if (limpio.isEmpty()) {
+            throw ErrorNegocio(400, "Para crear una cuenta desde la web hace falta una invitacion.")
+        }
+        val vigente = c.prepareStatement(
+            """SELECT 1 FROM invitacion_registro
+                WHERE codigo = ? AND alcance = 'web'
+                  AND revocada_en IS NULL
+                  AND (expira_en IS NULL OR expira_en > now())
+                  AND usos < usos_max"""
+        ).use { st ->
+            st.setString(1, limpio)
+            st.executeQuery().use { it.next() }
+        }
+        if (!vigente) throw ErrorNegocio(403, "El codigo de invitacion no es valido o ya se uso.")
+    }
+
+    fun crearWeb(yo: Auth): InvitacionResp = Db.tx { c ->
+        // Una cuenta que nacio en la web tambien invita: es justo el caso de un
+        // grupo de amigos con iPhone. Lo que pone el limite es el cupo.
+        val (vigentes, delMes) = contarWeb(c, yo.usuarioId)
+        if (vigentes >= CUPO_WEB_VIGENTES) {
+            throw ErrorNegocio(
+                429,
+                "Ya tienes $CUPO_WEB_VIGENTES invitaciones sin usar. Revoca una o espera a que la usen.",
+            )
+        }
+        if (delMes >= CUPO_WEB_MES) {
+            throw ErrorNegocio(429, "Llegaste al tope de $CUPO_WEB_MES invitaciones en 30 dias.")
+        }
+        val expira = Instant.now().plusSeconds(DIAS_WEB * 86_400)
+        repeat(5) {
+            val codigo = generar()
+            val puesto = c.prepareStatement(
+                """INSERT INTO invitacion_registro (codigo, creada_por, expira_en, usos_max, nota, alcance)
+                   VALUES (?, ?, ?, 1, '', 'web')
+                   ON CONFLICT (codigo) DO NOTHING"""
+            ).use { st ->
+                st.setString(1, codigo)
+                st.setObject(2, yo.usuarioId)
+                st.setObject(3, java.sql.Timestamp.from(expira))
+                st.executeUpdate() == 1
+            }
+            if (puesto) {
+                Autz.auditar(
+                    c, yo.usuarioId, "invitacion_web.creada", "invitacion_registro",
+                    recursoId = null, detalle = codigo,
+                )
+                return@tx InvitacionResp(
+                    codigo = codigo,
+                    creadaEn = Instant.now().toEpochMilli(),
+                    expiraEn = expira.toEpochMilli(),
+                    usos = 0,
+                    usosMax = 1,
+                    revocada = false,
+                    nota = "",
+                    alcance = AlcanceInvitacion.WEB,
+                )
+            }
+        }
+        throw ErrorNegocio(500, "No se pudo generar un codigo. Intenta de nuevo.")
+    }
+
+    /** Mis invitaciones web de los ultimos 30 dias, y cuantas me quedan. */
+    fun misWeb(yo: Auth): MisInvitacionesWeb = Db.query { c ->
+        val lista = c.prepareStatement(
+            """SELECT codigo, creada_en, expira_en, usos, usos_max, revocada_en
+                 FROM invitacion_registro
+                WHERE creada_por = ? AND alcance = 'web'
+                  AND creada_en > now() - interval '30 days'
+                ORDER BY creada_en DESC"""
+        ).use { st ->
+            st.setObject(1, yo.usuarioId)
+            st.executeQuery().use { rs ->
+                rs.mapear {
+                    InvitacionResp(
+                        codigo = it.getString(1),
+                        creadaEn = it.getTimestamp(2).time,
+                        expiraEn = it.getTimestamp(3)?.time ?: 0,
+                        usos = it.getInt(4),
+                        usosMax = it.getInt(5),
+                        revocada = it.getTimestamp(6) != null,
+                        nota = "",
+                        alcance = AlcanceInvitacion.WEB,
+                    )
+                }
+            }
+        }
+        val (vigentes, delMes) = contarWeb(c, yo.usuarioId)
+        MisInvitacionesWeb(
+            invitaciones = lista,
+            disponibles = minOf(CUPO_WEB_VIGENTES - vigentes, CUPO_WEB_MES - delMes).coerceAtLeast(0),
+        )
+    }
+
+    /** Solo las mias. Una ajena da 404, igual que una que no existe. */
+    fun revocarWeb(yo: Auth, codigo: String) = Db.tx { c ->
+        val n = c.prepareStatement(
+            """UPDATE invitacion_registro SET revocada_en = now()
+                WHERE codigo = ? AND creada_por = ? AND alcance = 'web' AND revocada_en IS NULL"""
+        ).use { st ->
+            st.setString(1, normalizar(codigo))
+            st.setObject(2, yo.usuarioId)
+            st.executeUpdate()
+        }
+        if (n == 0) throw ErrorNegocio(404, "No se encontro.")
+    }
+
+    private fun contarWeb(c: Connection, usuarioId: UUID): Pair<Int, Int> =
+        c.prepareStatement(
+            """SELECT count(*) FILTER (WHERE revocada_en IS NULL AND usos < usos_max
+                                         AND (expira_en IS NULL OR expira_en > now())),
+                      count(*)
+                 FROM invitacion_registro
+                WHERE creada_por = ? AND alcance = 'web'
+                  AND creada_en > now() - interval '30 days'"""
+        ).use { st ->
+            st.setObject(1, usuarioId)
+            st.executeQuery().use { rs -> rs.next(); rs.getInt(1) to rs.getInt(2) }
+        }
 }

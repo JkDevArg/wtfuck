@@ -97,6 +97,127 @@ object Identidad {
         return mac.doFinal(e164.toByteArray())
     }
 
+    /**
+     * W5 · La huella de un correo. El mismo pepper que el telefono, con el
+     * prefijo `correo:` para que nunca coincida con la de un numero.
+     */
+    fun hashCorreo(correoNormalizado: String): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(pepper, "HmacSHA256"))
+        return mac.doFinal("correo:$correoNormalizado".toByteArray())
+    }
+
+    /**
+     * W5 · Un codigo de 6 digitos al correo, para registrarse desde la web o
+     * para recuperar una cuenta creada ahi.
+     *
+     * ## Contra quien protege el orden
+     *
+     * 1. Para `registro`, la invitacion web va PRIMERO: esta ruta no tiene
+     *    sesion y sin esa puerta serviria para mandarle correos a cualquiera
+     *    desde nuestro remitente. No se gasta: se gasta al registrarse.
+     * 2. Los limites por destino y por red, antes de mirar la base.
+     * 3. Si el correo YA tiene cuenta, la respuesta es la misma -no es un
+     *    oraculo de "este correo esta registrado"- y lo que sale es un aviso
+     *    a ese correo, no un codigo.
+     * 4. Para `recuperar`, si usuario y correo no casan, tampoco se dice: no
+     *    sale nada y la respuesta es igual.
+     */
+    fun pedirCodigoCorreo(req: PedirCodigoCorreoReq, ip: String): CodigoPedido = Db.tx { c ->
+        if (!Correos.disponible) {
+            throw ErrorNegocio(503, "Este servidor todavia no puede mandar correos.")
+        }
+        if (req.proposito != PropositoCorreo.REGISTRO && req.proposito != PropositoCorreo.RECUPERAR) {
+            throw ErrorNegocio(400, "Proposito desconocido.")
+        }
+        if (req.proposito == PropositoCorreo.REGISTRO) Invitaciones.exigirPuertaWeb(c, req.codigoInvitacion)
+
+        val correo = Correos.exigir(req.correo)
+        val hash = hashCorreo(correo)
+        val claveDestino = java.util.Base64.getEncoder().encodeToString(hash)
+        Limitador.exigir(null, claveDestino, "codigo_destino", Limitador.PEDIR_CODIGO_DESTINO)
+        Limitador.exigir(null, ip, "codigo_ip", Limitador.PEDIR_CODIGO_IP)
+
+        val proposito = if (req.proposito == PropositoCorreo.REGISTRO) "registro_correo" else "recuperar_correo"
+        val respuesta = CodigoPedido(
+            reintentarEnSegundos = ESPERA_REENVIO.seconds.toInt(),
+            expiraEnSegundos = VIDA_CODIGO.seconds.toInt(),
+        )
+
+        val dueno = c.prepareStatement("SELECT id, username FROM usuario WHERE correo_hash = ?").use { st ->
+            st.setBytes(1, hash)
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) to it.getString(2) } }
+        }
+        val usuarioId: UUID? = when (req.proposito) {
+            PropositoCorreo.REGISTRO -> {
+                if (dueno != null) {
+                    // Ya tiene cuenta: un aviso, no un codigo, y la misma
+                    // respuesta. El limite por destino de arriba acota cuantos.
+                    Correos.servicio.enviar(correo, "Ya tienes una cuenta en wtfuck", Correos.textoYaRegistrado())
+                    return@tx respuesta
+                }
+                null
+            }
+            else -> {
+                val user = req.username.trim().lowercase()
+                if (dueno == null || dueno.second != user) {
+                    Seguridad.anotar(
+                        c, null, "ingreso_fallido", ip = ip,
+                        detalle = """{"accion":"recuperar_correo","username":"${user.take(32)}"}""",
+                    )
+                    return@tx respuesta
+                }
+                dueno.first
+            }
+        }
+
+        vivoReciente(c, hash, proposito)?.let { faltan ->
+            throw ErrorNegocio(429, "Ya te enviamos un codigo. Espera $faltan segundos.")
+        }
+        c.prepareStatement(
+            """UPDATE codigo_verificacion SET usado_en = now()
+               WHERE destino_hash = ? AND proposito = ? AND usado_en IS NULL"""
+        ).use { st -> st.setBytes(1, hash); st.setString(2, proposito); st.executeUpdate() }
+
+        val codigo = nuevoCodigo()
+        c.prepareStatement(
+            """INSERT INTO codigo_verificacion
+                 (usuario_id, proposito, destino_hash, codigo_hash, expira_en)
+               VALUES (?, ?, ?, ?, now() + make_interval(secs => ?))"""
+        ).use { st ->
+            st.setObject(1, usuarioId)
+            st.setString(2, proposito)
+            st.setBytes(3, hash)
+            st.setBytes(4, Cripto.hashToken(codigo))
+            st.setDouble(5, VIDA_CODIGO.seconds.toDouble())
+            st.executeUpdate()
+        }
+
+        val (asunto, texto) = if (req.proposito == PropositoCorreo.REGISTRO) {
+            "Tu codigo para wtfuck: $codigo" to Correos.textoRegistro(codigo)
+        } else {
+            "Recuperar tu cuenta de wtfuck: $codigo" to Correos.textoRecuperar(codigo)
+        }
+        if (!Correos.servicio.enviar(correo, asunto, texto)) {
+            throw ErrorNegocio(502, "No se pudo mandar el correo. Intenta de nuevo en un momento.")
+        }
+        // El codigo solo vuelve en la respuesta en DESARROLLO y sin servicio
+        // real. Ver `Correos.disponible`.
+        respuesta.copy(codigoDePrueba = if (Correos.servicio.real) null else codigo)
+    }
+
+    /**
+     * W5 · Canjea el codigo del correo DENTRO de la transaccion del registro o
+     * la recuperacion: si algo falla despues, el codigo sigue valiendo.
+     * Devuelve la huella del correo.
+     */
+    fun canjearCorreo(c: Connection, correoCrudo: String, codigo: String, registro: Boolean): Pair<ByteArray, UUID?> {
+        val correo = Correos.exigir(correoCrudo)
+        val hash = hashCorreo(correo)
+        val dueno = canjear(c, hash, if (registro) "registro_correo" else "recuperar_correo", codigo)
+        return hash to dueno
+    }
+
     // ============================================================
     //  I.2 · Pedir un codigo
     // ============================================================
@@ -489,23 +610,45 @@ object Identidad {
         if (req.passwordNueva.length < 10) {
             throw ErrorNegocio(400, "La contrasena nueva necesita al menos 10 caracteres.")
         }
-        // El aparato que recupera queda de principal: un navegador no.
-        Repo.nivelParaPrincipal(req.hardwareNivel)
-
-        val e164 = SmsFactory.exigirTelefono(req.telefono)
-        val hashTel = hashTelefono(e164)
+        // El aparato que recupera queda de principal.
         val user = req.username.trim().lowercase()
+        val porCorreo = req.correo.isNotBlank()
 
-        val id = c.prepareStatement(
-            "SELECT id FROM usuario WHERE username = ? AND telefono_hash = ?"
-        ).use { st ->
-            st.setString(1, user); st.setBytes(2, hashTel)
-            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
-        } ?: throw ErrorNegocio(400, "El codigo no existe o ya vencio. Pide uno nuevo.")
+        // W5 · Por correo -la cuenta nacio en la web- o por SMS, como siempre.
+        // Las demas puertas (verificador de recuperacion, segundo factor) son
+        // las mismas para los dos caminos. Al navegador solo se llega por el
+        // correo: la recuperacion por SMS sigue pidiendo un telefono.
+        Repo.nivelParaPrincipal(
+            req.hardwareNivel,
+            permitirNavegador = porCorreo && req.hardwareNivel == NivelHardware.NAVEGADOR,
+        )
 
-        // Puerta 1: el SMS. Va primero para que esta ruta no sirva de oraculo.
-        val dueno = canjear(c, hashTel, PropositoCodigo.RECUPERAR_CUENTA, req.codigo)
-        if (dueno != id) throw ErrorNegocio(403, "Ese codigo no es de esta cuenta.")
+        val id = if (porCorreo) {
+            val hash = hashCorreo(Correos.exigir(req.correo))
+            val id = c.prepareStatement(
+                "SELECT id FROM usuario WHERE username = ? AND correo_hash = ?"
+            ).use { st ->
+                st.setString(1, user); st.setBytes(2, hash)
+                st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+            } ?: throw ErrorNegocio(400, "El codigo no existe o ya vencio. Pide uno nuevo.")
+            // Puerta 1: el correo. Primero, para que esta ruta no sea un oraculo.
+            val (_, dueno) = canjearCorreo(c, req.correo, req.codigoCorreo, registro = false)
+            if (dueno != id) throw ErrorNegocio(403, "Ese codigo no es de esta cuenta.")
+            id
+        } else {
+            val e164 = SmsFactory.exigirTelefono(req.telefono)
+            val hashTel = hashTelefono(e164)
+            val id = c.prepareStatement(
+                "SELECT id FROM usuario WHERE username = ? AND telefono_hash = ?"
+            ).use { st ->
+                st.setString(1, user); st.setBytes(2, hashTel)
+                st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+            } ?: throw ErrorNegocio(400, "El codigo no existe o ya vencio. Pide uno nuevo.")
+            // Puerta 1: el SMS. Va primero para que esta ruta no sirva de oraculo.
+            val dueno = canjear(c, hashTel, PropositoCodigo.RECUPERAR_CUENTA, req.codigo)
+            if (dueno != id) throw ErrorNegocio(403, "Ese codigo no es de esta cuenta.")
+            id
+        }
 
         // Puerta 2: el codigo de recuperacion.
         val guardado = c.prepareStatement(

@@ -22,6 +22,13 @@ const val RUTA_REGISTRO_MODO = "/v1/registro/modo"
  * mismo modulo. Bajo `/v1/registro/` no hay forma de confundirlas.
  */
 const val RUTA_INVITACIONES_REGISTRO = "/v1/registro/invitaciones"
+
+/**
+ * W5 · Registro desde la web (y por ahi, iPhone). Pedir el codigo de 6 digitos
+ * al correo, y las invitaciones WEB que reparte cada usuario.
+ */
+const val RUTA_REGISTRO_CORREO = "/v1/registro/correo"
+const val RUTA_INVITACIONES_WEB = "/v1/registro/invitaciones-web"
 const val RUTA_USUARIO = "/v1/usuarios"
 const val RUTA_CONVERSACIONES = "/v1/conversaciones"
 const val RUTA_DIRECTA = "/v1/conversaciones/directa"
@@ -72,6 +79,14 @@ data class RegistroReq(
      * pide, la app vieja recibe un 403 con el motivo escrito.
      */
     val codigoInvitacion: String = "",
+    /**
+     * W5 · Solo para un registro desde el NAVEGADOR (`hardwareNivel =
+     * NAVEGADOR`): el correo y el codigo de 6 digitos que le llego. Ahi
+     * `codigoInvitacion` tambien es obligatorio y tiene que ser una invitacion
+     * WEB (ver [InvitacionResp.alcance]). La app Android no los manda.
+     */
+    val correo: String = "",
+    val codigoCorreo: String = "",
 )
 
 /**
@@ -82,7 +97,51 @@ data class RegistroReq(
  * lo rechacen al final, que es la peor forma de enterarse.
  */
 @Serializable
-data class ModoRegistroResp(val requiereInvitacion: Boolean)
+data class ModoRegistroResp(
+    val requiereInvitacion: Boolean,
+    /**
+     * W5 · Si se puede crear una cuenta desde la web. Hace falta que el
+     * servidor tenga como mandar correos: sin eso no hay forma de verificar a
+     * nadie y el registro web queda cerrado.
+     */
+    val registroWeb: Boolean = false,
+)
+
+/**
+ * W5 · De donde vale una invitacion.
+ *
+ * - `general`: la de siempre, la que pide la app cuando el servidor esta en
+ *   modo invitacion. Solo la crea el staff.
+ * - `web`: la que pide el registro desde el NAVEGADOR, ademas del correo
+ *   verificado. La crea el staff o cualquier usuario, con cupo.
+ *
+ * Son dos puertas distintas a proposito: abrir el registro web no puede abrir
+ * el de la app, ni al reves.
+ */
+object AlcanceInvitacion {
+    const val GENERAL = "general"
+    const val WEB = "web"
+}
+
+/** Lo que pide la web antes de registrarse: un codigo al correo. */
+@Serializable
+data class PedirCodigoCorreoReq(
+    val correo: String,
+    /** `registro` o `recuperar`. */
+    val proposito: String = PropositoCorreo.REGISTRO,
+    /**
+     * Para `registro`: la invitacion web. Se exige ANTES de mandar nada, para
+     * que esta ruta sin sesion no sirva para mandarle correos a cualquiera.
+     */
+    val codigoInvitacion: String = "",
+    /** Para `recuperar`: de que cuenta. */
+    val username: String = "",
+)
+
+object PropositoCorreo {
+    const val REGISTRO = "registro"
+    const val RECUPERAR = "recuperar"
+}
 
 @Serializable
 data class NuevaInvitacionReq(
@@ -92,6 +151,8 @@ data class NuevaInvitacionReq(
     val diasValida: Int = 0,
     /** Para quien es. Solo lo ve el staff. */
     val nota: String = "",
+    /** [AlcanceInvitacion]. */
+    val alcance: String = AlcanceInvitacion.GENERAL,
 )
 
 @Serializable
@@ -104,6 +165,15 @@ data class InvitacionResp(
     val usosMax: Int,
     val revocada: Boolean,
     val nota: String,
+    val alcance: String = AlcanceInvitacion.GENERAL,
+)
+
+/** Mis invitaciones web y cuantas me quedan. */
+@Serializable
+data class MisInvitacionesWeb(
+    val invitaciones: List<InvitacionResp> = emptyList(),
+    /** Cuantas mas puedo crear ahora mismo. */
+    val disponibles: Int = 0,
 )
 
 /**

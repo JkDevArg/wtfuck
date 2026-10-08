@@ -89,6 +89,7 @@ object Db {
         49 to "/db/V49__navegador.sql",
         50 to "/db/V50__contador_por_red.sql",
         51 to "/db/V51__web_push.sql",
+        52 to "/db/V52__registro_web.sql",
     )
 
     /**

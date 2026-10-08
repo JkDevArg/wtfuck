@@ -564,6 +564,33 @@ y se arranca el servidor con `WTFUCK_FCM_OAUTH=http://localhost:8399/token` y
 comprueba el formato del aviso, incluido lo que importa: que **no lleve
 contenido**.
 
+### Correo: el registro desde la web
+
+El registro desde la web (W5) verifica un correo con un código de 6 dígitos.
+Sin servicio de correo, en producción el registro web queda **cerrado** (en
+desarrollo el código sale en la respuesta). El servidor habla con la **API
+HTTP** del servicio, con una plantilla, igual que con la pasarela de SMS: no
+hace falta ninguna librería y se cambia de proveedor cambiando variables.
+
+```bash
+WTFUCK_CORREO_URL=https://api.resend.com/emails
+WTFUCK_CORREO_CABECERA=Authorization          # donde va la credencial
+WTFUCK_CORREO_TOKEN=Bearer re_xxxxxxxx         # el valor ENTERO de esa cabecera: es el secreto
+WTFUCK_CORREO_REMITENTE=wtfuck <no-responder@tu-dominio.com>
+# Plantilla JSON con {destino} {asunto} {texto} {remitente}. Esta es la de Resend:
+WTFUCK_CORREO_CUERPO={"from":"{remitente}","to":["{destino}"],"subject":"{asunto}","text":"{texto}"}
+```
+
+Brevo, por ejemplo, usa `WTFUCK_CORREO_URL=https://api.brevo.com/v3/smtp/email`,
+`WTFUCK_CORREO_CABECERA=api-key` y su propia forma de JSON (`sender`, `to`,
+`subject`, `textContent`). El remitente tiene que estar verificado en el
+servicio (SPF y DKIM en tu DNS), o los correos terminan en spam.
+
+`WTFUCK_CORREO_BLOQUEADOS` suma dominios desechables a la lista que trae el
+servidor (`server/src/main/resources/correo/desechables.txt`).
+
+Prueba: `node pruebas/registro-web.mjs` con el servidor de desarrollo.
+
 ### Web Push: los avisos de la versión web
 
 Es otro proveedor junto a FCM, para la web con el navegador cerrado

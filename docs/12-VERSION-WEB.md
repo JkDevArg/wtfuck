@@ -93,8 +93,50 @@ tiene que leer y producir igual.
 | W3 | Fotos y archivos (directo al almacén; SeaweedFS ya responde CORS), respuestas, ediciones, eliminar para todos, reacciones, avisos del navegador, aviso de cambio de identidad y huella, avisos entre pestañas | **Hecha** (2026-10-08): `docs/evidencias/web-w3/`. Probada contra el teléfono, huella incluida |
 | W4 | Escritorio con Tauri (el mismo código, firmado), llamadas WebRTC, Web Push, notas de voz y miniatura de video, canales | **En curso**: W4a notas de voz y video, W4b canales públicos y W4c Web Push hechas (2026-10-08), `docs/evidencias/web-w4/`. Faltan llamadas y Tauri |
 
+| W5 | La web como app completa, para quien no tiene Android (iPhone): **registrarse** desde la web con correo verificado e invitación web, buscar contactos y empezar chats, y PWA instalable. Más Key Attestation en Android para que la puerta sin invitación de la app no sea la entrada de los bots | **En curso**: W5a, el servidor del registro web, hecho (2026-10-08), `docs/evidencias/web-w5/` |
+
 **Fuera de la web:** el modo cerca, porque el navegador no puede anunciar ni
 escuchar por Bluetooth así.
+
+## W5 · Registrarse desde la web
+
+Quien tiene iPhone no puede instalar la app (no hay versión iOS). Desde W5
+puede crear la cuenta en la web, y la web pasa a ser su único aparato: el
+navegador es el **principal**. Eso cambia la regla de W1 ("un navegador nunca
+es principal"), que se quitó de la base en V52.
+
+**Las dos puertas de la web, que la app no pasa:**
+
+| Puerta | Por qué |
+|---|---|
+| **Invitación web** (`alcance = web`), de un solo uso y 7 días. La reparte cualquier usuario (5 vigentes, 20 al mes) o el staff desde el panel | Es lo que pone el **costo** contra las cuentas automáticas: un correo se consigue gratis, una invitación no. Queda escrito quién invitó a quién |
+| **Correo verificado** con un código de 6 dígitos | Una cuenta por correo, sin correos desechables, y la forma de recuperar la cuenta |
+
+La invitación web y la general (la de la app en modo invitación) son puertas
+distintas: abrir una no abre la otra.
+
+**El correo no se guarda.** Se guarda HMAC(pepper, `correo:` + correo), como
+el teléfono. Alcanza para que no se repita y para encontrar la cuenta al
+recuperarla, cuando la persona lo vuelve a escribir. Una fuga de la base no
+entrega una lista de correos.
+
+**Sin servicio de correo no hay registro web.** En desarrollo el código vuelve
+en la respuesta (`codigoDePrueba`); en producción eso sería saltarse la
+verificación, así que el registro web queda cerrado y `GET /v1/registro/modo`
+dice `registroWeb: false`. Ver `docs/09-DESPLIEGUE.md`, "Correo".
+
+**Lo que esto NO cierra, dicho:** la app Android sigue registrándose sin
+invitación, y el servidor no puede comprobar que quien dice ser la app lo sea
+(`docs/04-DEVICE-BINDING.md`). Un bot que quiera saltarse la puerta de la web
+se hace pasar por Android. Lo cierra la **Key Attestation** (W5f): el teléfono
+firma un desafío del servidor con su chip y el servidor verifica la cadena
+hasta la raíz de Google. Hasta entonces, el freno de esa puerta es el límite
+por red del registro.
+
+**Recuperar una cuenta web:** correo + código de 6 dígitos + código de
+recuperación (+ TOTP si lo tiene), las mismas puertas que la recuperación por
+SMS con el correo en lugar del teléfono. Entra el navegador nuevo como
+principal y los demás aparatos quedan revocados.
 
 ## El modelo de confianza, escrito
 

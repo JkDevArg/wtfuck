@@ -52,13 +52,16 @@ const diasDeSesion = (dispositivo) => Number(psql(
   `SELECT round(extract(epoch FROM (expira_en - now())) / 86400) FROM sesion WHERE dispositivo_id = '${dispositivo}' ORDER BY expira_en DESC LIMIT 1`,
 ));
 
-console.log('\n=== un navegador no crea cuentas ===');
+// W5 cambio esta regla: una cuenta PUEDE nacer en la web, pero solo con una
+// invitacion web y un correo verificado (pruebas/registro-web.mjs). Sin eso,
+// sigue sin poder.
+console.log('\n=== un navegador no crea cuentas sin invitacion ni correo ===');
 let r = await call('POST', '/v1/registro', null, {
   username: 'wn' + S, password: CLAVE, etiquetaDispositivo: 'Chrome',
   identidadPub: b64('k'), hardwareHash: b64('HW-NAV-REG-' + S), hardwareNivel: 'NAVEGADOR',
 });
-ck('registrarse desde un navegador: 403', r.s === 403, String(r.s));
-ck('y dice que se crea en el telefono', /navegador/i.test(r.b?.motivo ?? '') && /telefono/i.test(r.b?.motivo ?? ''), JSON.stringify(r.b));
+ck('registrarse desde un navegador sin nada: rechazado', r.s === 400 || r.s === 403, String(r.s));
+ck('y dice que hace falta una invitacion', /invitacion/i.test(r.b?.motivo ?? ''), JSON.stringify(r.b));
 
 r = await call('POST', '/v1/registro', null, {
   username: 'wa' + S, password: CLAVE, etiquetaDispositivo: 'telefono de ana',
@@ -94,13 +97,10 @@ ck('no puede autorizar a otros aparatos', r.s === 403, String(r.s));
 r = await call('POST', `/v1/dispositivos/${web.dev}/principal`, ana.t, { password: CLAVE });
 ck('el telefono no lo puede hacer principal: 409', r.s === 409, String(r.s));
 ck('y dice por que', /navegador/i.test(r.b?.motivo ?? ''), JSON.stringify(r.b));
-let laBaseLoImpide = false;
-try {
-  psql(`UPDATE dispositivo SET principal = true WHERE id = '${web.dev}'`);
-} catch (e) {
-  laBaseLoImpide = /navegador_nunca_principal/.test(String(e.stderr ?? e));
-}
-ck('ni aunque el codigo fallara: la base lo impide (V49)', laBaseLoImpide);
+// La restriccion de la base (V49) se quito en V52, cuando una cuenta paso a
+// poder nacer en la web: ahi el navegador ES el principal. Lo que se sigue
+// impidiendo -un navegador vinculado que se pone por encima del telefono- lo
+// hace `Dispositivos.promover`, comprobado arriba.
 
 console.log('\n=== ni recupera la cuenta ===');
 r = await call('POST', '/v1/cuenta/recuperar-dispositivo', null, {

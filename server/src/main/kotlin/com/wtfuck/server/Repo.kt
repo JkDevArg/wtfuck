@@ -83,7 +83,8 @@ object Repo {
         // no entra un SOFTWARE_DEV, y un navegador nunca crea cuentas. Lo que no
         // decide es si el nivel es cierto: es el que declara el cliente, sin
         // atestacion que lo respalde. Ver docs/04-DEVICE-BINDING.md
-        nivelParaPrincipal(r.hardwareNivel)
+        val desdeLaWeb = r.hardwareNivel == NivelHardware.NAVEGADOR
+        nivelParaPrincipal(r.hardwareNivel, permitirNavegador = desdeLaWeb)
 
         val hwHash = Base64Util.dec(r.hardwareHash)
         val identidad = Base64Util.dec(r.identidadPub)
@@ -111,17 +112,45 @@ object Repo {
         // Se comprueba aqui y no en la ruta porque aqui es donde hay
         // transaccion: en la ruta seria una comprobacion suelta, y entre ella
         // y el INSERT cabe otro registro.
-        val invitacion = if (Invitaciones.exigeInvitacion && !Invitaciones.entraSinInvitacion(user)) {
-            Invitaciones.canjear(c, r.codigoInvitacion)
+        // W5 · Desde la web, dos puertas que la app no pasa: una invitacion WEB
+        // (siempre, este el servidor abierto o no) y el correo verificado. La
+        // invitacion general de la app no vale aqui, ni al reves.
+        //
+        // Todo dentro de esta transaccion: si el alta falla mas abajo -el
+        // usuario ya existe, por ejemplo- ni la invitacion ni el codigo del
+        // correo se gastan, y la persona puede reintentar con los mismos.
+        val correoHash: ByteArray? = if (desdeLaWeb) {
+            if (!Correos.disponible) {
+                throw ErrorNegocio(503, "El registro desde la web no esta disponible en este servidor.")
+            }
+            Invitaciones.exigirPuertaWeb(c, r.codigoInvitacion)
+            val (hash, _) = Identidad.canjearCorreo(c, r.correo, r.codigoCorreo, registro = true)
+            c.prepareStatement("SELECT 1 FROM usuario WHERE correo_hash = ?").use { st ->
+                st.setBytes(1, hash)
+                st.executeQuery().use {
+                    if (it.next()) throw ErrorNegocio(409, "Ese correo ya tiene una cuenta. Recuperala en vez de crear otra.")
+                }
+            }
+            hash
         } else {
             null
         }
 
+        val invitacion = when {
+            desdeLaWeb -> Invitaciones.canjear(c, r.codigoInvitacion, AlcanceInvitacion.WEB)
+            Invitaciones.exigeInvitacion && !Invitaciones.entraSinInvitacion(user) ->
+                Invitaciones.canjear(c, r.codigoInvitacion)
+            else -> null
+        }
+
         val usuarioId = c.prepareStatement(
-            "INSERT INTO usuario (username, password_hash) VALUES (?, ?) RETURNING id"
+            """INSERT INTO usuario (username, password_hash, correo_hash, correo_verificado_en)
+               VALUES (?, ?, ?, CASE WHEN ?::bytea IS NULL THEN NULL ELSE now() END) RETURNING id"""
         ).use { st ->
             st.setString(1, user)
             st.setString(2, Cripto.hashPassword(r.password))
+            st.setBytes(3, correoHash)
+            st.setBytes(4, correoHash)
             st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
         }
 
@@ -310,7 +339,12 @@ object Repo {
     fun nivelParaPrincipal(
         nivel: String,
         permitirSoftwareDev: Boolean = Config.permitirSoftwareDev,
+        permitirNavegador: Boolean = false,
     ): String {
+        // W5 · Una cuenta puede NACER en la web, y ahi su unico aparato es el
+        // navegador. Solo lo permite quien ya exigio el correo verificado y la
+        // invitacion web (`registrar`, y la recuperacion por correo).
+        if (nivel == NivelHardware.NAVEGADOR && permitirNavegador) return nivel
         if (nivel == NivelHardware.NAVEGADOR) {
             throw ErrorNegocio(
                 403,

@@ -621,6 +621,28 @@ fun Application.modulo() {
             }
             call.respond(resp)
         }
+        // --- W5: registro desde la web ---------------------------------
+        //
+        // Sin sesion: es antes de tener cuenta. Lo que la protege esta en
+        // `Identidad.pedirCodigoCorreo`: la invitacion web primero (que esta
+        // ruta no sirva para mandarle correos a cualquiera), los limites por
+        // destino y por red, y la misma respuesta haya cuenta o no.
+        post(RUTA_REGISTRO_CORREO) {
+            call.respond(Identidad.pedirCodigoCorreo(call.receive(), call.ipCliente()))
+        }
+
+        // Las invitaciones web de CADA usuario, con cupo. Ver `Invitaciones`.
+        post(RUTA_INVITACIONES_WEB) {
+            call.respond(Invitaciones.crearWeb(call.autenticar()))
+        }
+        get(RUTA_INVITACIONES_WEB) {
+            call.respond(Invitaciones.misWeb(call.autenticar()))
+        }
+        delete("$RUTA_INVITACIONES_WEB/{codigo}") {
+            Invitaciones.revocarWeb(call.autenticar(), call.parameters["codigo"].orEmpty())
+            call.respond(HttpStatusCode.NoContent)
+        }
+
         // --- invitaciones de registro (modulo BC) --------------------
         //
         // Autenticadas y solo para administradores. `exigirStaff` contesta 404
