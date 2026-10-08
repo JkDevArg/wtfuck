@@ -67,7 +67,7 @@ Tres detalles que costaron o pueden costar:
 
 | Qué | Por qué |
 |---|---|
-| Un nivel de hardware para navegador | Producción solo acepta `STRONGBOX`/`TEE` (rechaza `SOFTWARE_DEV`), y la base solo admite tres valores. El nivel nuevo se acepta **solo al vincular**, nunca para registrarse ni recuperar la cuenta: un navegador no puede ser el aparato principal. |
+| Un nivel de hardware para navegador | Producción solo acepta `STRONGBOX`/`TEE` (rechaza `SOFTWARE_DEV`), y la base solo admitía tres valores. Ojo: el nivel lo **declara** el aparato y el servidor no lo verifica; ver `docs/04-DEVICE-BINDING.md`, "Lo que el servidor verifica hoy". El nivel nuevo se acepta **solo al vincular**, nunca para registrarse ni recuperar la cuenta: un navegador no puede ser el aparato principal. |
 | Servir la web desde el mismo origen que la API | No hay CORS en Ktor (`ktor-server-cors` está en el catálogo pero no en el servidor), en Caddy ni en el almacén. Igual que `/consola`, la web va bajo el dominio de la API y así no hay que abrir CORS. |
 | CORS en el almacén de adjuntos | Las URLs prefirmadas apuntan a otro dominio (SeaweedFS). Hace falta para W3. |
 | Varias pestañas | El servidor admite un socket por aparato, y uno nuevo cierra el anterior. Una pestaña tiene el socket y las demás le hablan por `BroadcastChannel`. |
