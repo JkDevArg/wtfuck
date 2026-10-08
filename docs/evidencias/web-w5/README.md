@@ -156,3 +156,56 @@ Signal de punta a punta entre dos navegadores.
   servidor; la pantalla no se ejerció.
 - **Crear un grupo desde la web:** solo la ruta. La suite `grupos.mjs` del
   servidor la cubre.
+
+---
+
+# W5d: la web instalable (PWA), para iPhone y Android
+
+## Qué cambió
+
+- **`manifest.webmanifest`:**
+  - nombre "wtfuck";
+  - se abre en `/web/` y en pantalla completa (`standalone`);
+  - colores de la app;
+  - iconos de 192 y 512, y uno `maskable` para Android.
+- **Iconos:** se dibujan del mismo vector que el ícono de la app
+  (`ic_launcher_foreground.xml`), con `web/app/generar-iconos.py` (Pillow).
+  Los PNG van al repo.
+- **`index.html`** con lo que iPhone lee al "Agregar a pantalla de inicio":
+  - `apple-touch-icon`;
+  - `apple-mobile-web-app-capable`;
+  - barra de estado translúcida y el título.
+  - Además, `viewport-fit=cover` y `theme-color`.
+- **Zona segura:** con la barra translúcida y `viewport-fit=cover`, en iPhone
+  la app llega hasta el notch y la barra de inicio. `env(safe-area-inset-*)`
+  devuelve la cabecera, el compositor, la lista y los paneles a la zona
+  segura. Sin notch vale 0.
+- **Campos a 16 px en pantallas táctiles:** Safari hace zoom al enfocar un
+  campo con letra menor, y la web usa 15 px.
+- **El service worker se registra siempre al arrancar,** con o sin cuenta.
+  Sigue sin interceptar peticiones (`web.mjs` lo comprueba).
+- **El servidor** sirve el manifiesto como `application/manifest+json`.
+
+## Pruebas
+
+| Qué | Resultado |
+|---|---|
+| `pruebas/web.mjs` | **55 de 55**. Nuevas: manifiesto con su tipo; `standalone` en `/web/`; iconos 192, 512 y maskable, que existen y son PNG; el HTML enlaza el manifiesto y el `apple-touch-icon`; `viewport-fit=cover`; la CSP lee el manifiesto solo del mismo origen |
+| En el panel | El manifiesto se lee (nombre, `standalone`, 3 iconos) y la app registra sola el service worker al arrancar, que queda `activated` en `/web/` |
+| vitest y tipos | 40 de 40, sin errores |
+
+**Un falso positivo, anotado para la próxima:** el panel del navegador no
+dejaba registrar el service worker en `localhost:8300` ("An unknown error
+occurred when fetching the script"), y el pedido ni llegaba al servidor. No era
+el servidor: con el 8300 registrado en `.claude/launch.json` como vista previa
+(sin comando), se registra y se activa. Con Vite (5180) siempre funcionó por
+la misma razón.
+
+## Lo que NO se probó
+
+- **Instalarla en un iPhone o un Android de verdad.** El panel no instala
+  PWAs. Lo que se comprueba es lo que cada sistema lee: el manifiesto,
+  `apple-touch-icon` y las etiquetas `apple-mobile-web-app-*`.
+- **Avisos con la app cerrada en iPhone:** iOS 16.4 o más nuevo, y solo
+  instalada. Pendiente de un aparato real, igual que el Web Push de W4c.
+- **La zona segura en un iPhone con notch:** sin aparato, solo el CSS.

@@ -311,6 +311,12 @@ cuandoSePierdaLaSesion(() => void perderVinculo());
 const AVISO_GUARDADO = 'wtfuck-aviso';
 
 export async function iniciar(): Promise<void> {
+  // W5d: el service worker se registra siempre, con o sin cuenta. No intercepta
+  // peticiones (ver public/sw.js); lo que hace es que la web se pueda instalar
+  // como app y que activar los avisos no tenga que esperarlo.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).catch(() => undefined);
+  }
   const s = await leer<Sesion>('cuenta', 'sesion');
   if (!s || !(await cripto.tieneIdentidad())) {
     // Si se perdio el vinculo justo antes de recargar, que se sepa por que se

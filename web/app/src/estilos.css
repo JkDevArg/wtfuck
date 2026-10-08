@@ -215,3 +215,16 @@ form button[type=submit], .escribir button {
 .solicitud { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--borde); background: var(--superficie); }
 .solicitud .acciones { display: flex; gap: 12px; margin-left: auto; }
 .solicitud button:not(.enlace) { background: var(--cian); color: var(--sobre-cian); border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 600; }
+
+/* W5d: instalada como app (PWA). Con viewport-fit=cover y la barra de estado
+   translucida, en iPhone el contenido llega hasta el notch y la barra de
+   inicio: estos margenes lo devuelven a la zona segura. Sin notch, env() vale 0. */
+.lista header { padding-top: calc(16px + env(safe-area-inset-top)); }
+.cabecera { padding-top: calc(14px + env(safe-area-inset-top)); }
+.escribir, .solicitud { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+.lista > ul:last-of-type { padding-bottom: env(safe-area-inset-bottom); }
+.vincular { padding-top: calc(48px + env(safe-area-inset-top)); padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+.principal { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+.velo { padding-top: calc(16px + env(safe-area-inset-top)); padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+/* Safari en iPhone hace zoom al enfocar un campo con letra de menos de 16 px. */
+@media (pointer: coarse) { input, textarea, select { font-size: 16px; } }

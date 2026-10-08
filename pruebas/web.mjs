@@ -5,8 +5,9 @@
 //  - un navegador entra VINCULANDOSE con el codigo del principal (nivel
 //    NAVEGADOR); su token sirve y la lista de aparatos lo muestra;
 //  - su sesion vence a los 30 dias, y la de un telefono a los 90;
-//  - un navegador NO puede registrarse, ni recuperar la cuenta, ni ser el
-//    principal (tampoco la base lo deja), ni autorizar a otros;
+//  - un navegador vinculado NO puede pasar a principal ni autorizar a otros, ni
+//    registrarse sin invitacion web y correo (desde W5 si puede con ellos: ver
+//    registro-web.mjs);
 //  - vuelve a entrar con usuario y contrasena desde el mismo navegador;
 //  - revocarlo desde el telefono corta su sesion;
 //  - /web sirve la pagina con CSP estricta y el resto de cabeceras, el .wasm
@@ -139,7 +140,7 @@ ck('/web sin barra redirige a /web/', [301, 308].includes(r.status) && (r.header
 r = await fetch(BASE + '/web/');
 const html = await r.text();
 const csp = r.headers.get('content-security-policy') ?? '';
-ck('/web/ sirve la pagina', r.status === 200 && html.includes('wtfuck web'), String(r.status));
+ck('/web/ sirve la pagina', r.status === 200 && /<title>wtfuck/.test(html), String(r.status));
 // Sirve la app armada (web/app/dist) o la pagina minima de pruebas: el script
 // se saca del propio index.html, y el .wasm, de ese script.
 const script = (html.match(/\/web\/assets\/[\w.-]+\.js/) ?? [])[0];
@@ -189,6 +190,28 @@ if (r.status === 200) {
   ck('la CSP deja registrar el worker solo desde el mismo origen', /worker-src 'self'/.test(r.headers.get('content-security-policy') ?? ''));
 } else {
   console.log('    (sin sw.js: se esta sirviendo la pagina de prueba, no la app armada)');
+}
+
+// W5d. La web instalable (PWA): Android lee el manifiesto; iPhone, las
+// etiquetas del HTML al "Agregar a pantalla de inicio".
+r = await fetch(BASE + '/web/manifest.webmanifest');
+if (r.status === 200) {
+  ck('manifiesto con su tipo', (r.headers.get('content-type') ?? '').startsWith('application/manifest+json'), r.headers.get('content-type'));
+  const m = await r.json();
+  ck('se abre como app, en /web/', m.display === 'standalone' && m.start_url === '/web/' && m.scope === '/web/', JSON.stringify(m).slice(0, 120));
+  ck('con icono de 192, de 512 y maskable', ['192x192', '512x512'].every((t) => m.icons.some((i) => i.sizes === t)) && m.icons.some((i) => i.purpose === 'maskable'));
+  let todos = true;
+  for (const i of m.icons) {
+    const ri = await fetch(BASE + '/web/' + i.src);
+    todos &&= ri.status === 200 && ri.headers.get('content-type') === 'image/png';
+  }
+  ck('y los iconos existen', todos);
+  const html = await (await fetch(BASE + '/web/')).text();
+  ck('el HTML enlaza el manifiesto y el icono de iPhone', /rel="manifest"/.test(html) && /rel="apple-touch-icon"/.test(html));
+  ck('y llega hasta el notch (viewport-fit=cover)', /viewport-fit=cover/.test(html));
+  ck('la CSP deja leer el manifiesto solo de aqui', /manifest-src 'self'/.test(r.headers.get('content-security-policy') ?? ''));
+} else {
+  console.log('    (sin manifiesto: se esta sirviendo la pagina de prueba, no la app armada)');
 }
 
 r = await fetch(BASE + '/v1/version');

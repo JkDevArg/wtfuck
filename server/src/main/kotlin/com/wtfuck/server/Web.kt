@@ -109,7 +109,13 @@ object Web {
         staticFiles(RUTA_WEB, dir, index = "index.html") {
             contentType { f ->
                 // Sin `application/wasm`, el navegador no compila en streaming.
-                if (f.extension == "wasm") ContentType("application", "wasm") else null
+                when (f.extension) {
+                    "wasm" -> ContentType("application", "wasm")
+                    // W5d: el manifiesto de la PWA. Chrome lo lee igual con otro
+                    // tipo, pero el estandar pide este.
+                    "webmanifest" -> ContentType("application", "manifest+json")
+                    else -> null
+                }
             }
             modify { f, call ->
                 val h = call.response

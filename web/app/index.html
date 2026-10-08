@@ -2,10 +2,22 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover: en iPhone la app instalada llega hasta el notch; los
+     margenes los pone env(safe-area-inset-*) en estilos.css. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0E1313">
 <meta name="referrer" content="no-referrer">
-<title>wtfuck web</title>
+<!-- PWA: instalable en Android (manifiesto) y en iPhone ("Agregar a pantalla de
+     inicio", que lee estas etiquetas). -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="iconos/favicon-32.png">
+<link rel="apple-touch-icon" href="iconos/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="wtfuck">
+<title>wtfuck</title>
 </head>
 <body>
 <div id="raiz"></div>
