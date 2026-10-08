@@ -584,9 +584,31 @@ fun Application.modulo() {
         get(RUTA_VERSION) { call.respond(Actualizacion.publicada()) }
 
         post(RUTA_REGISTRO) {
-            val resp = Repo.registrar(
-                call.receive(), call.ipCliente(), call.request.headers["User-Agent"],
-            )
+            val req = call.receive<RegistroReq>()
+            val ip = call.ipCliente()
+
+            // El orden de lo que sigue es el contenido de la ruta, y cada
+            // cambio de lugar abre algo distinto:
+            //
+            //  1. La puerta de invitacion, PRIMERO. Quien no tiene invitacion
+            //     no gasta el cupo de la red de donde viene; si no, alguien
+            //     probando codigos en la red de un campus dejaria sin poder
+            //     registrarse a los que si tienen uno. En modo abierto no hace
+            //     nada. Ver `Invitaciones.exigirPuerta`.
+            //  2. Los dos limites por red, ANTES de validar el cuerpo. Al reves,
+            //     un 400 o un 409 saldrian gratis, y el 409 de "ese usuario ya
+            //     existe" es un oraculo para enumerar usernames. Leer el JSON
+            //     no es validarlo: hace falta para la puerta y no cuesta nada.
+            //  3. Validar y dar de alta, en `Repo.registrar`.
+            //
+            // La rafaga va antes que el cupo diario porque es la barata: en
+            // memoria, sin tocar la base. Una avalancha se corta ahi.
+            Invitaciones.exigirPuerta(req.username, req.codigoInvitacion)
+            val red = Seguridad.redDe(ip)
+            Limitador.exigir(null, red, "registro_red", Limitador.REGISTRO_RED)
+            Cupos.exigirPorRed(red, ip, "registro", Cupos.REGISTROS_POR_RED_DIA)
+
+            val resp = Repo.registrar(req, ip, call.request.headers["User-Agent"])
             // El alta es el primer evento de la cuenta, y es el que da sentido
             // a todo el resto de la lista: sin el, "Actividad de la cuenta"
             // arranca en cualquier parte y no se puede saber si falta algo.
@@ -2177,22 +2199,18 @@ private fun manejarEnvio(yo: Auth, msg: Subida.Enviar, salida: Channel<Bajada>) 
 }
 
 /**
- * De donde viene la peticion.
+ * De donde viene la peticion. La regla vive en `Seguridad.ipDeCliente`.
  *
- * Detras de un proxy, `remoteHost` es el proxy: por eso se mira primero
- * `X-Forwarded-For`. Es confiable solo si el proxy es nuestro, y aqui se usa
- * para limitar ritmo y no para autorizar nada: en el peor caso alguien se
- * regala su propio cupo, no el de otro.
+ * `remoteHost` puede devolver un NOMBRE y no una IP -detras de `adb reverse`
+ * devuelve "localhost"-, asi que se prefiere `remoteAddress` y el nombre queda
+ * como ultimo recurso. Quien lo guarde en una columna `inet` tiene que pasarlo
+ * igual por `Seguridad.ipValida`.
  */
 private fun io.ktor.server.application.ApplicationCall.ipCliente(): String =
-    request.headers["X-Forwarded-For"]?.split(",")?.firstOrNull()?.trim()
-        ?.takeIf { it.isNotEmpty() }
-    // `remoteHost` puede devolver un NOMBRE y no una IP -detras de
-    // `adb reverse` devuelve "localhost"-, asi que se prefiere `remoteAddress`
-    // y el nombre queda como ultimo recurso. Quien lo guarde en una columna
-    // `inet` tiene que pasarlo igual por `Seguridad.ipValida`.
-        ?: request.local.remoteAddress.takeIf { it.isNotBlank() }
-        ?: request.local.remoteHost
+    Seguridad.ipDeCliente(
+        request.headers["X-Forwarded-For"],
+        request.local.remoteAddress.takeIf { it.isNotBlank() } ?: request.local.remoteHost,
+    )
 
 /**
  * L.8 · Autenticacion de las rutas del PANEL.

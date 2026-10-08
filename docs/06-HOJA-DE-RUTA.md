@@ -7055,10 +7055,104 @@ cuánto cuesta.
 `POST /v1/registro` no tiene límite de ritmo, y con el nivel y el
 `hardwareHash` declarados, un script con el registro abierto crea cuentas sin
 tope. `WTFUCK_REGISTRO=invitacion` lo cierra hoy; un límite por IP con
-`Limitador`/`Cupos` sería el arreglo barato.
+`Limitador`/`Cupos` sería el arreglo barato. **Cerrado en la entrada
+siguiente**, y no fue tan barato: para que un límite por IP sirviera hubo que
+arreglar primero de dónde se saca la IP.
 
 ## Verificado
 
 Validado por reversión: con el código anterior, la suite marca **3 rojas** (un
 `SOFTWARE_DEV` sin la variable recibía 200 y token); con el arreglo, verde.
 Detalle y salidas en `docs/evidencias/nivel-de-hardware/`.
+
+---
+
+# Límite de ritmo en el registro · y la IP que cualquiera podía elegir
+
+Cierra el hallazgo de la entrada anterior: con el registro abierto y el nivel y
+el `hardwareHash` declarados, `POST /v1/registro` creaba cuentas sin tope.
+
+## Primero se midió, después se fijó el número
+
+El error del NAT ya costó tres correcciones en este proyecto (ingreso, SMS,
+vinculación), y las tres las destapó la regresión **después** de poner el
+límite. Esta vez se midió antes, contando las filas `registro` de
+`evento_seguridad` por suite:
+
+- Una corrida de la regresión, sola: **277 altas** en cuatro minutos y medio,
+  con un pico de **127 en un minuto**. Casi todo es de `ajeno-lectura` (58) y
+  `ajeno` (51); ninguna otra pasa de 13.
+- El historial de la máquina de desarrollo, con varias sesiones compartiendo
+  `::1` —que es lo que pasa detrás de la salida de un campus—: hasta **784 en
+  13 minutos** y **164 en un minuto**.
+
+De ahí, **300 por minuto** de ráfaga y **2000 por día** de cupo.
+`LimiteDeRegistroTest` fija los dos márgenes contra esas cifras.
+
+## Lo que hubo que arreglar antes: de dónde sale la IP
+
+`ipCliente()` tomaba la **primera** entrada de `X-Forwarded-For`, que la
+escribe el cliente (nginx con `$proxy_add_x_forwarded_for` agrega la real al
+final). El comentario decía que "en el peor caso alguien se regala su propio
+cupo, no el de otro"; las dos mitades eran falsas. Con una cabecera inventada
+por petición **ningún límite por IP limitaba nada**, y poniendo la IP de un
+campus delante se le gastaba el cupo a todo el campus —con los fallos de
+ingreso, eso es dejarlo sin entrar—.
+
+Ahora `Seguridad.ipDeCliente`: la cabecera cuenta sólo si la conexión viene de
+loopback o de una red privada (donde están Caddy y nginx), y de ella se toma la
+**última** entrada. Arregla de paso los límites por IP que ya existían.
+`09-DESPLIEGUE.md` dice lo que eso exige: 8300 no alcanzable desde la LAN, y
+con una CDN delante de nginx hay que tocar esa función.
+
+## Lo que se puso
+
+- **Por red**: la IPv4, o el **/64** de una IPv6 (contar por dirección regalaría
+  un /64 entero de cupos).
+- **Ráfaga** `registro_red`, 300/min en memoria: corta la avalancha antes de
+  tocar la base y de calcular un Argon2.
+- **Cupo diario** `registro_red_dia`, 2000/día en la base (`contador_red`, V50,
+  porque `contador_uso` cuelga de un usuario y aquí todavía no hay ninguno).
+  Un reinicio no lo perdona.
+- **Cuentan intentos**, también los 409: si no, "ese usuario ya existe" sería un
+  oráculo gratis de usernames.
+- **Orden**: puerta de invitación → ráfaga → cupo → validar. La puerta delante
+  para que quien prueba códigos inventados no gaste el cupo de su campus (y
+  `exigirPuerta` no gasta la invitación: el canje atómico sigue dentro de la
+  transacción). Los límites antes de validar para que el 400 y el 409 no salgan
+  gratis.
+- **Los dos se ajustan desde el panel.** No era obvio para el cupo diario —los
+  de `Cupos` eran constantes— y aquí hace falta: el día que una institución
+  anuncia la app toda su gente se registra desde la misma salida, y subirlo no
+  puede esperar a un despliegue; con un abuso en curso, bajarlo tampoco.
+- `pruebas/correr.mjs` vacía `contador_red` al empezar, como ya hacía con Redis.
+
+**Lo que no hace:** frenar a quien reparte el script entre muchas IPs. Contra
+eso están el registro por invitación y verificar la atestación; esto convierte
+"sin tope" en "un tope por sitio".
+
+## Una frase que mentía, corregida de paso
+
+`Invitaciones.LARGO` decía que adivinar un código exigía "más intentos de los
+que el limitador por IP deja hacer en varias vidas". El registro no tenía
+limitador. Ahora lo tiene y **a propósito no cuenta los códigos equivocados**
+(por el NAT); la defensa es el largo: 59 bits.
+
+## Hallazgo sin tocar
+
+`Cupos.exigir` anota `limite_excedido` dentro de la transacción y después
+lanza: el ROLLBACK se lleva el evento. En la base no hay ninguno de los cupos
+de denuncias o de ficha, aunque `limites-cuenta.mjs` choca contra el de la
+ficha en cada corrida. El nuevo `exigirPorRed` lo anota aparte; el viejo queda
+para un cambio propio.
+
+## Verificado
+
+`pruebas/limite-registro.mjs`, 34 pruebas, en verde. Validado por **cinco
+reversiones**, cada una con sus rojas: sin los límites (13), la puerta después
+del límite (3), la IP de la primera entrada (2, una de ellas el cupo de otro
+gastado), IPv6 sin /64 (1), y los límites después de validar (4). JUnit del
+servidor: 111, 0 fallos. Regresión completa: 52 suites, 1886
+pasan, 0 fallan, más `privacidad` (28/28) aparte porque su WebSocket está fijo
+en 8300 y ahí corría otra sesión; total 1914. Detalle y salidas en
+`docs/evidencias/limite-de-registro/`.

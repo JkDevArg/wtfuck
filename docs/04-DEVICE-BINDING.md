@@ -62,9 +62,13 @@ Dónde se ve en el código:
   la app dos veces» y no el de «escribir un script».
 
 Frenos que sí existen y no dependen de esto: `WTFUCK_REGISTRO=invitacion`
-(módulo BC: sin código de invitación no hay registro) y la moderación. Lo que
-**no** existe hoy es un límite de ritmo propio en `POST /v1/registro`; con el
-registro abierto, es el hueco más barato de cerrar.
+(módulo BC: sin código de invitación no hay registro), la moderación y, desde
+el 2026-10-08, un **límite de ritmo por red** en `POST /v1/registro` (300 por
+minuto y 2000 por día por IPv4 o por /64 de IPv6, ajustables desde el panel;
+ver `Limitador.REGISTRO_RED`). Ese límite convierte "sin tope" en "un tope por
+sitio" y nada más: es alto a propósito por el NAT de un campus, y no frena a
+quien reparte el script entre muchas IPs. Contra eso, las dos salidas son la
+invitación o verificar la atestación.
 
 ### El defecto de configuración que se corrigió (2026-10-08)
 

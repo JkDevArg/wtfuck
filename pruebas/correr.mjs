@@ -49,6 +49,20 @@ function limpiarLimites() {
   } catch {
     // Sin Redis no hay nada que limpiar.
   }
+  // El cupo diario de registros por red vive en la base (`contador_red`) y es
+  // por dia: sin vaciarlo, la tercera o cuarta corrida del dia -todas desde la
+  // misma IP- se queda sin altas y las suites caen en cadena por un 429 que no
+  // tiene nada que ver con lo que prueban. Solo `registro`: nada mas usa esta
+  // tabla hoy, y si algo la usa manana no hay por que borrarlo sin mirar.
+  try {
+    execSync(
+      'docker exec wtfuck_db psql -U wtfuck -d wtfuck -q -c ' +
+      '"DELETE FROM contador_red WHERE accion = \'registro\'"',
+      { stdio: 'ignore' },
+    );
+  } catch {
+    // Sin la tabla (servidor anterior a V50) no hay nada que vaciar.
+  }
   // OJO: esto borra los limites de FALLO, que son los que viven en Redis. Los
   // de FRECUENCIA -el del SMS, por ejemplo- viven en la memoria del servidor y
   // de aqui no se alcanzan: dos corridas completas dentro de su ventana hacen

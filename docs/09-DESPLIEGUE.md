@@ -188,6 +188,16 @@ para pegar. No es una plantilla genérica: cada bloque tapa un fallo concreto, y
 2. **Sin `X-Forwarded-For`**, todo queda registrado con `127.0.0.1` y el límite
    de intentos fallidos cuenta a todo el mundo como una sola persona: cinco
    personas equivocándose de contraseña bloquean a la sexta.
+
+   El servidor toma la **última** entrada de la cabecera —la que agrega nginx
+   con lo que vio— y sólo si la conexión le llega desde loopback o una red
+   privada, que es donde está el proxy (`Seguridad.ipDeCliente`). Las entradas
+   anteriores las escribe el cliente y no cuentan. Dos consecuencias para quien
+   despliega: **el puerto 8300 no puede quedar alcanzable desde la LAN** (un
+   cliente con IP privada podría escribir la cabecera; los dos compose lo
+   publican sólo en `127.0.0.1` o no lo publican), y **con dos proxies en
+   cadena** —una CDN delante de nginx— la última entrada sería la CDN y toda la
+   gente compartiría IP; ese despliegue necesita tocar esa función.
 3. **Sin `proxy_set_header Host $host` en el dominio de medios**, la firma
    SigV4 deja de cuadrar y el almacén responde 403 a todo. El texto va
    perfecto y **sólo** fallan fotos, vídeos y audios. Parece un problema de la
