@@ -71,6 +71,12 @@ if (-not $env:WTFUCK_TURN_URL) {
     $env:WTFUCK_TURN_URL = 'turn:10.0.2.2:3478?transport=udp'
 }
 $env:WTFUCK_TURN_SECRETO = 'secreto-turn-de-pruebas'
+# La version web (`/web`). Si ya se armo la app (web/app/dist) se sirve esa;
+# si no, la pagina minima con la que `pruebas/web.mjs` comprueba las cabeceras.
+if (-not $env:WTFUCK_WEB_DIR) {
+    $armada = Join-Path $raiz 'web\app\dist'
+    $env:WTFUCK_WEB_DIR = if (Test-Path (Join-Path $armada 'index.html')) { $armada } else { Join-Path $raiz 'pruebas\web-de-prueba' }
+}
 $env:WTFUCK_PEPPER_TELEFONO = 'pepper-de-pruebas-local-no-produccion'
 # Modulo P. La beta de tipos de cuenta se resuelve por username y se lee UNA
 # vez al arrancar, asi que la suite no puede meterse sola en la lista. Se

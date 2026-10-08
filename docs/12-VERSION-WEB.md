@@ -88,7 +88,7 @@ tiene que leer y producir igual.
 | Fase | Qué | Estado |
 |---|---|---|
 | **W0** | libsignal en WebAssembly + prueba contra la JVM + prueba en el navegador | **Hecha** (2026-10-07) |
-| W1 | Servidor: nivel de navegador solo al vincular, la web servida en `/web` y pruebas | |
+| W1 | Servidor: nivel `NAVEGADOR` solo al vincular (nunca principal, sesión de 30 días), la web servida en `/web` con CSP estricta, y pruebas | **Hecha** (2026-10-08): `docs/evidencias/web-w1/` |
 | W2 | Web mínima: vincular con QR, publicar claves, chats directos y grupos de texto, historial pedido al teléfono, almacén cifrado en IndexedDB | |
 | W3 | Fotos y archivos (con CORS en el almacén), notificaciones, varias pestañas, Web Push | |
 | W4 | Escritorio con Tauri (el mismo código, firmado) y llamadas WebRTC | |

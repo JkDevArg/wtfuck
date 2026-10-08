@@ -21,10 +21,10 @@ cerca sin emparejar (Bluetooth LE) y la pantalla de Bloqueados. Lo que cambió e
 [CHANGELOG.md](CHANGELOG.md), que se genera desde la pantalla de Novedades de la
 app con `python despliegue/changelog.py`.
 
-Servidor y app funcionando, verificados en dos emuladores. Hay **2568 pruebas
+Servidor y app funcionando, verificados en dos emuladores. Hay **2609 pruebas
 en verde** en la configuración mínima (una instancia, sin Redis):
 
-- 1805 de integración, en 47 suites;
+- 1846 de integración, en 48 suites;
 - 87 de JUnit en el servidor;
 - 676 en la app.
 

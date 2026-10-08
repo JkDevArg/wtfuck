@@ -199,7 +199,7 @@ object Dispositivos {
                 throw ErrorNegocio(409, "Esa cuenta ya tiene $MAX_DISPOSITIVOS dispositivos.")
             }
 
-            val nivel = Repo.nivelPermitido(req.hardwareNivel)
+            val nivel = Repo.nivelParaVincular(req.hardwareNivel)
             val nuevoId = c.prepareStatement(
                 """INSERT INTO dispositivo
                      (usuario_id, etiqueta, identidad_pub, hardware_hash, hardware_nivel,
@@ -411,13 +411,16 @@ object Dispositivos {
             throw ErrorNegocio(403, "Contrasena incorrecta.")
         }
 
-        val existe = c.prepareStatement(
-            "SELECT 1 FROM dispositivo WHERE id = ? AND usuario_id = ? AND revocado_en IS NULL"
+        val nivel = c.prepareStatement(
+            "SELECT hardware_nivel FROM dispositivo WHERE id = ? AND usuario_id = ? AND revocado_en IS NULL"
         ).use { st ->
             st.setObject(1, objetivoId); st.setObject(2, yo.usuarioId)
-            st.executeQuery().use { it.next() }
+            st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+        } ?: throw ErrorNegocio(404, "Ese dispositivo no existe.")
+        // Lo garantiza tambien la base (V49), pero aqui se dice por que.
+        if (nivel == NivelHardware.NAVEGADOR) {
+            throw ErrorNegocio(409, "Un navegador no puede ser el aparato principal.")
         }
-        if (!existe) throw ErrorNegocio(404, "Ese dispositivo no existe.")
 
         c.prepareStatement(
             "UPDATE dispositivo SET principal = false WHERE usuario_id = ? AND principal"

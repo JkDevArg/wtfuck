@@ -388,6 +388,13 @@ Las rutas completas, agrupadas. El detalle de cada decisión está en
 `.../solicitudes`, `.../preferencias`, `.../salir`, `/v1/invitaciones/{codigo}`,
 `GET /v1/bloqueos` *(a quiénes bloqueé)*, `POST`/`DELETE /v1/bloqueos/{username}`.
 
+**Versión web** — `GET /web/…`: archivos estáticos de `WTFUCK_WEB_DIR`, en el
+mismo origen que la API y con CSP estricta (`server/Web.kt`). Un navegador
+entra **solo** por `POST /v1/dispositivos/vincular` con `hardwareNivel:
+"NAVEGADOR"`: el registro y la recuperación lo rechazan con 403, no puede ser
+el principal (409 al promoverlo, y la base lo impide) y su sesión dura 30 días.
+Ver `docs/12-VERSION-WEB.md`.
+
 > Bloquear resuelve el usuario por la búsqueda **o** por una conversación en
 > común; desbloquear, entre los propios bloqueos. Ninguna de las dos depende de
 > que el otro se deje encontrar, y ninguna sirve para averiguar si un usuario

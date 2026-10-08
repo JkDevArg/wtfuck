@@ -125,6 +125,9 @@ Por eso `hardware_nivel` es una columna y no un booleano:
 STRONGBOX     chip dedicado. Lo mejor. Pixel y gama alta reciente
 TEE           enclave seguro del SoC. La mayoría de Android moderno
 SOFTWARE_DEV  sin atestación válida. SOLO en build de depuración
+NAVEGADOR     la versión web (V49). Sin enclave: entra SOLO vinculándose desde
+              un aparato de la cuenta, nunca es el principal y su sesión dura
+              30 días. Ver docs/12-VERSION-WEB.md
 ```
 
 Regla de despliegue:

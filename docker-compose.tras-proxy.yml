@@ -68,6 +68,13 @@ services:
       # aceptan aparatos sin enclave seguro, o sea emuladores, y el vinculo de
       # hardware se salta con cinco minutos de trabajo.
       WTFUCK_PERMITIR_SOFTWARE_DEV: "false"
+      # La version web: los archivos que se armaron en la PC y se subieron a
+      # ./web-publicada, igual que el APK. Si la carpeta esta vacia, /web
+      # responde 404 con el motivo. Ver docs/12-VERSION-WEB.md.
+      WTFUCK_WEB_DIR: /app/web
+    # Solo lectura: el servidor sirve la web, no la escribe.
+    volumes:
+      - ./web-publicada:/app/web:ro
     ports:
       # SOLO en la interfaz local. Sin el `127.0.0.1:` delante, Docker abre el
       # puerto en todas las interfaces Y le escribe una regla a iptables que

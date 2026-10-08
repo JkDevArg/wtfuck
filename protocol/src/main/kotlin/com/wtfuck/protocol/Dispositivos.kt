@@ -31,6 +31,32 @@ import kotlinx.serialization.Serializable
 
 const val RUTA_DISPOSITIVOS = "/v1/dispositivos"
 
+/**
+ * Donde vive la version web: en el MISMO origen que la API, para no abrir
+ * CORS. Ver docs/12-VERSION-WEB.md.
+ */
+const val RUTA_WEB = "/web"
+
+/**
+ * Los niveles de hardware que declara un aparato. Ver docs/04-DEVICE-BINDING.md.
+ *
+ * [NAVEGADOR] es de la version web: no tiene enclave ni atestacion, y por eso
+ * tiene tres limites que el servidor hace cumplir, no la interfaz:
+ *  - solo entra VINCULANDOSE desde un aparato que ya esta en la cuenta: no
+ *    sirve para registrarse ni para recuperar la cuenta;
+ *  - nunca es el principal, asi que nunca autoriza a otros;
+ *  - su sesion dura [DIAS_SESION_NAVEGADOR] dias y no 90.
+ */
+object NivelHardware {
+    const val STRONGBOX = "STRONGBOX"
+    const val TEE = "TEE"
+    const val SOFTWARE_DEV = "SOFTWARE_DEV"
+    const val NAVEGADOR = "NAVEGADOR"
+}
+
+/** Cuanto vive la sesion de un navegador antes de pedir la contrasena otra vez. */
+const val DIAS_SESION_NAVEGADOR = 30
+
 // ============================================================
 //  Vincular
 // ============================================================

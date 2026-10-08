@@ -517,6 +517,9 @@ fun Application.modulo() {
             )
         }
 
+        // La version web: archivos estaticos, mismo origen. Ver `Web`.
+        with(Web) { rutasWeb() }
+
         get("/consola") {
             val html = Consola::class.java.getResourceAsStream("/consola/index.html")
                 ?.bufferedReader()?.use { it.readText() }

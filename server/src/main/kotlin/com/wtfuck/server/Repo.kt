@@ -79,14 +79,10 @@ object Repo {
         if (r.password.length < 8) {
             throw ErrorNegocio(400, "La contrasena debe tener al menos 8 caracteres.")
         }
-        if (r.hardwareNivel !in setOf("STRONGBOX", "TEE", "SOFTWARE_DEV")) {
-            throw ErrorNegocio(400, "Nivel de hardware desconocido.")
-        }
         // El servidor decide, no el cliente: en release no se aceptan dispositivos
-        // sin atestacion valida. Ver docs/04-DEVICE-BINDING.md
-        if (r.hardwareNivel == "SOFTWARE_DEV" && !Config.permitirSoftwareDev) {
-            throw ErrorNegocio(403, "Este dispositivo no puede acreditar hardware seguro.")
-        }
+        // sin atestacion valida, y un navegador no crea cuentas. Ver
+        // docs/04-DEVICE-BINDING.md
+        nivelParaPrincipal(r.hardwareNivel)
 
         val hwHash = Base64Util.dec(r.hardwareHash)
         val identidad = Base64Util.dec(r.identidadPub)
@@ -251,13 +247,22 @@ object Repo {
         agente: String? = null,
     ): String {
         val token = Cripto.nuevoToken()
+        // La sesion de un navegador dura menos: no hay enclave que la proteja
+        // si alguien se lleva el perfil del navegador. Se decide aqui, por el
+        // nivel del aparato, y no en cada llamador: asi vale igual al vincular
+        // y al volver a entrar con la contrasena.
+        val nivel = c.prepareStatement("SELECT hardware_nivel FROM dispositivo WHERE id = ?").use { st ->
+            st.setObject(1, dispositivoId)
+            st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+        }
+        val dias = if (nivel == NivelHardware.NAVEGADOR) DIAS_SESION_NAVEGADOR else DIAS_SESION.toInt()
         c.prepareStatement(
             """INSERT INTO sesion (dispositivo_id, token_hash, expira_en, ip, agente, ultimo_uso_en)
                VALUES (?, ?, now() + make_interval(days => ?), ?::inet, ?, now())"""
         ).use { st ->
             st.setObject(1, dispositivoId)
             st.setBytes(2, Cripto.hashToken(token))
-            st.setInt(3, DIAS_SESION.toInt())
+            st.setInt(3, dias)
             // De donde y con que se abrio. Sin esto, la gestion de sesiones es
             // una lista de identificadores que no permite decidir nada.
             //
@@ -282,12 +287,38 @@ object Repo {
     fun emitirTokenPara(c: Connection, dispositivoId: UUID, ip: String?, agente: String?): String =
         emitirToken(c, dispositivoId, ip, agente)
 
-    /** Valida el nivel de hardware declarado. Lo usan el registro y la vinculacion. */
-    fun nivelPermitido(nivel: String): String {
-        if (nivel !in setOf("STRONGBOX", "TEE", "SOFTWARE_DEV")) {
+    /**
+     * El nivel de un aparato que se VINCULA a una cuenta que ya existe. Es el
+     * unico camino por el que entra un navegador.
+     */
+    fun nivelParaVincular(nivel: String): String {
+        if (nivel == NivelHardware.NAVEGADOR) return nivel
+        return nivelDeTelefono(nivel)
+    }
+
+    /**
+     * El nivel de un aparato que va a ser el PRINCIPAL: el registro y la
+     * recuperacion de la cuenta.
+     *
+     * Un navegador no: el principal es el que autoriza a los demas aparatos, y
+     * eso no se le confia a algo cuyas claves viven en una pestana.
+     */
+    fun nivelParaPrincipal(nivel: String): String {
+        if (nivel == NivelHardware.NAVEGADOR) {
+            throw ErrorNegocio(
+                403,
+                "Un navegador no puede ser tu aparato principal. Crea la cuenta (o recuperala) " +
+                    "en el telefono y vincula el navegador desde ahi.",
+            )
+        }
+        return nivelDeTelefono(nivel)
+    }
+
+    private fun nivelDeTelefono(nivel: String): String {
+        if (nivel !in setOf(NivelHardware.STRONGBOX, NivelHardware.TEE, NivelHardware.SOFTWARE_DEV)) {
             throw ErrorNegocio(400, "Nivel de hardware desconocido.")
         }
-        if (nivel == "SOFTWARE_DEV" && !Config.permitirSoftwareDev) {
+        if (nivel == NivelHardware.SOFTWARE_DEV && !Config.permitirSoftwareDev) {
             throw ErrorNegocio(403, "Este dispositivo no tiene enclave seguro.")
         }
         return nivel

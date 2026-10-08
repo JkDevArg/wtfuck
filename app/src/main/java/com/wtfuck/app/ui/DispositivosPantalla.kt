@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -26,6 +27,7 @@ import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.CodigoVinculacion
 import com.wtfuck.protocol.DispositivoInfo
+import com.wtfuck.protocol.NivelHardware
 import kotlinx.coroutines.launch
 
 /**
@@ -288,9 +290,17 @@ private fun FilaDispositivo(
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
     ) {
+        // La version web: un aparato sin enclave, que nunca es el principal.
+        // Ver docs/12-VERSION-WEB.md.
+        val esNavegador = d.nivelHardware == NivelHardware.NAVEGADOR
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Devices, null, tint = if (d.esEste) Cian else Slate, modifier = Modifier.size(20.dp))
+                Icon(
+                    if (esNavegador) Icons.Filled.Language else Icons.Filled.Devices,
+                    if (esNavegador) "Navegador" else null,
+                    tint = if (d.esEste) Cian else Slate,
+                    modifier = Modifier.size(20.dp),
+                )
                 Spacer(Modifier.width(10.dp))
                 Text(
                     d.etiqueta,
@@ -326,10 +336,14 @@ private fun FilaDispositivo(
                 )
             }
             Text(
-                if (d.nivelHardware == "SOFTWARE_DEV") "Sin enclave seguro (desarrollo)"
-                else "Hardware verificado (${d.nivelHardware})",
+                when (d.nivelHardware) {
+                    NivelHardware.NAVEGADOR ->
+                        "Navegador web: sus claves viven en el navegador. Revócalo si no lo reconoces."
+                    NivelHardware.SOFTWARE_DEV -> "Sin enclave seguro (desarrollo)"
+                    else -> "Hardware verificado (${d.nivelHardware})"
+                },
                 style = MaterialTheme.typography.labelSmall,
-                color = if (d.nivelHardware == "SOFTWARE_DEV") Ambar else TextoTerciario,
+                color = if (d.nivelHardware == NivelHardware.TEE || d.nivelHardware == NivelHardware.STRONGBOX) TextoTerciario else Ambar,
             )
 
             if (!d.tieneClaves) {
@@ -350,7 +364,9 @@ private fun FilaDispositivo(
             if (puedeGestionar && !d.esEste) {
                 Spacer(Modifier.height(6.dp))
                 Row {
-                    if (!d.principal) {
+                    // Un navegador no puede ser el principal: el servidor lo
+                    // rechaza, asi que tampoco se ofrece.
+                    if (!d.principal && !esNavegador) {
                         TextButton(onClick = onPromover, contentPadding = PaddingValues(horizontal = 4.dp)) {
                             Text("Hacer principal", color = Cian, fontSize = 13.sp)
                         }

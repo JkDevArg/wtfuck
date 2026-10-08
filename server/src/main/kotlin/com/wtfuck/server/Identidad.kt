@@ -489,12 +489,8 @@ object Identidad {
         if (req.passwordNueva.length < 10) {
             throw ErrorNegocio(400, "La contrasena nueva necesita al menos 10 caracteres.")
         }
-        if (req.hardwareNivel !in setOf("STRONGBOX", "TEE", "SOFTWARE_DEV")) {
-            throw ErrorNegocio(400, "Nivel de hardware desconocido.")
-        }
-        if (req.hardwareNivel == "SOFTWARE_DEV" && !Config.permitirSoftwareDev) {
-            throw ErrorNegocio(403, "Este dispositivo no puede acreditar hardware seguro.")
-        }
+        // El aparato que recupera queda de principal: un navegador no.
+        Repo.nivelParaPrincipal(req.hardwareNivel)
 
         val e164 = SmsFactory.exigirTelefono(req.telefono)
         val hashTel = hashTelefono(e164)

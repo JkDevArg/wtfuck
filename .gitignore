@@ -59,3 +59,5 @@ web/cripto/target/
 web/cripto/pkg/
 web/**/node_modules/
 web/**/dist/
+# Lo que sirve /web en el VPS: se sube armado, no se versiona.
+web-publicada/
