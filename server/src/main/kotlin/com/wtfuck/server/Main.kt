@@ -621,6 +621,15 @@ fun Application.modulo() {
             }
             call.respond(resp)
         }
+        // --- W5e: Key Attestation -------------------------------------
+        //
+        // Sin sesion: se pide ANTES de registrarse, vincular o recuperar. El reto
+        // va dentro del certificado que firma el chip. Ver `Atestacion`.
+        post(RUTA_ATESTACION_RETO) {
+            Limitador.exigir(null, call.ipCliente(), "reto_atestacion", Regla(120, java.time.Duration.ofHours(1)))
+            call.respond(Atestacion.emitirReto())
+        }
+
         // --- W5: registro desde la web ---------------------------------
         //
         // Sin sesion: es antes de tener cuenta. Lo que la protege esta en

@@ -337,4 +337,5 @@ dependencies {
 
     testImplementation(libs.junit4)
     androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

@@ -199,7 +199,8 @@ object Dispositivos {
                 throw ErrorNegocio(409, "Esa cuenta ya tiene $MAX_DISPOSITIVOS dispositivos.")
             }
 
-            val nivel = Repo.nivelParaVincular(req.hardwareNivel)
+            val atestacion = Atestacion.evaluar(c, req.atestacion, Repo.nivelParaVincular(req.hardwareNivel))
+            val nivel = atestacion.nivel
             val nuevoId = c.prepareStatement(
                 """INSERT INTO dispositivo
                      (usuario_id, etiqueta, identidad_pub, hardware_hash, hardware_nivel,
@@ -214,6 +215,7 @@ object Dispositivos {
                 st.setObject(6, vinculacion)
                 st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
             }
+            Atestacion.anotar(c, nuevoId, atestacion)
 
             c.prepareStatement(
                 "UPDATE codigo_vinculacion SET usado_por = ? WHERE usuario_id = ? AND usado_en IS NOT NULL AND usado_por IS NULL"

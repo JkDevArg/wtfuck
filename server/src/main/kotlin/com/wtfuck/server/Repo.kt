@@ -154,6 +154,11 @@ object Repo {
             st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
         }
 
+        // W5e · La atestacion del telefono. En `exigir`, sin una cadena valida
+        // no hay alta y el nivel es el LEIDO de la cadena; en `registrar`, se
+        // anota y queda el declarado. Ver `Atestacion.evaluar`.
+        val atestacion = Atestacion.evaluar(c, r.atestacion, r.hardwareNivel)
+
         // El dispositivo del registro es el PRINCIPAL: es el unico que puede
         // autorizar otros. Si cualquiera pudiera, robar un secundario
         // alcanzaria para vincular mas y la cuenta no se recuperaria nunca.
@@ -166,9 +171,10 @@ object Repo {
             st.setString(2, r.etiquetaDispositivo.take(64))
             st.setBytes(3, identidad)
             st.setBytes(4, hwHash)
-            st.setString(5, r.hardwareNivel)
+            st.setString(5, atestacion.nivel)
             st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
         }
+        Atestacion.anotar(c, dispositivoId, atestacion)
 
         // Quien entro con cada codigo. Despues del INSERT, que es cuando ya
         // hay un id al que apuntar.

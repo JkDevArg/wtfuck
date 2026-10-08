@@ -176,9 +176,14 @@ async function sembrar(etiqueta, conDenuncia = false) {
   // el auditor la reconozca como el `{clave}` de la ruta.
   const LIMITE = 'enviar_mensaje';
 
+  // W5: una invitacion web de la duena. A diferencia de las de registro del
+  // staff, esta la crea cualquier cuenta: es un objeto de a pie, ajeno.
+  const invWeb = await post('/v1/registro/invitaciones-web', duena.t);
+  const INV_WEB = invWeb.b?.codigo;
+
   return {
     duena, socio, G, DIRECTA, M, CANAL, LLAMADA, INV, ROL, ADJ, CONSOLA,
-    DENUNCIA, SESION, COMUNIDAD, HISTORIA, LIMITE,
+    DENUNCIA, SESION, COMUNIDAD, HISTORIA, LIMITE, INV_WEB,
   };
 }
 
@@ -189,7 +194,7 @@ const ajena = await reg('c');   // el tercero: sin relacion con nada ni con nadi
 const faltan = Object.entries({
   grupo: X.G, directa: X.DIRECTA, canal: X.CANAL, llamada: X.LLAMADA,
   invitacion: X.INV, rol: X.ROL, adjunto: X.ADJ, consola: X.CONSOLA,
-  denuncia: X.DENUNCIA, sesion: X.SESION,
+  denuncia: X.DENUNCIA, sesion: X.SESION, invitacionWeb: X.INV_WEB,
 }).filter(([, v]) => !v).map(([k]) => k);
 
 // Esto es la guarda que faltaba la primera vez. Sin ella, un objeto que no se
@@ -375,6 +380,10 @@ const FILAS = [
   // Lo que se exige AQUI es lo otro: que una cuenta de a pie no pueda anular
   // el codigo de otro. En un servidor cerrado eso seria poder cerrarle la
   // puerta a quien esta invitado, sin ser nadie.
+  // W5: la invitacion web es de quien la creo. Revocar la de otro seria
+  // dejar sin entrada a la persona que esa cuenta invito.
+  { n: 'revocar la invitacion web de otra persona', m: 'DELETE',
+    ruta: (w) => `/v1/registro/invitaciones-web/${w.INV_WEB}` },
   { n: 'revocar un codigo de invitacion sin ser staff', m: 'DELETE',
     ruta: () => `/v1/registro/invitaciones/${CODIGO_FALSO}`, soloPanel: true,
     sinControl: 'crear el codigo del control exige ser administrador, y el mundo de control no lo es' },

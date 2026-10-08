@@ -326,6 +326,12 @@ data class RecuperarDispositivoReq(
      */
     val correo: String = "",
     val codigoCorreo: String = "",
+    /**
+     * W5e · La cadena de atestacion del Keystore (certificados X.509 en DER,
+     * base64, la hoja primero), generada con el reto de [RUTA_ATESTACION_RETO].
+     * Vacia desde la web y desde una app vieja. Ver `Atestacion.kt`.
+     */
+    val atestacion: List<String> = emptyList(),
 )
 
 // ============================================================

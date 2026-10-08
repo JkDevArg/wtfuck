@@ -314,6 +314,10 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun modoRegistro(): ModoRegistroResp =
         pedir(RUTA_REGISTRO_MODO, "GET", null, false)
 
+    /** W5e · El reto para la atestacion. Sin sesion: va antes de tener cuenta. */
+    suspend fun retoAtestacion(): RetoAtestacion =
+        pedir(RUTA_ATESTACION_RETO, "POST", null, false)
+
     suspend fun crearInvitacion(req: NuevaInvitacionReq): InvitacionResp =
         pedir(RUTA_INVITACIONES_REGISTRO, "POST", jsonApp.encodeToString(req), true)
 

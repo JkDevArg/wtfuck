@@ -28,8 +28,14 @@ Cualquier cosa que el cliente afirma, el cliente puede mentir.
 
 ## Lo que el servidor verifica hoy
 
-**Nada de hardware.** Las tres cosas que llegan al registrarse son
-declaraciones del cliente:
+> **Actualización (2026-10-08, W5e):** la Key Attestation ya está construida
+> (ver la sección siguiente) y arranca en modo `registrar`: verifica y
+> **anota** el resultado en `dispositivo.atestacion`, pero todavía no rechaza
+> a nadie. Mientras no se pase a `exigir`, lo que sigue describe lo que el
+> servidor **hace cumplir**: un cliente modificado sigue entrando, y ahora
+> queda anotado como `fallida:…`.
+
+Las tres cosas que llegan al registrarse son declaraciones del cliente:
 
 | Campo | Qué es | Quién lo comprueba |
 |---|---|---|
@@ -87,9 +93,22 @@ a la app honesta, no a un atacante.
 
 ---
 
-## Lo que haría falta para verificar de verdad: Key Attestation
+## Key Attestation: verificar de verdad
 
-**No está implementado.** Esto es lo que habría que construir, con su costo.
+**Construida en W5e (2026-10-08)**, en `server/.../Atestacion.kt`, con este
+diseño y en modo `registrar`. Lo que se hizo y lo que falta:
+
+| Parte | Estado |
+|---|---|
+| Reto del servidor (`POST /v1/atestacion/reto`), de un uso, 5 min, en la base | Hecho |
+| La app crea una clave nueva por alta con ese reto y manda la cadena (registro, vínculo, recuperación) | Hecho (`Hardware.atestar`) |
+| Firmas hasta las raíces de Google (RSA y la ECDSA P-384 de RKP), revocados, reto, nivel, `origin`, `rootOfTrust`, paquete y firma de la app | Hecho, con un lector DER propio (sin dependencias) |
+| Modos `apagada` / `registrar` / `exigir` (`WTFUCK_ATESTACION`) | Hecho; arranca en `registrar` |
+| Probado con una cadena **real** de emulador | Hecho: firma bien y su raíz ("Google Test LLC") se rechaza |
+| Probado con una cadena real de **teléfono físico** (raíz de Google) | **Falta**: necesita el teléfono conectado |
+| Medir en producción antes de exigir | Falta: la consulta está en `docs/13-WEB-EN-EL-VPS.md` |
+
+Lo que sigue es el plan original, que es lo que se construyó.
 
 ### El mecanismo
 

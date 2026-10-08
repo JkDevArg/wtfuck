@@ -103,6 +103,52 @@ object Hardware {
      * defecto es false). Es lo que la app CREE de si misma y lo que declara: el
      * servidor no tiene forma de comprobarlo.
      */
+    /**
+     * W5e · La cadena de atestacion para UN alta (registro, vinculo o
+     * recuperacion), con el reto que emitio el servidor.
+     *
+     * Una clave NUEVA cada vez, y se borra al terminar: el reto va dentro del
+     * certificado que firma el chip, asi que la cadena sirve para esta peticion
+     * y para ninguna otra. La clave de identidad (`ALIAS`) no se toca.
+     *
+     * Primero intenta StrongBox (el chip aparte, en los telefonos que lo
+     * tienen) y si no, el TEE. Si el telefono no puede atestar -o el servidor
+     * no da reto, porque es viejo- devuelve una lista vacia: decide el servidor
+     * si eso alcanza (`WTFUCK_ATESTACION`).
+     */
+    fun atestar(retoB64: String?): List<String> {
+        if (retoB64.isNullOrBlank()) return emptyList()
+        val alias = "wtfuck_atestacion_" + java.util.UUID.randomUUID()
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        return try {
+            val reto = Base64.decode(retoB64, Base64.NO_WRAP)
+            fun generar(strongbox: Boolean) {
+                val b = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
+                    .setAlgorithmParameterSpec(java.security.spec.ECGenParameterSpec("secp256r1"))
+                    .setDigests(KeyProperties.DIGEST_SHA256)
+                    .setAttestationChallenge(reto)
+                if (strongbox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) b.setIsStrongBoxBacked(true)
+                KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
+                    .apply { initialize(b.build()) }
+                    .generateKeyPair()
+            }
+            try {
+                generar(strongbox = true)
+            } catch (e: Exception) {
+                // StrongBoxUnavailableException y parecidas: sin StrongBox, al TEE.
+                generar(strongbox = false)
+            }
+            ks.getCertificateChain(alias)
+                ?.map { Base64.encodeToString(it.encoded, Base64.NO_WRAP) }
+                .orEmpty()
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo atestar: ${e.message}")
+            emptyList()
+        } finally {
+            runCatching { ks.deleteEntry(alias) }
+        }
+    }
+
     private fun nivelDe(privada: PrivateKey): String = try {
         val info = KeyFactory.getInstance(privada.algorithm, "AndroidKeyStore")
             .getKeySpec(privada, KeyInfo::class.java)

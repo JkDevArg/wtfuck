@@ -93,7 +93,7 @@ tiene que leer y producir igual.
 | W3 | Fotos y archivos (directo al almacén; SeaweedFS ya responde CORS), respuestas, ediciones, eliminar para todos, reacciones, avisos del navegador, aviso de cambio de identidad y huella, avisos entre pestañas | **Hecha** (2026-10-08): `docs/evidencias/web-w3/`. Probada contra el teléfono, huella incluida |
 | W4 | Escritorio con Tauri (el mismo código, firmado), llamadas WebRTC, Web Push, notas de voz y miniatura de video, canales | **En curso**: W4a notas de voz y video, W4b canales públicos y W4c Web Push hechas (2026-10-08), `docs/evidencias/web-w4/`. Faltan llamadas y Tauri |
 
-| W5 | La web como app completa, para quien no tiene Android (iPhone): **registrarse** desde la web con correo verificado e invitación web, buscar contactos y empezar chats, y PWA instalable. Más Key Attestation en Android para que la puerta sin invitación de la app no sea la entrada de los bots | **En curso**: W5a, el servidor del registro web, hecho (2026-10-08), `docs/evidencias/web-w5/` |
+| W5 | La web como app completa, para quien no tiene Android (iPhone): **registrarse** desde la web con correo verificado e invitación web, buscar contactos y empezar chats, y PWA instalable. Más Key Attestation en Android para que la puerta sin invitación de la app no sea la entrada de los bots | **En curso** (2026-10-08), `docs/evidencias/web-w5/`: W5a servidor del registro web, W5b crear/recuperar/invitar en la web, W5c contactos y chats nuevos, W5d PWA, W5e Key Attestation en modo `registrar` (falta la prueba con un teléfono físico) |
 
 **Fuera de la web:** el modo cerca, porque el navegador no puede anunciar ni
 escuchar por Bluetooth así.

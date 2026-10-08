@@ -3469,6 +3469,7 @@ class Repositorio(
                 identidadPub = id.identidadPub,
                 hardwareHash = id.hardwareHash,
                 hardwareNivel = id.nivel,
+                atestacion = atestacion(),
             )
         )
         // Se reusa `SesionResp` para guardar: son los mismos cuatro campos, y
@@ -4083,9 +4084,20 @@ class Repositorio(
                 identidadPub = id.identidadPub,
                 hardwareHash = id.hardwareHash,
                 hardwareNivel = id.nivel,
+                atestacion = atestacion(),
             )
         )
         limpiarSiCambioDeCuenta(antes)
+    }
+
+    /**
+     * W5e · La cadena de atestacion para el alta que sigue. Si el servidor no da
+     * reto (es viejo, o no hay red para eso), va vacia: decide el servidor.
+     * Fuera del hilo principal: generar una clave en StrongBox tarda.
+     */
+    private suspend fun atestacion(): List<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val reto = runCatching { api.retoAtestacion() }.getOrNull() ?: return@withContext emptyList()
+        if (reto.modo == ModoAtestacion.APAGADA) emptyList() else Hardware.atestar(reto.reto)
     }
 
     suspend fun pedirEliminacion(password: String, totp: String?): Result<EliminacionPedida> =
@@ -5559,6 +5571,7 @@ class Repositorio(
                 username = username, password = password, etiquetaDispositivo = etiqueta,
                 identidadPub = id.identidadPub, hardwareHash = id.hardwareHash, hardwareNivel = id.nivel,
                 codigoInvitacion = codigoInvitacion,
+                atestacion = atestacion(),
             )
         )
         limpiarSiCambioDeCuenta(antes)

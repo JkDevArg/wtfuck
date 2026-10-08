@@ -717,6 +717,9 @@ object Identidad {
             st.setObject(1, id); st.setBytes(2, hwHash)
             st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
         }
+        // W5e · La atestacion del aparato que recupera. Ver `Atestacion.evaluar`.
+        val atestacion = Atestacion.evaluar(c, req.atestacion, req.hardwareNivel)
+
         val dispositivoId = if (yaEstaba != null) {
             c.prepareStatement(
                 """UPDATE dispositivo
@@ -725,7 +728,7 @@ object Identidad {
             ).use { st ->
                 st.setString(1, req.etiquetaDispositivo.take(64))
                 st.setBytes(2, identidad)
-                st.setString(3, req.hardwareNivel)
+                st.setString(3, atestacion.nivel)
                 st.setObject(4, yaEstaba)
                 st.executeUpdate()
             }
@@ -740,10 +743,11 @@ object Identidad {
                 st.setString(2, req.etiquetaDispositivo.take(64))
                 st.setBytes(3, identidad)
                 st.setBytes(4, hwHash)
-                st.setString(5, req.hardwareNivel)
+                st.setString(5, atestacion.nivel)
                 st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
             }
         }
+        Atestacion.anotar(c, dispositivoId, atestacion)
 
         // El codigo usado NO se invalida aqui.
         //

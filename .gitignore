@@ -12,6 +12,9 @@ local.properties
 
 # Secretos y entorno local
 *.pem
+# Excepcion: las raices PUBLICAS de Key Attestation de Google (certificados,
+# no claves). Ver server/.../Atestacion.kt.
+!server/src/main/resources/atestacion/raices.pem
 .env
 # El de produccion lleva secretos de verdad. `.env` a secas NO lo tapa: un
 # patron sin comodin coincide con ese nombre exacto y con ningun otro.

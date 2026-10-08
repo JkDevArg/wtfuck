@@ -209,3 +209,72 @@ la misma razón.
 - **Avisos con la app cerrada en iPhone:** iOS 16.4 o más nuevo, y solo
   instalada. Pendiente de un aparato real, igual que el Web Push de W4c.
 - **La zona segura en un iPhone con notch:** sin aparato, solo el CSS.
+
+---
+
+# W5e: Key Attestation de Android
+
+Diseño, costo y política: `docs/04-DEVICE-BINDING.md`, "Key Attestation".
+Contrato: `protocol/.../Atestacion.kt`. Verificador: `server/.../Atestacion.kt`.
+
+## Qué cambió
+
+- **`POST /v1/atestacion/reto`** (sin sesión):
+  - 32 bytes al azar, de un uso, 5 minutos;
+  - guardado en la base (`reto_atestacion`, V53) para que sirva con varias
+    instancias;
+  - dice el modo;
+  - límite de 120 por hora y por red.
+- **La app** (`Hardware.atestar`): en cada registro, vínculo o recuperación
+  pide un reto, crea una clave NUEVA en el Keystore con
+  `setAttestationChallenge(reto)` (StrongBox si hay, si no TEE), manda la
+  cadena y borra la clave. La clave de identidad no se toca.
+- **El servidor** valida, en este orden:
+  - las firmas eslabón por eslabón, hasta una de las dos raíces de Google;
+  - los revocados (la lista de Google, renovada cada 6 h);
+  - el reto, que se quema;
+  - el nivel leído (TEE o StrongBox);
+  - `origin = GENERATED`;
+  - arranque verificado y bootloader bloqueado;
+  - el paquete `com.wtfuck.app` y la huella del certificado de firma.
+  - Las raíces son las de `android.googleapis.com/attestation/root`, bajadas
+    el 2026-10-08: la RSA de siempre y la ECDSA P-384 "Key Attestation CA1".
+- **Lector DER propio** (≈90 líneas), sin dependencias.
+- **El resultado se anota** en `dispositivo.atestacion`:
+  `verificada:TEE`, `fallida:bootloader-desbloqueado`, `no-aplica` para el
+  navegador, etc.
+- **Modos (`WTFUCK_ATESTACION`):**
+  - `registrar` (por defecto): anota y no rechaza;
+  - `exigir`: rechaza con 403 y el nivel guardado es el leído de la cadena;
+  - `apagada`.
+- **Los emuladores en desarrollo** (`SOFTWARE_DEV` con el interruptor abierto)
+  se anotan y no se rechazan nunca, ni en `exigir`.
+- **Para conseguir cadenas reales:**
+  - `AtestacionCapturaTest` (prueba instrumentada de la app);
+  - `WTFUCK_ATESTACION_VOLCAR` (el servidor de desarrollo las guarda en una
+    carpeta).
+  - Se instala con `adb install -r` y se corre con `am instrument`, no con
+    `connectedAndroidTest`, que desinstala la app y borra sus datos.
+
+## Pruebas
+
+| Qué | Resultado |
+|---|---|
+| `AtestacionTest` (JUnit) | **9 de 9**. Con una extensión armada a mano: etiquetas de número alto, largos de forma larga, campos en cualquiera de las dos listas, entradas truncadas o mentirosas que lanzan. Con la **cadena real del emulador**: la extensión se lee entera (KeyMint 4, nivel Software, el reto exacto que dio el servidor, `origin` 0, bootloader desbloqueado, arranque sin verificar, `com.wtfuck.app` y la huella del certificado de debug); las firmas verifican; la raíz "Google Test LLC" se rechaza **antes** de tocar la base; un eslabón cambiado da `firma-rota-en-0` |
+| `pruebas/atestacion.mjs` (nueva) | **25 de 25**. Contra el servidor en `registrar`: el reto (32 bytes, 5 min, distinto cada vez, guardado sin usar); el registro pasa y queda anotado sin cadena, ilegible, demasiado larga o con raíz que no es de Google; un TEE declarado sin cadena pasa y se anota; vincular un teléfono anota, y un navegador queda `no-aplica`. Contra una segunda instancia en `exigir`: un TEE sin cadena y un STRONGBOX con raíz ajena dan 403 con el motivo y no dejan cuentas a medias; el emulador en desarrollo sigue entrando |
+| Captura en el emulador (API 37) | La app pidió el reto, el Keystore devolvió 3 certificados y el servidor anotó `fallida:raiz-desconocida` |
+| La app 0.6.5-dev en el emulador | Se instaló sobre la 0.6.4 conservando los datos y abre normal |
+
+## Lo que NO se probó
+
+- **Una cadena de un teléfono físico,** firmada hasta la raíz de Google. Es lo
+  único que prueba de verdad que el camino feliz (`verificada:TEE`) funciona.
+  Hace falta el teléfono conectado por USB con depuración. Pasos:
+  1. `adb reverse tcp:8300 tcp:8300`;
+  2. instalar `app-debug.apk` y `app-debug-androidTest.apk`;
+  3. `am instrument -w -e servidor http://127.0.0.1:8300 com.wtfuck.app.test/androidx.test.runner.AndroidJUnitRunner`.
+- **StrongBox:** depende de que el teléfono lo tenga.
+- **La firma del APK de release:** su huella
+  (`f1ab48bc…cd23`, sacada del APK publicado con `apksigner`) va en
+  `WTFUCK_ATESTACION_FIRMAS` en producción. La de debug (`f259d7ca…3b2d`)
+  solo en desarrollo.
