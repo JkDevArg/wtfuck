@@ -112,8 +112,13 @@ Levanta PostgreSQL (5433) y MinIO (9000/9001). El servidor aplica las
 migraciones y crea el bucket al arrancar.
 
 ```bash
-./gradlew :server:installDist && ./server/build/install/server/bin/server
+./gradlew :server:installDist && WTFUCK_PERMITIR_SOFTWARE_DEV=true ./server/build/install/server/bin/server
 ```
+
+`WTFUCK_PERMITIR_SOFTWARE_DEV=true` deja entrar a los emuladores, que no tienen
+enclave seguro. Sin ella el servidor los **rechaza**: es el defecto de producción
+desde el 2026-10-08 (ver `docs/04-DEVICE-BINDING.md`). `pruebas/arrancar-servidor.ps1`
+ya la pone.
 
 El puerto por defecto es **8300**: en Windows, Hyper-V reserva rangos al azar en
 cuanto Docker Desktop arranca y 8081-8180 cae ahí a menudo.

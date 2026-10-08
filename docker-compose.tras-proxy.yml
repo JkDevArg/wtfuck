@@ -64,9 +64,11 @@ services:
       WTFUCK_DB_USER: wtfuck
       WTFUCK_DB_PASS: ${DB_PASS:?hace falta --env-file .env.produccion}
       WTFUCK_REDIS_URL: redis://:${REDIS_PASS:?hace falta --env-file .env.produccion}@redis:6379
-      # El interruptor mas importante de todo el despliegue: en `true` se
-      # aceptan aparatos sin enclave seguro, o sea emuladores, y el vinculo de
-      # hardware se salta con cinco minutos de trabajo.
+      # En `true` se aceptan aparatos sin enclave seguro, o sea emuladores, y
+      # el vinculo de hardware se salta con cinco minutos de trabajo. Desde el
+      # 2026-10-08 `false` es tambien el defecto del servidor; se deja explicita
+      # para que se lea. No verifica atestacion: el nivel es el que declara el
+      # cliente. Ver docs/04-DEVICE-BINDING.md.
       WTFUCK_PERMITIR_SOFTWARE_DEV: "false"
       # La version web: los archivos que se armaron en la PC y se subieron a
       # ./web-publicada, igual que el APK. Si la carpeta esta vacia, /web

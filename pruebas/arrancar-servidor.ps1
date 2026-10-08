@@ -13,13 +13,17 @@
 #   .\pruebas\arrancar-servidor.ps1 -ConRedis          con bus entre instancias
 #   .\pruebas\arrancar-servidor.ps1 -Puerto 8301 -ConRedis    la segunda
 #   .\pruebas\arrancar-servidor.ps1 -ConPushDeMentira  para probar el push
+#   .\pruebas\arrancar-servidor.ps1 -Puerto 8310 -SinEmuladores
+#                       con el defecto de produccion: rechaza SOFTWARE_DEV.
+#                       Es la que pide `pruebas/nivel-hardware.mjs`.
 #
 # Para `pruebas/bus.mjs` hacen falta las DOS con -ConRedis y
 # `docker compose up -d redis`.
 param(
     [int]$Puerto = 8300,
     [switch]$ConRedis,
-    [switch]$ConPushDeMentira
+    [switch]$ConPushDeMentira,
+    [switch]$SinEmuladores
 )
 
 $raiz = Split-Path -Parent $PSScriptRoot
@@ -76,6 +80,18 @@ $env:WTFUCK_TURN_SECRETO = 'secreto-turn-de-pruebas'
 if (-not $env:WTFUCK_WEB_DIR) {
     $armada = Join-Path $raiz 'web\app\dist'
     $env:WTFUCK_WEB_DIR = if (Test-Path (Join-Path $armada 'index.html')) { $armada } else { Join-Path $raiz 'pruebas\web-de-prueba' }
+}
+# Emuladores. El servidor los RECHAZA por defecto desde el 2026-10-08 -antes
+# los aceptaba si nadie decia nada, y un despliegue que se olvidara la variable
+# quedaba abierto-. Aqui se abre a proposito y a la vista, porque sin esto los
+# AVDs y todas las suites de `pruebas/` se quedan fuera: ninguna tiene enclave.
+#
+# `-SinEmuladores` la QUITA en vez de ponerla en false: lo que se quiere probar
+# es el defecto, o sea el despliegue que se la olvido.
+if ($SinEmuladores) {
+    Remove-Item env:WTFUCK_PERMITIR_SOFTWARE_DEV -ErrorAction SilentlyContinue
+} else {
+    $env:WTFUCK_PERMITIR_SOFTWARE_DEV = 'true'
 }
 $env:WTFUCK_PEPPER_TELEFONO = 'pepper-de-pruebas-local-no-produccion'
 # Modulo P. La beta de tipos de cuenta se resuelve por username y se lee UNA

@@ -72,10 +72,29 @@ object Config {
     val claveDeDesarrollo = System.getenv("WTFUCK_DB_PASS") == null
 
     /**
-     * Acepta dispositivos sin atestacion de hardware valida (emuladores).
-     * DEBE ser false en produccion. Ver docs/04-DEVICE-BINDING.md
+     * Acepta aparatos que se declaran `SOFTWARE_DEV` (sin enclave seguro:
+     * emuladores). Ver docs/04-DEVICE-BINDING.md
+     *
+     * El defecto es `false`, y fue `true` hasta el 2026-10-08. Con `true` por
+     * defecto, un despliegue que se olvidara la variable quedaba abierto a
+     * emuladores sin que nada lo dijera: fail-open. Produccion la fijaba en
+     * `false` a mano, asi que la seguridad dependia de que nadie se saltara una
+     * linea de un docker-compose. Ahora el olvido cierra, y quien necesita
+     * emuladores -`pruebas/arrancar-servidor.ps1`- la pone en `true` a la vista.
+     *
+     * OJO con lo que esto protege y lo que no: el nivel lo DECLARA el cliente
+     * y el servidor no verifica ninguna cadena de atestacion. Este interruptor
+     * frena a la app honesta corriendo en un emulador; un cliente modificado
+     * que escriba "TEE" pasa igual. Ver la seccion "Lo que el servidor
+     * verifica hoy" del documento.
      */
-    val permitirSoftwareDev = System.getenv("WTFUCK_PERMITIR_SOFTWARE_DEV")?.toBoolean() ?: true
+    val permitirSoftwareDev = leerPermitirSoftwareDev(System.getenv("WTFUCK_PERMITIR_SOFTWARE_DEV"))
+
+    /**
+     * Solo `true` (sin importar mayusculas) abre. Cualquier otra cosa -ausente,
+     * vacia, "1", "si", una errata- cierra: ante la duda, el lado seguro.
+     */
+    fun leerPermitirSoftwareDev(valor: String?): Boolean = valor?.trim()?.toBoolean() ?: false
 }
 
 val json = Json {
@@ -263,6 +282,14 @@ fun main() {
     }
     Db.iniciar(Config.dbUrl, Config.dbUser, Config.dbPass)
     bitacora.info("Base lista. permitirSoftwareDev=${Config.permitirSoftwareDev}")
+    // Con `true` se aceptan emuladores. En desarrollo es lo que se quiere; en
+    // produccion es el vinculo de hardware desactivado. Que lo grite.
+    if (Config.permitirSoftwareDev) {
+        bitacora.warn(
+            "WTFUCK_PERMITIR_SOFTWARE_DEV=true: se aceptan aparatos sin enclave seguro " +
+                "(emuladores). Solo para desarrollo. Ver docs/04-DEVICE-BINDING.md"
+        )
+    }
     // El chat de texto debe seguir funcionando aunque el almacen este caido.
     Almacen.iniciar()
     bitacora.info("Almacen de adjuntos disponible=${Almacen.disponible()}")

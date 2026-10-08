@@ -7004,3 +7004,61 @@ contra servidor y Postgres reales) y **las 38 suites de integración: 1580 pasan
 Sin verificar: el borrado on-device con dos teléfonos. Requiere dos aparatos y
 esperar el plazo; el emulador de esta máquina está corrupto. Detalle en
 `docs/evidencias/mensajes-temporales/`.
+
+---
+
+# Nivel de hardware · un interruptor que fallaba abierto y un documento que prometía de más
+
+No es un módulo nuevo. Son dos hallazgos de seguridad que aparecieron al
+analizar el cliente web, y los dos tienen la misma forma: **el sistema decía de
+sí mismo algo más fuerte de lo que hacía**.
+
+## 1 · `WTFUCK_PERMITIR_SOFTWARE_DEV` valía `true` si nadie la definía
+
+Fail-open. Producción la fijaba en `false` en los dos `docker-compose`, así que
+la seguridad del vínculo de hardware dependía de que nadie se saltara una línea.
+Un despliegue nuevo, un compose escrito a mano o un `docker run` aceptaban
+emuladores en registro, vinculación y recuperación, y lo único que lo delataba
+era un `INFO permitirSoftwareDev=true` en la bitácora.
+
+**El arreglo:** el defecto pasa a `false` y solo el texto `true` abre
+(`Config.leerPermitirSoftwareDev`; `1`, `si` o una errata cierran). El que
+necesita emuladores lo dice: `pruebas/arrancar-servidor.ps1` la pone en `true`
+a la vista, y con `true` el servidor deja un `WARN` al arrancar. Los compose de
+producción la siguen fijando en `false`: ya no hace falta, pero se lee.
+
+## 2 · El servidor no verifica ninguna atestación
+
+`docs/04-DEVICE-BINDING.md` describía que el servidor valida la cadena del
+Keystore contra la raíz de Google. **No existe.** El nivel es el string que
+manda el cliente; la app genera el reto de atestación en el propio teléfono y
+la cadena nunca sale de él. Un cliente modificado declara `TEE`, manda un
+`hardwareHash` al azar y entra con el interruptor como esté. O sea: el arreglo
+del punto 1 frena a la app honesta en un emulador, y a nadie más.
+
+No se implementó la verificación: es una decisión con costo —fixtures de
+teléfonos físicos, raíces que Google rota (ya lo hizo en 2026 con RKP), falsos
+rechazos de aparatos legítimos— y le toca al dueño del proyecto. Lo que sí se
+hizo es que **el documento diga la verdad** y deje escrito qué haría falta y
+cuánto cuesta.
+
+## Lo que impide que vuelvan a separarse
+
+- `NivelHardwareTest` fija `un TEE declarado se acepta sin prueba`. Es una
+  prueba de un **límite**, no de una virtud: el día que se implemente la
+  atestación se cae, y obliga a reescribir el documento en el mismo cambio.
+- `pruebas/nivel-hardware.mjs` lo mismo contra la API real, con una segunda
+  instancia levantada **sin** la variable (`arrancar-servidor.ps1 -SinEmuladores`).
+
+## Hallazgo relacionado, sin tocar
+
+`POST /v1/registro` no tiene límite de ritmo, y con el nivel y el
+`hardwareHash` declarados, un script con el registro abierto crea cuentas sin
+tope. `WTFUCK_REGISTRO=invitacion` lo cierra hoy; un límite por IP con
+`Limitador`/`Cupos` sería el arreglo barato.
+
+## Verificado
+
+Validado por reversión: con el código anterior, la suite marca **3 rojas** (un
+`SOFTWARE_DEV` sin la variable recibía 200 y token); con el arreglo, verde.
+Detalle y salidas en `docs/evidencias/nivel-de-hardware/`.

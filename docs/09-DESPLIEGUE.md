@@ -40,10 +40,16 @@ tarde.
 
 ```bash
 WTFUCK_PROPIETARIO=tu_usuario \
+WTFUCK_PERMITIR_SOFTWARE_DEV=true \
 WTFUCK_PEPPER_TELEFONO=pepper-de-pruebas-local-no-produccion \
 WTFUCK_TURN_SECRETO=secreto-turn-de-pruebas \
   server/build/install/server/bin/server
 ```
+
+`WTFUCK_PERMITIR_SOFTWARE_DEV=true` es lo que deja registrarse a un emulador. Sin
+ella el servidor rechaza los aparatos sin enclave seguro: es lo correcto en
+producción, y en local deja fuera a los AVDs y a todas las suites de `pruebas/`.
+`pruebas/arrancar-servidor.ps1` ya la pone.
 
 Las migraciones se aplican solas al arrancar, en orden, una vez cada una. El log
 dice cuál aplicó.
@@ -295,10 +301,18 @@ respuesta entonces no es más instancias: es un Postgres gestionado.
 
 **1. `WTFUCK_PERMITIR_SOFTWARE_DEV=false`.**
 
-En desarrollo vale `true` y es lo que permite usar emuladores: acepta
-dispositivos sin enclave seguro. En producción, con `true`, cualquiera se salta
-el vínculo de hardware —la regla de "una cuenta por dispositivo"— con un
-emulador. Es el interruptor más importante de esta lista.
+Desde el 2026-10-08 es **el defecto**: si la variable no está, el servidor
+rechaza los aparatos sin enclave seguro. Antes valía `true` y un despliegue que
+se la olvidara quedaba abierto a emuladores sin aviso. Los `docker-compose` de
+producción la siguen fijando en `false` explícitamente, para que se lea al abrir
+el archivo. En desarrollo se pone en `true` (lo hace `arrancar-servidor.ps1`), y
+el servidor lo advierte en la bitácora al arrancar.
+
+Lo que este interruptor **no** hace: verificar nada. El nivel de hardware es el
+que el cliente declara, y el servidor no valida ninguna cadena de atestación.
+Con `false` se frena a la app honesta corriendo en un emulador; un cliente
+modificado que declare `TEE` pasa igual. Ver
+[`04-DEVICE-BINDING.md`](04-DEVICE-BINDING.md#lo-que-el-servidor-verifica-hoy).
 
 **2. `WTFUCK_PEPPER_TELEFONO`, con un valor de verdad.**
 

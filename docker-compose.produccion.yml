@@ -87,12 +87,15 @@ services:
       WTFUCK_DB_USER: wtfuck
       WTFUCK_DB_PASS: ${DB_PASS:?hace falta --env-file .env.produccion}
       WTFUCK_REDIS_URL: redis://:${REDIS_PASS:?hace falta --env-file .env.produccion}@redis:6379
-      # El interruptor mas importante de todo el despliegue.
-      #
       # En `true` se aceptan aparatos sin enclave seguro, o sea emuladores, y
       # el vinculo de hardware —"una cuenta por dispositivo"— se salta con un
-      # emulador y cinco minutos. Va explicito aqui y no por defecto para que
-      # se vea al leer el archivo.
+      # emulador y cinco minutos.
+      #
+      # Desde el 2026-10-08 `false` es tambien el defecto del servidor: borrar
+      # esta linea ya no abre nada. Se deja explicita igual, para que se lea al
+      # abrir el archivo. Y ojo con lo que NO hace: el nivel lo declara el
+      # cliente y nadie verifica la atestacion, asi que un cliente modificado
+      # que diga "TEE" pasa. Ver docs/04-DEVICE-BINDING.md.
       WTFUCK_PERMITIR_SOFTWARE_DEV: "false"
       # El almacen tiene dos direcciones y no una: la interna para hablar con
       # el, y la publica para FIRMAR lo que ve el telefono. Ver la nota de

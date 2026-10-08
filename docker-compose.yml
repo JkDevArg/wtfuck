@@ -1,3 +1,6 @@
+# Solo la infraestructura de desarrollo: el servidor NO corre aqui, se levanta
+# con `pruebas/arrancar-servidor.ps1`, que es donde se pone
+# WTFUCK_PERMITIR_SOFTWARE_DEV=true para los emuladores.
 services:
   db:
     image: postgres:17-alpine

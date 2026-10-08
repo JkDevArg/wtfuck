@@ -18,10 +18,13 @@ import java.security.PrivateKey
  * Identidad del dispositivo.
  *
  * El par de claves se genera DENTRO del Keystore y la privada no es exportable:
- * ni con root sale del chip. Eso es lo que convierte al dispositivo en algo que
- * el servidor puede verificar en vez de creer.
+ * ni con root sale del chip. Eso PERMITIRIA que el servidor verificara el
+ * aparato en vez de creerle, pero hoy no lo hace: la cadena de atestacion no se
+ * envia, y lo que llega al servidor es el nivel que calcula [nivelDe], o sea una
+ * declaracion. Un cliente modificado puede mandar el que quiera.
  *
- * Ver docs/04-DEVICE-BINDING.md para los limites reales de esto.
+ * Ver docs/04-DEVICE-BINDING.md: lo que el servidor verifica hoy, y lo que
+ * haria falta para verificar de verdad.
  */
 object Hardware {
 
@@ -31,7 +34,7 @@ object Hardware {
     data class Identidad(
         /** Clave publica en formato X.509, Base64. */
         val identidadPub: String,
-        /** Base64 de SHA-256(clave_publica || SSAID). */
+        /** Base64 de SHA-256("wtfuck:v1:" || SSAID). Ver el comentario de [identidad]. */
         val hardwareHash: String,
         /** STRONGBOX | TEE | SOFTWARE_DEV */
         val nivel: String,
@@ -57,9 +60,10 @@ object Hardware {
         // sobrevive a eso y solo muere con un factory reset, que es justamente el
         // techo declarado en docs/04-DEVICE-BINDING.md
         //
-        // La clave atestada sigue cumpliendo su papel, que es otro: probar que el
-        // dispositivo tiene enclave seguro (ver [nivelDe]) y firmar. Identidad
-        // continua y prueba de hardware son dos cosas distintas.
+        // La clave del Keystore sirve para otra cosa: saber en que nivel vive
+        // (ver [nivelDe]). Identidad continua y prueba de hardware son dos cosas
+        // distintas. Y "prueba" es mucho decir mientras la cadena no viaje: hoy
+        // el servidor recibe el nivel declarado, no algo que pueda comprobar.
         val hash = MessageDigest.getInstance("SHA-256")
             .digest(("wtfuck:v1:" + ssaid).toByteArray())
 
@@ -78,7 +82,11 @@ object Hardware {
         )
             .setAlgorithmParameterSpec(java.security.spec.ECGenParameterSpec("secp256r1"))
             .setDigests(KeyProperties.DIGEST_SHA256)
-            // El reto es lo que impide reciclar una cadena de atestacion vieja.
+            // OJO: este reto NO protege nada. Un reto impide reciclar una cadena
+            // vieja solo si lo emite el SERVIDOR y luego lo busca dentro de la
+            // cadena; este se inventa aqui y la cadena nunca se envia. Queda
+            // para que el Keystore genere la atestacion, y como recordatorio de
+            // donde iria el reto de verdad. Ver docs/04-DEVICE-BINDING.md.
             .setAttestationChallenge(reto)
             .build()
 
@@ -91,7 +99,9 @@ object Hardware {
      * Donde vive realmente la clave privada.
      *
      * En un emulador esto devuelve SOFTWARE_DEV: no hay TEE. Por eso el servidor
-     * acepta ese nivel solo cuando WTFUCK_PERMITIR_SOFTWARE_DEV esta activo.
+     * acepta ese nivel solo cuando WTFUCK_PERMITIR_SOFTWARE_DEV=true (el
+     * defecto es false). Es lo que la app CREE de si misma y lo que declara: el
+     * servidor no tiene forma de comprobarlo.
      */
     private fun nivelDe(privada: PrivateKey): String = try {
         val info = KeyFactory.getInstance(privada.algorithm, "AndroidKeyStore")

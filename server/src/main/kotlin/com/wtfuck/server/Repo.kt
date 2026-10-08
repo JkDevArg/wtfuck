@@ -79,9 +79,10 @@ object Repo {
         if (r.password.length < 8) {
             throw ErrorNegocio(400, "La contrasena debe tener al menos 8 caracteres.")
         }
-        // El servidor decide, no el cliente: en release no se aceptan dispositivos
-        // sin atestacion valida, y un navegador no crea cuentas. Ver
-        // docs/04-DEVICE-BINDING.md
+        // El servidor decide QUE niveles admite: sin WTFUCK_PERMITIR_SOFTWARE_DEV
+        // no entra un SOFTWARE_DEV, y un navegador nunca crea cuentas. Lo que no
+        // decide es si el nivel es cierto: es el que declara el cliente, sin
+        // atestacion que lo respalde. Ver docs/04-DEVICE-BINDING.md
         nivelParaPrincipal(r.hardwareNivel)
 
         val hwHash = Base64Util.dec(r.hardwareHash)
@@ -291,9 +292,12 @@ object Repo {
      * El nivel de un aparato que se VINCULA a una cuenta que ya existe. Es el
      * unico camino por el que entra un navegador.
      */
-    fun nivelParaVincular(nivel: String): String {
+    fun nivelParaVincular(
+        nivel: String,
+        permitirSoftwareDev: Boolean = Config.permitirSoftwareDev,
+    ): String {
         if (nivel == NivelHardware.NAVEGADOR) return nivel
-        return nivelDeTelefono(nivel)
+        return nivelDeTelefono(nivel, permitirSoftwareDev)
     }
 
     /**
@@ -303,7 +307,10 @@ object Repo {
      * Un navegador no: el principal es el que autoriza a los demas aparatos, y
      * eso no se le confia a algo cuyas claves viven en una pestana.
      */
-    fun nivelParaPrincipal(nivel: String): String {
+    fun nivelParaPrincipal(
+        nivel: String,
+        permitirSoftwareDev: Boolean = Config.permitirSoftwareDev,
+    ): String {
         if (nivel == NivelHardware.NAVEGADOR) {
             throw ErrorNegocio(
                 403,
@@ -311,14 +318,20 @@ object Repo {
                     "en el telefono y vincula el navegador desde ahi.",
             )
         }
-        return nivelDeTelefono(nivel)
+        return nivelDeTelefono(nivel, permitirSoftwareDev)
     }
 
-    private fun nivelDeTelefono(nivel: String): String {
+    /**
+     * OJO: `nivel` es lo que el cliente DECLARA. No hay cadena de atestacion
+     * que lo respalde, asi que esto filtra a la app honesta en un emulador y
+     * nada mas: un cliente modificado escribe "TEE" y pasa. Lo fija
+     * `NivelHardwareTest` y lo explica docs/04-DEVICE-BINDING.md.
+     */
+    private fun nivelDeTelefono(nivel: String, permitirSoftwareDev: Boolean): String {
         if (nivel !in setOf(NivelHardware.STRONGBOX, NivelHardware.TEE, NivelHardware.SOFTWARE_DEV)) {
             throw ErrorNegocio(400, "Nivel de hardware desconocido.")
         }
-        if (nivel == NivelHardware.SOFTWARE_DEV && !Config.permitirSoftwareDev) {
+        if (nivel == NivelHardware.SOFTWARE_DEV && !permitirSoftwareDev) {
             throw ErrorNegocio(403, "Este dispositivo no tiene enclave seguro.")
         }
         return nivel

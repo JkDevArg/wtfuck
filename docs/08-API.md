@@ -560,7 +560,7 @@ Tres que conviene entender porque su forma es una lección aprendida:
 | `WTFUCK_SMS_URL` / `_TOKEN` / `_CUERPO` / `_REMITENTE` | — | Sin ellas los códigos salen en el log marcados como de prueba |
 | `WTFUCK_TURN_URL` / `_SECRETO` / `_VIDA_S` | — | Sin TURN, una llamada sólo conecta si ICE logra ruta directa |
 | `WTFUCK_GIPHY_KEY` | — | Sin ella, la búsqueda de GIFs responde que no está configurada |
-| `WTFUCK_PERMITIR_SOFTWARE_DEV` | `true` | **Poner en `false` en producción**: permite emuladores sin enclave seguro |
+| `WTFUCK_PERMITIR_SOFTWARE_DEV` | `false` (desde 2026-10-08) | `true` solo en desarrollo: acepta aparatos que se declaran sin enclave seguro (emuladores). El nivel es declarado, no verificado: ver `04-DEVICE-BINDING.md` |
 
 ---
 
