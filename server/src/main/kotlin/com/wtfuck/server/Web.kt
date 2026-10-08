@@ -26,9 +26,12 @@ import java.net.URI
  *
  * ## De donde salen los archivos
  *
- * De `WTFUCK_WEB_DIR`: lo que se armo en la PC y se subio, igual que el APK.
- * El servidor no compila nada. Sin la variable, o si la carpeta no esta,
- * `/web` responde 404 con el motivo.
+ * De `WTFUCK_WEB_DIR`: lo que se armo en la PC y se subio, igual que el APK
+ * (`despliegue/publicar-web.sh`). El servidor no compila nada. Sin la
+ * variable, `/web` responde 404 con el motivo.
+ *
+ * La carpeta se lee en cada pedido, no al arrancar: publicar una version
+ * nueva es reemplazar los archivos, sin reiniciar el servidor.
  *
  * ## Las cabeceras, y por que tan estrictas
  *
@@ -76,15 +79,13 @@ object Web {
         "frame-ancestors 'none'",
     ).joinToString("; ")
 
-    fun publicada(): Boolean = carpeta?.let { File(it, "index.html").isFile } == true
-
     fun Route.rutasWeb() {
         // Sin la barra final, las rutas relativas de la pagina se resolverian
         // contra la raiz del dominio.
         get(RUTA_WEB) { call.respondRedirect("$RUTA_WEB/", permanent = true) }
 
         val dir = carpeta
-        if (dir == null || !publicada()) {
+        if (dir == null) {
             route(RUTA_WEB) {
                 get("{...}") {
                     call.respondText(

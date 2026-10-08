@@ -11,8 +11,38 @@ están en `docs/12-VERSION-WEB.md`.
 | `interop/lado-web.mjs` | El WebAssembly manejado desde Node, un pedido JSON por línea. Lo usa la prueba de la JVM. |
 | `interop/navegador.html` | La misma libsignal dentro de un navegador de verdad: sesiones, ratchet, grupos y huella. |
 | `interop-jvm/` | Módulo de Gradle `:interop-web`. Hace de teléfono con la libsignal oficial de la JVM y habla con el WebAssembly. |
+| `app/` | La aplicación: React + TypeScript con Vite. Ver `docs/evidencias/web-w2/`. |
 
-La aplicación en React llega en W2.
+## La app en desarrollo
+
+Con el servidor local en 8300 (`pruebas/arrancar-servidor.ps1`) y el
+WebAssembly armado:
+
+```bash
+cd web/app && npm install && npm run dev
+```
+
+Se abre en `http://localhost:5180/web/`. Vite le pasa `/v1` (HTTP y
+WebSocket) al servidor, así que no hace falta CORS. Para vincular, genera un
+código en el teléfono: *Perfil → Cuenta y seguridad → Ver mis dispositivos*.
+
+```bash
+cd web/app && npm test
+```
+
+Las pruebas de oro comparan el JSON de la web con el de Kotlin. Si cambias
+`Carga` en el contrato, regenera los archivos de referencia con
+`./gradlew :interop-web:test`.
+
+## Publicar
+
+```bash
+bash despliegue/publicar-web.sh
+```
+
+Arma todo, corre las pruebas, calcula `HUELLAS.txt` y deja un `.tar.gz` en
+`despliegue/descarga/` con los comandos para subirlo a `web-publicada/` en el
+VPS. No hace falta reiniciar el servidor.
 
 ## Requisitos (una vez)
 

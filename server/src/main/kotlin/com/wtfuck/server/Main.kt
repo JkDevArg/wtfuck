@@ -125,6 +125,26 @@ object Hub {
         Bus.olvidar(dispositivo, usuario, porUsuario.containsKey(usuario))
     }
 
+    /**
+     * Aparatos revocados mientras estaban conectados.
+     *
+     * Revocar invalidaba el token, pero el socket que ya estaba abierto seguia
+     * vivo: el aparato no se enteraba hasta reconectar. Ahora se cierra en el
+     * acto con 1008, el mismo codigo que un token invalido, que es lo que el
+     * cliente entiende como "ya no estas vinculado".
+     *
+     * Solo en ESTE proceso: con varias instancias, el socket puede estar en
+     * otra. Ahi lo corta igual el proximo intento de reconexion.
+     */
+    private val expulsados = ConcurrentHashMap.newKeySet<UUID>()
+
+    fun expulsar(dispositivo: UUID) {
+        expulsados += dispositivo
+        vivos.remove(dispositivo)?.close()
+    }
+
+    fun fueExpulsado(dispositivo: UUID): Boolean = dispositivo in expulsados
+
     /** Los sockets que sostiene ESTE proceso. Los renueva el barrido. */
     fun mios(): Collection<UUID> = vivos.keys
 
@@ -1101,7 +1121,9 @@ fun Application.modulo() {
 
         delete("$RUTA_DISPOSITIVOS/{id}") {
             val yo = call.autenticar()
-            val avisos = Dispositivos.revocar(yo, call.idRuta())
+            val revocado = call.idRuta()
+            val avisos = Dispositivos.revocar(yo, revocado)
+            Hub.expulsar(revocado)
             avisos.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
             call.respond(HttpStatusCode.NoContent)
         }
@@ -1931,6 +1953,11 @@ private suspend fun DefaultWebSocketServerSession.atender(yo: Auth) {
         for (msg in salida) {
             if (!isActive) break
             send(Frame.Text(json.encodeToString(Bajada.serializer(), msg)))
+        }
+        // El canal se cierra cuando el mismo aparato abre otro socket, o
+        // cuando lo revocan. En el segundo caso, el socket tambien se cierra.
+        if (Hub.fueExpulsado(yo.dispositivoId)) {
+            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "dispositivo revocado"))
         }
     }
 

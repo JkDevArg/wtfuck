@@ -551,13 +551,18 @@ object Identidad {
             st.executeUpdate()
         }
         val cerradas = revocarTodas(c, id, salvo = null, porQuien = id)
-        val revocados = c.prepareStatement(
+        val idsRevocados = c.prepareStatement(
             """UPDATE dispositivo SET revocado_en = now()
-               WHERE usuario_id = ? AND revocado_en IS NULL AND hardware_hash <> ?"""
+               WHERE usuario_id = ? AND revocado_en IS NULL AND hardware_hash <> ?
+               RETURNING id"""
         ).use { st ->
             st.setObject(1, id); st.setBytes(2, hwHash)
-            st.executeUpdate()
+            st.executeQuery().use { rs -> buildList { while (rs.next()) add(rs.getObject(1, UUID::class.java)) } }
         }
+        val revocados = idsRevocados.size
+        // Y sus sockets abiertos se cortan ya: el que tiene el telefono robado
+        // no deberia seguir recibiendo nada hasta que se le caiga la red.
+        idsRevocados.forEach { Hub.expulsar(it) }
 
         // El aparato. Si este mismo hardware ya estaba -alguien reinstalando en
         // el telefono de siempre- se reusa la fila en vez de crear otra: el

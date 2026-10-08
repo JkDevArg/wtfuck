@@ -89,8 +89,8 @@ tiene que leer y producir igual.
 |---|---|---|
 | **W0** | libsignal en WebAssembly + prueba contra la JVM + prueba en el navegador | **Hecha** (2026-10-07) |
 | W1 | Servidor: nivel `NAVEGADOR` solo al vincular (nunca principal, sesión de 30 días), la web servida en `/web` con CSP estricta, y pruebas | **Hecha** (2026-10-08): `docs/evidencias/web-w1/` |
-| W2 | Web mínima: vincular con QR, publicar claves, chats directos y grupos de texto, historial pedido al teléfono, almacén cifrado en IndexedDB | |
-| W3 | Fotos y archivos (con CORS en el almacén), notificaciones, varias pestañas, Web Push | |
+| W2 | Web mínima: vincular con el código, publicar claves, chats directos y grupos de texto, historial pedido al teléfono, almacén cifrado en IndexedDB, una pestaña con el socket | **Hecha** (2026-10-08): `docs/evidencias/web-w2/`. Probada de punta a punta contra el teléfono del emulador |
+| W3 | Fotos y archivos (con CORS en el almacén), notificaciones, avisos entre pestañas, Web Push, aviso de cambio de identidad, respuestas y reacciones | |
 | W4 | Escritorio con Tauri (el mismo código, firmado) y llamadas WebRTC | |
 
 **Fuera de la web:** el modo cerca, porque el navegador no puede anunciar ni

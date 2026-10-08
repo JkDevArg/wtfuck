@@ -1,0 +1,1 @@
+{"type":"com.wtfuck.protocol.Carga.Historial","conversacionId":"0b4a5f0e-5b8f-4f43-9a3d-6a1f2a6b7c8d","mensajes":[{"id":"m1","autor":"ana","esMio":false,"texto":"uno","creadoEn":1759900000000},{"id":"m2","autor":"beto","esMio":true,"texto":"dos","creadoEn":1759900000001}],"hayMas":false}

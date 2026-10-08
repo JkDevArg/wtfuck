@@ -119,8 +119,15 @@ r = await call('POST', '/v1/sesion', null, { username: ana.user, password: CLAVE
 ck('desde otro navegador sin vincular: 403', r.s === 403, String(r.s));
 
 console.log('\n=== el telefono lo revoca ===');
+// Con el socket abierto: revocar tiene que cortarlo en el acto, con 1008
+// ("ya no estas vinculado"), y no esperar a que el aparato reconecte.
+const socketWeb = new WebSocket(BASE.replace('http', 'ws') + '/v1/ws?token=' + encodeURIComponent(web.t));
+await new Promise((res, rej) => { socketWeb.onopen = res; socketWeb.onerror = rej; setTimeout(rej, 5000); });
+const cierre = new Promise((res) => { socketWeb.onclose = (e) => res(e.code); setTimeout(() => res('sigue abierto'), 5000); });
 r = await call('DELETE', `/v1/dispositivos/${web.dev}`, ana.t);
 ck('revocar el navegador', r.s === 204, String(r.s));
+const codigoCierre = await cierre;
+ck('su socket abierto se cierra en el acto, con 1008', codigoCierre === 1008, String(codigoCierre));
 r = await call('GET', '/v1/dispositivos', web.t);
 ck('y su token deja de servir', r.s === 401, String(r.s));
 
@@ -132,7 +139,11 @@ ck('/web sin barra redirige a /web/', [301, 308].includes(r.status) && (r.header
 r = await fetch(BASE + '/web/');
 const html = await r.text();
 const csp = r.headers.get('content-security-policy') ?? '';
-ck('/web/ sirve la pagina', r.status === 200 && html.includes('wtfuck web de prueba'), String(r.status));
+ck('/web/ sirve la pagina', r.status === 200 && html.includes('wtfuck web'), String(r.status));
+// Sirve la app armada (web/app/dist) o la pagina minima de pruebas: el script
+// se saca del propio index.html, y el .wasm, de ese script.
+const script = (html.match(/\/web\/assets\/[\w.-]+\.js/) ?? [])[0];
+ck('index.html carga un script de assets/', !!script, html.slice(0, 200));
 ck('como HTML', (r.headers.get('content-type') ?? '').startsWith('text/html'), r.headers.get('content-type'));
 ck('CSP: scripts solo de aqui, y compilar WebAssembly', csp.includes("script-src 'self' 'wasm-unsafe-eval'"), csp);
 ck('CSP: nada por defecto', csp.includes("default-src 'none'"), csp);
@@ -143,12 +154,15 @@ ck('sin referer', r.headers.get('referrer-policy') === 'no-referrer');
 ck('aislada de otras ventanas (COOP)', r.headers.get('cross-origin-opener-policy') === 'same-origin');
 ck('index.html no se guarda en cache', r.headers.get('cache-control') === 'no-cache', r.headers.get('cache-control'));
 
-r = await fetch(BASE + '/web/assets/app-prueba123.js');
+r = await fetch(BASE + script);
+const js = await r.text();
 ck('assets/: el script se sirve', r.status === 200 && (r.headers.get('content-type') ?? '').includes('javascript'), `${r.status} ${r.headers.get('content-type')}`);
 ck('assets/: en cache para siempre', (r.headers.get('cache-control') ?? '').includes('immutable'), r.headers.get('cache-control'));
 ck('assets/: tambien con CSP', (r.headers.get('content-security-policy') ?? '').length > 0);
 
-r = await fetch(BASE + '/web/assets/vacio-prueba123.wasm');
+const wasm = (js.match(/[\w.-]+\.wasm/) ?? [])[0];
+ck('el script nombra su WebAssembly', !!wasm);
+r = await fetch(BASE + '/web/assets/' + wasm);
 ck('el .wasm sale como application/wasm', r.status === 200 && r.headers.get('content-type') === 'application/wasm', `${r.status} ${r.headers.get('content-type')}`);
 
 r = await fetch(BASE + '/web/no-existe.js');
