@@ -516,17 +516,35 @@ quien responde por lo que se publica.
 
 ## Límites de abuso
 
-Un 429 trae el motivo con los segundos que faltan. Los diecisiete límites se
+Un 429 trae el motivo con los segundos que faltan. Los diecinueve límites se
 consultan y se ajustan en `/v1/panel/limites`; el valor de fábrica sigue en el
 código con su explicación al lado, y la tabla sólo lo sobreescribe —borrar la
 fila devuelve el valor probado, no "sin límite"—.
 
-Tres que conviene entender porque su forma es una lección aprendida:
+Los que son **por IP** usan la IP que vio nuestro proxy: la **última** entrada
+de `X-Forwarded-For`, y sólo si la conexión viene de loopback o de una red
+privada (donde está el proxy). Antes se tomaba la primera, que la escribe el
+cliente, y con eso cualquier límite por IP se esquivaba o se le gastaba a otro.
+Ver `Seguridad.ipDeCliente`.
+
+Cuatro que conviene entender porque su forma es una lección aprendida:
 
 - **Ingreso**: se limitan los **fallos**, no los intentos, y con dos reglas —8
-  por cuenta y 50 por IP cada 15 minutos—. Contar intentos por IP dejaba fuera a
-  un campus entero detrás de un NAT, y contar los ingresos correctos no protege
-  de nada.
+  por cuenta y 300 por IP cada 15 minutos—. Contar intentos por IP dejaba fuera
+  a un campus entero detrás de un NAT, y contar los ingresos correctos no
+  protege de nada.
+- **Registro** (`POST /v1/registro`): por **red** —la IPv4, o el /64 de una
+  IPv6— con una ráfaga de 300 por minuto en memoria y un cupo de 2000 por día
+  en la base. Los números son altos por el NAT: medido, la regresión hace
+  hasta 160 altas por minuto desde una sola IP, que es lo que hace un campus
+  el día que se anuncia la app; y los dos se ajustan desde el panel
+  (`registro_red`, `registro_red_dia`) para subirlos ese día o bajarlos con un
+  abuso en curso. Cuentan **intentos**, también los 409: si no, "ese usuario ya
+  existe" sería un oráculo gratis de usernames. Van **antes** de validar el
+  cuerpo y **después** de la puerta de invitación —al revés, quien prueba
+  códigos inventados gastaría el cupo de todo su campus—. No frenan a quien
+  tiene muchas IPs; contra eso están el registro por invitación y la
+  atestación (`04-DEVICE-BINDING.md`).
 - **Códigos por SMS**: el límite fuerte es **por destino** (10/hora), no por IP.
   Cinco códigos a cinco personas desde una red compartida es un martes normal;
   cinco al mismo número es acosar a alguien.

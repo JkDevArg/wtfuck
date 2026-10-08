@@ -50,8 +50,12 @@ object Invitaciones {
      * 12 caracteres de 31 simbolos: unos 59 bits.
      *
      * No es una contrasena, pero si algo que se puede probar a ciegas contra
-     * una ruta publica. Con esto, adivinar uno exige mas intentos de los que
-     * el limitador por IP deja hacer en varias vidas.
+     * una ruta publica. **La defensa es el largo, no un limitador.** Este
+     * comentario decia antes que adivinar uno exigia "mas intentos de los que
+     * el limitador por IP deja hacer en varias vidas", y el registro no tenia
+     * ningun limitador. Ahora lo tiene, y a proposito NO cuenta los codigos
+     * equivocados: ver [exigirPuerta]. A diez mil intentos por segundo, 59
+     * bits son mas de un millon de anos por codigo.
      */
     private const val LARGO = 12
 
@@ -109,6 +113,49 @@ object Invitaciones {
      * que alguien rellene un formulario entero para que lo rechacen al final.
      */
     fun modo(): ModoRegistroResp = ModoRegistroResp(requiereInvitacion = exigeInvitacion)
+
+    // ------------------------------------------------------------------
+    //  La puerta, antes del limite de ritmo
+    // ------------------------------------------------------------------
+
+    /**
+     * Rechaza a quien no trae una invitacion vigente, SIN gastarla.
+     *
+     * La llama la ruta del registro antes del limite por red, y el orden es la
+     * razon de que exista. Al reves, cada intento sin invitacion gastaria cupo
+     * de la red de donde viene, y detras de la salida a internet de un campus
+     * esta todo el campus: alguien probando codigos inventados dejaria sin
+     * poder registrarse a los que SI tienen uno. Con la puerta delante, el que
+     * no tiene invitacion no toca el contador de nadie.
+     *
+     * Lo que se pierde es contar los codigos equivocados, y no hace falta: la
+     * defensa contra adivinarlos es su largo ([LARGO]).
+     *
+     * Esto NO reemplaza a [canjear]. Entre esta lectura y la transaccion del
+     * alta, otro puede gastar el ultimo uso; el canje atomico sigue siendo el
+     * que decide. Por eso los mensajes son los mismos que los suyos: quien
+     * llama no puede saber en cual de los dos sitios lo rechazaron.
+     */
+    fun exigirPuerta(username: String, codigo: String) {
+        if (!exigeInvitacion || entraSinInvitacion(username)) return
+        val limpio = normalizar(codigo)
+        if (limpio.isEmpty()) {
+            throw ErrorNegocio(400, "Hace falta un codigo de invitacion para registrarse.")
+        }
+        val vigente = Db.query { c ->
+            c.prepareStatement(
+                """SELECT 1 FROM invitacion_registro
+                    WHERE codigo = ?
+                      AND revocada_en IS NULL
+                      AND (expira_en IS NULL OR expira_en > now())
+                      AND usos < usos_max"""
+            ).use { st ->
+                st.setString(1, limpio)
+                st.executeQuery().use { it.next() }
+            }
+        }
+        if (!vigente) throw ErrorNegocio(403, "El codigo de invitacion no es valido o ya se uso.")
+    }
 
     // ------------------------------------------------------------------
     //  Canjear

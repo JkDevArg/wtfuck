@@ -255,6 +255,42 @@ object Limitador {
      */
     val CONSUMIR_VINCULACION get() = efectiva("consumir_vinculacion", Regla(100, Duration.ofHours(1)))
 
+    /**
+     * Registrarse, por red (`Seguridad.redDe`: la IPv4, o el /64 de IPv6). La
+     * rafaga; el tope del dia es [Cupos.REGISTROS_POR_RED_DIA].
+     *
+     * ## Por que hace falta
+     *
+     * Nivel, hash de hardware e identidad son DECLARADOS: el servidor no
+     * verifica atestacion (docs/04-DEVICE-BINDING.md, "Lo que el servidor
+     * verifica hoy"). Con el registro abierto, que es el defecto, un script
+     * inventa un hash por cuenta y crea las que quiera. Lo unico que queda del
+     * lado del servidor para frenarlo es de donde viene.
+     *
+     * ## Por que es tan alto
+     *
+     * Es el mismo error del NAT que ya costo tres correcciones en este
+     * proyecto (ingreso, SMS, vinculacion), y esta vez se midio ANTES de fijar
+     * el numero (2026-10-08). Una corrida completa de la regresion, sola: 277
+     * altas en cuatro minutos y medio, con un pico de 127 en un minuto. El
+     * historial de la maquina de desarrollo, donde varias sesiones comparten
+     * `::1` como comparte la salida de un campus: hasta 784 en 13 minutos y
+     * 164 en un minuto. Eso es lo que hace una red compartida de verdad, y con
+     * 300 por minuto entra con casi el doble de margen.
+     *
+     * Contra un script, este limite no es el que pone el techo: eso lo hace el
+     * cupo diario. Este existe para que una avalancha se corte en memoria,
+     * antes de tocar la base y antes de calcular un Argon2 por intento, y la
+     * ventana es de un minuto para que dos corridas seguidas de la regresion
+     * no se sumen.
+     *
+     * Cuenta los INTENTOS, no las altas: un 409 de "ese usuario ya existe"
+     * tambien gasta. Si no, la ruta seria un oraculo gratis para saber que
+     * usernames existen, sin importar lo que cada uno haya elegido en
+     * privacidad.
+     */
+    val REGISTRO_RED get() = efectiva("registro_red", Regla(300, Duration.ofMinutes(1)))
+
     // ==================================================================
     //  H.6 · Los limites se pueden ajustar sin recompilar
     // ==================================================================
@@ -397,6 +433,18 @@ object Limitador {
             "tipo_cuenta", "Cambiar el tipo de cuenta propio",
             "Presupuesto aparte del de la ficha, para no bloquear la salida",
         ) { TIPO_CUENTA },
+        // Los dos del registro son ajustables por el NAT: el dia que una
+        // institucion anuncia la app, toda su gente se registra desde la misma
+        // salida a internet, y subir el tope ese dia no puede esperar a un
+        // despliegue. Y al reves: con un script en curso, bajarlo tampoco.
+        Ajustable(
+            "registro_red", "Registros por red (rafaga)",
+            "Por IPv4 o /64 de IPv6; cuenta intentos, tambien los rechazados",
+        ) { REGISTRO_RED },
+        Ajustable(
+            "registro_red_dia", "Registros por red (cupo diario)",
+            "Vive en la base; subirlo el dia que una institucion se registra en masa",
+        ) { Cupos.REGISTROS_POR_RED_DIA },
     )
 
     class Ajustable(
@@ -571,6 +619,35 @@ object Cupos {
     const val FICHAS_POR_DIA = 40
 
     /**
+     * Altas por red y por dia. **El limite que de verdad pone techo** a un
+     * script que crea cuentas; [Limitador.REGISTRO_RED] solo corta la rafaga.
+     *
+     * Va en la base por la razon de siempre: un tope diario que se olvida en
+     * cada despliegue se evade esperando uno. Y tiene tabla propia,
+     * `contador_red`, porque `contador_uso` cuelga de un usuario y al
+     * registrarse todavia no hay ninguno.
+     *
+     * ## El numero, y lo que no puede hacer
+     *
+     * 2000 es mucho para un script y poco para una institucion el dia que
+     * se anuncia la app: una salida a internet de un campus puede tener detras
+     * a miles de personas registrandose la misma manana. Por eso es ajustable
+     * desde el panel (`registro_red_dia`): ese dia se sube, y con un abuso en
+     * curso se baja, sin desplegar. La regresion gasta 277 en una corrida sola
+     * y hasta 784 cuando otras sesiones comparten la IP (ver
+     * [Limitador.REGISTRO_RED]); `pruebas/correr.mjs` vacia este contador al
+     * empezar, igual que vacia los de Redis, para que varias corridas en el
+     * mismo dia no se sumen.
+     *
+     * Lo que NO hace es frenar a quien tiene muchas IPs. Ningun limite por IP
+     * lo hace. Contra eso las dos salidas reales son el registro por
+     * invitacion (`WTFUCK_REGISTRO=invitacion`) o verificar la atestacion de
+     * hardware, que hoy no se verifica. Esto convierte "sin tope" en "un tope
+     * por sitio", y nada mas.
+     */
+    val REGISTROS_POR_RED_DIA get() = Limitador.efectiva("registro_red_dia", Regla(2000, Duration.ofDays(1)))
+
+    /**
      * Suma uno y devuelve el total de la ventana. Una sola ida a la base:
      * `ON CONFLICT ... RETURNING` hace el insert-o-incrementa y responde con el
      * valor ya actualizado, asi que no hay hueco entre leer y escribir por el
@@ -603,12 +680,63 @@ object Cupos {
         }
     }
 
-    /** Barre ventanas que ya no le importan a nadie. */
-    fun barrer(c: Connection, masViejasQue: Duration = Duration.ofDays(2)): Int =
-        c.prepareStatement("DELETE FROM contador_uso WHERE ventana < ?").use { st ->
-            st.setObject(1, java.sql.Timestamp.from(Instant.now().minus(masViejasQue)))
-            st.executeUpdate()
+    /**
+     * Lo mismo que [exigir], pero por red y sin usuario: para lo que pasa
+     * antes de que exista una cuenta.
+     *
+     * Se suma en una transaccion PROPIA y se confirma siempre, tambien cuando
+     * se pasa del tope. Dos motivos:
+     *
+     *  - Cuenta intentos y no altas, igual que la rafaga. Si se sumara dentro
+     *    de la transaccion del alta, un registro que falla despues -un
+     *    username tomado- desharia la suma, y el 409 volveria a ser gratis.
+     *  - [exigir] anota el evento DENTRO de la transaccion y despues lanza, asi
+     *    que el ROLLBACK se lleva el evento con todo lo demas. Aqui el evento
+     *    va en su propia transaccion, como hace `Limitador.exigir`.
+     *
+     * El contador sigue subiendo por encima del tope mientras insistan. No
+     * molesta -es una fila- y dice cuanto se insistio.
+     */
+    fun exigirPorRed(red: String, ip: String?, accion: String, r: Regla) {
+        val n = Db.tx { c -> sumarPorRed(c, red, accion, r.ventana) }
+        if (n <= r.cuantas) return
+        runCatching {
+            Db.tx { c ->
+                Seguridad.anotar(
+                    c, null, "limite_excedido", ip = ip,
+                    detalle = """{"accion":"$accion","tope":${r.cuantas},"ventana_h":${r.ventana.toHours()}}""",
+                )
+            }
         }
+        throw ErrorNegocio(429, "Se alcanzo el limite de ${r.cuantas} por ${etiqueta(r.ventana)} desde esta red.")
+    }
+
+    fun sumarPorRed(c: Connection, red: String, accion: String, ventana: Duration): Int {
+        val inicio = redondear(Instant.now(), ventana)
+        return c.prepareStatement(
+            """INSERT INTO contador_red (red, accion, ventana, n)
+               VALUES (?, ?, ?, 1)
+               ON CONFLICT (red, accion, ventana)
+                 DO UPDATE SET n = contador_red.n + 1
+               RETURNING n"""
+        ).use { st ->
+            st.setString(1, red)
+            st.setString(2, accion)
+            st.setObject(3, java.sql.Timestamp.from(inicio))
+            st.executeQuery().use { rs -> rs.primero { it.getInt(1) } ?: 1 }
+        }
+    }
+
+    /** Barre ventanas que ya no le importan a nadie, de los dos contadores. */
+    fun barrer(c: Connection, masViejasQue: Duration = Duration.ofDays(2)): Int {
+        val limite = java.sql.Timestamp.from(Instant.now().minus(masViejasQue))
+        return listOf("contador_uso", "contador_red").sumOf { tabla ->
+            c.prepareStatement("DELETE FROM $tabla WHERE ventana < ?").use { st ->
+                st.setObject(1, limite)
+                st.executeUpdate()
+            }
+        }
+    }
 
     /**
      * Redondea al inicio de la ventana.
@@ -710,6 +838,99 @@ object Seguridad {
         // IPv6: hexadecimal y dos puntos, incluida la forma comprimida "::1".
         val esIpv6 = s.contains(':') && Regex("""^[0-9a-fA-F:.]+$""").matches(s)
         return if (esIpv4 || esIpv6) s else null
+    }
+
+    /**
+     * De donde viene una peticion, a partir de `X-Forwarded-For` y de quien
+     * abrio la conexion (`par`).
+     *
+     * ## La version anterior le creia a cualquiera, y eso desarmaba los limites
+     *
+     * Tomaba la PRIMERA entrada de `X-Forwarded-For`, viniera de donde viniera.
+     * Esa entrada la escribe el cliente: nginx con `$proxy_add_x_forwarded_for`
+     * (lo que trae `despliegue/nginx-tras-panel.conf`) agrega la IP real AL
+     * FINAL y deja intacto lo que el cliente mando delante. El comentario de
+     * entonces decia que "en el peor caso alguien se regala su propio cupo, no
+     * el de otro", y las dos mitades eran falsas:
+     *
+     *  - Con una cabecera inventada por peticion, cada intento estrenaba cupo:
+     *    ningun limite por IP limitaba nada. Al anadir el limite del registro
+     *    eso dejo de ser teorico, porque ese limite es por IP y nada mas.
+     *  - Y si se gasta el de otro: poner la IP de salida de un campus en la
+     *    cabecera llena SU contador de ingresos fallidos, y deja sin entrar a
+     *    todo el campus sin haber tocado ninguna de sus cuentas.
+     *
+     * ## La regla
+     *
+     *  1. La cabecera solo cuenta si la conexion viene de un proxy nuestro:
+     *     loopback o red privada. Es donde estan en los dos despliegues
+     *     documentados (Caddy en la red de Docker, nginx en el anfitrion
+     *     entrando por el puerto publicado en 127.0.0.1). Una conexion desde
+     *     una IP publica es el cliente mismo, y lo que diga la cabecera es lo
+     *     que el quiera.
+     *  2. De la cabecera se toma la ULTIMA entrada, que es la que escribio
+     *     nuestro proxy con lo que vio. Las anteriores las trajo el cliente.
+     *
+     * El precio: con DOS proxies en cadena (una CDN delante de nginx) la
+     * ultima entrada seria la CDN y todo el mundo compartiria IP. Ese
+     * despliegue no existe hoy; el dia que exista, esto es lo que hay que
+     * tocar, y docs/09-DESPLIEGUE.md lo dice.
+     *
+     * Tambien confia en la red privada, y eso supone que nadie llega al
+     * servidor directo desde la LAN: si el puerto del servidor quedara abierto
+     * dentro de un campus, un alumno con una IP 10.x podria escribir la
+     * cabecera. Los dos compose publican el puerto solo en 127.0.0.1 o no lo
+     * publican.
+     */
+    fun ipDeCliente(xForwardedFor: String?, par: String): String {
+        if (!esProxyPropio(par)) return par
+        return xForwardedFor?.split(",")?.lastOrNull()?.trim()?.takeIf { it.isNotEmpty() } ?: par
+    }
+
+    private fun esProxyPropio(par: String): Boolean {
+        val ip = literal(par) ?: return false
+        if (ip.isLoopbackAddress || ip.isSiteLocalAddress || ip.isLinkLocalAddress) return true
+        // `isSiteLocalAddress` en IPv6 solo reconoce fec0::/10, que esta en
+        // desuso. Las privadas de hoy son las ULA, fc00::/7.
+        return ip is java.net.Inet6Address && (ip.address[0].toInt() and 0xFE) == 0xFC
+    }
+
+    /**
+     * La clave con la que se limita una IP: la direccion si es IPv4, y su /64
+     * si es IPv6.
+     *
+     * Contar IPv6 por direccion no limita nada. A un hogar, un telefono o una
+     * VM barata se les asigna un /64 entero —dieciocho trillones de
+     * direcciones— y estrenar una por peticion no cuesta nada. El /64 es lo que
+     * de verdad identifica "un sitio", igual que una IPv4 detras de un NAT.
+     *
+     * Una IPv4 escrita en forma IPv6 (`::ffff:1.2.3.4`) cuenta como la IPv4:
+     * si no, la misma persona tendria dos cupos segun como se la escriba.
+     *
+     * Lo que no es una IP literal se devuelve tal cual. Es un unico balde y no
+     * da ventaja: el texto no lo elige quien llama, porque la cabecera solo se
+     * lee cuando viene de un proxy propio.
+     */
+    fun redDe(ip: String): String {
+        val a = literal(ip) ?: return ip.trim()
+        if (a is java.net.Inet4Address) return a.hostAddress
+        val b = a.address
+        val grupos = (0 until 4).map { i ->
+            Integer.toHexString(((b[2 * i].toInt() and 0xFF) shl 8) or (b[2 * i + 1].toInt() and 0xFF))
+        }
+        return grupos.joinToString(":") + "::/64"
+    }
+
+    /**
+     * Una IP literal como `InetAddress`, sin resolver nombres.
+     *
+     * `InetAddress.getByName` con un literal no consulta el DNS, pero con un
+     * nombre SI. Por eso pasa primero por [ipValida], que solo deja pasar
+     * digitos, puntos, hexadecimal y dos puntos: un nombre no llega aqui.
+     */
+    private fun literal(s: String): java.net.InetAddress? {
+        val v = ipValida(s) ?: return null
+        return runCatching { java.net.InetAddress.getByName(v) }.getOrNull()
     }
 
     /**
