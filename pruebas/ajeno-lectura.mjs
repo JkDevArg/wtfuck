@@ -279,6 +279,7 @@ const EXENTAS_LECTURA = [
   ['/v1/dispositivos', 'mis propios aparatos'],
   ['/v1/contactos', 'mis propios contactos'],
   ['/v1/push/config', 'configuracion publica del cliente, sin secretos'],
+  ['/v1/push/web', 'clave publica VAPID del servidor, la misma para todos (webpush.mjs)'],
   ['/v1/claves/estado', 'el estado de MIS claves'],
   ['/v1/comunidades', 'las comunidades a las que pertenezco'],
   ['/v1/llamadas/en-curso', 'mi propia llamada'],
