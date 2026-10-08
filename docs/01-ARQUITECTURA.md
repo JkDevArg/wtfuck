@@ -82,7 +82,7 @@ Si esta capa no existe desde el día uno, `msg off` obliga a rehacer todo.
 - **Federación entre servidores**
 - **Historial en servidor** — no es una carencia, es el principio rector
 - **SFU para llamadas de más de 4** (`K.5`): la malla tiene techo declarado
-- **Cliente web de mensajería**: exige libsignal en el navegador
+- **Cliente web de mensajería**: exige libsignal en el navegador *(en camino desde el 2026-10-07: libsignal compilada a WebAssembly, la web como aparato vinculado. Ver `docs/12-VERSION-WEB.md`)*
 
 Cada uno de estos, metido temprano, doblaba el tiempo del MVP.
 

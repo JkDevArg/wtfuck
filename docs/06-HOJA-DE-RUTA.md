@@ -1636,6 +1636,13 @@ corrige sin volver a empezar.
 
 ### L.8 · Una consola web, y por qué no un cliente de mensajería web
 
+> **Actualización (2026-10-07):** el cliente de mensajería web se empezó. La
+> objeción de abajo se resuelve sin romper ninguna de las dos reglas: el
+> navegador **no** entra con usuario y contraseña, se **vincula** desde el
+> teléfono como cualquier otro aparato (módulo J), con un nivel de hardware
+> propio que nunca puede ser el principal. libsignal va compilada a
+> WebAssembly. Ver `docs/12-VERSION-WEB.md` y `docs/evidencias/web-w0/`.
+
 Un cliente web de mensajería tendría que descifrar, y para descifrar hace falta
 ser un **dispositivo con claves de identidad propias** —lo que el módulo J hizo
 posible—. Llevar libsignal al navegador es un proyecto aparte: WASM, el almacén

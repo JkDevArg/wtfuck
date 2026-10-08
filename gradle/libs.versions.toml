@@ -172,6 +172,9 @@ firebase-messaging = { module = "com.google.firebase:firebase-messaging", versio
 
 # --- cripto cliente (FASE 4) ---
 libsignal-android = { module = "org.signal:libsignal-android", version.ref = "libsignal" }
+# El mismo libsignal con los nativos de escritorio: lo usa la prueba de la
+# version web (web/interop-jvm) para hacer de telefono en la JVM.
+libsignal-client = { module = "org.signal:libsignal-client", version.ref = "libsignal" }
 
 # --- test ---
 junit4             = { module = "junit:junit", version.ref = "junit4" }

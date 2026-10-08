@@ -1,0 +1,4 @@
+# getrandom 0.3 elige de donde saca el azar por esta bandera. En el navegador,
+# `wasm_js` = crypto.getRandomValues.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

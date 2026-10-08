@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>libsignal en el navegador</title>
+<style>
+  :root { color-scheme: dark; --fondo: #0E1313; --texto: #DCE3E3; --tenue: #95A1A1; --ok: #6CF8F6; --mal: #FF8A7A; }
+  body { background: var(--fondo); color: var(--texto); font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 16px; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { color: var(--tenue); margin: 0 0 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 8px 6px; border-bottom: 1px solid #2a3434; vertical-align: top; }
+  td:first-child { width: 28px; font-weight: 700; }
+  .ok { color: var(--ok); } .mal { color: var(--mal); }
+  .ms { color: var(--tenue); white-space: nowrap; text-align: right; }
+  #resumen { margin-top: 16px; font-weight: 600; }
+  code { font-family: ui-monospace, monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>libsignal en el navegador</h1>
+  <p id="sub">Cargando el WebAssembly…</p>
+  <table id="t"></table>
+  <div id="resumen"></div>
+</main>
+<script type="module">
+// W0: el mismo .wasm que usa web/interop/lado-web.mjs, ahora dentro de un
+// navegador de verdad. Aquí la conversación es web con web; que la web y el
+// teléfono se entienden lo prueba web/interop-jvm.
+import init, { Cliente, versionLibsignal } from '../cripto/pkg/wtfuck_cripto.js';
+
+const t = document.getElementById('t');
+const res = [];
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+function fila(ok, nombre, ms, detalle = '') {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td class="${ok ? 'ok' : 'mal'}">${ok ? '✓' : '✗'}</td><td>${nombre}${detalle ? `<br><code>${detalle}</code>` : ''}</td><td class="ms">${ms.toFixed(1)} ms</td>`;
+  t.appendChild(tr);
+  res.push({ ok, nombre, ms, detalle });
+}
+
+async function caso(nombre, f) {
+  const t0 = performance.now();
+  try {
+    const d = await f();
+    fila(true, nombre, performance.now() - t0, d ?? '');
+  } catch (e) {
+    fila(false, nombre, performance.now() - t0, String(e?.message ?? e));
+  }
+}
+
+const igual = (a, b, que) => { if (a !== b) throw new Error(`${que}: «${a}» ≠ «${b}»`); };
+
+function publicar(c, desde = 1) {
+  const p = JSON.parse(c.generarClaves(1, 1, desde, 1, Date.now()));
+  return { usuarioId: 'u', username: 'x', dispositivoId: 'd', registrationId: p.registrationId,
+           identidad: p.identidad, firmada: p.firmada, kyber: p.kyber, unica: p.unicas[0] };
+}
+
+const t0 = performance.now();
+const respuesta = await fetch(new URL('../cripto/pkg/wtfuck_cripto_bg.wasm', import.meta.url));
+const bytes = await respuesta.arrayBuffer();
+await init({ module_or_path: bytes });
+const carga = performance.now() - t0;
+document.getElementById('sub').textContent =
+  `libsignal ${versionLibsignal()} · ${(bytes.byteLength / 1024).toFixed(0)} KB de WebAssembly · cargado en ${carga.toFixed(0)} ms · ${navigator.userAgent}`;
+
+let ana, beto;
+await caso('Identidades y claves nuevas (incluida una Kyber1024)', () => {
+  ana = new Cliente(); beto = new Cliente();
+  const p = publicar(beto);
+  return `kyber pública: ${atob(p.kyber.publica).length} bytes`;
+});
+
+let paqueteBeto;
+await caso('PQXDH: Ana abre sesión con el paquete de Beto', () => {
+  paqueteBeto = publicar(beto, 10);
+  ana.abrirSesion('beto-1', JSON.stringify(paqueteBeto), Date.now());
+  igual(ana.tieneSesion('beto-1'), true, 'sesión');
+});
+
+await caso('Primer mensaje (tipo 3, con la prekey) y respuesta (tipo 2)', () => {
+  const c = JSON.parse(ana.cifrar('beto-1', enc.encode('hola con ñ y 🙂'), Date.now()));
+  igual(c.tipo, 3, 'tipo');
+  igual(dec.decode(beto.descifrar('ana-1', c.tipo, c.cuerpo)), 'hola con ñ y 🙂', 'texto');
+  const r = JSON.parse(beto.cifrar('ana-1', enc.encode('recibido'), Date.now()));
+  igual(r.tipo, 2, 'tipo respuesta');
+  igual(dec.decode(ana.descifrar('beto-1', r.tipo, r.cuerpo)), 'recibido', 'respuesta');
+});
+
+await caso('100 mensajes de ida y vuelta, la mitad fuera de orden', () => {
+  for (let ronda = 0; ronda < 25; ronda++) {
+    const lote = [0, 1].map(i => JSON.parse(ana.cifrar('beto-1', enc.encode(`a${ronda}-${i}`), Date.now())));
+    for (const i of [1, 0]) igual(dec.decode(beto.descifrar('ana-1', lote[i].tipo, lote[i].cuerpo)), `a${ronda}-${i}`, 'a→b');
+    const vuelta = [0, 1].map(i => JSON.parse(beto.cifrar('ana-1', enc.encode(`b${ronda}-${i}`), Date.now())));
+    for (const i of [0, 1]) igual(dec.decode(ana.descifrar('beto-1', vuelta[i].tipo, vuelta[i].cuerpo)), `b${ronda}-${i}`, 'b→a');
+  }
+});
+
+await caso('Un mensaje alterado no se abre', () => {
+  const c = JSON.parse(ana.cifrar('beto-1', enc.encode('intacto'), Date.now()));
+  const b = Uint8Array.from(atob(c.cuerpo), x => x.charCodeAt(0));
+  b[b.length - 5] ^= 1;
+  let roto = false;
+  try { beto.descifrar('ana-1', c.tipo, btoa(String.fromCharCode(...b))); } catch { roto = true; }
+  igual(roto, true, 'rechazado');
+});
+
+await caso('Grupo con clave de emisor (tipo 7)', () => {
+  const dist = crypto.randomUUID();
+  beto.procesarDistribucion('ana-1', ana.crearDistribucion('ana-1', dist));
+  for (let i = 0; i < 20; i++) {
+    const m = ana.cifrarGrupo('ana-1', dist, enc.encode(`a todos ${i}`));
+    igual(dec.decode(beto.descifrarGrupo('ana-1', m)), `a todos ${i}`, 'grupo');
+  }
+});
+
+await caso('La huella es la misma de los dos lados', () => {
+  const ha = JSON.parse(ana.huella('uid-ana', 'uid-beto', 'beto-1'));
+  const hb = JSON.parse(beto.huella('uid-beto', 'uid-ana', 'ana-1'));
+  igual(ha.digitos.length, 60, 'largo');
+  igual(ha.digitos, hb.digitos, 'dígitos');
+  return ha.digitos.match(/.{5}/g).join(' ');
+});
+
+const fallos = res.filter(r => !r.ok).length;
+const resumen = document.getElementById('resumen');
+resumen.textContent = fallos ? `${fallos} de ${res.length} fallaron` : `Los ${res.length} casos pasan`;
+resumen.className = fallos ? 'mal' : 'ok';
+window.__resultado = { libsignal: versionLibsignal(), kb: bytes.byteLength / 1024, cargaMs: carga, casos: res };
+</script>
+</body>
+</html>

@@ -50,3 +50,12 @@ google-services.json
 
 # Backups: config con la clave del repositorio.
 despliegue/backup.conf
+
+# --- version web ---
+# Lo que compila Rust y el WebAssembly armado: se rehacen con
+# web/cripto/construir.sh. Cargo.lock SI se versiona (es una app, no una
+# biblioteca: fija exactamente que codigo de libsignal entra).
+web/cripto/target/
+web/cripto/pkg/
+web/**/node_modules/
+web/**/dist/

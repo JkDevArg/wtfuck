@@ -96,7 +96,7 @@ quien no debe.
 | **Una credencial de Firebase** | El push está construido y probado contra un FCM de mentira; falta el proyecto, la cuenta de servicio y su clave. Se ponen en el servidor y el próximo arranque de cada teléfono se registra solo: **no hay que recompilar**. Hasta entonces, con la app **cerrada** no hay proceso que despertar. Ver `docs/09-DESPLIEGUE.md` |
 | ~~`WTFUCK_GIPHY_KEY`~~ | **Configurada.** Vive en `.env` (ignorado por git); hay plantilla en `.env.ejemplo`. En producción la inyecta el despliegue |
 | SFU para llamadas de más de 4 | La malla tiene techo declarado: con N participantes son N-1 conexiones por aparato |
-| Cliente web de **mensajería** | Exige libsignal en el navegador (WASM, claves en IndexedDB) y la pregunta seria de si un navegador es sitio para claves de largo plazo. En web está la consola de **administración**, que es otra cosa |
+| Cliente web de **mensajería** | **En camino.** La fase W0 está hecha: libsignal 0.86.5 compilada a WebAssembly habla con la del teléfono (`docs/evidencias/web-w0/`). Plan y modelo de confianza en `docs/12-VERSION-WEB.md`. En web ya está la consola de **administración**, que es otra cosa |
 
 Lo que **salió** de esta lista: el tema claro (se rederivó la escala midiendo,
 no se invirtió la oscura), la interfaz de tablet y escritorio, y el `Hub` fuera
