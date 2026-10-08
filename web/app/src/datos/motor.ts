@@ -14,7 +14,7 @@ import {
   aBytes, adjunto, b64, deBytes, edicion, esAdjunto, esConClave, esEdicion, esHistorial, esTexto, mencionesEn,
   nuevoId, respuesta, texto, TIPO_CIFRADO,
   type Bajada, type Carga, type ConversacionResumen, type CopiaCifrada, type Destino, type PaqueteClaves,
-  type Subida, type VincularHecho,
+  type Subida, type UsuarioPublico, type VincularHecho,
 } from './protocolo';
 import { mimeParaReproducir, type NotaGrabada } from './grabadora';
 import * as recuperacion from './recuperacion';
@@ -474,6 +474,54 @@ export interface Invitacion { codigo: string; creadaEn: number; expiraEn: number
 export const misInvitaciones = () => pedir<{ invitaciones: Invitacion[]; disponibles: number }>('GET', '/v1/registro/invitaciones-web');
 export const crearInvitacion = () => pedir<Invitacion>('POST', '/v1/registro/invitaciones-web');
 export const revocarInvitacion = (codigo: string) => pedir<void>('DELETE', `/v1/registro/invitaciones-web/${encodeURIComponent(codigo)}`);
+
+// ---------------------------------------------------------------------------
+//  W5c · Buscar personas y empezar chats
+// ---------------------------------------------------------------------------
+//
+// Todo lo decide el servidor con las mismas reglas que la app: quién aparece en
+// el directorio, a quién se le puede escribir (privacidad, bloqueos) y si el
+// chat nace como SOLICITUD de mensaje.
+
+export const buscarPersonas = (q: string) =>
+  pedir<{ usuarios: UsuarioPublico[]; siguiente?: string | null }>('GET', `/v1/directorio?q=${encodeURIComponent(q.trim())}`).then((r) => r.usuarios);
+
+/** Por usuario exacto: encuentra también a quien no sale en el directorio. */
+export async function personaExacta(username: string): Promise<UsuarioPublico | null> {
+  const u = username.trim().replace(/^@/, '').toLowerCase();
+  if (!/^[a-z0-9_]{3,24}$/.test(u)) return null;
+  try {
+    return await pedir<UsuarioPublico>('GET', `/v1/usuarios/${encodeURIComponent(u)}`);
+  } catch (e) {
+    if (e instanceof ErrorApi && e.estado === 404) return null;
+    throw e;
+  }
+}
+
+/** El chat directo con alguien (el mismo si ya existía). Devuelve su id. */
+export async function empezarChat(username: string): Promise<string> {
+  const c = await pedir<ConversacionResumen>('POST', '/v1/conversaciones/directa', { usernameDestino: username, duracionMs: 0 });
+  await sincronizarConversaciones();
+  return c.id;
+}
+
+export async function crearGrupo(nombre: string, usernames: string[]): Promise<string> {
+  const c = await pedir<ConversacionResumen>('POST', '/v1/conversaciones/grupo', { nombre: nombre.trim(), usernames, duracionMs: 0 });
+  await sincronizarConversaciones();
+  return c.id;
+}
+
+/** Aceptar o rechazar una solicitud de mensaje. Rechazarla la saca de la lista. */
+export async function decidirSolicitud(conversacionId: string, aceptar: boolean): Promise<void> {
+  await pedir('PUT', `/v1/conversaciones/${conversacionId}/solicitud`, { aceptar });
+  await sincronizarConversaciones();
+}
+
+/** Si este navegador es el único aparato de la cuenta (la cuenta nació en la web). */
+export async function soyElUnicoAparato(): Promise<boolean> {
+  const r = await pedir<{ dispositivos: { esEste: boolean; principal: boolean }[] }>('GET', '/v1/dispositivos');
+  return r.dispositivos.length === 1 && r.dispositivos[0].esEste;
+}
 
 async function publicarClaves(cuantas: number): Promise<void> {
   const s = estado.sesion!;

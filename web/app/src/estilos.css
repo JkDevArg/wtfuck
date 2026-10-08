@@ -203,3 +203,15 @@ form button[type=submit], .escribir button {
 .invitaciones li { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 10px; background: var(--fondo); border-radius: 10px; }
 .invitaciones .codigo { font-family: ui-monospace, Consolas, monospace; letter-spacing: .05em; }
 .avisos { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+
+/* W5c: empezar chats */
+.lista .nuevo { margin: 8px 16px 4px; background: var(--cian); color: var(--sobre-cian); border: 0; border-radius: 12px; padding: 10px 14px; font-weight: 600; }
+.lista .seccion { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--terciario); margin: 14px 16px 4px; font-weight: 600; }
+.nuevo-chat { width: min(460px, 100%); }
+.nuevo-chat .canales { max-height: min(50vh, 420px); overflow-y: auto; }
+.elegidos { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--cian); background: none; color: var(--cian); border-radius: 999px; padding: 4px 10px; font-size: 13px; }
+.acciones-panel { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.solicitud { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--borde); background: var(--superficie); }
+.solicitud .acciones { display: flex; gap: 12px; margin-left: auto; }
+.solicitud button:not(.enlace) { background: var(--cian); color: var(--sobre-cian); border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 600; }

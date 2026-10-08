@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
 import {
-  abrirConversacion, activarAvisosCerrado, avisosConQuien, desactivarAvisosCerrado, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarNotaDeVoz, enviarTexto,
+  abrirConversacion, activarAvisosCerrado, decidirSolicitud, soyElUnicoAparato, avisosConQuien, desactivarAvisosCerrado, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarNotaDeVoz, enviarTexto,
   huellasDe, identidadRevisada, motor, pedirPermisoDeAvisos, reaccionar, retirar, salir, titulo, vincular,
   type Conexion, type Conversacion, type Mensaje,
 } from './datos/motor';
 import { tamanoLegible } from './datos/archivos';
 import { Canal, DescubrirCanales } from './Canal';
 import { AvisoIos, CodigoNuevo, Invitaciones, Recuperar, Registro, usarModoRegistro } from './Entrada';
+import { NuevoChat } from './Contactos';
 import { decodificarOnda, Grabacion, mimeDeGrabacion } from './datos/grabadora';
 import { ErrorApi } from './datos/api';
 
@@ -161,6 +162,19 @@ function Principal() {
   const [abierta, setAbierta] = useState<string | null>(null);
   const [descubrir, setDescubrir] = useState(false);
   const [invitar, setInvitar] = useState(false);
+  const [nuevo, setNuevo] = useState(false);
+  const solicitudes = e.conversaciones.filter((c) => c.esSolicitud);
+
+  async function desvincular() {
+    // Si la cuenta nacio en esta web, este navegador es su UNICO aparato:
+    // desvincularlo la deja sin ninguno. Se vuelve, pero solo con el correo y
+    // el codigo de recuperacion, y como una identidad nueva.
+    const unico = await soyElUnicoAparato().catch(() => false);
+    const texto = unico
+      ? 'Este navegador es el ÚNICO aparato de tu cuenta. Si lo desvinculas, solo podrás volver a entrar con tu correo y tu código de recuperación, y no recuperarás los mensajes. ¿Desvincularlo igual?'
+      : '¿Desvincular este navegador? Se borra todo lo guardado aquí.';
+    if (confirm(texto)) void salir();
+  }
 
   useEffect(() => {
     void abrirConversacion(abierta);
@@ -180,15 +194,25 @@ function Principal() {
         </header>
         <div className="yo">
           @{e.sesion!.username} · {e.sesion!.etiqueta}
-          <button className="enlace" onClick={() => { if (confirm('¿Desvincular este navegador? Se borra todo lo guardado aquí.')) void salir(); }}>
+          <button className="enlace" onClick={() => void desvincular()}>
             Desvincular
           </button>
         </div>
         <Avisos />
+        <button className="nuevo" onClick={() => setNuevo(true)}>Nuevo chat</button>
         <div className="avisos">
           <button className="enlace cian" onClick={() => setDescubrir(true)}>Descubrir canales</button>
           <button className="enlace cian" onClick={() => setInvitar(true)}>Invitar a alguien</button>
         </div>
+        {!!solicitudes.length && (
+          <>
+            <h2 className="seccion">Solicitudes de mensaje ({solicitudes.length})</h2>
+            <ul>
+              {solicitudes.map((c) => <FilaChat key={c.id} c={c} activa={c.id === abierta} onAbrir={() => setAbierta(c.id)} />)}
+            </ul>
+            <h2 className="seccion">Chats</h2>
+          </>
+        )}
         <ul>
           {e.conversaciones.filter((c) => !c.esSolicitud).map((c) => (
             <FilaChat key={c.id} c={c} activa={c.id === abierta} onAbrir={() => setAbierta(c.id)} />
@@ -205,6 +229,7 @@ function Principal() {
         )}
       </section>
       {invitar && <Invitaciones onCerrar={() => setInvitar(false)} />}
+      {nuevo && <NuevoChat onCerrar={() => setNuevo(false)} onAbrir={(id) => { setNuevo(false); setAbierta(id); }} />}
       {descubrir && <DescubrirCanales onCerrar={() => setDescubrir(false)} onAbrir={(id) => { setDescubrir(false); setAbierta(id); }} />}
     </div>
   );
@@ -606,6 +631,18 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
           <button className="enlace" onClick={() => { setCitado(null); setEditando(null); setErrorArchivo(null); if (editando) setBorrador(''); }}>Cancelar</button>
         </div>
       )}
+      {c.esSolicitud ? (
+        <footer className="solicitud">
+          <span>
+            <b>{titulo(c)}</b> te escribió por primera vez. Si aceptas, podrá seguir escribiéndote y sabrá que leíste; si
+            rechazas, el chat desaparece de tu lista.
+          </span>
+          <span className="acciones">
+            <button className="enlace" onClick={() => void decidirSolicitud(c.id, false).then(onAtras).catch((x: Error) => setErrorArchivo(x.message))}>Rechazar</button>
+            <button onClick={() => void decidirSolicitud(c.id, true).catch((x: Error) => setErrorArchivo(x.message))}>Aceptar</button>
+          </span>
+        </footer>
+      ) : (
       <footer className="escribir">
         <input ref={selector} type="file" hidden onChange={(e) => elegirArchivo(e.target.files)} />
         <button className="adjuntar" onClick={() => selector.current?.click()} aria-label="Adjuntar un archivo" title="Adjuntar (el texto escrito va como pie)" disabled={!!editando}>
@@ -625,6 +662,7 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
         />
         <button onClick={enviar} disabled={!borrador.trim()}>{editando ? 'Guardar' : 'Enviar'}</button>
       </footer>
+      )}
     </>
   );
 }

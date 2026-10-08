@@ -110,3 +110,49 @@ W5 va por partes; cada una con su commit.
 - "Desvincular" en una cuenta que nació en la web deja la cuenta sin
   aparatos: el texto tiene que decirlo (se vuelve con correo + código de
   recuperación).
+
+---
+
+# W5c: buscar personas y empezar chats
+
+## Qué cambió
+
+- **"Nuevo chat"** en la lista (`web/app/src/Contactos.tsx`):
+  - **Buscar:** por directorio y por usuario exacto. El exacto encuentra
+    también a quien no sale en el directorio por su privacidad, pero no a
+    quien no existe.
+  - **Nuevo chat:** tocar a alguien abre (o reutiliza) el chat directo.
+  - **Nuevo grupo:** nombre y miembros elegidos de la búsqueda.
+
+  Lo que se puede lo decide el servidor con las reglas de la app: privacidad,
+  bloqueos y quién te agrega a grupos.
+- **Solicitudes de mensaje:**
+  - van en su propia sección arriba de los chats;
+  - en el chat, el compositor se reemplaza por "Aceptar / Rechazar";
+  - rechazar la saca de la lista.
+- **"Desvincular"** pregunta antes si este navegador es el único aparato de
+  la cuenta (cuenta nacida en la web). Si lo es, avisa que solo se vuelve con
+  correo + código de recuperación y sin los mensajes.
+
+## Pruebas, de punta a punta en el panel
+
+| Qué | Resultado |
+|---|---|
+| Cuenta 1 (nacida en la web, `127.0.0.1:8300`, 375 px) busca a `@webpruebaadd727` y le escribe | Lo encuentra; el chat se crea y el mensaje sale |
+| Cuenta 1 crea una invitación con "Invitar a alguien" | Código, vencimiento a 7 días, "Copiar enlace" y "Revocar" |
+| **Cuenta 2** se crea en `localhost:8300` con el enlace de esa invitación | Pestaña "Crear cuenta" con la invitación puesta; queda creada, con su propio código de recuperación |
+| Cuenta 2 busca a cuenta 1 y le escribe | Le llega a cuenta 1, descifrado, con 1 sin leer |
+| Cuenta 1 contesta | Le llega a cuenta 2; en cuenta 1 su mensaje queda "leído" |
+| Diseño a 375 × 812 | La app ocupa la pantalla entera, el compositor abajo y sin scroll horizontal (medido en la página; la captura del panel escalado engaña) |
+
+Es el caso **iPhone con iPhone**: dos cuentas sin ninguna app instalada, con
+Signal de punta a punta entre dos navegadores.
+
+## Lo que NO se probó
+
+- **El flujo de una solicitud en la web:** las dos cuentas tienen la
+  privacidad por defecto, que deja escribir a cualquiera. Las reglas de
+  solicitud las cubren `privacidad.mjs` y `privacidad-fina.mjs` en el
+  servidor; la pantalla no se ejerció.
+- **Crear un grupo desde la web:** solo la ruta. La suite `grupos.mjs` del
+  servidor la cubre.
