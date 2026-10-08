@@ -1084,6 +1084,16 @@ fun Application.modulo() {
         }
 
         /*
+         * Lo mismo para la version web: la clave publica VAPID con la que el
+         * navegador se suscribe. Ver `WebPush`. Con sesion por la misma razon.
+         */
+        get(RUTA_PUSH_WEB) {
+            call.autenticar()
+            val clave = WebPush.clavePublica()
+            call.respond(ConfigWebPush(disponible = clave != null, clavePublica = clave.orEmpty()))
+        }
+
+        /*
          * Registrar el token de ESTE dispositivo.
          *
          * El dispositivo sale de la SESION y no del cuerpo: si se confiara en el
@@ -1098,8 +1108,20 @@ fun Application.modulo() {
             if (token.length !in 10..4096) {
                 throw ErrorNegocio(400, "Token de push invalido.")
             }
-            if (req.proveedor != "fcm") {
-                throw ErrorNegocio(400, "Proveedor de push no soportado: ${req.proveedor}")
+            when (req.proveedor) {
+                PROVEEDOR_FCM -> Unit
+                // La version web: el token es la URL del endpoint, y el servidor
+                // le va a hacer un POST. Ver `WebPush.endpointValido`: solo los
+                // servicios de push conocidos, o seria una SSRF.
+                PROVEEDOR_WEBPUSH -> {
+                    if (!WebPush.configurado) {
+                        throw ErrorNegocio(409, "Este servidor no tiene avisos para el navegador.")
+                    }
+                    if (!WebPush.endpointValido(token)) {
+                        throw ErrorNegocio(400, "Ese endpoint no es de un servicio de push conocido.")
+                    }
+                }
+                else -> throw ErrorNegocio(400, "Proveedor de push no soportado: ${req.proveedor}")
             }
             Repo.guardarTokenPush(yo.dispositivoId, token, req.proveedor)
             call.respond(HttpStatusCode.NoContent)

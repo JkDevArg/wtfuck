@@ -177,6 +177,20 @@ for (const ruta of ['/web/%2e%2e/settings.gradle.kts', '/web/..%2fsettings.gradl
   ck(`salir de la carpeta no sirve nada: ${ruta}`, r.status !== 200 && !cuerpo.includes('include('), `${r.status}`);
 }
 
+// W4c. El service worker solo existe en la app armada (web/app/dist), no en
+// la pagina minima de `web-de-prueba`.
+r = await fetch(BASE + '/web/sw.js');
+if (r.status === 200) {
+  const sw = await r.text();
+  ck('sw.js se sirve como JavaScript', /javascript/.test(r.headers.get('content-type') ?? ''), r.headers.get('content-type'));
+  ck('sw.js sin cache: una version nueva del servidor se toma al recargar', r.headers.get('cache-control') === 'no-cache', r.headers.get('cache-control'));
+  ck('sw.js no intercepta peticiones (sin fetch): la pagina viene siempre del servidor',
+     !/addEventListener\(\s*['"]fetch/.test(sw) && !/caches\./.test(sw));
+  ck('la CSP deja registrar el worker solo desde el mismo origen', /worker-src 'self'/.test(r.headers.get('content-security-policy') ?? ''));
+} else {
+  console.log('    (sin sw.js: se esta sirviendo la pagina de prueba, no la app armada)');
+}
+
 r = await fetch(BASE + '/v1/version');
 ck('la API sigue igual al lado', r.status === 200);
 

@@ -87,6 +87,8 @@ object Db {
         47 to "/db/V47__una_vez_abierta.sql",
         48 to "/db/V48__enlace_contacto.sql",
         49 to "/db/V49__navegador.sql",
+        // 50 es `V50__contador_por_red.sql`, de la rama limite-registro.
+        51 to "/db/V51__web_push.sql",
     )
 
     /**

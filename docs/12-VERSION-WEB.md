@@ -71,7 +71,7 @@ Tres detalles que costaron o pueden costar:
 | Servir la web desde el mismo origen que la API | No hay CORS en Ktor (`ktor-server-cors` está en el catálogo pero no en el servidor), en Caddy ni en el almacén. Igual que `/consola`, la web va bajo el dominio de la API y así no hay que abrir CORS. |
 | CORS en el almacén de adjuntos | Resuelto en W3: SeaweedFS 4.47 ya refleja el origen; solo hizo falta que la CSP de `/web` nombre el almacén. En producción, verificar que Caddy deje pasar el preflight. |
 | Varias pestañas | Resuelto en W2/W3: el servidor admite un socket por aparato; una pestaña lo tiene (Web Locks) y las demás le hablan por `BroadcastChannel`. |
-| Avisos con la página cerrada | Hoy el push es solo FCM. Web Push es para W4; con la página abierta, la web ya avisa (W3). |
+| Avisos con la página cerrada | Resuelto en W4c: Web Push con VAPID, aviso vacío. Con la página abierta, la web ya avisaba (W3). |
 
 **Formato de `Carga`, a cuidar en TypeScript:**
 
@@ -91,7 +91,7 @@ tiene que leer y producir igual.
 | W1 | Servidor: nivel `NAVEGADOR` solo al vincular (nunca principal, sesión de 30 días), la web servida en `/web` con CSP estricta, y pruebas | **Hecha** (2026-10-08): `docs/evidencias/web-w1/` |
 | W2 | Web mínima: vincular con el código, publicar claves, chats directos y grupos de texto, historial pedido al teléfono, almacén cifrado en IndexedDB, una pestaña con el socket | **Hecha** (2026-10-08): `docs/evidencias/web-w2/`. Probada de punta a punta contra el teléfono del emulador |
 | W3 | Fotos y archivos (directo al almacén; SeaweedFS ya responde CORS), respuestas, ediciones, eliminar para todos, reacciones, avisos del navegador, aviso de cambio de identidad y huella, avisos entre pestañas | **Hecha** (2026-10-08): `docs/evidencias/web-w3/`. Probada contra el teléfono, huella incluida |
-| W4 | Escritorio con Tauri (el mismo código, firmado), llamadas WebRTC, Web Push, notas de voz y miniatura de video, canales | |
+| W4 | Escritorio con Tauri (el mismo código, firmado), llamadas WebRTC, Web Push, notas de voz y miniatura de video, canales | **En curso**: W4a notas de voz y video, W4b canales públicos y W4c Web Push hechas (2026-10-08), `docs/evidencias/web-w4/`. Faltan llamadas y Tauri |
 
 **Fuera de la web:** el modo cerca, porque el navegador no puede anunciar ni
 escuchar por Bluetooth así.
@@ -108,6 +108,10 @@ Las otras dos son los canales públicos y el texto de una denuncia.
   - builds reproducibles;
   - sesiones web que el teléfono ve y revoca;
   - un aviso en la propia web de que su código lo entrega el servidor.
+  - (W4c) el service worker de Web Push **no intercepta peticiones ni guarda
+    caché**: si lo hiciera, una copia vieja del código que maneja las claves
+    podría sobrevivir a una actualización del servidor. Solo muestra un aviso
+    fijo; `pruebas/web.mjs` comprueba que no tenga `fetch`.
 - **En escritorio** (Tauri), el código va firmado y se actualiza como el APK.
   El servidor no puede cambiarlo.
 - **Las claves en el navegador** viven en IndexedDB, cifradas con una clave

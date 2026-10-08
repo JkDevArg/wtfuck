@@ -103,11 +103,30 @@ export interface Instantanea {
   conversaciones: Conversacion[];
   mensajes: Record<string, Mensaje[]>;
   aviso: string | null;
+  errorCerrado: string | null;
   /** Avisos del navegador: el permiso y si dicen quién escribió. */
-  avisos: { permiso: NotificationPermission | 'sin-soporte'; mostrarQuien: boolean };
+  avisos: { permiso: NotificationPermission | 'sin-soporte'; mostrarQuien: boolean; cerrado: AvisosCerrado };
 }
 
+/**
+ * Los avisos con el navegador cerrado (Web Push, W4c).
+ * - `sin-soporte`: el navegador no tiene Push API (o no hay service worker).
+ * - `sin-servidor`: el servidor no tiene claves VAPID.
+ * - `error`: se intentó y el navegador no pudo suscribirse; ver `errorCerrado`.
+ */
+export type AvisosCerrado = 'sin-soporte' | 'apagado' | 'activando' | 'activo' | 'sin-servidor' | 'error';
+
 const PREF_QUIEN = 'wtfuck-avisos-sin-quien';
+const PREF_CERRADO = 'wtfuck-avisos-cerrado';
+const HAY_PUSH = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+function prefCerrado(): boolean {
+  try {
+    return localStorage.getItem(PREF_CERRADO) === '1';
+  } catch {
+    return false;
+  }
+}
 
 /** Como la app: por defecto el aviso dice QUIÉN escribió, nunca QUÉ. */
 function prefQuien(): boolean {
@@ -126,7 +145,12 @@ let estado: Instantanea = {
   conversaciones: [],
   mensajes: {},
   aviso: null,
-  avisos: { permiso: 'Notification' in window ? Notification.permission : 'sin-soporte', mostrarQuien: prefQuien() },
+  avisos: {
+    permiso: 'Notification' in window ? Notification.permission : 'sin-soporte',
+    mostrarQuien: prefQuien(),
+    cerrado: HAY_PUSH ? 'apagado' : 'sin-soporte',
+  },
+  errorCerrado: null,
 };
 const oyentes = new Set<() => void>();
 
@@ -317,6 +341,9 @@ async function arrancarEnLinea(): Promise<void> {
     if (e instanceof ErrorApi && e.estado === 401) return;
   }
   conectar();
+  // Si los tenía prendidos, se vuelve a suscribir: la suscripción puede haber
+  // vencido, o el servidor puede haber cambiado de claves VAPID. Es idempotente.
+  if (prefCerrado()) void activarAvisosCerrado(false);
 }
 
 /** Vincula este navegador a una cuenta con el código del teléfono. */
@@ -402,6 +429,10 @@ export function titulo(c: ConversacionResumen): string {
 /** Revocado desde el teléfono, o la sesión venció: no queda nada en el navegador. */
 async function perderVinculo(): Promise<void> {
   cerrarSocket();
+  // El servidor ya no le va a mandar nada (el aparato está revocado), pero la
+  // suscripción del navegador se borra igual: no tiene por qué sobrevivir a la
+  // cuenta, y el servicio de push dejaría de tenerla.
+  void bajarSuscripcion();
   await vaciarTodo();
   cripto.olvidar();
   porId.clear();
@@ -666,8 +697,8 @@ async function recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
 //  Avisos del navegador
 // ---------------------------------------------------------------------------
 //
-// Solo con la página abierta (en otra pestaña o minimizada): con el navegador
-// cerrado haría falta Web Push. Igual que la app (Notificaciones.kt): el
+// Con la página abierta (en otra pestaña o minimizada) avisa la página; con el
+// navegador cerrado, el service worker (Web Push, más abajo). Igual que la app (Notificaciones.kt): el
 // texto NUNCA va en el aviso, porque un aviso se ve en la pantalla aunque
 // nadie haya abierto nada. Lo único que se elige es si dice quién escribió.
 
@@ -689,6 +720,106 @@ export function avisosConQuien(si: boolean): void {
     // Sin localStorage, vale hasta recargar.
   }
   cambiar({ avisos: { ...estado.avisos, mostrarQuien: si } });
+}
+
+// ---------------------------------------------------------------------------
+//  Avisos con el navegador cerrado (Web Push, W4c)
+// ---------------------------------------------------------------------------
+//
+// El service worker (`public/sw.js`) muestra un aviso fijo cuando llega un push.
+// El push va VACÍO: el servicio de push del navegador (Google, Mozilla, Apple,
+// Microsoft) solo sabe que a esta hora hubo algo. Ver WebPush.kt.
+
+const BASE = import.meta.env.BASE_URL;
+
+function deB64url(s: string): Uint8Array<ArrayBuffer> {
+  const t = s.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(t + '='.repeat((4 - (t.length % 4)) % 4));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
+function iguales(a: ArrayBuffer | null, b: Uint8Array): boolean {
+  if (!a || a.byteLength !== b.length) return false;
+  const x = new Uint8Array(a);
+  return x.every((v, i) => v === b[i]);
+}
+
+function ponerCerrado(cerrado: AvisosCerrado, error: string | null = null): void {
+  cambiar({ avisos: { ...estado.avisos, cerrado }, errorCerrado: error });
+}
+
+/**
+ * Prende los avisos con el navegador cerrado. `pedir`: si puede preguntar por
+ * el permiso (solo desde un clic: los navegadores bloquean la pregunta si no).
+ */
+export async function activarAvisosCerrado(pedirPermiso = true): Promise<void> {
+  if (!HAY_PUSH) return;
+  ponerCerrado('activando');
+  try {
+    if (Notification.permission === 'default' && pedirPermiso) await pedirPermisoDeAvisos();
+    if (Notification.permission !== 'granted') {
+      ponerCerrado('apagado', Notification.permission === 'denied' ? 'El navegador tiene bloqueados los avisos de este sitio.' : null);
+      return;
+    }
+    const cfg = await pedir<{ disponible: boolean; clavePublica: string }>('GET', '/v1/push/web');
+    if (!cfg.disponible) {
+      ponerCerrado('sin-servidor');
+      return;
+    }
+    const clave = deB64url(cfg.clavePublica);
+    const reg = await navigator.serviceWorker.register(`${BASE}sw.js`, { scope: BASE });
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    // Suscrita con otra clave (el servidor cambió de par VAPID): el servicio de
+    // push rechazaría todo lo que mande el servidor con la nueva.
+    if (sub && !iguales(sub.options.applicationServerKey, clave)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: clave });
+    await pedir('PUT', '/v1/push', { token: sub.endpoint, proveedor: 'webpush' });
+    try {
+      localStorage.setItem(PREF_CERRADO, '1');
+    } catch {
+      // Sin localStorage, al recargar no se vuelve a suscribir solo; el servidor
+      // igual tiene el endpoint.
+    }
+    ponerCerrado('activo');
+  } catch (e) {
+    // El caso típico: un navegador sin servicio de push (Chromium sin Google,
+    // algunos modos privados) falla en `subscribe` con AbortError.
+    const msj = e instanceof DOMException && e.name === 'AbortError'
+      ? `El navegador no pudo suscribirse a su servicio de push (${e.message}).`
+      : e instanceof Error ? e.message : 'No se pudo activar.';
+    ponerCerrado('error', msj);
+  }
+}
+
+export async function desactivarAvisosCerrado(): Promise<void> {
+  try {
+    localStorage.removeItem(PREF_CERRADO);
+  } catch {
+    // Nada que borrar.
+  }
+  try {
+    await pedir('DELETE', '/v1/push');
+  } catch {
+    // Sin red: igual se borra la suscripción aquí, y sin ella el servicio de
+    // push contesta 410 y el servidor borra el endpoint en el primer intento.
+  }
+  await bajarSuscripcion();
+  ponerCerrado(HAY_PUSH ? 'apagado' : 'sin-soporte');
+}
+
+async function bajarSuscripcion(): Promise<void> {
+  if (!HAY_PUSH) return;
+  try {
+    localStorage.removeItem(PREF_CERRADO);
+    const reg = await navigator.serviceWorker.getRegistration(BASE);
+    await (await reg?.pushManager.getSubscription())?.unsubscribe();
+  } catch {
+    // Sin service worker no hay suscripción que borrar.
+  }
 }
 
 function avisar(m: Mensaje): void {

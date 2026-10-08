@@ -54,6 +54,28 @@ createServer(async (req, res) => {
     return;
   }
 
+  // Un servicio de Web Push de mentira (ver `WebPush.kt`). Guarda las
+  // cabeceras y CUANTOS bytes trajo el cuerpo, que tiene que ser cero. Un
+  // endpoint que empieza con /wp/vencido contesta 410, como una suscripcion
+  // de la que el navegador ya se dio de baja.
+  if (req.method === 'POST' && url.pathname.startsWith('/wp/')) {
+    const cuerpo = await leer(req);
+    recibidos.push({
+      ruta: 'webpush',
+      endpoint: url.pathname,
+      cabeceras: {
+        authorization: req.headers.authorization ?? '',
+        ttl: req.headers.ttl ?? '',
+        urgency: req.headers.urgency ?? '',
+        topic: req.headers.topic ?? '',
+        'content-encoding': req.headers['content-encoding'] ?? '',
+      },
+      bytes: Buffer.byteLength(cuerpo),
+    });
+    res.writeHead(url.pathname.startsWith('/wp/vencido') ? 410 : 201).end();
+    return;
+  }
+
   if (req.method === 'GET' && url.pathname === '/recibidos') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(recibidos));

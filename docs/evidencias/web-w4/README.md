@@ -88,3 +88,78 @@ vacía (`ClaseContenido.TEXTO = ""`), no `"texto"`. El servidor respondía
 - **Recibir el evento `canal_publicacion` en vivo:** hace falta otro que
   publique en un canal que la web siga.
 - **Una publicación con imagen.**
+
+---
+
+# W4c: avisos con el navegador cerrado (Web Push)
+
+`server/.../WebPush.kt`, `web/app/public/sw.js`, y "Avisos con el navegador
+cerrado" en `web/app/src/datos/motor.ts`.
+
+## Qué viaja: nada
+
+El servidor le hace al servicio de push del navegador un **POST sin cuerpo**,
+firmado con VAPID (RFC 8292). No usa el cifrado de payload de RFC 8291 porque
+no hay nada que cifrar:
+
+- El servicio de push (Google, Mozilla, Apple o Microsoft) aprende que este
+  navegador recibió un aviso a esta hora. No sabe quién escribió, ni dónde, ni
+  cuánto.
+- El service worker muestra un texto fijo, "wtfuck · Tienes algo nuevo". La
+  página, al abrirse, baja y descifra lo pendiente.
+
+Es la misma regla que FCM en la app (`data: {"w":"1"}`), llevada al extremo.
+
+## Decisiones
+
+- **Contra la SSRF:** el endpoint lo manda el cliente y el servidor le hace un
+  POST. Por eso:
+  - solo se aceptan HTTPS, puerto 443, de los cuatro servicios de push
+    conocidos;
+  - se valida al registrar y al enviar;
+  - no se siguen redirecciones.
+- **`Topic: avisos`:** el servicio de push reemplaza el aviso que no entregó.
+  Veinte mensajes con el navegador apagado son un aviso al prenderlo. Se suma
+  a la ventana de 12 s que ya tenía `Push.despertar`.
+- **`Urgency: high` y TTL de un día**, por el mismo criterio que
+  `priority: high` en FCM.
+- **El service worker no tiene `fetch` ni caché.** Así la página viene siempre
+  del servidor, y una copia vieja del código que maneja las claves no
+  sobrevive a una actualización.
+- **Con la web a la vista no avisa:** ya avisa la página.
+- **Claves VAPID mal copiadas:** se comprueba que sean pareja al arrancar
+  (firma y verificación). Sin eso, el síntoma sería un 403 mudo de todos los
+  servicios.
+- **Cambio de par VAPID:** la web se resuscribe sola al abrirse; compara la
+  clave de su suscripción con la del servidor.
+- **Suscripción vencida (404/410):** se borra.
+- **Desvincular o perder el vínculo:** la web borra su suscripción.
+- **Migración:** V51 agrega `webpush` a `push_proveedor_valido`. La V50 la
+  tomó en paralelo la rama `limite-registro` (`contador_por_red`), que ya
+  estaba aplicada en la base de desarrollo; por eso esta es la 51.
+
+## Pruebas
+
+| Qué | Resultado |
+|---|---|
+| `pruebas/webpush.mjs` (nueva), con `-ConPushDeMentira` y el stub | **41 de 41** |
+| — configuración | Trae solo la clave pública, un punto P-256 de 65 bytes; sin sesión, 401. |
+| — SSRF | Rechaza 9 endpoints: metadatos de la nube, IP interna, host cualquiera, `fcm.googleapis.com.ejemplo-malo.test`, `malonotify.windows.com`, http, otro puerto, usuario en la URL, una no-URL. Acepta los de Chrome, Firefox, Safari y Edge. |
+| — el aviso | **0 bytes de cuerpo**, sin `Content-Encoding`. Ni el usuario, ni el grupo, ni quién escribe en ninguna cabecera. `Urgency: high`, `TTL: 86400`, `Topic: avisos`. |
+| — VAPID | `vapid t=…, k=…` con k igual a la clave servida. ES256 con `aud` = origen del servicio, `exp` menor a 24 h y `sub` = contacto. La firma R‖S de 64 bytes **verifica en Node** con la clave pública. |
+| — suscripción vencida | Un 410 borra el endpoint. |
+| `pruebas/push.mjs` (FCM, sin cambios) | **36 de 36**: el camino de la app sigue igual. |
+| `pruebas/web.mjs` | **49 de 49**. Nuevas: `sw.js` como JS, `no-cache`, sin `fetch` ni `caches`, y `worker-src 'self'`. |
+| vitest | **37 de 37**. Nuevas: `sw.js` corrido en una caja con un `self` de mentira. Escucha solo install/activate/push/notificationclick; el aviso es fijo; con la web visible no avisa y en otra pestaña sí; al tocarlo enfoca la web o la abre. |
+| Navegador del panel | El service worker se registra y se activa en `/web/`. |
+
+## Lo que NO se probó
+
+- **Un aviso real de punta a punta** (Chrome → FCM → service worker). El panel
+  se comporta como incógnito: Chrome lo dice en la consola, "does not support
+  the Push API in incognito mode", y además deniega las notificaciones.
+  Hace falta un Chrome normal contra `localhost` o contra el despliegue.
+- **Firefox, Safari y Edge.** Safari en iOS solo da Web Push a una web
+  instalada en la pantalla de inicio, y esta web no tiene manifiesto todavía.
+- **Que los servicios de verdad acepten la firma.** Está verificada con la
+  clave pública en Node, que es la misma comprobación que hacen ellos.

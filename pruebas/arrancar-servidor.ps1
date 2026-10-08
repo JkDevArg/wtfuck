@@ -81,6 +81,21 @@ if (-not $env:WTFUCK_WEB_DIR) {
     $armada = Join-Path $raiz 'web\app\dist'
     $env:WTFUCK_WEB_DIR = if (Test-Path (Join-Path $armada 'index.html')) { $armada } else { Join-Path $raiz 'pruebas\web-de-prueba' }
 }
+# Version web, W4c: las claves VAPID de los avisos del navegador. Se generan
+# UNA vez en %TEMP% (no en el repo: la privada deja mandar avisos a cualquier
+# navegador suscrito) y se reutilizan, porque cambiarlas invalida las
+# suscripciones. Un .env con WTFUCK_VAPID_* gana sobre esto.
+if (-not $env:WTFUCK_VAPID_PRIVADA) {
+    $vapid = Join-Path $env:TEMP 'wtfuck-vapid-de-desarrollo.env'
+    if (-not (Test-Path $vapid)) {
+        & node (Join-Path $raiz 'despliegue\generar-vapid.mjs') | Out-File -Encoding ascii $vapid
+    }
+    foreach ($linea in Get-Content $vapid) {
+        $i = $linea.IndexOf('=')
+        if ($i -gt 0) { Set-Item -Path ("env:" + $linea.Substring(0, $i)) -Value $linea.Substring($i + 1) }
+    }
+    $env:WTFUCK_VAPID_CONTACTO = 'mailto:desarrollo@localhost'
+}
 # Emuladores. El servidor los RECHAZA por defecto desde el 2026-10-08 -antes
 # los aceptaba si nadie decia nada, y un despliegue que se olvidara la variable
 # quedaba abierto-. Aqui se abre a proposito y a la vista, porque sin esto los
@@ -134,11 +149,14 @@ if ($ConPushDeMentira) {
     $env:WTFUCK_FCM_APP_ID = '1:123:android:abc'
     $env:WTFUCK_FCM_API_KEY = 'AIza-de-prueba'
     $env:WTFUCK_FCM_REMITENTE = '123456789'
+    # Web Push: el stub tambien hace de servicio de push. Ver `WebPush.kt`:
+    # fuera de esta lista solo se aceptan los servicios de push de verdad.
+    $env:WTFUCK_WEBPUSH_HOSTS_EXTRA = 'localhost:8399'
     Write-Host "Push apuntado al stub. Levantalo con: node pruebas/stub-fcm.mjs"
 } else {
     foreach ($v in @('WTFUCK_FCM_PROYECTO','WTFUCK_FCM_EMAIL','WTFUCK_FCM_CLAVE',
                      'WTFUCK_FCM_OAUTH','WTFUCK_FCM_ENDPOINT','WTFUCK_FCM_APP_ID',
-                     'WTFUCK_FCM_API_KEY','WTFUCK_FCM_REMITENTE')) {
+                     'WTFUCK_FCM_API_KEY','WTFUCK_FCM_REMITENTE','WTFUCK_WEBPUSH_HOSTS_EXTRA')) {
         Remove-Item "env:$v" -ErrorAction SilentlyContinue
     }
 }

@@ -197,6 +197,7 @@ data class EstadoHistorial(
 // ============================================================
 
 const val RUTA_PUSH = "/v1/push"
+const val RUTA_PUSH_WEB = "/v1/push/web"
 
 /**
  * El token que el servicio de mensajeria del sistema le dio a ESTA instalacion.
@@ -209,8 +210,40 @@ const val RUTA_PUSH = "/v1/push"
 @Serializable
 data class RegistrarPushReq(
     val token: String,
-    /** Hoy solo `"fcm"`. El campo existe para que agregar otro no sea migrar. */
+    /**
+     * `"fcm"` (la app Android) o `"webpush"` (la version web). Con `webpush`,
+     * el token es la URL del endpoint que dio `pushManager.subscribe`: es lo
+     * unico que hace falta, porque el aviso va VACIO. Ver [ConfigWebPush].
+     */
     val proveedor: String = "fcm",
+)
+
+const val PROVEEDOR_FCM = "fcm"
+const val PROVEEDOR_WEBPUSH = "webpush"
+
+/**
+ * Lo que la version web necesita para suscribirse: la clave publica VAPID.
+ *
+ * ## El aviso va vacio
+ *
+ * Web Push (RFC 8030) permite mandar un cuerpo cifrado para el navegador
+ * (RFC 8291). Aqui no se usa: el POST al servicio de push no lleva cuerpo. Es lo
+ * mismo que el `data: {"w":"1"}` de FCM, llevado al extremo: el servicio de
+ * push (Google, Mozilla, Apple, Microsoft) aprende que este navegador recibio
+ * un aviso a esta hora, y nada mas. El service worker muestra un "tienes algo
+ * nuevo" fijo y la pagina, al abrirse, baja y descifra lo pendiente.
+ *
+ * La clave publica no es secreta: es lo que el navegador usa para comprobar que
+ * los avisos vienen de ESTE servidor. La privada no sale nunca de el.
+ *
+ * Va en una ruta propia y no dentro de [ConfigPush] para no tocar el contrato
+ * que ya usa la app Android.
+ */
+@Serializable
+data class ConfigWebPush(
+    val disponible: Boolean = false,
+    /** P-256 sin comprimir (65 bytes), en base64url sin relleno. */
+    val clavePublica: String = "",
 )
 
 /**

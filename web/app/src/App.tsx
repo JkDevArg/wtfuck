@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
 import {
-  abrirConversacion, avisosConQuien, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarNotaDeVoz, enviarTexto,
+  abrirConversacion, activarAvisosCerrado, avisosConQuien, desactivarAvisosCerrado, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarNotaDeVoz, enviarTexto,
   huellasDe, identidadRevisada, motor, pedirPermisoDeAvisos, reaccionar, retirar, salir, titulo, vincular,
   type Conexion, type Conversacion, type Mensaje,
 } from './datos/motor';
@@ -174,7 +174,7 @@ function Principal() {
 
 /** El permiso de avisos del navegador, y si dicen quién escribió. Nunca el texto. */
 function Avisos() {
-  const { avisos } = usarMotor();
+  const { avisos, errorCerrado } = usarMotor();
   if (avisos.permiso === 'sin-soporte' || avisos.permiso === 'denied') return null;
   if (avisos.permiso === 'default') {
     return (
@@ -183,11 +183,26 @@ function Avisos() {
       </div>
     );
   }
+  const c = avisos.cerrado;
   return (
-    <label className="avisos interruptor">
-      <input type="checkbox" checked={avisos.mostrarQuien} onChange={(e) => avisosConQuien(e.target.checked)} />
-      Los avisos dicen quién escribió (nunca el texto)
-    </label>
+    <>
+      <label className="avisos interruptor">
+        <input type="checkbox" checked={avisos.mostrarQuien} onChange={(e) => avisosConQuien(e.target.checked)} />
+        Los avisos dicen quién escribió (nunca el texto)
+      </label>
+      {c !== 'sin-soporte' && (
+        <label className="avisos interruptor" title="El aviso llega vacío: el servicio de push del navegador no sabe quién escribió ni dónde.">
+          <input
+            type="checkbox"
+            checked={c === 'activo' || c === 'activando'}
+            disabled={c === 'activando' || c === 'sin-servidor'}
+            onChange={(e) => void (e.target.checked ? activarAvisosCerrado() : desactivarAvisosCerrado())}
+          />
+          Avisar también con el navegador cerrado{c === 'sin-servidor' ? ' (este servidor no lo tiene)' : ''}
+        </label>
+      )}
+      {errorCerrado && <p className="avisos error">{errorCerrado}</p>}
+    </>
   );
 }
 

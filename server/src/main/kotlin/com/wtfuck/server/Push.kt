@@ -1,5 +1,6 @@
 package com.wtfuck.server
 
+import com.wtfuck.protocol.PROVEEDOR_WEBPUSH
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -181,7 +182,7 @@ object Push {
      * momento.
      */
     fun despertar(dispositivoId: UUID) {
-        if (!configurado) {
+        if (!configurado && !WebPush.configurado) {
             avisarUnaVez()
             return
         }
@@ -218,6 +219,20 @@ object Push {
 
     private fun enviarAhora(dispositivoId: UUID) {
         val destino = Repo.tokenPush(dispositivoId) ?: return
+        if (destino.proveedor == PROVEEDOR_WEBPUSH) {
+            if (!WebPush.configurado) return
+            enviados.incrementAndGet()
+            when (WebPush.enviar(destino.token)) {
+                WebPush.Resultado.ENTREGADO -> Repo.pushOk(dispositivoId)
+                WebPush.Resultado.YA_NO_EXISTE -> {
+                    bitacora.info("Suscripcion web de $dispositivoId ya no existe: se borra")
+                    Repo.borrarTokenPush(dispositivoId)
+                }
+                WebPush.Resultado.FALLO -> Repo.pushFallo(dispositivoId)
+            }
+            return
+        }
+        if (!configurado) return
         val acceso = tokenDeAcceso() ?: return
         enviados.incrementAndGet()
 

@@ -554,6 +554,37 @@ y se arranca el servidor con `WTFUCK_FCM_OAUTH=http://localhost:8399/token` y
 comprueba el formato del aviso, incluido lo que importa: que **no lleve
 contenido**.
 
+### Web Push: los avisos de la versión web
+
+Es otro proveedor junto a FCM, para la web con el navegador cerrado
+(`server/.../WebPush.kt`). No depende de Firebase: el navegador se suscribe al
+servicio de push que trae (Google en Chrome, Mozilla en Firefox, Apple en
+Safari, Microsoft en Edge) y el servidor le hace un POST **vacío**, firmado con
+un par VAPID propio.
+
+```bash
+node despliegue/generar-vapid.mjs   # imprime las tres variables
+```
+
+```bash
+WTFUCK_VAPID_PUBLICA=B...            # se le da al navegador
+WTFUCK_VAPID_PRIVADA=...             # SECRETA: firma los avisos
+WTFUCK_VAPID_CONTACTO=mailto:...     # Apple lo exige
+```
+
+- **Cambiar el par invalida todas las suscripciones.** La web se vuelve a
+  suscribir sola al abrirse, pero hasta entonces ese navegador no recibe avisos.
+- **Salida a internet:** el servidor necesita HTTPS saliente a
+  `fcm.googleapis.com`, `updates.push.services.mozilla.com`,
+  `*.push.apple.com` y `*.notify.windows.com`. Son los únicos destinos que
+  acepta (ver "SSRF" en `WebPush.kt`); `WTFUCK_WEBPUSH_HOSTS_EXTRA` agrega
+  otros y es solo para pruebas.
+- Sin las variables, `GET /v1/push/web` dice `disponible: false` y la web
+  esconde el interruptor. No es un error.
+
+Prueba: `node pruebas/webpush.mjs` con el servidor en `-ConPushDeMentira` y
+`node pruebas/stub-fcm.mjs`, que también hace de servicio de push.
+
 ### Actualizaciones: anunciar una versión
 
 Cuatro variables, y `despliegue/publicar-apk.sh` las imprime ya rellenas
