@@ -1,6 +1,7 @@
 package com.wtfuck.interop
 
 import com.wtfuck.protocol.Carga
+import com.wtfuck.protocol.CodigoRecuperacion
 import com.wtfuck.protocol.MensajeHistorico
 import com.wtfuck.protocol.Relleno
 import com.wtfuck.protocol.mencionesEn
@@ -99,6 +100,27 @@ class OroTest {
         escribir("menciones.json", json.encodeToString(ListSerializer(String.serializer()), mencionesEn(conMenciones)))
 
         // Un texto rellenado, en base64: lo que de verdad se cifra.
+        // W5b: el codigo de recuperacion. La web tiene que normalizarlo y derivar
+        // el verificador EXACTAMENTE igual, o una cuenta web no se podria
+        // recuperar desde la app (ni al reves).
+        val codigos = listOf("QW7C-6TAE-28Q0-CZCS-CJHR-XHYR-86Y0", "R4MS-GN7J-P84P-6ANJ-5BNR-9314-RBC0", "7NFH-T2AZ-0F5Y-NC35-YA0E-BH18-07BG")
+        val variantes = listOf(
+            "qw7c 6tae 28q0 czcs cjhr xhyr 86y0", "QW7C6TAE28QOCZCSCJHRXHYR86YO", "R4MS-GN7J-P84P-6ANJ-5BNR-93l4-RBC0",
+            "QW7C-6TAE-28Q0-CZCS-CJHR-XHYR-86Y1", "QW7C-6TAE-28Q0", "QW7C-6TAE-28Q0-CZCS-CJHR-XHYR-86Y0-0000", "QW7C-6TAE-28Q0-CZCS-CJHR-XHYR-86U0",
+        )
+        val b64 = Base64.getEncoder()
+        escribir(
+            "recuperacion.json",
+            "{\"codigos\":[" + codigos.joinToString(",") { c ->
+                val n = CodigoRecuperacion.normalizar(c)!!
+                "{\"codigo\":\"$c\",\"normalizado\":\"$n\"," +
+                    "\"verificador\":\"${b64.encodeToString(CodigoRecuperacion.verificadorServidor(n))}\"," +
+                    "\"identidad\":\"${b64.encodeToString(CodigoRecuperacion.claveDeIdentidad(n))}\"}"
+            } + "],\"variantes\":[" + variantes.joinToString(",") { v ->
+                "[\"$v\"," + (CodigoRecuperacion.normalizar(v)?.let { "\"$it\"" } ?: "null") + "]"
+            } + "]}",
+        )
+
         val claro = Relleno.poner(json.encodeToString(Carga.serializer(), Carga.Texto(cuerpo = "hola")).toByteArray())
         escribir("texto-rellenado.b64", Base64.getEncoder().encodeToString(claro))
     }

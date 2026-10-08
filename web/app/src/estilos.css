@@ -192,3 +192,14 @@ form button[type=submit], .escribir button {
 .centro { align-self: center; text-align: center; }
 .canales { display: grid; max-height: 50vh; overflow-y: auto; }
 .panel input { width: 100%; }
+
+/* W5: crear la cuenta desde la web */
+.pestanas { display: flex; gap: 4px; background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; padding: 4px; margin: 4px 0 16px; }
+.pestanas button { flex: 1; border: 0; background: none; color: var(--secundario); padding: 10px 8px; border-radius: 10px; font-weight: 600; }
+.pestanas button.activa { background: var(--elevada); color: var(--texto); }
+.aviso-ios { background: rgb(245 185 105 / .12); border: 1px solid var(--ambar); color: var(--texto); border-radius: 12px; padding: 12px 14px; margin: 8px 0 12px; font-size: 14px; }
+.codigo-grande { font: 600 20px/1.4 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .04em; text-align: center; background: var(--fondo); border: 1px dashed var(--cian); border-radius: 12px; padding: 14px 10px; word-break: break-all; user-select: all; }
+.invitaciones { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.invitaciones li { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 10px; background: var(--fondo); border-radius: 10px; }
+.invitaciones .codigo { font-family: ui-monospace, Consolas, monospace; letter-spacing: .05em; }
+.avisos { display: flex; flex-wrap: wrap; gap: 4px 16px; }

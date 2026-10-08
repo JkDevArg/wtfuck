@@ -17,6 +17,7 @@ import {
   type Subida, type VincularHecho,
 } from './protocolo';
 import { mimeParaReproducir, type NotaGrabada } from './grabadora';
+import * as recuperacion from './recuperacion';
 import {
   cifrarArchivo, claseDe, descifrarArchivo, LIMITES, miniaturaSegura, nombreSeguro, prepararImagen, prepararVideo, SOBRECOSTO,
   tamanoLegible, type Clase,
@@ -363,23 +364,10 @@ export async function vincular(username: string, codigo: string, etiqueta: strin
     },
     false,
   );
-  const s: Sesion = {
-    token: r.token,
-    usuarioId: r.usuarioId,
-    dispositivoId: r.dispositivoId,
-    username: r.username,
-    hardwareHash,
-    etiqueta,
-    sig: { firmada: 1, kyber: 1, unica: 1 },
-  };
-  await guardar('cuenta', 'sesion', s);
-  usarToken(s.token);
-  cambiar({ sesion: s, conexion: 'conectando' });
-  // Primero las claves: un aparato sin claves publicadas no puede recibir
-  // nada, y el pedido de historial le llegaría a quien no puede cifrarle.
-  await publicarClaves(PREKEYS_OBJETIVO);
-  await sincronizarConversaciones();
-  conectar();
+  // Primero las claves (dentro de `entrar`): un aparato sin claves publicadas
+  // no puede recibir nada, y el pedido de historial le llegaría a quien no
+  // puede cifrarle.
+  await entrar(r, hardwareHash, etiqueta);
   try {
     const h = await pedir<{ hayQuienResponda: boolean }>('POST', '/v1/dispositivos/historial', {});
     if (!h.hayQuienResponda) {
@@ -389,6 +377,103 @@ export async function vincular(username: string, codigo: string, etiqueta: strin
     // El historial es una ayuda: sin él, se empieza vacío.
   }
 }
+
+// ---------------------------------------------------------------------------
+//  W5 · Crear la cuenta desde la web, y recuperarla
+// ---------------------------------------------------------------------------
+//
+// Una cuenta que nace aquí tiene al navegador como ÚNICO aparato (principal).
+// Pasa dos puertas que la app no pasa: una invitación web y un correo
+// verificado. Ver docs/12-VERSION-WEB.md, "W5".
+
+export interface ModoRegistro { requiereInvitacion: boolean; registroWeb: boolean }
+
+export const modoRegistro = () => pedir<ModoRegistro>('GET', '/v1/registro/modo', undefined, false);
+
+export interface CodigoPedido { reintentarEnSegundos: number; expiraEnSegundos: number; codigoDePrueba?: string | null }
+
+/** El código de 6 dígitos al correo. Para registrarse hace falta la invitación. */
+export const pedirCodigoCorreo = (correo: string, proposito: 'registro' | 'recuperar', extra: { codigoInvitacion?: string; username?: string }) =>
+  pedir<CodigoPedido>('POST', '/v1/registro/correo', { correo: correo.trim(), proposito, codigoInvitacion: extra.codigoInvitacion ?? '', username: extra.username ?? '' }, false);
+
+interface SesionNueva { token: string; usuarioId: string; dispositivoId: string; username: string }
+
+/** Lo que tienen en común vincular, registrarse y recuperar: guardar la sesión y salir a la red. */
+async function entrar(r: SesionNueva, hardwareHash: string, etiqueta: string): Promise<void> {
+  const s: Sesion = {
+    token: r.token, usuarioId: r.usuarioId, dispositivoId: r.dispositivoId, username: r.username,
+    hardwareHash, etiqueta, sig: { firmada: 1, kyber: 1, unica: 1 },
+  };
+  await guardar('cuenta', 'sesion', s);
+  usarToken(s.token);
+  cambiar({ sesion: s, conexion: 'conectando' });
+  await publicarClaves(PREKEYS_OBJETIVO);
+  await sincronizarConversaciones();
+  conectar();
+}
+
+/**
+ * Crea la cuenta. Devuelve el CÓDIGO DE RECUPERACIÓN, que la pantalla tiene que
+ * mostrar una sola vez: es la única salida si se borran los datos de este
+ * navegador. El servidor solo recibe su verificador (ver recuperacion.ts).
+ */
+export async function registrarse(datos: {
+  username: string; password: string; correo: string; codigoCorreo: string; invitacion: string; etiqueta: string;
+}): Promise<string> {
+  const { identidad } = await cripto.crearIdentidad();
+  const hardwareHash = b64.a(crypto.getRandomValues(new Uint8Array(32)));
+  const r = await pedir<SesionNueva>('POST', '/v1/registro', {
+    username: datos.username.trim().replace(/^@/, '').toLowerCase(),
+    password: datos.password,
+    etiquetaDispositivo: datos.etiqueta,
+    identidadPub: identidad,
+    hardwareHash,
+    hardwareNivel: 'NAVEGADOR',
+    codigoInvitacion: datos.invitacion.trim(),
+    correo: datos.correo.trim(),
+    codigoCorreo: datos.codigoCorreo.trim(),
+  }, false);
+  await entrar(r, hardwareHash, datos.etiqueta);
+  const codigo = await recuperacion.generar();
+  const verificador = await recuperacion.verificadorServidor(codigo.replaceAll('-', ''));
+  await pedir('PUT', '/v1/cuenta/recuperacion', { password: datos.password, verificadorB64: b64.a(verificador) });
+  return codigo;
+}
+
+/**
+ * Recupera una cuenta creada en la web, en ESTE navegador: correo + su código
+ * de 6 dígitos + el código de recuperación (+ el de dos pasos si lo tiene).
+ * Los demás aparatos de la cuenta quedan revocados, y los contactos verán que
+ * la clave de seguridad cambió: es una identidad nueva.
+ */
+export async function recuperarCuenta(datos: {
+  username: string; correo: string; codigoCorreo: string; codigoRecuperacion: string; passwordNueva: string; totp?: string; etiqueta: string;
+}): Promise<void> {
+  const limpio = await recuperacion.normalizar(datos.codigoRecuperacion);
+  if (!limpio) throw new Error('Ese código de recuperación no es válido. Revisa que esté completo.');
+  const verificador = await recuperacion.verificadorServidor(limpio);
+  const { identidad } = await cripto.crearIdentidad();
+  const hardwareHash = b64.a(crypto.getRandomValues(new Uint8Array(32)));
+  const r = await pedir<SesionNueva>('POST', '/v1/cuenta/recuperar-dispositivo', {
+    username: datos.username.trim().replace(/^@/, '').toLowerCase(),
+    telefono: '', codigo: '',
+    correo: datos.correo.trim(), codigoCorreo: datos.codigoCorreo.trim(),
+    verificadorB64: b64.a(verificador),
+    passwordNueva: datos.passwordNueva,
+    totp: datos.totp?.trim() || null,
+    etiquetaDispositivo: datos.etiqueta,
+    identidadPub: identidad,
+    hardwareHash,
+    hardwareNivel: 'NAVEGADOR',
+  }, false);
+  await entrar(r, hardwareHash, datos.etiqueta);
+}
+
+export interface Invitacion { codigo: string; creadaEn: number; expiraEn: number; usos: number; usosMax: number; revocada: boolean }
+
+export const misInvitaciones = () => pedir<{ invitaciones: Invitacion[]; disponibles: number }>('GET', '/v1/registro/invitaciones-web');
+export const crearInvitacion = () => pedir<Invitacion>('POST', '/v1/registro/invitaciones-web');
+export const revocarInvitacion = (codigo: string) => pedir<void>('DELETE', `/v1/registro/invitaciones-web/${encodeURIComponent(codigo)}`);
 
 async function publicarClaves(cuantas: number): Promise<void> {
   const s = estado.sesion!;

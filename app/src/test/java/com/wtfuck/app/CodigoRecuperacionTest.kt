@@ -1,6 +1,6 @@
 package com.wtfuck.app
 
-import com.wtfuck.app.datos.CodigoRecuperacion
+import com.wtfuck.protocol.CodigoRecuperacion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals

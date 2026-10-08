@@ -6,6 +6,7 @@ import {
 } from './datos/motor';
 import { tamanoLegible } from './datos/archivos';
 import { Canal, DescubrirCanales } from './Canal';
+import { AvisoIos, CodigoNuevo, Invitaciones, Recuperar, Registro, usarModoRegistro } from './Entrada';
 import { decodificarOnda, Grabacion, mimeDeGrabacion } from './datos/grabadora';
 import { ErrorApi } from './datos/api';
 
@@ -13,6 +14,9 @@ const usarMotor = () => useSyncExternalStore(motor.suscribir, motor.instantanea)
 
 export function App() {
   const e = usarMotor();
+  // El código de recuperación de una cuenta recién creada: se muestra encima
+  // de la app, una sola vez, y no se cierra sin confirmar que se guardó.
+  const [codigoNuevo, setCodigoNuevo] = useState<string | null>(null);
   return (
     <>
       {e.aviso && (
@@ -21,7 +25,8 @@ export function App() {
           <button onClick={cerrarAviso} aria-label="Cerrar aviso">Entendido</button>
         </div>
       )}
-      {e.sesion ? <Principal /> : <Vincular />}
+      {e.sesion ? <Principal /> : <Entrada onCodigo={setCodigoNuevo} />}
+      {e.sesion && codigoNuevo && <CodigoNuevo codigo={codigoNuevo} onListo={() => setCodigoNuevo(null)} />}
     </>
   );
 }
@@ -35,6 +40,36 @@ function nombreDelNavegador(): string {
   const nav = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Navegador';
   const so = /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android' : /Linux/.test(ua) ? 'Linux' : '';
   return so ? `${nav} en ${so}` : nav;
+}
+
+type Pestana = 'crear' | 'vincular' | 'recuperar';
+
+/** Entrar a wtfuck desde la web: crear la cuenta, vincular el navegador a un teléfono, o recuperar. */
+function Entrada({ onCodigo }: { onCodigo: (c: string) => void }) {
+  const modo = usarModoRegistro();
+  const conInvitacion = new URLSearchParams(location.search).has('invitacion');
+  const [pestana, setPestana] = useState<Pestana>(conInvitacion ? 'crear' : 'vincular');
+  const puedeCrear = !!modo?.registroWeb;
+  const actual: Pestana = pestana === 'crear' && modo && !puedeCrear ? 'vincular' : pestana;
+  return (
+    <main className="vincular">
+      <h1 className="marca">wtfuck</h1>
+      <AvisoIos />
+      <div className="pestanas" role="tablist">
+        {puedeCrear && (
+          <button role="tab" aria-selected={actual === 'crear'} className={actual === 'crear' ? 'activa' : ''} onClick={() => setPestana('crear')}>Crear cuenta</button>
+        )}
+        <button role="tab" aria-selected={actual === 'vincular'} className={actual === 'vincular' ? 'activa' : ''} onClick={() => setPestana('vincular')}>Ya tengo la app</button>
+        {puedeCrear && (
+          <button role="tab" aria-selected={actual === 'recuperar'} className={actual === 'recuperar' ? 'activa' : ''} onClick={() => setPestana('recuperar')}>Recuperar</button>
+        )}
+      </div>
+      {actual === 'crear' && <Registro etiquetaInicial={nombreDelNavegador()} onCodigo={onCodigo} />}
+      {actual === 'vincular' && <Vincular />}
+      {actual === 'recuperar' && <Recuperar etiquetaInicial={nombreDelNavegador()} />}
+      <Confianza />
+    </main>
+  );
 }
 
 function Vincular() {
@@ -58,9 +93,8 @@ function Vincular() {
   }
 
   return (
-    <main className="vincular">
-      <h1 className="marca">wtfuck</h1>
-      <p className="sub">Usa tu cuenta en este navegador, vinculándolo desde tu teléfono.</p>
+    <>
+      <p className="sub">Usa tu cuenta del teléfono en este navegador, vinculándolo desde la app.</p>
       <ol className="pasos">
         <li>En el teléfono: <b>Perfil → Cuenta y seguridad → Ver mis dispositivos → Generar código</b>.</li>
         <li>Escribe aquí tu usuario y ese código. Vive cinco minutos.</li>
@@ -86,8 +120,7 @@ function Vincular() {
         {error && <p className="error" role="alert">{error}</p>}
         <button type="submit" disabled={ocupado}>{ocupado ? 'Vinculando…' : 'Vincular este navegador'}</button>
       </form>
-      <Confianza />
-    </main>
+    </>
   );
 }
 
@@ -103,8 +136,8 @@ function Confianza() {
         eso no pasa, porque la app va firmada.
       </p>
       <p>
-        La sesión de este navegador dura 30 días, nunca puede ser tu aparato principal y la puedes revocar
-        desde el teléfono cuando quieras.
+        Si lo vinculas a tu teléfono, la sesión dura 30 días y la puedes revocar desde la app cuando quieras.
+        Si creas la cuenta aquí, este navegador es tu único aparato: guarda bien el código de recuperación.
       </p>
     </details>
   );
@@ -127,6 +160,7 @@ function Principal() {
   const e = usarMotor();
   const [abierta, setAbierta] = useState<string | null>(null);
   const [descubrir, setDescubrir] = useState(false);
+  const [invitar, setInvitar] = useState(false);
 
   useEffect(() => {
     void abrirConversacion(abierta);
@@ -151,7 +185,10 @@ function Principal() {
           </button>
         </div>
         <Avisos />
-        <div className="avisos"><button className="enlace cian" onClick={() => setDescubrir(true)}>Descubrir canales</button></div>
+        <div className="avisos">
+          <button className="enlace cian" onClick={() => setDescubrir(true)}>Descubrir canales</button>
+          <button className="enlace cian" onClick={() => setInvitar(true)}>Invitar a alguien</button>
+        </div>
         <ul>
           {e.conversaciones.filter((c) => !c.esSolicitud).map((c) => (
             <FilaChat key={c.id} c={c} activa={c.id === abierta} onAbrir={() => setAbierta(c.id)} />
@@ -167,6 +204,7 @@ function Principal() {
           </div>
         )}
       </section>
+      {invitar && <Invitaciones onCerrar={() => setInvitar(false)} />}
       {descubrir && <DescubrirCanales onCerrar={() => setDescubrir(false)} onAbrir={(id) => { setDescubrir(false); setAbierta(id); }} />}
     </div>
   );

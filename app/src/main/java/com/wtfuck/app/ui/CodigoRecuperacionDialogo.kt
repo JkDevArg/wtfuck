@@ -21,7 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wtfuck.app.WtfuckApp
-import com.wtfuck.app.datos.CodigoRecuperacion
+import com.wtfuck.protocol.CodigoRecuperacion
 import com.wtfuck.app.ui.theme.*
 import kotlinx.coroutines.launch
 

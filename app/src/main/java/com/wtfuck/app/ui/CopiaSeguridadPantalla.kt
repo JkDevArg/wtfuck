@@ -1,5 +1,6 @@
 package com.wtfuck.app.ui
 
+import com.wtfuck.protocol.CodigoRecuperacion
 import com.wtfuck.app.datos.CopiaAutomatica
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -156,8 +157,8 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
             cfg.guardarFrase(frase)
             frase.fill('\u0000')
             cfg.guardarClaveIdentidad(
-                codigoAuto?.let { com.wtfuck.app.datos.CodigoRecuperacion.normalizar(it) }
-                    ?.let { com.wtfuck.app.datos.CodigoRecuperacion.claveDeIdentidad(it) }
+                codigoAuto?.let { CodigoRecuperacion.normalizar(it) }
+                    ?.let { CodigoRecuperacion.claveDeIdentidad(it) }
             )
             codigoAuto = null
         }
@@ -340,8 +341,8 @@ fun CopiaSeguridadPantalla(onAtras: () -> Unit) {
                     cfg.guardarFrase(frase)
                     frase.fill('\u0000')
                     cfg.guardarClaveIdentidad(
-                        codigo?.let { com.wtfuck.app.datos.CodigoRecuperacion.normalizar(it) }
-                            ?.let { com.wtfuck.app.datos.CodigoRecuperacion.claveDeIdentidad(it) }
+                        codigo?.let { CodigoRecuperacion.normalizar(it) }
+                            ?.let { CodigoRecuperacion.claveDeIdentidad(it) }
                     )
                     refrescar()
                     aviso = "Frase cambiada. Las copias que ya estaban siguen abriéndose con la anterior."
@@ -617,7 +618,7 @@ private fun DialogoFrase(
     // que el sellado falle -o peor, que se guarde una copia SIN identidad
     // creyendo que la lleva-.
     val codigoMalo = ofrecerCodigo && codigo.isNotBlank() &&
-        !com.wtfuck.app.datos.CodigoRecuperacion.valido(codigo)
+        !CodigoRecuperacion.valido(codigo)
     // Minimo 8: una copia protegida por "1234" no esta protegida. Al exportar se
     // exige confirmar la frase, porque un error de tipeo en algo que no se ve
     // dejaria una copia que no abre y no habria como saberlo hasta necesitarla.

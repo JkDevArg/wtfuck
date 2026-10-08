@@ -1,5 +1,6 @@
 package com.wtfuck.app.datos
 
+import com.wtfuck.protocol.CodigoRecuperacion
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
