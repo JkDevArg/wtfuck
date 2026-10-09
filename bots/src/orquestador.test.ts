@@ -70,6 +70,56 @@ describe('decisión de ejecutar', () => {
   });
 });
 
+describe('plan de reconocimiento', () => {
+  test('arma pasos válidos contra un objetivo', async () => {
+    const { o } = orq(
+      JSON.stringify({
+        accion: 'recon',
+        objetivo: 'example.com',
+        pasos: [
+          { herramienta: 'nmap', perfil: 'rapido', descripcion: 'puertos vivos' },
+          { herramienta: 'nmap', perfil: 'servicios', descripcion: 'versiones' },
+        ],
+      }),
+    );
+    const p = await o.decidir('reconocé example.com', { alcance: ['example.com'] });
+    expect(p.accion).toBe('recon');
+    if (p.accion === 'recon') {
+      expect(p.objetivo).toBe('example.com');
+      expect(p.pasos).toHaveLength(2);
+      expect(p.pasos[0]!.perfil).toBe('rapido');
+    }
+  });
+
+  test('descarta pasos con herramientas fuera del menú', async () => {
+    const { o } = orq(
+      JSON.stringify({
+        accion: 'recon',
+        objetivo: 'example.com',
+        pasos: [
+          { herramienta: 'nmap', perfil: 'rapido', descripcion: 'ok' },
+          { herramienta: 'sqlmap', perfil: 'x', descripcion: 'fuera del menú' },
+        ],
+      }),
+    );
+    const p = await o.decidir('auditá example.com', { alcance: ['example.com'] });
+    expect(p.accion).toBe('recon');
+    if (p.accion === 'recon') expect(p.pasos.every((s) => s.herramienta === 'nmap')).toBe(true);
+  });
+
+  test('un recon sin pasos válidos cae a responder', async () => {
+    const { o } = orq('{"accion":"recon","objetivo":"example.com","pasos":[{"herramienta":"metasploit","perfil":"x","descripcion":"no"}]}');
+    const p = await o.decidir('x', { alcance: [] });
+    expect(p.accion).toBe('responder');
+  });
+
+  test('recon sin objetivo válido cae a responder', async () => {
+    const { o } = orq('{"accion":"recon","objetivo":"no es host","pasos":[{"herramienta":"nmap","perfil":"rapido","descripcion":"x"}]}');
+    const p = await o.decidir('x', { alcance: [] });
+    expect(p.accion).toBe('responder');
+  });
+});
+
 describe('robustez: nunca rompe, siempre da un Plan', () => {
   test('respuesta sin JSON se trata como texto', async () => {
     const { o } = orq('No me queda claro contra qué querés correr el escaneo.');

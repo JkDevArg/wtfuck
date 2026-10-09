@@ -16,7 +16,7 @@ import type { IA, Turno } from './ia.ts';
 import type { Herramienta } from './herramientas.ts';
 import type { Operadores } from './operadores.ts';
 import type { Bitacora } from './bitacora.ts';
-import type { Orquestador } from './orquestador.ts';
+import type { Orquestador, PasoPlan } from './orquestador.ts';
 
 export type Modo = 'eco' | 'charla' | 'herramienta';
 
@@ -43,6 +43,26 @@ export interface OpcionesBot {
   terminos?: string;
   // herramienta + IA (opcional): entiende lenguaje natural y propone acciones.
   orquestador?: Orquestador;
+  // rate limit de peticiones a la IA, por operador:
+  rateVentanaMs?: number;
+  rateMax?: number;
+}
+
+/** Un reconocimiento en curso: plan de pasos que avanza con confirmación. */
+interface SesionRecon {
+  operador: string;
+  objetivo: string;
+  pasos: PasoPlan[];
+  indice: number;
+  estado: 'esperando' | 'corriendo';
+}
+
+/** ¿El texto es un sí, un no, o ninguno? (para confirmar pasos sin gastar IA). */
+function confirmacion(texto: string): 'si' | 'no' | null {
+  const t = texto.trim().toLowerCase();
+  if (/^(s[ií]\b|dale|ok|oka|listo|siguiente|segu[ií]|continu|next|avanz|adelante|👍|🆗)/.test(t)) return 'si';
+  if (/^(no\b|nop|basta|salir|stop|cancel|corta|cort[aá]|par[aá]|chau|dejá|deja)/.test(t)) return 'no';
+  return null;
 }
 
 const AVISO_IA =
@@ -59,6 +79,8 @@ export class Bot {
   private readonly conversacionDe = new Map<string, string>();
   private readonly historial = new Map<string, Turno[]>();
   private readonly avisados = new Set<string>();
+  private readonly recon = new Map<string, SesionRecon>(); // por conversacionId
+  private readonly ultimasPeticiones = new Map<string, number[]>(); // rate limit por operador
   private ocupado = false; // una sola herramienta corriendo a la vez
 
   constructor(private readonly o: OpcionesBot) {
@@ -102,9 +124,10 @@ export class Bot {
       const cola = e.espera.length ? ` En espera: ${e.espera.map((u) => '@' + u).join(', ')}.` : '';
       return this.responder(m.conversacionId, `Turno de ${quien}.${cola}`);
     }
-    if (cmd === '/fin') {
+    if (cmd === '/fin' || cmd === '/cancelar') {
+      const teniaRecon = this.recon.delete(m.conversacionId);
       if (this.o.conCola) this.cola.liberar(m.autorUsuario);
-      return this.responder(m.conversacionId, 'Listo, soltaste tu turno.');
+      return this.responder(m.conversacionId, teniaRecon ? 'Corté el reconocimiento y soltaste tu turno.' : 'Listo, soltaste tu turno.');
     }
 
     if (this.o.modo === 'herramienta') {
@@ -157,6 +180,25 @@ export class Bot {
     // Antes de cualquier otra cosa, hay que aceptar.
     if (!ops.aceptado(u)) {
       return this.responder(conv, `${this.o.terminos ?? ''}\n\nPara usarme, escribí /acepto.`);
+    }
+
+    // ¿Hay un reconocimiento en curso en esta conversación? Lo atendemos primero.
+    const sesion = this.recon.get(conv);
+    if (sesion && sesion.operador === u) {
+      if (sesion.estado === 'corriendo') {
+        return this.responder(conv, `Estoy corriendo el paso ${sesion.indice + 1}/${sesion.pasos.length} del recon de ${sesion.objetivo}. Esperá a que termine; después elegís si seguimos.`);
+      }
+      // Esperando confirmación. Un sí/no decide; un comando (/...) lo dejamos pasar.
+      if (!cmd.startsWith('/')) {
+        const c = confirmacion(m.texto);
+        if (c === 'si') return this.avanzarRecon(m, sesion);
+        if (c === 'no') {
+          this.recon.delete(conv);
+          return this.responder(conv, 'Listo, corté el reconocimiento. Quedó lo que ya corrimos.');
+        }
+        const prox = sesion.pasos[sesion.indice]!;
+        return this.responder(conv, `Tenés un reconocimiento en curso de ${sesion.objetivo}. Paso ${sesion.indice + 1}/${sesion.pasos.length}: ${prox.descripcion}. ¿Sigo? (sí / no, o /cancelar)`);
+      }
     }
 
     if (cmd === '/alcance') {
@@ -232,18 +274,86 @@ export class Bot {
     const u = m.autorUsuario;
     const ops = this.o.operadores!;
 
+    // Rate limit: pensar con la IA cuesta. Si escribís de más, freno acá (no
+    // encolo trabajo nuevo: el bot va paso por paso, no se satura).
+    if (!this.rateOk(u)) {
+      return this.responder(conv, 'Vas muy rápido. Dejá que termine lo anterior y escribime de nuevo en unos segundos.');
+    }
+
     if (!this.avisados.has(conv)) {
       this.avisados.add(conv);
       await this.responder(conv, AVISO_IA);
     }
 
+    await this.responder(conv, 'Pensando...');
     const plan = await this.o.orquestador!.decidir(texto, { alcance: ops.aprobados(u) });
+
     if (plan.accion === 'responder') {
       return this.responder(conv, plan.texto);
     }
-    // plan.accion === 'ejecutar': la IA propuso herramienta+objetivo+perfil.
-    if (plan.nota) await this.responder(conv, `(${plan.nota})`);
-    return this.correrObjetivo(m, plan.objetivo, plan.perfil);
+    if (plan.accion === 'ejecutar') {
+      if (plan.nota) await this.responder(conv, `(${plan.nota})`);
+      return this.correrObjetivo(m, plan.objetivo, plan.perfil);
+    }
+    // plan.accion === 'recon': plan de varios pasos, con confirmación entre cada uno.
+    return this.iniciarRecon(m, plan.objetivo, plan.pasos);
+  }
+
+  /** Muestra el plan y arranca la máquina de pasos (no corre nada todavía). */
+  private async iniciarRecon(m: MensajeEntrante, objetivo: string, pasos: PasoPlan[]): Promise<void> {
+    const conv = m.conversacionId;
+    const u = m.autorUsuario;
+    const ops = this.o.operadores!;
+
+    // El objetivo tiene que estar APROBADO antes de empezar. La IA no habilita nada.
+    const ev = ops.permitido(u, objetivo);
+    if (!ev.ok) {
+      this.o.bitacora?.registrar({ operador: u, herramienta: 'recon', objetivo, resultado: 'rechazado-scope', detalle: ev.motivo });
+      return this.responder(conv, `Para reconocer "${objetivo}" primero tiene que estar aprobado: ${ev.motivo}.`);
+    }
+
+    this.recon.set(conv, { operador: u, objetivo: ev.objetivo, pasos, indice: 0, estado: 'esperando' });
+    this.o.bitacora?.registrar({ operador: u, herramienta: 'recon', objetivo: ev.objetivo, resultado: 'ejecutado', detalle: `plan de ${pasos.length} paso(s)` });
+    const lista = pasos.map((p, i) => `  ${i + 1}. ${p.descripcion} (${p.herramienta} ${p.perfil})`).join('\n');
+    const primero = pasos[0]!;
+    return this.responder(
+      conv,
+      `Plan de reconocimiento para ${ev.objetivo}:\n${lista}\n\nVoy paso por paso y te muestro cada resultado. Arranco con el paso 1: ${primero.descripcion}. ¿Dale? (sí / no, o /cancelar)`,
+    );
+  }
+
+  /** Corre el paso actual del recon, streamea el resultado y propone el siguiente. */
+  private async avanzarRecon(m: MensajeEntrante, sesion: SesionRecon): Promise<void> {
+    const conv = m.conversacionId;
+    const paso = sesion.pasos[sesion.indice]!;
+
+    sesion.estado = 'corriendo';
+    await this.responder(conv, `🔍 Paso ${sesion.indice + 1}/${sesion.pasos.length}: ${paso.descripcion}`);
+    await this.correrObjetivo(m, sesion.objetivo, paso.perfil); // misma puerta: permitido + cola + bitacora
+
+    sesion.indice++;
+    sesion.estado = 'esperando';
+    if (sesion.indice >= sesion.pasos.length) {
+      this.recon.delete(conv);
+      return this.responder(conv, `✅ Reconocimiento de ${sesion.objetivo} terminado (${sesion.pasos.length} paso/s). Si querés que profundice en algo, pedímelo.`);
+    }
+    const prox = sesion.pasos[sesion.indice]!;
+    return this.responder(conv, `Paso ${sesion.indice}/${sesion.pasos.length} listo. Siguiente: ${prox.descripcion} (${prox.herramienta} ${prox.perfil}). ¿Sigo? (sí / no)`);
+  }
+
+  /** Ventana deslizante de peticiones a la IA por operador. */
+  private rateOk(u: string): boolean {
+    const ahora = Date.now();
+    const ventana = this.o.rateVentanaMs ?? 60_000;
+    const max = this.o.rateMax ?? 8;
+    const arr = (this.ultimasPeticiones.get(u) ?? []).filter((t) => ahora - t < ventana);
+    if (arr.length >= max) {
+      this.ultimasPeticiones.set(u, arr);
+      return false;
+    }
+    arr.push(ahora);
+    this.ultimasPeticiones.set(u, arr);
+    return true;
   }
 
   private async correrHerramienta(m: MensajeEntrante, resto: string[]): Promise<void> {

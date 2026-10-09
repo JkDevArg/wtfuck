@@ -16,9 +16,19 @@ import type { IA, Turno } from './ia.ts';
 import type { Herramienta } from './herramientas.ts';
 import { clasificar } from './scope.ts';
 
+export interface PasoPlan {
+  herramienta: string;
+  perfil: string;
+  descripcion: string;
+}
+
 export type Plan =
   | { accion: 'ejecutar'; herramienta: string; objetivo: string; perfil: string; nota?: string }
+  | { accion: 'recon'; objetivo: string; pasos: PasoPlan[] }
   | { accion: 'responder'; texto: string };
+
+/** Tope de pasos de un plan de reconocimiento (evita planes enormes). */
+const MAX_PASOS = 6;
 
 const SYSTEM_AUDITOR = [
   'Sos un asistente de auditoría de seguridad que trabaja DENTRO de wtfuck, una',
@@ -26,9 +36,11 @@ const SYSTEM_AUDITOR = [
   'alcance se compone de objetivos que un administrador APROBÓ. Respondé en',
   'español, claro y al grano.',
   '',
-  'A partir de lo que pide el operador, decidís UNA de dos cosas:',
-  '  (a) EJECUTAR una herramienta del MENÚ, o',
-  '  (b) RESPONDER con texto (explicar, sugerir el próximo paso, pedir precisión).',
+  'A partir de lo que pide el operador, decidís UNA de tres cosas:',
+  '  (a) EJECUTAR una sola herramienta del MENÚ, o',
+  '  (b) proponer un RECONOCIMIENTO: un plan ordenado de pasos del MENÚ sobre UN',
+  '      objetivo (cuando pide "reconocé X", "auditá X", o algo de varias etapas), o',
+  '  (c) RESPONDER con texto (explicar, sugerir, pedir precisión).',
   '',
   'METODOLOGÍA (marco mental, estándar PTES): pre-engagement → intelligence',
   'gathering (reconocimiento) → threat modeling → análisis de vulnerabilidades →',
@@ -56,9 +68,15 @@ const SYSTEM_AUDITOR = [
   '   auditoría autorizada.',
   '5. Ante la duda, respondé con texto y pedí precisión. No ejecutes a lo loco.',
   '',
+  'Para un RECONOCIMIENTO: ordená los pasos de menos a más intrusivo (primero',
+  'descubrir, después detallar). Máximo 6 pasos. Cada paso es una herramienta y un',
+  'perfil del MENÚ, con una descripción corta de qué busca. Todos los pasos van',
+  'contra el MISMO objetivo que pidió el operador.',
+  '',
   'FORMATO: respondé SIEMPRE con UN solo objeto JSON y nada más (sin markdown, sin',
   'texto antes ni después):',
   '  ejecutar:  {"accion":"ejecutar","herramienta":"<nombre>","objetivo":"<lo que pidió>","perfil":"<del menú>","nota":"<por qué, breve>"}',
+  '  recon:     {"accion":"recon","objetivo":"<lo que pidió>","pasos":[{"herramienta":"<nombre>","perfil":"<del menú>","descripcion":"<qué busca>"}]}',
   '  responder: {"accion":"responder","texto":"<tu respuesta>"}',
 ].join('\n');
 
@@ -113,6 +131,26 @@ export class Orquestador {
       // Perfil fuera del menú (o ausente) → caemos a uno del propio registro.
       const perfil = h.perfiles.includes(perfilPedido) ? perfilPedido : (h.perfiles.includes('normal') ? 'normal' : h.perfiles[0]!);
       return { accion: 'ejecutar', herramienta: h.nombre, objetivo, perfil, nota };
+    }
+
+    if (obj['accion'] === 'recon') {
+      const objetivo = typeof obj['objetivo'] === 'string' ? obj['objetivo'].trim() : '';
+      if (!objetivo || !clasificar(objetivo)) return { accion: 'responder', texto: 'Decime contra qué objetivo (un host, IP o rango) querés el reconocimiento.' };
+      const crudos = Array.isArray(obj['pasos']) ? obj['pasos'] : [];
+      const pasos: PasoPlan[] = [];
+      for (const p of crudos.slice(0, MAX_PASOS)) {
+        if (!p || typeof p !== 'object') continue;
+        const pp = p as Record<string, unknown>;
+        const nombre = typeof pp['herramienta'] === 'string' ? pp['herramienta'].trim().toLowerCase() : '';
+        const h = this.herramientas.find((x) => x.nombre === nombre);
+        if (!h) continue; // paso con herramienta fuera del menú: se descarta
+        const perfilPedido = typeof pp['perfil'] === 'string' ? pp['perfil'].trim().toLowerCase() : '';
+        const perfil = h.perfiles.includes(perfilPedido) ? perfilPedido : (h.perfiles.includes('normal') ? 'normal' : h.perfiles[0]!);
+        const descripcion = typeof pp['descripcion'] === 'string' && pp['descripcion'].trim() ? pp['descripcion'].trim() : `${h.nombre} (${perfil})`;
+        pasos.push({ herramienta: h.nombre, perfil, descripcion });
+      }
+      if (!pasos.length) return { accion: 'responder', texto: 'No pude armar un plan con las herramientas que tengo. ¿Querés que corra algo puntual?' };
+      return { accion: 'recon', objetivo, pasos };
     }
 
     if (obj['accion'] === 'responder' && typeof obj['texto'] === 'string') {
