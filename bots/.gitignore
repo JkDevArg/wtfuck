@@ -1,0 +1,6 @@
+node_modules/
+# El estado de cada bot: su almacen de Signal (claves privadas) y su sesion.
+# NUNCA al repo: son las credenciales del bot.
+datos/
+*.env
+.env

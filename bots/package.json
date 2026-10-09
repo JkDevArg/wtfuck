@@ -1,0 +1,17 @@
+{
+  "name": "wtfuck-bots",
+  "private": true,
+  "type": "module",
+  "description": "Runner de bots de wtfuck: un cliente headless que se conecta como una cuenta mas y responde.",
+  "scripts": {
+    "bot": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
