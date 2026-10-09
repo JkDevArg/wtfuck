@@ -80,6 +80,39 @@ curl https://api.groq.com/openai/v1/chat/completions \
   -d '{"model":"openai/gpt-oss-20b","messages":[{"role":"user","content":"hola"}]}'
 ```
 
+## Bot de herramientas con nmap (fase 3)
+
+Corre nmap **solo contra destinos autorizados**, **solo para operadores**, de a
+uno, y todo queda en una bitacora. En el `.env`:
+
+```bash
+WTFUCK_BOT_MODO=herramienta
+WTFUCK_BOT_SCOPE=/ruta/a/scope.json     # ver scope.ejemplo.json
+WTFUCK_BOT_OPERADORES=tuusuario,otro    # @usuarios que pueden escanear
+```
+
+El **alcance** (`scope.json`) dice contra qué puede escanear: se niega por
+defecto, un host cubre sus subdominios, una IP/CIDR lo que caiga dentro, y la
+exclusion gana. Un objetivo fuera de alcance se rechaza y se anota.
+
+Comandos: `/nmap <objetivo> [perfil]` (solo operadores), `/scope`, `/perfiles`,
+`/turno`, `/fin`. Perfiles: `rapido`, `normal`, `servicios`, `completo`.
+
+Guardarrailes, a proposito:
+
+- el operador elige un **perfil** (un nombre), nunca flags sueltos;
+- se ejecuta con argv (sin shell): el objetivo es un argumento, no hay donde
+  inyectar;
+- una sola herramienta a la vez (la cola);
+- todo en `datos/<bot>/bitacora.jsonl`: quien, que, contra que, cuando.
+
+**nmap tiene que estar instalado** en la maquina del bot (en el VPS,
+`apt install nmap`). Para probar el flujo sin instalarlo, `WTFUCK_BOT_NMAP_FALSO=true`
+usa un nmap de mentira.
+
+> El runner deberia correr en un VPS **separado** del de mensajeria: la IP que
+> escanea no es la del chat.
+
 ## Pruebas
 
 ```bash

@@ -4,3 +4,6 @@ node_modules/
 datos/
 *.env
 .env
+# Scopes reales (tienen destinos de clientes). El ejemplo si se versiona.
+scope*.json
+!scope.ejemplo.json

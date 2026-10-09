@@ -1,0 +1,5 @@
+{
+  "_comentario": "Alcance del bot de herramientas: contra QUE puede escanear. Copialo y editalo; apuntalo con WTFUCK_BOT_SCOPE. Se niega por defecto: solo lo que este en permitidos (y no en excluidos). Un host cubre sus subdominios; una IP o un CIDR, lo que caiga dentro.",
+  "permitidos": ["ejemplo-cliente.com", "10.0.0.0/24", "192.0.2.5"],
+  "excluidos": ["admin.ejemplo-cliente.com", "10.0.0.1"]
+}

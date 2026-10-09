@@ -48,7 +48,7 @@ no puede leer nada; el bot, que es un participante, sí.
 |---|---|---|
 | 1 | Marco del runner + cola de turnos + cliente E2EE headless | **Hecha** (2026-10-08). Bot de eco probado de punta a punta contra el servidor local, cola incluida |
 | 2 | Bot de charla con IA (Groq) | **Hecha** (2026-10-08). Probada de punta a punta contra un Groq de mentira local; falta una corrida con la key real |
-| 3 | Bots de herramienta con scope (nmap primero) | — |
+| 3 | Bots de herramienta con scope (nmap primero) | **Hecha** (2026-10-08). nmap con alcance, operadores, cola y bitacora; probado de punta a punta con un nmap de mentira. Falta la IA que lo orqueste y correr nmap real |
 
 ## Fase 1, lo que quedó
 
@@ -84,3 +84,29 @@ vuelve cifrada, el aviso de privacidad sale una vez, el historial crece
 
 **Falta:** una corrida con la `GROQ_API_KEY` real (la pone el usuario en el
 `.env`); el despliegue en el VPS.
+
+## Fase 3, lo que quedó
+
+- `scope.ts`: el alcance (permitidos/excluidos; host+subdominios, IP, CIDR; se
+  niega por defecto; la exclusion gana). Pruebas en `scope.test.ts` (7).
+- `herramientas.ts`: el envoltorio de nmap. El operador elige un **perfil**
+  (rapido/normal/servicios/completo), nunca flags libres; se ejecuta con argv
+  (spawn sin shell); el ejecutor es inyectable (real o de mentira). Topes de
+  tiempo y de salida. Pruebas en `herramientas.test.ts` (5).
+- `bitacora.ts`: JSONL append-only (quien, que, contra que, cuando, resultado).
+- `bot.ts` modo `herramienta`: comandos `/nmap`, `/scope`, `/perfiles`; solo
+  operadores escanean; una herramienta a la vez (la cola); cada caso anotado.
+
+**Probado de punta a punta** (nmap de mentira) contra el servidor local:
+- un objetivo fuera de alcance (`google.com`) se rechaza y se anota;
+- uno en alcance (`scanme.nmap.org`) corre con el argv correcto
+  (`-T4 -Pn -F scanme.nmap.org`) y responde;
+- un no-operador es rechazado;
+- la bitacora tiene los tres eventos (rechazado-scope, ejecutado,
+  rechazado-operador).
+
+Pruebas: 23 en total (cola 5, ia 6, scope 7, herramientas 5).
+
+**Falta:** correr nmap de verdad (instalarlo en el VPS); la IA (gpt-oss-120b)
+que orqueste varias herramientas desde lenguaje natural, con el mismo scope y la
+misma bitacora; mas herramientas (nuclei, nikto, nessus).
