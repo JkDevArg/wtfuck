@@ -47,7 +47,7 @@ no puede leer nada; el bot, que es un participante, sí.
 | Fase | Qué | Estado |
 |---|---|---|
 | 1 | Marco del runner + cola de turnos + cliente E2EE headless | **Hecha** (2026-10-08). Bot de eco probado de punta a punta contra el servidor local, cola incluida |
-| 2 | Bot de charla con IA (Groq) | — |
+| 2 | Bot de charla con IA (Groq) | **Hecha** (2026-10-08). Probada de punta a punta contra un Groq de mentira local; falta una corrida con la key real |
 | 3 | Bots de herramienta con scope (nmap primero) | — |
 
 ## Fase 1, lo que quedó
@@ -66,3 +66,21 @@ turno, y el aviso "te toca" al soltarlo con `/fin`.
 
 **Sin probar:** despliegue en el VPS (la cuenta del bot en producción no puede
 ser `SOFTWARE_DEV`); las herramientas y la IA (fases 2 y 3).
+
+## Fase 2, lo que quedó
+
+- `ia.ts`: interfaz `IA` y el cliente `Groq` (API compatible con OpenAI). El
+  proveedor es intercambiable por variable (`GROQ_BASE`).
+- `bot.ts` modo `charla`: historial por conversacion (acotado, aislado entre
+  chats), aviso de privacidad una vez por conversacion, y `/olvida` para borrar
+  lo hablado. Un bot de charla no usa cola.
+- Pruebas: `ia.test.ts` (peticion, parseo, 429, errores — 6) con `fetch`
+  simulado; la logica de la cola sigue en `cola.test.ts`.
+
+**Probado de punta a punta** contra un Groq de mentira local (que ejercita el
+cliente real): el mensaje llega a la IA con el system prompt, la respuesta
+vuelve cifrada, el aviso de privacidad sale una vez, el historial crece
+(2 → 4 turnos) y `/olvida` lo reinicia (vuelve a 2).
+
+**Falta:** una corrida con la `GROQ_API_KEY` real (la pone el usuario en el
+`.env`); el despliegue en el VPS.

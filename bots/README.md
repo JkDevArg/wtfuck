@@ -45,6 +45,30 @@ Desde otra cuenta, búscalo por su `@usuario` y escríbele. Comandos: `/ayuda`,
 `/turno`, `/tarea N` (simula un trabajo de N segundos para probar la cola),
 `/fin`.
 
+## Bot de charla con IA (fase 2)
+
+En el `.env`, `WTFUCK_BOT_MODO=charla` y la key de Groq:
+
+```bash
+WTFUCK_BOT_MODO=charla
+GROQ_API_KEY=gsk_...        # console.groq.com, sin tarjeta
+GROQ_MODELO=llama-3.3-70b-versatile
+```
+
+Responde con IA, recuerda la conversación (acotada, separada por chat) y avisa
+una vez que el texto sale del cifrado hacia el proveedor. Comandos: `/ayuda`,
+`/olvida` (borra lo hablado). No usa cola: cualquiera chatea cuando quiere. El
+proveedor es intercambiable con `GROQ_BASE` (cualquier API compatible con
+OpenAI).
+
+Para probar la key rápido, sin wtfuck:
+
+```bash
+curl https://api.groq.com/openai/v1/chat/completions \
+  -H "Authorization: Bearer $GROQ_API_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":"hola"}]}'
+```
+
 ## Pruebas
 
 ```bash
