@@ -22,8 +22,9 @@ export type Plan =
 
 const SYSTEM_AUDITOR = [
   'Sos un asistente de auditoría de seguridad que trabaja DENTRO de wtfuck, una',
-  'app de mensajería privada. Te usa un profesional que ya aceptó los términos y',
-  'declaró su alcance autorizado. Respondé en español, claro y al grano.',
+  'app de mensajería privada. Te usa un profesional que ya aceptó los términos. Su',
+  'alcance se compone de objetivos que un administrador APROBÓ. Respondé en',
+  'español, claro y al grano.',
   '',
   'A partir de lo que pide el operador, decidís UNA de dos cosas:',
   '  (a) EJECUTAR una herramienta del MENÚ, o',
@@ -78,11 +79,11 @@ export class Orquestador {
    * válido: si la IA devuelve algo raro, cae a `responder` en vez de romper.
    */
   async decidir(mensaje: string, contexto: { alcance: string[] }): Promise<Plan> {
-    const alcance = contexto.alcance.length ? contexto.alcance.join(', ') : '(todavía no declaró nada)';
+    const alcance = contexto.alcance.length ? contexto.alcance.join(', ') : '(todavía no tiene objetivos aprobados)';
     const system = `${SYSTEM_AUDITOR}\n\n${this.menu()}${this.systemExtra ? `\n\n${this.systemExtra}` : ''}`;
     const turnos: Turno[] = [
       { rol: 'system', texto: system },
-      { rol: 'user', texto: `Alcance declarado por el operador: ${alcance}\nMensaje del operador: ${JSON.stringify(mensaje)}` },
+      { rol: 'user', texto: `Alcance aprobado del operador: ${alcance}\nMensaje del operador: ${JSON.stringify(mensaje)}` },
     ];
 
     let crudo: string;

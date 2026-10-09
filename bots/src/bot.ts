@@ -163,7 +163,9 @@ export class Bot {
       const sub = resto[0];
       if (!sub) {
         const lista = ops.alcance(u);
-        return this.responder(conv, lista.length ? `Tu alcance declarado:\n- ${lista.join('\n- ')}` : 'No declaraste ningún objetivo todavía. /alcance <objetivo> para agregar.');
+        if (!lista.length) return this.responder(conv, 'No pediste ningún objetivo todavía. /alcance <objetivo> para pedir (lo aprueba el administrador).');
+        const txt = lista.map((o) => `- ${o.objetivo} ${o.estado === 'aprobado' ? '✓ aprobado' : '⏳ pendiente de aprobación'}`).join('\n');
+        return this.responder(conv, `Tu alcance:\n${txt}`);
       }
       if (sub === 'quitar') {
         const obj = resto[1];
@@ -171,15 +173,44 @@ export class Bot {
         const quito = ops.quitarAlcance(u, obj);
         return this.responder(conv, quito ? `Saqué ${obj.toLowerCase()} de tu alcance.` : 'Eso no estaba en tu alcance.');
       }
-      const r = ops.agregarAlcance(u, sub);
+      const r = ops.pedirAlcance(u, sub);
       if (!r.ok) {
-        // Un intento de declarar algo excluido (p.ej. metadatos de nube) es
-        // justo lo que conviene auditar: queda en la bitacora.
-        this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: sub.toLowerCase(), resultado: 'rechazado-scope', detalle: `declaracion rechazada: ${r.motivo}` });
+        // Un intento de pedir algo excluido (p.ej. metadatos de nube) es justo
+        // lo que conviene auditar: queda en la bitacora.
+        this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: sub.toLowerCase(), resultado: 'rechazado-scope', detalle: `pedido rechazado: ${r.motivo}` });
         return this.responder(conv, `No pude agregarlo: ${r.motivo}.`);
       }
-      this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: r.objetivo, resultado: 'ejecutado', detalle: 'declaro alcance (autorizado)' });
-      return this.responder(conv, `Agregado a tu alcance: ${r.objetivo}. Declarás que estás autorizado a auditarlo. Ya podés /${h.nombre} ${r.objetivo}.`);
+      if (r.estado === 'aprobado') return this.responder(conv, `${r.objetivo} ya está aprobado. Podés auditarlo.`);
+      this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: r.objetivo, resultado: 'ejecutado', detalle: 'pide alcance (atesta autorizacion), pendiente de aprobacion' });
+      this.avisarAdmins(`Pedido de alcance: @${u} quiere auditar "${r.objetivo}". Aprobá con /aprobar ${u} ${r.objetivo} o /pendientes para ver todo.`);
+      return this.responder(conv, `Pedí "${r.objetivo}" (declarás que estás autorizado a auditarlo). Queda ⏳ pendiente de aprobación del administrador. Te aviso cuando pase el check.`);
+    }
+
+    // ---- Comandos de admin ----
+    if (cmd === '/pendientes' || cmd === '/aprobar' || cmd === '/rechazar') {
+      if (!ops.esAdmin(u)) return this.responder(conv, 'Ese comando es solo para el administrador.');
+      if (cmd === '/pendientes') {
+        const pend = ops.pendientes();
+        if (!pend.length) return this.responder(conv, 'No hay pedidos pendientes.');
+        const txt = pend.map((p) => `- @${p.operador} → ${p.objetivo}  (/aprobar ${p.operador} ${p.objetivo})`).join('\n');
+        return this.responder(conv, `Pedidos pendientes:\n${txt}`);
+      }
+      const operador = resto[0];
+      const objetivo = resto[1];
+      if (!operador || !objetivo) return this.responder(conv, `Uso: ${cmd} <operador> <objetivo>`);
+      if (cmd === '/aprobar') {
+        const r = ops.aprobar(u, operador, objetivo);
+        if (!r.ok) return this.responder(conv, `No pude aprobar: ${r.motivo}.`);
+        this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: r.objetivo, resultado: 'ejecutado', detalle: `aprobo alcance de @${operador.toLowerCase().replace(/^@/, '')}` });
+        this.avisarOperador(operador, `✓ El administrador aprobó "${r.objetivo}". Ya podés auditarlo (/${h.nombre} ${r.objetivo} o pedime un reconocimiento).`);
+        return this.responder(conv, `Aprobado: @${operador} ya puede auditar "${r.objetivo}".`);
+      }
+      // /rechazar
+      const r = ops.rechazar(u, operador, objetivo);
+      if (!r.ok) return this.responder(conv, `No pude rechazar: ${r.motivo}.`);
+      this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: objetivo.toLowerCase(), resultado: 'rechazado-scope', detalle: `admin rechazo pedido de @${operador.toLowerCase().replace(/^@/, '')}` });
+      this.avisarOperador(operador, `El administrador rechazó tu pedido de "${objetivo.toLowerCase()}".`);
+      return this.responder(conv, `Rechazado el pedido de @${operador} para "${objetivo.toLowerCase()}".`);
     }
 
     if (cmd === '/perfiles') return this.responder(conv, `Perfiles de ${h.nombre}: ${h.perfiles.join(', ')}.`);
@@ -206,7 +237,7 @@ export class Bot {
       await this.responder(conv, AVISO_IA);
     }
 
-    const plan = await this.o.orquestador!.decidir(texto, { alcance: ops.alcance(u) });
+    const plan = await this.o.orquestador!.decidir(texto, { alcance: ops.aprobados(u) });
     if (plan.accion === 'responder') {
       return this.responder(conv, plan.texto);
     }
@@ -294,6 +325,22 @@ export class Bot {
     if (conv) void this.responder(conv, 'Te toca: el bot quedo libre para ti. Escribi tu comando.');
   }
 
+  /** Avisa a los admins que YA tienen una conversación abierta con el bot. */
+  private avisarAdmins(texto: string): void {
+    const ops = this.o.operadores;
+    if (!ops) return;
+    for (const [usuario, conv] of this.conversacionDe) {
+      if (ops.esAdmin(usuario)) void this.responder(conv, texto);
+    }
+  }
+
+  /** Avisa a un operador si tiene una conversación abierta con el bot. */
+  private avisarOperador(operador: string, texto: string): void {
+    const u = operador.toLowerCase().replace(/^@/, '');
+    const conv = this.conversacionDe.get(u);
+    if (conv) void this.responder(conv, texto);
+  }
+
   private ayuda(): string {
     if (this.o.modo === 'charla') {
       return ['Soy un bot de wtfuck con IA. Escribime y te respondo.', '', 'Comandos:', '  /ayuda   esto', '  /olvida  borro lo que llevamos hablado'].join('\n');
@@ -306,12 +353,17 @@ export class Bot {
         'Comandos:',
         '  /terminos               los términos de uso',
         '  /acepto                 acepto los términos',
-        '  /alcance                lo que declaraste',
-        '  /alcance <objetivo>     declaro que estoy autorizado a auditar ese objetivo',
+        '  /alcance                lo que pediste y su estado (✓/⏳)',
+        '  /alcance <objetivo>     pido auditar ese objetivo (lo aprueba el admin)',
         '  /alcance quitar <obj>   lo saco',
-        `  /${h.nombre} <objetivo> [perfil]   escanea algo de tu alcance`,
+        `  /${h.nombre} <objetivo> [perfil]   escanea algo de tu alcance aprobado`,
         '  /perfiles               perfiles disponibles',
         '  /turno    /fin          la cola',
+        '',
+        'Admin:',
+        '  /pendientes             pedidos esperando aprobación',
+        '  /aprobar <op> <obj>     apruebo un pedido',
+        '  /rechazar <op> <obj>    lo rechazo',
         ...(this.o.orquestador
           ? ['', 'También podés hablarme normal (ej: "mirá qué servicios corre scanme.nmap.org") y yo decido la herramienta. Igual solo corro lo que esté en tu alcance.']
           : []),

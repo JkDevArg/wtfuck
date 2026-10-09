@@ -74,10 +74,15 @@ if (modo === 'herramienta') {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   const abierto = env('WTFUCK_BOT_ABIERTO', 'false') === 'true';
-  if (abierto) console.warn('WTFUCK_BOT_ABIERTO=true: cualquiera que acepte los terminos puede usarlo. La unica proteccion es la atestacion registrada.');
-  else if (invitados.length === 0) console.warn('Sin WTFUCK_BOT_OPERADORES y sin modo abierto: nadie podra usar el bot.');
+  const admins = env('WTFUCK_BOT_ADMIN', '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase().replace(/^@/, ''))
+    .filter(Boolean);
+  if (abierto) console.warn('WTFUCK_BOT_ABIERTO=true: cualquiera que acepte los terminos puede usarlo. La unica proteccion es la atestacion registrada y la aprobacion del admin.');
+  else if (invitados.length === 0 && admins.length === 0) console.warn('Sin WTFUCK_BOT_OPERADORES/ADMIN y sin modo abierto: nadie podra usar el bot.');
+  if (admins.length === 0) console.warn('Sin WTFUCK_BOT_ADMIN: nadie puede aprobar alcances, asi que nadie podra escanear. Configuralo.');
 
-  operadores = new Operadores(join(datos, 'operadores.json'), excluidos, abierto, invitados);
+  operadores = new Operadores(join(datos, 'operadores.json'), excluidos, abierto, invitados, admins);
 
   const terminosRuta = process.env['WTFUCK_BOT_TERMINOS'];
   terminos = terminosRuta && existsSync(terminosRuta) ? readFileSync(terminosRuta, 'utf8') : TERMINOS_POR_DEFECTO;
