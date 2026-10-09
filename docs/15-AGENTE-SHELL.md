@@ -94,10 +94,17 @@ chat, y cortó en el tope de comandos. El egress se armó con la IP real resuelt
 ### Cómo correrlo REAL en el VPS
 
 1. Docker instalado y corriendo.
-2. Imagen: `docker pull kalilinux/kali-rolling` (o una custom con tus tools).
-   Kali rolling viene pelada; instalá adentro lo que uses, o armá tu imagen.
+2. Imagen. **Recomendado:** la custom liviana de `bots/sandbox` (solo las tools
+   del catálogo + utilidades, sin Kali entera):
+   ```bash
+   docker build -t wtfuck-pentest:latest bots/sandbox
+   ```
+   Alternativa: `docker pull kalilinux/kali-rolling` (viene pelada; instalá adentro
+   lo que uses).
 3. En `bots/.env`: `WTFUCK_BOT_SANDBOX=true` (y **sin** `WTFUCK_BOT_SANDBOX_FALSO`),
-   `WTFUCK_BOT_IMAGEN=kalilinux/kali-rolling`, y los topes que quieras.
+   `WTFUCK_BOT_IMAGEN=wtfuck-pentest:latest`, y los topes que quieras.
 4. El usuario del bot necesita permiso para hablar con el Docker daemon.
 5. `/pentest <objetivo>` (el objetivo tiene que estar **aprobado** por el admin).
    El contenedor solo podrá alcanzar por red ese objetivo.
+
+La imagen custom y su detalle están en `bots/sandbox/` (Dockerfile + README).
