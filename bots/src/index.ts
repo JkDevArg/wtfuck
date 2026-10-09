@@ -15,6 +15,7 @@ import { Groq } from './ia.ts';
 import { Bitacora } from './bitacora.ts';
 import { crearNmap, ejecutorReal, type Ejecutor } from './herramientas.ts';
 import { Operadores } from './operadores.ts';
+import { Orquestador } from './orquestador.ts';
 
 function env(nombre: string, porDefecto?: string): string {
   const v = process.env[nombre] ?? porDefecto;
@@ -61,6 +62,7 @@ let herramienta;
 let operadores;
 let bitacora;
 let terminos;
+let orquestador;
 if (modo === 'herramienta') {
   bitacora = new Bitacora(join(datos, 'bitacora.jsonl'));
   const excluidos = env('WTFUCK_BOT_EXCLUIDOS', '169.254.0.0/16,127.0.0.0/8')
@@ -93,6 +95,18 @@ if (modo === 'herramienta') {
     timeoutMs: Number(env('WTFUCK_BOT_TIMEOUT_S', '300')) * 1000,
     maxBytes: Number(env('WTFUCK_BOT_MAXBYTES', '20000')),
   });
+
+  // Orquestador (opcional): si hay GROQ_API_KEY, el bot ademas entiende
+  // lenguaje natural y PROPONE acciones. Nunca se saltea el alcance: lo que la
+  // IA propone pasa por la misma validacion que un comando manual.
+  const claveIA = process.env['GROQ_API_KEY'];
+  if (claveIA) {
+    const iaAuditor = new Groq({ apiKey: claveIA, modelo: env('GROQ_MODELO', 'openai/gpt-oss-120b'), base: process.env['GROQ_BASE'] });
+    orquestador = new Orquestador(iaAuditor, [herramienta], process.env['WTFUCK_BOT_SYSTEM_EXTRA']);
+    console.log('Orquestador IA activo (modelo ' + env('GROQ_MODELO', 'openai/gpt-oss-120b') + '). Se puede hablar en lenguaje natural.');
+  } else {
+    console.log('Sin GROQ_API_KEY: el bot funciona solo por comandos (/nmap, /alcance...).');
+  }
 }
 
 const esCharla = modo === 'charla';
@@ -115,6 +129,7 @@ const bot = new Bot({
   operadores,
   bitacora,
   terminos,
+  orquestador,
 });
 
 await bot.arrancar();

@@ -16,6 +16,7 @@ import type { IA, Turno } from './ia.ts';
 import type { Herramienta } from './herramientas.ts';
 import type { Operadores } from './operadores.ts';
 import type { Bitacora } from './bitacora.ts';
+import type { Orquestador } from './orquestador.ts';
 
 export type Modo = 'eco' | 'charla' | 'herramienta';
 
@@ -40,6 +41,8 @@ export interface OpcionesBot {
   operadores?: Operadores;
   bitacora?: Bitacora;
   terminos?: string;
+  // herramienta + IA (opcional): entiende lenguaje natural y propone acciones.
+  orquestador?: Orquestador;
 }
 
 const AVISO_IA =
@@ -182,20 +185,52 @@ export class Bot {
     if (cmd === '/perfiles') return this.responder(conv, `Perfiles de ${h.nombre}: ${h.perfiles.join(', ')}.`);
     if (cmd === `/${h.nombre}`) return this.correrHerramienta(m, resto);
 
+    // Si hay orquestador y esto NO es un comando, lo entiende la IA.
+    if (this.o.orquestador && !cmd.startsWith('/')) {
+      return this.auditarConIA(m, m.texto.trim());
+    }
     return this.responder(conv, 'No entendí. /ayuda para ver qué puedo hacer.');
+  }
+
+  /**
+   * Lenguaje natural → la IA PROPONE un plan; la ejecución sigue pasando por la
+   * misma puerta (permitido + cola + bitacora). La IA no se saltea nada.
+   */
+  private async auditarConIA(m: MensajeEntrante, texto: string): Promise<void> {
+    const conv = m.conversacionId;
+    const u = m.autorUsuario;
+    const ops = this.o.operadores!;
+
+    if (!this.avisados.has(conv)) {
+      this.avisados.add(conv);
+      await this.responder(conv, AVISO_IA);
+    }
+
+    const plan = await this.o.orquestador!.decidir(texto, { alcance: ops.alcance(u) });
+    if (plan.accion === 'responder') {
+      return this.responder(conv, plan.texto);
+    }
+    // plan.accion === 'ejecutar': la IA propuso herramienta+objetivo+perfil.
+    if (plan.nota) await this.responder(conv, `(${plan.nota})`);
+    return this.correrObjetivo(m, plan.objetivo, plan.perfil);
   }
 
   private async correrHerramienta(m: MensajeEntrante, resto: string[]): Promise<void> {
     const h = this.o.herramienta!;
-    const ops = this.o.operadores!;
-    const bitacora = this.o.bitacora;
-    const u = m.autorUsuario;
     const objetivo = resto[0] ?? '';
-    const perfil = resto[1] ?? 'normal';
-
     if (!objetivo) {
       return this.responder(m.conversacionId, `Uso: /${h.nombre} <objetivo> [perfil]. Perfiles: ${h.perfiles.join(', ')}. /alcance para ver lo tuyo.`);
     }
+    return this.correrObjetivo(m, objetivo, resto[1] ?? 'normal');
+  }
+
+  /** Única puerta de ejecución: valida alcance, toma el turno y corre con bitacora. */
+  private async correrObjetivo(m: MensajeEntrante, objetivo: string, perfil: string): Promise<void> {
+    const h = this.o.herramienta!;
+    const ops = this.o.operadores!;
+    const bitacora = this.o.bitacora;
+    const u = m.autorUsuario;
+
     const ev = ops.permitido(u, objetivo);
     if (!ev.ok) {
       bitacora?.registrar({ operador: u, herramienta: h.nombre, objetivo, resultado: 'rechazado-scope', detalle: ev.motivo });
@@ -277,6 +312,9 @@ export class Bot {
         `  /${h.nombre} <objetivo> [perfil]   escanea algo de tu alcance`,
         '  /perfiles               perfiles disponibles',
         '  /turno    /fin          la cola',
+        ...(this.o.orquestador
+          ? ['', 'También podés hablarme normal (ej: "mirá qué servicios corre scanme.nmap.org") y yo decido la herramienta. Igual solo corro lo que esté en tu alcance.']
+          : []),
       ].join('\n');
     }
     return ['Soy un bot de wtfuck (modo eco: te devuelvo lo que escribas).', '', 'Comandos:', '  /ayuda   esto', '  /turno   como esta la cola', '  /fin     suelta tu turno'].join('\n');
