@@ -57,6 +57,7 @@ no puede leer nada; el bot, que es un participante, sí.
 | 2 | Bot de charla con IA (Groq) | **Hecha** (2026-10-08). Probada de punta a punta contra un Groq de mentira local; falta una corrida con la key real |
 | 3 | Bots de herramienta con scope (nmap primero) | **Hecha** (2026-10-08). nmap con términos + alcance por operador, exclusiones no anulables, cola y bitacora; probado de punta a punta en el emulador con un nmap de mentira |
 | 4 | Orquestador IA (lenguaje natural → acción) | **Hecha** (2026-10-08). gpt-oss-120b con metodología PTES/WSTG; agencia acotada (solo propone, no ejecuta). Falta la corrida e2e contra Groq real |
+| 5 | Aprobación del admin + agente de recon + listas | **Hecha** (2026-10-08). Alcance con aprobación (control de dos personas, probado en el emulador); agente de reconocimiento paso a paso con confirmación; rate limit; cargar objetivos desde un archivo de texto. Falta e2e del recon (Groq real) y de la carga por adjunto |
 
 ## Fase 1, lo que quedó
 
@@ -146,6 +147,47 @@ orquestador 9).
 **Falta:** la corrida e2e contra Groq real (el usuario pone la key rotada en el
 `.env`); correr nmap de verdad (instalarlo en el VPS); más herramientas (nuclei,
 nikto, nessus), que entran solas al menú del orquestador.
+
+## Fase 5, aprobación del admin + agente de recon + listas
+
+Tres pedidos del usuario (2026-10-08), construidos sin romper ningún guardarraíl:
+
+**1. Alcance con aprobación del admin (control de dos personas).** Pedir un
+objetivo ya no lo habilita: queda `pendiente` hasta que un **admin** (distinto del
+que pide, nunca auto-aprobación) lo `aprueba`. Recién ahí se puede escanear. Dos
+personas tienen que estar de acuerdo. Comandos de admin: `/pendientes`,
+`/aprobar <op> <obj>`, `/rechazar <op> <obj>` (`WTFUCK_BOT_ADMIN`). El bot avisa
+al admin de un pedido nuevo y al operador cuando se aprueba. El estado (quién
+pidió/aprobó y cuándo) queda en `operadores.json` y en la bitácora.
+
+**Probado de punta a punta en el emulador:** `/alcance test.hackl4bs.com` → queda
+⏳ y avisa al admin; `/aprobar xampl3 …` (siendo el mismo) → rechazado ("no podés
+aprobar tus propios pedidos"); `/nmap` sobre el pendiente → rechazado ("pendiente
+de aprobación"); `/nmap` sobre uno aprobado → corre. La migración del formato
+viejo (`alcance: string[]`) a objetivos `aprobado` también se verificó.
+
+**2. Agente de reconocimiento paso a paso.** "Reconocé X" → la IA arma un plan de
+pasos (de menos a más intrusivo, máx 6); el bot lo corre **de a un paso, con tu
+confirmación** entre cada uno (nunca autónomo). Cada paso streamea progreso
+(`Paso k/n`, corriendo, resultado) y pasa por la misma puerta de siempre
+(`permitido` + cola + bitácora). El objetivo tiene que estar aprobado antes de
+empezar. `sí`/`no`/`/cancelar` controlan el avance sin gastar IA.
+
+**3. Rate limit / un paso a la vez.** Ventana deslizante por operador sobre las
+peticiones a la IA: si escribís de más, frena ("vas muy rápido") en vez de encolar
+trabajo y buguearse. Mientras un paso corre, los mensajes reciben "esperá".
+
+**4. Cargar objetivos desde un archivo de texto.** Si mandás un `.txt`/`.csv`/
+`.list`, el bot lo baja, lo descifra (AES-256-GCM, espejo de
+`web/app/src/datos/archivos.ts`) y saca los objetivos. **Solo texto seguro** (mime
+`text/*` o extensión conocida; binarios rechazados), con tope de tamaño (256 KiB)
+y de objetivos (50), deduplicados y clasificados (basura e inyecciones se
+descartan). Cada objetivo se **pide** (pendiente de aprobación): un adjunto no
+saltea el control, es solo una forma cómoda de cargar la lista. `adjuntos.ts`
+tiene el descifrado y el parseo (8 tests).
+
+Pruebas: **59 en total** (cola 5, ia 6, scope 7, herramientas 5, operadores 9,
+orquestador 13, adjuntos 8).
 
 ## Metodología que sabe el orquestador (fuentes)
 
