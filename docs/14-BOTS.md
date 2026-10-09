@@ -217,6 +217,12 @@ no empiece con `-`).
 | dnsenum | enumeración DNS | dominio |
 | fierce | infraestructura DNS | dominio (`--domain`) |
 | whois | registro del dominio | dominio |
+| nuclei | vulnerabilidades por templates (activo) | URL/host (`-u`) |
+| nikto | escáner de servidores web (activo) | host (`-h`) |
+
+nuclei y nikto son **activos/intrusivos** (envían payloads): su descripción se lo
+dice a la IA para que los ponga al final del plan, y corren igual bajo el alcance
+aprobado. nuclei lleva `-rate-limit 50` y nikto `-maxtime 120s` por defecto.
 
 Comandos: `/<nombre> <objetivo> [perfil]`, `/herramientas` lista el menú con
 descripciones y perfiles. El orquestador recibe todo el catálogo y las
@@ -224,7 +230,7 @@ descripciones entran al prompt para que la IA elija bien. `WTFUCK_BOT_HERRAMIENT
 limita el menú (vacío = todo); `WTFUCK_BOT_HERRAMIENTAS_FALSAS` usa un ejecutor de
 mentira (reemplaza a `WTFUCK_BOT_NMAP_FALSO`, que sigue por compat).
 
-**Probado en el emulador:** `/herramientas` lista las 13; `/whois` (objetivo
+**Probado en el emulador:** `/herramientas` lista el catálogo; `/whois` (objetivo
 posicional) y `/subfinder` (objetivo con `-d`) corren con el argv correcto y bajo
 el mismo alcance aprobado.
 

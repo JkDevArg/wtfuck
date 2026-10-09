@@ -179,6 +179,25 @@ export const CATALOGO: Record<string, SpecHerramienta> = {
       normal: [],
     },
   },
+  nuclei: {
+    nombre: 'nuclei',
+    descripcion: 'escáner de vulnerabilidades por templates de una URL o host (ACTIVO/intrusivo: úsalo al final)',
+    objetivo: { modo: 'flag', flag: '-u' },
+    perfiles: {
+      // rate-limit moderado para no ser agresivo; silent para salida limpia.
+      criticos: ['-severity', 'critical,high', '-rate-limit', '50', '-silent'],
+      cves: ['-tags', 'cve', '-rate-limit', '50', '-silent'],
+      completo: ['-rate-limit', '50', '-silent'],
+    },
+  },
+  nikto: {
+    nombre: 'nikto',
+    descripcion: 'escáner de servidores web de un host (ACTIVO: úsalo al final)',
+    objetivo: { modo: 'flag', flag: '-h' },
+    perfiles: {
+      normal: ['-ask', 'no', '-maxtime', '120s'],
+    },
+  },
 };
 
 /** Construye una Herramienta a partir de su spec. */
