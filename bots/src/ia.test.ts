@@ -21,7 +21,7 @@ test('arma la peticion como la espera Groq y lee la respuesta', async () => {
   const fetchMock = responderCon(200, { choices: [{ message: { content: '  hola, en que ayudo  ' } }] });
   vi.stubGlobal('fetch', fetchMock);
 
-  const groq = new Groq({ apiKey: 'k-secreta', modelo: 'llama-3.3-70b-versatile' });
+  const groq = new Groq({ apiKey: 'k-secreta', modelo: 'openai/gpt-oss-20b' });
   const r = await groq.responder(turnos);
   expect(r).toBe('hola, en que ayudo'); // recortado
 
@@ -31,7 +31,7 @@ test('arma la peticion como la espera Groq y lee la respuesta', async () => {
   const headers = opts!.headers as Record<string, string>;
   expect(headers['Authorization']).toBe('Bearer k-secreta');
   const body = JSON.parse(opts!.body as string);
-  expect(body.model).toBe('llama-3.3-70b-versatile');
+  expect(body.model).toBe('openai/gpt-oss-20b');
   expect(body.messages).toEqual([
     { role: 'system', content: 'sos un asistente' },
     { role: 'user', content: 'hola' },

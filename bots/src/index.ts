@@ -29,7 +29,7 @@ const esCharla = modo === 'charla';
 const ia = esCharla
   ? new Groq({
       apiKey: env('GROQ_API_KEY'),
-      modelo: env('GROQ_MODELO', 'llama-3.3-70b-versatile'),
+      modelo: env('GROQ_MODELO', 'openai/gpt-oss-20b'),
       base: process.env['GROQ_BASE'],
     })
   : undefined;
