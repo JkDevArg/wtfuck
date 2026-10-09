@@ -9,10 +9,19 @@
 # Y en bots/.env:  WTFUCK_BOT_IMAGEN=wtfuck-kali:latest
 #
 # Elegí cuánto arsenal con --build-arg KALI_META=... :
+#   kali-tools-top10     -> las 10 top (nmap, sqlmap, metasploit, hydra...). Chico.
+#                           OJO: NO incluye wpscan ni el resto de web.
 #   kali-linux-headless  -> set estándar sin GUI (~1-2 GB). Incluye las top; NO todo.
 #   kali-linux-large     -> arsenal amplio: sqlmap, wpscan, hydra, etc. (DEFAULT, varios GB)
 #   kali-linux-everything-> literalmente todo (ENORME, >15 GB; rara vez necesario)
-# Ej: docker build -f bots/sandbox/Dockerfile.kali --build-arg KALI_META=kali-linux-headless -t wtfuck-kali:headless bots/sandbox
+#
+# Podés COMBINAR metapaquetes (van separados por espacio, entre comillas):
+#   --build-arg KALI_META="kali-tools-top10 kali-tools-web"
+# Categorías útiles: kali-tools-web (sqlmap, wpscan, gobuster...),
+# kali-tools-information-gathering, kali-tools-vulnerability, kali-tools-passwords.
+# Ref: https://www.kali.org/tools/kali-meta/
+#
+# Ej: docker build -f bots/sandbox/Dockerfile.kali --build-arg KALI_META=kali-tools-top10 -t wtfuck-kali:top10 bots/sandbox
 
 FROM kalilinux/kali-rolling
 

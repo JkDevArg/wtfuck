@@ -20,18 +20,25 @@ Basada en Kali: **sqlmap, wpscan, hydra, gobuster, metasploit, nikto, nmap…** 
 cientos más. Pesa varios GB y el build tarda.
 
 ```bash
-# arsenal amplio (default: kali-linux-large)
+# arsenal amplio (default: kali-linux-large) — incluye sqlmap, wpscan, hydra...
 docker build -f bots/sandbox/Dockerfile.kali -t wtfuck-kali:latest bots/sandbox
 
-# más liviano (set estándar sin GUI)
-docker build -f bots/sandbox/Dockerfile.kali --build-arg KALI_META=kali-linux-headless -t wtfuck-kali:headless bots/sandbox
+# chico: las 10 top (nmap, sqlmap, metasploit, hydra...). OJO: SIN wpscan.
+docker build -f bots/sandbox/Dockerfile.kali --build-arg KALI_META=kali-tools-top10 -t wtfuck-kali:top10 bots/sandbox
+
+# top10 + web (así SÍ tenés wpscan, gobuster, etc. además de sqlmap)
+docker build -f bots/sandbox/Dockerfile.kali --build-arg KALI_META="kali-tools-top10 kali-tools-web" -t wtfuck-kali:latest bots/sandbox
 
 # literalmente todo (ENORME, >15 GB)
 docker build -f bots/sandbox/Dockerfile.kali --build-arg KALI_META=kali-linux-everything -t wtfuck-kali:all bots/sandbox
 ```
 
-Metapaquetes: `kali-linux-headless` (top tools), `kali-linux-large` (arsenal
-amplio, incluye sqlmap/wpscan/hydra), `kali-linux-everything` (todo).
+Metapaquetes (ref: <https://www.kali.org/tools/kali-meta/>): `kali-tools-top10`
+(chico, sin wpscan), `kali-linux-headless` (set estándar), `kali-linux-large`
+(arsenal amplio, con sqlmap/wpscan/hydra), `kali-linux-everything` (todo). Se
+pueden **combinar** separados por espacio, p.ej. `kali-tools-top10 kali-tools-web`.
+Categorías útiles: `kali-tools-web`, `kali-tools-information-gathering`,
+`kali-tools-vulnerability`, `kali-tools-passwords`.
 
 ## Config (cualquiera de las dos)
 
