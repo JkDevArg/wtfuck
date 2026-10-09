@@ -50,6 +50,7 @@ import com.wtfuck.app.ui.BitacoraPantalla
 import com.wtfuck.app.ui.ConsolaWebPantalla
 import com.wtfuck.app.ui.BloqueadosPantalla
 import com.wtfuck.app.ui.ExcepcionesPantalla
+import com.wtfuck.app.ui.AlcancePantalla
 import com.wtfuck.app.ui.ConversacionesPanelPantalla
 import com.wtfuck.app.ui.Inicio
 import com.wtfuck.app.ui.LimitesPantalla
@@ -492,6 +493,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
                 onConversaciones = { nav.navigate("panel-conversaciones") },
                 onConsolaWeb = { nav.navigate("consola-web") },
                 onInvitaciones = { nav.navigate("invitaciones") },
+                onAlcance = { nav.navigate("panel-alcance") },
             )
         }
 
@@ -539,6 +541,10 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
 
         composable("panel-conversaciones") {
             ConversacionesPanelPantalla(onAtras = { nav.popBackStack() })
+        }
+
+        composable("panel-alcance") {
+            AlcancePantalla(onAtras = { nav.popBackStack() })
         }
 
         composable("bitacora") {

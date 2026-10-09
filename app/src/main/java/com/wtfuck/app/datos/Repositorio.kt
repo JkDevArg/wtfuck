@@ -4663,6 +4663,16 @@ class Repositorio(
     suspend fun revisarCanal(convId: String, aprobado: Boolean, motivo: String = ""): Result<Unit> =
         runCatching { api.revisarCanal(convId, RevisarCanalReq(aprobado, motivo)) }
 
+    // Pedidos de alcance de los bots (ver docs/14-BOTS.md).
+    suspend fun pedidosAlcance(): List<AlcanceResp> =
+        runCatching { api.pedidosAlcance().pedidos }.getOrElse { emptyList() }
+
+    suspend fun aprobarAlcance(id: String, motivo: String = ""): Result<Unit> =
+        runCatching { api.aprobarAlcance(id, ResolverAlcanceReq(motivo)) }
+
+    suspend fun rechazarAlcance(id: String, motivo: String = ""): Result<Unit> =
+        runCatching { api.rechazarAlcance(id, ResolverAlcanceReq(motivo)) }
+
     /**
      * Las publicaciones de un canal, o **null si no se pudieron pedir**.
      *

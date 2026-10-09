@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.History
@@ -64,6 +65,7 @@ fun PanelPantalla(
     onConversaciones: () -> Unit,
     onConsolaWeb: () -> Unit,
     onInvitaciones: () -> Unit,
+    onAlcance: () -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     val ambito = rememberCoroutineScope()
@@ -150,6 +152,9 @@ fun PanelPantalla(
                         // que pide el servidor para repartir codigos.
                         IconButton(onClick = onInvitaciones) {
                             Icon(Icons.Filled.MailOutline, "Invitaciones", tint = TextoSecundario)
+                        }
+                        IconButton(onClick = onAlcance) {
+                            Icon(Icons.Filled.GpsFixed, "Alcances de bots", tint = TextoSecundario)
                         }
                         IconButton(onClick = onLimites) {
                             Icon(Icons.Filled.Speed, "Limites", tint = TextoSecundario)

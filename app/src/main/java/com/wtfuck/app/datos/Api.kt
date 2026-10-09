@@ -694,6 +694,16 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun revisarCanal(convId: String, req: RevisarCanalReq): Unit =
         pedir("$RUTA_PANEL/canales/$convId", "POST", jsonApp.encodeToString(req), true)
 
+    // Pedidos de alcance de los bots (ver docs/14-BOTS.md).
+    suspend fun pedidosAlcance(): PedidosAlcanceResp =
+        pedir(RUTA_ALCANCE_PANEL, "GET", null, true)
+
+    suspend fun aprobarAlcance(id: String, req: ResolverAlcanceReq): Unit =
+        pedir("$RUTA_ALCANCE_PANEL/$id/aprobar", "POST", jsonApp.encodeToString(req), true)
+
+    suspend fun rechazarAlcance(id: String, req: ResolverAlcanceReq): Unit =
+        pedir("$RUTA_ALCANCE_PANEL/$id/rechazar", "POST", jsonApp.encodeToString(req), true)
+
     suspend fun buscarCanales(consulta: String): ResultadoBusquedaCanales {
         val q = java.net.URLEncoder.encode(consulta, "UTF-8")
         return pedir("$RUTA_CANALES/buscar?q=$q", "GET", null, true)
