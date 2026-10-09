@@ -1582,6 +1582,38 @@ fun Application.modulo() {
             call.respond(HttpStatusCode.NoContent)
         }
 
+        // ------------------------------------------------------------
+        //  Pedidos de alcance de los bots (ver docs/14-BOTS.md)
+        // ------------------------------------------------------------
+        //
+        // El BOT (sesion normal) registra un pedido y consulta lo aprobado; el
+        // ADMIN los aprueba/rechaza desde el panel. Un objetivo solo se escanea
+        // una vez aprobado: el control de dos personas vive aca.
+
+        // Bot: registra que un operador pidio un objetivo.
+        post(RUTA_ALCANCE_BOT) {
+            call.respond(PedidosAlcance.pedir(call.autenticar(), call.receive<PedirAlcanceReq>()))
+        }
+        // Bot: consulta los objetivos aprobados de un operador (?operador=...).
+        get(RUTA_ALCANCE_BOT) {
+            val yo = call.autenticar()
+            val op = call.request.queryParameters["operador"] ?: ""
+            call.respond(AlcanceAprobadosResp(PedidosAlcance.aprobadosDe(yo, op)))
+        }
+        // Admin: la cola de pendientes.
+        get(RUTA_ALCANCE_PANEL) {
+            call.respond(PedidosAlcanceResp(PedidosAlcance.pendientes(call.autenticarPanel())))
+        }
+        // Admin: aprobar / rechazar.
+        post("$RUTA_ALCANCE_PANEL/{id}/aprobar") {
+            PedidosAlcance.aprobar(call.autenticarPanel(), call.idRuta(), call.receive<ResolverAlcanceReq>().motivo)
+            call.respond(HttpStatusCode.NoContent)
+        }
+        post("$RUTA_ALCANCE_PANEL/{id}/rechazar") {
+            PedidosAlcance.rechazar(call.autenticarPanel(), call.idRuta(), call.receive<ResolverAlcanceReq>().motivo)
+            call.respond(HttpStatusCode.NoContent)
+        }
+
         get("$RUTA_PANEL/limites") {
             call.respond(LimitesPanel(Panel.limites(call.autenticarPanel())))
         }
