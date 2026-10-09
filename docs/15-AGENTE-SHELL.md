@@ -94,13 +94,15 @@ chat, y cortó en el tope de comandos. El egress se armó con la IP real resuelt
 ### Cómo correrlo REAL en el VPS
 
 1. Docker instalado y corriendo.
-2. Imagen. **Recomendado:** la custom liviana de `bots/sandbox` (solo las tools
-   del catálogo + utilidades, sin Kali entera):
-   ```bash
-   docker build -t wtfuck-pentest:latest bots/sandbox
-   ```
-   Alternativa: `docker pull kalilinux/kali-rolling` (viene pelada; instalá adentro
-   lo que uses).
+2. Imagen (dos opciones en `bots/sandbox/`, ver su README):
+   - **Liviana** (Debian + ~16 tools del catálogo, sin sqlmap/wpscan/etc.):
+     ```bash
+     docker build -t wtfuck-pentest:latest bots/sandbox
+     ```
+   - **Kali, arsenal completo** (sqlmap, wpscan, hydra, metasploit, nmap…; pesada):
+     ```bash
+     docker build -f bots/sandbox/Dockerfile.kali -t wtfuck-kali:latest bots/sandbox
+     ```
 3. En `bots/.env`: `WTFUCK_BOT_SANDBOX=true` (y **sin** `WTFUCK_BOT_SANDBOX_FALSO`),
    `WTFUCK_BOT_IMAGEN=wtfuck-pentest:latest`, y los topes que quieras.
 4. El usuario del bot necesita permiso para hablar con el Docker daemon.

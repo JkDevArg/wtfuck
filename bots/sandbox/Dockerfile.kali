@@ -1,0 +1,38 @@
+# Imagen de pentesting basada en KALI, con el arsenal completo listo
+# (sqlmap, wpscan, nmap, nuclei, hydra, gobuster, metasploit, etc.).
+#
+# Para el sandbox del agente-shell (ver docs/15-AGENTE-SHELL.md). Alternativa a la
+# imagen custom liviana (Dockerfile): esta trae MUCHO más, pero pesa varios GB.
+#
+# Build (en el VPS, tarda y baja varios GB):
+#   docker build -f bots/sandbox/Dockerfile.kali -t wtfuck-kali:latest bots/sandbox
+# Y en bots/.env:  WTFUCK_BOT_IMAGEN=wtfuck-kali:latest
+#
+# Elegí cuánto arsenal con --build-arg KALI_META=... :
+#   kali-linux-headless  -> set estándar sin GUI (~1-2 GB). Incluye las top; NO todo.
+#   kali-linux-large     -> arsenal amplio: sqlmap, wpscan, hydra, etc. (DEFAULT, varios GB)
+#   kali-linux-everything-> literalmente todo (ENORME, >15 GB; rara vez necesario)
+# Ej: docker build -f bots/sandbox/Dockerfile.kali --build-arg KALI_META=kali-linux-headless -t wtfuck-kali:headless bots/sandbox
+
+FROM kalilinux/kali-rolling
+
+ARG KALI_META=kali-linux-large
+
+# El arsenal de Kali + utilidades que el agente/egress necesitan. Sin
+# --no-install-recommends: queremos que los metapaquetes traigan sus tools.
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      ${KALI_META} \
+      iptables iproute2 dnsutils netcat-openbsd curl wget jq git ca-certificates \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# iptables en modo legacy: más predecible dentro de contenedores (lo usa el egress).
+RUN update-alternatives --set iptables /usr/sbin/iptables-legacy || true; \
+    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy || true
+
+# Templates de nuclei si está presente (no falla el build si no).
+RUN command -v nuclei >/dev/null 2>&1 && nuclei -update-templates || true
+
+WORKDIR /root
+# El bot arranca el contenedor con este comando y corre tools por `docker exec`.
+CMD ["sleep", "infinity"]
