@@ -35,6 +35,12 @@ RUN apt-get update && \
       iptables iproute2 dnsutils netcat-openbsd curl wget jq git ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Tools que no vienen en top10/web pero son muy usadas (capa aparte: re-buildear
+# esto NO re-baja el metapaquete pesado de arriba, que queda cacheado).
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y nuclei gobuster ffuf \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # iptables en modo legacy: más predecible dentro de contenedores (lo usa el egress).
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy || true; \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy || true
