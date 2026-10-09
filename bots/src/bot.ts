@@ -5,14 +5,16 @@
 //   - eco:         devuelve lo que le escribas (fase 1).
 //   - charla:      responde con una IA (fase 2). El texto sale de la burbuja
 //                  E2EE hacia el proveedor; se avisa una vez por conversacion.
-//   - herramienta: corre herramientas (nmap...) con alcance obligatorio, solo
-//                  para operadores, de a una, y todo queda en la bitacora.
+//   - herramienta: corre herramientas (nmap...) de a una, con bitacora, y bajo
+//                  un modelo de TERMINOS + ALCANCE DECLARADO por el operador
+//                  (ver operadores.ts): acepta, declara lo que esta autorizado a
+//                  auditar, y recien ahi escanea eso.
 
 import { Cliente, type MensajeEntrante } from './cliente.ts';
 import { Cola } from './cola.ts';
 import type { IA, Turno } from './ia.ts';
 import type { Herramienta } from './herramientas.ts';
-import type { Scope } from './scope.ts';
+import type { Operadores } from './operadores.ts';
 import type { Bitacora } from './bitacora.ts';
 
 export type Modo = 'eco' | 'charla' | 'herramienta';
@@ -35,9 +37,9 @@ export interface OpcionesBot {
   historialMax?: number;
   // herramienta:
   herramienta?: Herramienta;
-  scope?: Scope;
-  operadores?: string[];
+  operadores?: Operadores;
   bitacora?: Bitacora;
+  terminos?: string;
 }
 
 const AVISO_IA =
@@ -83,10 +85,6 @@ export class Bot {
     return this.cliente.responder(conversacionId, texto.slice(0, TOPE_CHAT)).catch((e) => this.o.log(`no se pudo responder: ${(e as Error).message}`));
   }
 
-  private esOperador(usuario: string): boolean {
-    return (this.o.operadores ?? []).includes(usuario.toLowerCase());
-  }
-
   private async alRecibir(m: MensajeEntrante): Promise<void> {
     this.conversacionDe.set(m.autorUsuario, m.conversacionId);
     const texto = m.texto.trim();
@@ -101,10 +99,6 @@ export class Bot {
       const cola = e.espera.length ? ` En espera: ${e.espera.map((u) => '@' + u).join(', ')}.` : '';
       return this.responder(m.conversacionId, `Turno de ${quien}.${cola}`);
     }
-    if (cmd === '/olvida' || cmd === '/reinicia') {
-      this.historial.delete(m.conversacionId);
-      return this.responder(m.conversacionId, 'Listo, olvidé lo que llevabamos hablando.');
-    }
     if (cmd === '/fin') {
       if (this.o.conCola) this.cola.liberar(m.autorUsuario);
       return this.responder(m.conversacionId, 'Listo, soltaste tu turno.');
@@ -112,6 +106,11 @@ export class Bot {
 
     if (this.o.modo === 'herramienta') {
       return this.herramienta(m, cmd, resto);
+    }
+
+    if (cmd === '/olvida' || cmd === '/reinicia') {
+      this.historial.delete(m.conversacionId);
+      return this.responder(m.conversacionId, 'Listo, olvidé lo que llevabamos hablando.');
     }
 
     // eco y charla: trabajo que, con cola, necesita el turno.
@@ -130,52 +129,85 @@ export class Bot {
   }
 
   // ------------------------------------------------------------------
-  //  Modo herramienta
+  //  Modo herramienta: terminos + alcance declarado por el operador
   // ------------------------------------------------------------------
 
   private async herramienta(m: MensajeEntrante, cmd: string, resto: string[]): Promise<void> {
     const h = this.o.herramienta;
-    const scope = this.o.scope;
-    if (!h || !scope) return this.responder(m.conversacionId, 'Este bot no tiene herramientas configuradas.');
+    const ops = this.o.operadores;
+    const conv = m.conversacionId;
+    const u = m.autorUsuario;
+    if (!h || !ops) return this.responder(conv, 'Este bot no tiene herramientas configuradas.');
 
-    if (cmd === '/scope') {
-      return this.responder(m.conversacionId, `Alcance: ${scope.resumen()}. Solo escaneo lo autorizado.`);
+    if (!ops.puedeEntrar(u)) {
+      return this.responder(conv, 'Este bot es por invitación. Pedile acceso a quien lo administra.');
     }
-    if (cmd === '/perfiles') {
-      return this.responder(m.conversacionId, `Perfiles de ${h.nombre}: ${h.perfiles.join(', ')}.`);
+
+    if (cmd === '/terminos') return this.responder(conv, this.o.terminos ?? '(sin términos configurados)');
+
+    if (cmd === '/acepto') {
+      ops.aceptar(u);
+      this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: '-', resultado: 'ejecutado', detalle: 'acepto los terminos' });
+      return this.responder(conv, 'Aceptaste los términos. Ahora declará tu alcance: /alcance <objetivo> (declarás que estás autorizado a auditarlo). /ayuda para el resto.');
     }
-    if (cmd === `/${h.nombre}`) {
-      return this.correrHerramienta(m, resto);
+
+    // Antes de cualquier otra cosa, hay que aceptar.
+    if (!ops.aceptado(u)) {
+      return this.responder(conv, `${this.o.terminos ?? ''}\n\nPara usarme, escribí /acepto.`);
     }
-    return this.responder(m.conversacionId, `No entendí. /ayuda para ver qué puedo hacer.`);
+
+    if (cmd === '/alcance') {
+      const sub = resto[0];
+      if (!sub) {
+        const lista = ops.alcance(u);
+        return this.responder(conv, lista.length ? `Tu alcance declarado:\n- ${lista.join('\n- ')}` : 'No declaraste ningún objetivo todavía. /alcance <objetivo> para agregar.');
+      }
+      if (sub === 'quitar') {
+        const obj = resto[1];
+        if (!obj) return this.responder(conv, 'Uso: /alcance quitar <objetivo>');
+        const quito = ops.quitarAlcance(u, obj);
+        return this.responder(conv, quito ? `Saqué ${obj.toLowerCase()} de tu alcance.` : 'Eso no estaba en tu alcance.');
+      }
+      const r = ops.agregarAlcance(u, sub);
+      if (!r.ok) {
+        // Un intento de declarar algo excluido (p.ej. metadatos de nube) es
+        // justo lo que conviene auditar: queda en la bitacora.
+        this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: sub.toLowerCase(), resultado: 'rechazado-scope', detalle: `declaracion rechazada: ${r.motivo}` });
+        return this.responder(conv, `No pude agregarlo: ${r.motivo}.`);
+      }
+      this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: r.objetivo, resultado: 'ejecutado', detalle: 'declaro alcance (autorizado)' });
+      return this.responder(conv, `Agregado a tu alcance: ${r.objetivo}. Declarás que estás autorizado a auditarlo. Ya podés /${h.nombre} ${r.objetivo}.`);
+    }
+
+    if (cmd === '/perfiles') return this.responder(conv, `Perfiles de ${h.nombre}: ${h.perfiles.join(', ')}.`);
+    if (cmd === `/${h.nombre}`) return this.correrHerramienta(m, resto);
+
+    return this.responder(conv, 'No entendí. /ayuda para ver qué puedo hacer.');
   }
 
   private async correrHerramienta(m: MensajeEntrante, resto: string[]): Promise<void> {
     const h = this.o.herramienta!;
-    const scope = this.o.scope!;
+    const ops = this.o.operadores!;
     const bitacora = this.o.bitacora;
+    const u = m.autorUsuario;
     const objetivo = resto[0] ?? '';
     const perfil = resto[1] ?? 'normal';
 
-    if (!this.esOperador(m.autorUsuario)) {
-      bitacora?.registrar({ operador: m.autorUsuario, herramienta: h.nombre, objetivo, resultado: 'rechazado-operador' });
-      return this.responder(m.conversacionId, 'No estás autorizado a usar las herramientas de este bot.');
-    }
     if (!objetivo) {
-      return this.responder(m.conversacionId, `Uso: /${h.nombre} <objetivo> [perfil]. Perfiles: ${h.perfiles.join(', ')}. /scope para el alcance.`);
+      return this.responder(m.conversacionId, `Uso: /${h.nombre} <objetivo> [perfil]. Perfiles: ${h.perfiles.join(', ')}. /alcance para ver lo tuyo.`);
     }
-    const ev = scope.evaluar(objetivo);
+    const ev = ops.permitido(u, objetivo);
     if (!ev.ok) {
-      bitacora?.registrar({ operador: m.autorUsuario, herramienta: h.nombre, objetivo, resultado: 'rechazado-scope', detalle: ev.motivo });
-      return this.responder(m.conversacionId, `No puedo escanear "${objetivo}": ${ev.motivo}. (/scope para ver el alcance)`);
+      bitacora?.registrar({ operador: u, herramienta: h.nombre, objetivo, resultado: 'rechazado-scope', detalle: ev.motivo });
+      return this.responder(m.conversacionId, `No puedo escanear "${objetivo}": ${ev.motivo}.`);
     }
 
-    const pos = this.cola.pedir(m.autorUsuario);
+    const pos = this.cola.pedir(u);
     if (pos !== 'activo') {
       return this.responder(m.conversacionId, `El bot esta ocupado. Estas en la cola, posicion ${pos}. Te aviso cuando te toque.`);
     }
     if (this.ocupado) {
-      bitacora?.registrar({ operador: m.autorUsuario, herramienta: h.nombre, objetivo: ev.objetivo, perfil, resultado: 'rechazado-ocupado' });
+      bitacora?.registrar({ operador: u, herramienta: h.nombre, objetivo: ev.objetivo, perfil, resultado: 'rechazado-ocupado' });
       return this.responder(m.conversacionId, 'Ya hay un escaneo en curso. Esperá a que termine.');
     }
 
@@ -183,21 +215,14 @@ export class Bot {
     await this.responder(m.conversacionId, `Escaneando ${ev.objetivo} (${h.nombre}, perfil ${perfil})... puede tardar.`);
     try {
       const r = await h.correr(ev.objetivo, perfil);
-      bitacora?.registrar({
-        operador: m.autorUsuario,
-        herramienta: h.nombre,
-        objetivo: ev.objetivo,
-        perfil,
-        resultado: r.ok ? 'ejecutado' : 'error',
-        detalle: r.ok ? undefined : r.error,
-      });
+      bitacora?.registrar({ operador: u, herramienta: h.nombre, objetivo: ev.objetivo, perfil, resultado: r.ok ? 'ejecutado' : 'error', detalle: r.ok ? undefined : r.error });
       await this.responder(m.conversacionId, r.ok ? r.salida : `No salió: ${r.error}`);
     } catch (e) {
-      bitacora?.registrar({ operador: m.autorUsuario, herramienta: h.nombre, objetivo: ev.objetivo, perfil, resultado: 'error', detalle: (e as Error).message });
+      bitacora?.registrar({ operador: u, herramienta: h.nombre, objetivo: ev.objetivo, perfil, resultado: 'error', detalle: (e as Error).message });
       await this.responder(m.conversacionId, `Error corriendo ${h.nombre}: ${(e as Error).message}`);
     } finally {
       this.ocupado = false;
-      this.cola.tocar(m.autorUsuario);
+      this.cola.tocar(u);
     }
   }
 
@@ -241,14 +266,17 @@ export class Bot {
     if (this.o.modo === 'herramienta' && this.o.herramienta) {
       const h = this.o.herramienta;
       return [
-        'Soy un bot de herramientas de wtfuck. Solo escaneo destinos autorizados, y de a uno.',
+        'Soy un bot de herramientas de wtfuck. Vos declarás qué estás autorizado a auditar, y escaneo eso (de a uno).',
         '',
         'Comandos:',
-        `  /${h.nombre} <objetivo> [perfil]   escanea (solo operadores)`,
-        '  /scope     que destinos tengo autorizados',
-        '  /perfiles  los perfiles disponibles',
-        '  /turno     como esta la cola',
-        '  /fin       suelta tu turno',
+        '  /terminos               los términos de uso',
+        '  /acepto                 acepto los términos',
+        '  /alcance                lo que declaraste',
+        '  /alcance <objetivo>     declaro que estoy autorizado a auditar ese objetivo',
+        '  /alcance quitar <obj>   lo saco',
+        `  /${h.nombre} <objetivo> [perfil]   escanea algo de tu alcance`,
+        '  /perfiles               perfiles disponibles',
+        '  /turno    /fin          la cola',
       ].join('\n');
     }
     return ['Soy un bot de wtfuck (modo eco: te devuelvo lo que escribas).', '', 'Comandos:', '  /ayuda   esto', '  /turno   como esta la cola', '  /fin     suelta tu turno'].join('\n');

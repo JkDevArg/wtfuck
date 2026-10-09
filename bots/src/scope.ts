@@ -65,6 +65,17 @@ export function clasificar(crudo: string): Entrada | null {
   return null;
 }
 
+/** ¿`objetivoCrudo` cae dentro de alguna entrada de `lista`? (lista cruda). */
+export function coincide(objetivoCrudo: string, lista: string[]): boolean {
+  const objetivo = clasificar(objetivoCrudo);
+  if (!objetivo) return false;
+  for (const entradaCruda of lista) {
+    const e = clasificar(entradaCruda);
+    if (e && cubre(e, objetivo)) return true;
+  }
+  return false;
+}
+
 function dentroDeCidr(ip: number, red: number, bits: number): boolean {
   const mascara = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
   return ((ip & mascara) >>> 0) === red;

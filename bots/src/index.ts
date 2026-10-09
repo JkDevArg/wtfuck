@@ -8,12 +8,13 @@
 //   charla      - responde con IA (Groq). Necesita GROQ_API_KEY.
 //   herramienta - corre nmap con alcance obligatorio. Necesita WTFUCK_BOT_SCOPE
 //                 y WTFUCK_BOT_OPERADORES.
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Bot, type Modo } from './bot.ts';
 import { Groq } from './ia.ts';
 import { Bitacora } from './bitacora.ts';
 import { crearNmap, ejecutorReal, type Ejecutor } from './herramientas.ts';
-import { Scope } from './scope.ts';
+import { Operadores } from './operadores.ts';
 
 function env(nombre: string, porDefecto?: string): string {
   const v = process.env[nombre] ?? porDefecto;
@@ -40,23 +41,44 @@ const SYSTEM_POR_DEFECTO =
   'español rioplatense/peruano, breve y al grano, en texto plano (sin markdown). ' +
   'Si no sabés algo, decilo.';
 
-// --- Modo herramienta: scope, operadores, bitacora, nmap ---
+// --- Modo herramienta: terminos + alcance declarado, operadores, bitacora, nmap ---
+const TERMINOS_POR_DEFECTO = [
+  'TÉRMINOS DE USO — bot de herramientas de seguridad',
+  '',
+  'Al usar este bot declarás y aceptás que:',
+  '1. Solo vas a auditar sistemas para los que tenés AUTORIZACIÓN por escrito de',
+  '   su dueño. Escanear sin permiso puede ser un delito.',
+  '2. Vos sos el único responsable de lo que escanees y de sus consecuencias.',
+  '   Quien opera este bot y wtfuck NO se responsabilizan por el uso que le des.',
+  '3. Cada objetivo que agregás a tu alcance es una declaración tuya de que',
+  '   estás autorizado a auditarlo. Queda registrado con tu usuario y la fecha.',
+  '4. Hay destinos excluidos por el administrador que no se pueden auditar.',
+  '',
+  'Si estás de acuerdo, escribí /acepto.',
+].join('\n');
+
 let herramienta;
-let scope;
-let operadores: string[] = [];
+let operadores;
 let bitacora;
+let terminos;
 if (modo === 'herramienta') {
-  scope = Scope.desdeArchivo(env('WTFUCK_BOT_SCOPE'));
-  if (scope.vacio) {
-    console.error('El alcance (WTFUCK_BOT_SCOPE) esta vacio: el bot no escanearia nada. Agregá destinos permitidos.');
-    process.exit(1);
-  }
-  operadores = env('WTFUCK_BOT_OPERADORES', '')
+  bitacora = new Bitacora(join(datos, 'bitacora.jsonl'));
+  const excluidos = env('WTFUCK_BOT_EXCLUIDOS', '169.254.0.0/16,127.0.0.0/8')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  if (operadores.length === 0) console.warn('WTFUCK_BOT_OPERADORES vacio: nadie podra correr herramientas.');
-  bitacora = new Bitacora(join(datos, 'bitacora.jsonl'));
+  const invitados = env('WTFUCK_BOT_OPERADORES', '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const abierto = env('WTFUCK_BOT_ABIERTO', 'false') === 'true';
+  if (abierto) console.warn('WTFUCK_BOT_ABIERTO=true: cualquiera que acepte los terminos puede usarlo. La unica proteccion es la atestacion registrada.');
+  else if (invitados.length === 0) console.warn('Sin WTFUCK_BOT_OPERADORES y sin modo abierto: nadie podra usar el bot.');
+
+  operadores = new Operadores(join(datos, 'operadores.json'), excluidos, abierto, invitados);
+
+  const terminosRuta = process.env['WTFUCK_BOT_TERMINOS'];
+  terminos = terminosRuta && existsSync(terminosRuta) ? readFileSync(terminosRuta, 'utf8') : TERMINOS_POR_DEFECTO;
 
   // Un nmap de mentira para probar el flujo sin tener nmap instalado.
   const ejecutor: Ejecutor =
@@ -90,9 +112,9 @@ const bot = new Bot({
   systemPrompt: env('WTFUCK_BOT_SYSTEM', SYSTEM_POR_DEFECTO),
   historialMax: Number(env('WTFUCK_BOT_HISTORIAL', '8')),
   herramienta,
-  scope,
   operadores,
   bitacora,
+  terminos,
 });
 
 await bot.arrancar();
