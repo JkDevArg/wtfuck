@@ -20,10 +20,17 @@ no puede leer nada; el bot, que es un participante, sí.
   X"); un envoltorio por herramienta valida y ejecuta, con flags de una lista
   blanca. Nunca `exec(lo_que_diga_la_IA)`: eso sería ejecución de comandos desde
   un mensaje de chat.
-- **Alcance obligatorio.** Cada objetivo se cruza contra un scope declarado
-  (dominios/IPs del engagement). Fuera de scope: rechazado y registrado. Es la
-  misma disciplina de un engagement autorizado; sin esto el bot sería una
-  botonera de escaneo masivo contra terceros desde la IP del VPS.
+- **Términos + alcance declarado por operador** (modelo afinado 2026-10-08). En
+  vez de un scope global del admin, cada operador **acepta los términos** y
+  **declara** los objetivos que atesta estar autorizado a auditar. Esa aceptación
+  y cada declaración quedan en la bitácora con usuario y fecha: es el respaldo
+  real (quién dijo que tenía permiso sobre qué, y cuándo), no un disclaimer
+  genérico. Se descartó el "scope ilimitado + disclaimer" que se pidió: un
+  disclaimer no autoriza a escanear a terceros que nunca aceptaron nada, y sin
+  alcance el bot sería una botonera de escaneo masivo desde la IP del VPS.
+- **Exclusiones del admin, no anulables.** Metadatos de nube (169.254/16) y
+  loopback (127/8) no se pueden declarar ni con `/alcance`. El intento también se
+  audita.
 - **Cola de turnos.** Un bot de herramienta atiende de a uno: mientras alguien
   tiene el turno, los demás esperan y se les avisa la posición y cuándo les toca.
 - **Operadores.** Los bots de herramienta solo los invocan cuentas autorizadas.
@@ -48,7 +55,8 @@ no puede leer nada; el bot, que es un participante, sí.
 |---|---|---|
 | 1 | Marco del runner + cola de turnos + cliente E2EE headless | **Hecha** (2026-10-08). Bot de eco probado de punta a punta contra el servidor local, cola incluida |
 | 2 | Bot de charla con IA (Groq) | **Hecha** (2026-10-08). Probada de punta a punta contra un Groq de mentira local; falta una corrida con la key real |
-| 3 | Bots de herramienta con scope (nmap primero) | **Hecha** (2026-10-08). nmap con alcance, operadores, cola y bitacora; probado de punta a punta con un nmap de mentira. Falta la IA que lo orqueste y correr nmap real |
+| 3 | Bots de herramienta con scope (nmap primero) | **Hecha** (2026-10-08). nmap con términos + alcance por operador, exclusiones no anulables, cola y bitacora; probado de punta a punta en el emulador con un nmap de mentira |
+| 4 | Orquestador IA (lenguaje natural → acción) | **Hecha** (2026-10-08). gpt-oss-120b con metodología PTES/WSTG; agencia acotada (solo propone, no ejecuta). Falta la corrida e2e contra Groq real |
 
 ## Fase 1, lo que quedó
 
@@ -94,19 +102,61 @@ vuelve cifrada, el aviso de privacidad sale una vez, el historial crece
   (spawn sin shell); el ejecutor es inyectable (real o de mentira). Topes de
   tiempo y de salida. Pruebas en `herramientas.test.ts` (5).
 - `bitacora.ts`: JSONL append-only (quien, que, contra que, cuando, resultado).
-- `bot.ts` modo `herramienta`: comandos `/nmap`, `/scope`, `/perfiles`; solo
-  operadores escanean; una herramienta a la vez (la cola); cada caso anotado.
+- `operadores.ts`: términos + alcance por operador (acepta, declara, quita;
+  valida forma y exclusiones del admin; persiste con usuario y fecha). Pruebas en
+  `operadores.test.ts` (9).
+- `bot.ts` modo `herramienta`: comandos `/terminos`, `/acepto`, `/alcance`,
+  `/nmap`, `/perfiles`, `/turno`, `/fin`; solo operadores invitados; una
+  herramienta a la vez (la cola); cada caso anotado.
 
-**Probado de punta a punta** (nmap de mentira) contra el servidor local:
-- un objetivo fuera de alcance (`google.com`) se rechaza y se anota;
-- uno en alcance (`scanme.nmap.org`) corre con el argv correcto
-  (`-T4 -Pn -F scanme.nmap.org`) y responde;
-- un no-operador es rechazado;
-- la bitacora tiene los tres eventos (rechazado-scope, ejecutado,
-  rechazado-operador).
+**Probado de punta a punta en el emulador** (app real, nmap de mentira) contra el
+servidor local:
+- un comando antes de aceptar → devuelve los términos;
+- `/acepto` → aceptación registrada;
+- `/nmap scanme.nmap.org` aceptado pero sin declarar → rechazado por alcance;
+- `/alcance scanme.nmap.org` → declarado; luego el escaneo corre con el argv
+  correcto (`-T4 -Pn --top-ports 1000 scanme.nmap.org`, objetivo como último arg);
+- `/nmap google.com` (no declarado) → rechazado;
+- `/alcance 169.254.169.254` (metadatos de nube) → rechazado, no anulable.
 
-Pruebas: 23 en total (cola 5, ia 6, scope 7, herramientas 5).
+La bitácora quedó con todos los eventos (aceptación, declaración, ejecutado,
+rechazado-scope ×2) con operador y timestamp.
 
-**Falta:** correr nmap de verdad (instalarlo en el VPS); la IA (gpt-oss-120b)
-que orqueste varias herramientas desde lenguaje natural, con el mismo scope y la
-misma bitacora; mas herramientas (nuclei, nikto, nessus).
+## Fase 4, el orquestador IA
+
+- `orquestador.ts`: convierte lenguaje natural del operador en **una decisión
+  estructurada** usando la IA solo como traductor de intención. Se activa en el
+  modo `herramienta` si hay `GROQ_API_KEY` (modelo por defecto `gpt-oss-120b`).
+- **Agencia acotada** (OWASP LLM Top 10 — *Excessive Agency*): la IA recibe un
+  **menú cerrado** de herramientas+perfiles y un system prompt con metodología
+  (PTES, OWASP WSTG) y reglas duras. Devuelve JSON `{ejecutar|responder}`. La IA
+  sabe de metodología y puede sugerir próximos pasos en texto, pero **no arma
+  comandos ni elige flags**.
+- **No se saltea el alcance.** Lo que la IA propone pasa por la **misma puerta**
+  que un comando manual (`correrObjetivo → operadores.permitido()`): mismo
+  alcance, exclusiones, cola y bitácora. Herramienta/perfil/objetivo inválidos no
+  disparan ejecución (caen a `responder`). La IA nunca declara alcance ni asume
+  permiso; si falta, lo pide en texto. El acto de autorizar sigue siendo humano.
+- Pruebas: `orquestador.test.ts` (9) con IA de mentira — parseo tolerante a
+  markdown, validación contra el registro, y que nada raro dispara ejecución.
+
+Pruebas: **41 en total** (cola 5, ia 6, scope 7, herramientas 5, operadores 9,
+orquestador 9).
+
+**Falta:** la corrida e2e contra Groq real (el usuario pone la key rotada en el
+`.env`); correr nmap de verdad (instalarlo en el VPS); más herramientas (nuclei,
+nikto, nessus), que entran solas al menú del orquestador.
+
+## Metodología que sabe el orquestador (fuentes)
+
+El system prompt del auditor (`orquestador.ts`) se apoya en estándares públicos,
+no en un "prompt mágico" copiado:
+
+- **PTES** (Penetration Testing Execution Standard): las 7 fases
+  (pre-engagement → intelligence gathering → threat modeling → vuln analysis →
+  exploitation → post-exploitation → reporting). <http://www.pentest-standard.org>
+- **OWASP WSTG** (Web Security Testing Guide): catálogo de pruebas web;
+  Information Gathering (4.1). <https://owasp.org/www-project-web-security-testing-guide/>
+- **OWASP Top 10 for LLM Apps** — *Excessive Agency* y *Prompt Injection*: por
+  qué la IA tiene conocimiento amplio pero agencia acotada, y por qué su salida
+  se valida siempre. <https://owasp.org/www-project-top-10-for-large-language-model-applications/>
