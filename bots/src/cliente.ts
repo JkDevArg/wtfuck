@@ -293,6 +293,9 @@ export class Cliente {
 
     const esMio = e.origenUsername.toLowerCase() === this.usuario.toLowerCase();
     if (esMio || !carga) return;
+    // Diagnóstico: cada sobre recibido, con su id. Dos lineas con el MISMO id =
+    // reentrega; con ids distintos = el emisor mando dos copias (dos aparatos).
+    this.cfg.log(`<- sobre ${e.sobreId.slice(0, 8)} de @${e.origenUsername}`);
     if (esTexto(carga) && carga.cuerpo.trim()) {
       this.onMensaje({ conversacionId: e.conversacionId, autorUsuario: e.origenUsername, autorUsuarioId: e.origenUsuarioId, texto: carga.cuerpo });
     } else if (esAdjunto(carga)) {
@@ -335,6 +338,8 @@ export class Cliente {
   /** Manda un texto a una conversacion. Cifra una copia por aparato destino. */
   async responder(conversacionId: string, texto: string): Promise<void> {
     const sobreId = nuevoId();
+    // Diagnóstico: cada respuesta que sale, con su destino y un extracto.
+    this.cfg.log(`-> ${conversacionId.slice(0, 8)}: ${texto.slice(0, 40).replace(/\n/g, ' ')}`);
     await this.api.pedir('POST', '/v1/mensajes', {
       mensajeId: sobreId,
       conversacionId,

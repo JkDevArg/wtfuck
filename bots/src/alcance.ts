@@ -39,7 +39,7 @@ export class Alcance {
     try {
       estado = await this.cli.pedirAlcance(operador, objetivo);
     } catch (e) {
-      return { ok: false, motivo: `no pude registrar el pedido: ${(e as Error).message}` };
+      return { ok: false, motivo: (e as Error).message };
     }
     this.cache.delete(operador.toLowerCase()); // por si ya estaba aprobado
     return { ok: true, objetivo, estado };
