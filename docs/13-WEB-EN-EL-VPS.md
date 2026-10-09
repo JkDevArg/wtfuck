@@ -88,7 +88,7 @@ cd /opt/wtfuck && sudo docker compose -f docker-compose.tras-proxy.yml --env-fil
 Mira el arranque. Tienen que aparecer las migraciones nuevas y ningún error:
 
 ```bash
-sudo docker compose -f docker-compose.tras-proxy.yml logs --tail=80 servidor
+sudo docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml logs --tail=80 servidor
 ```
 
 > Si el `.env` de la clave VAPID o del correo tiene un error de copia, el
@@ -221,7 +221,7 @@ recupera queda anotado con lo que dijo su cadena. Para ver cuántos pasan y por
 qué fallan los que fallan:
 
 ```bash
-sudo docker compose -f docker-compose.tras-proxy.yml exec db psql -U wtfuck -d wtfuck -c "SELECT atestacion, count(*) FROM dispositivo WHERE atestacion_en > now() - interval '30 days' GROUP BY 1 ORDER BY 2 DESC"
+sudo docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml exec db psql -U wtfuck -d wtfuck -c "SELECT atestacion, count(*) FROM dispositivo WHERE atestacion_en > now() - interval '30 days' GROUP BY 1 ORDER BY 2 DESC"
 ```
 
 Cuando casi todos digan `verificada:…`, se pasa a `WTFUCK_ATESTACION=exigir` y

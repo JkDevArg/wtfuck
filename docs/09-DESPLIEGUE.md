@@ -158,7 +158,7 @@ Se elige el del panel —es el que ya gestiona los certificados y el que el pane
 sabe reconfigurar— y se usa el otro archivo:
 
 ```bash
-docker compose -f docker-compose.tras-proxy.yml up -d
+docker compose --env-file .env.produccion -f docker-compose.tras-proxy.yml up -d
 ```
 
 Ese compose es el mismo menos Caddy, y publica `servidor` y `minio` **sólo en
