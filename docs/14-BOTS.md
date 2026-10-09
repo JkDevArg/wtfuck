@@ -154,11 +154,25 @@ Tres pedidos del usuario (2026-10-08), construidos sin romper ningún guardarra�
 
 **1. Alcance con aprobación del admin (control de dos personas).** Pedir un
 objetivo ya no lo habilita: queda `pendiente` hasta que un **admin** (distinto del
-que pide, nunca auto-aprobación) lo `aprueba`. Recién ahí se puede escanear. Dos
-personas tienen que estar de acuerdo. Comandos de admin: `/pendientes`,
-`/aprobar <op> <obj>`, `/rechazar <op> <obj>` (`WTFUCK_BOT_ADMIN`). El bot avisa
-al admin de un pedido nuevo y al operador cuando se aprueba. El estado (quién
-pidió/aprobó y cuándo) queda en `operadores.json` y en la bitácora.
+que pide) lo `aprueba`. Recién ahí se puede escanear. Dos personas tienen que
+estar de acuerdo.
+
+**Dónde se aprueba (actualizado 2026-10-09): desde el PANEL de la app, no por
+chat.** El estado del scope vive en el SERVIDOR (tabla `pedido_alcance`, migración
+V54), no en un archivo del bot. El flujo:
+- El operador le pide al bot por chat (`/alcance X`); el bot registra el pedido en
+  el server (`POST /v1/bot/alcance`), que queda ⏳ pendiente.
+- El admin lo ve en el panel Android (sección **Alcances**, `GET /v1/panel/alcance`,
+  rol staff ≥ ADMINISTRADOR) y lo **aprueba/rechaza** ahí (`POST
+  .../aprobar|rechazar`), con la misma auditoría que el resto de la moderación.
+- El bot consulta el server (`GET /v1/bot/alcance?operador=…`, cache corto) para
+  saber qué está aprobado antes de escanear.
+
+Los viejos comandos de chat `/aprobar` `/pendientes` `/rechazar` quedaron
+obsoletos: el bot responde que la aprobación es por el panel. El bot (`alcance.ts`)
+sigue aplicando las **exclusiones** del admin localmente (metadatos/loopback nunca,
+aunque el server los aprobara). Piezas: server `PedidosAlcance.kt` + protocolo
+`Alcance.kt`; bot `alcance.ts`; app `AlcancePantalla.kt`.
 
 **Probado de punta a punta en el emulador:** `/alcance test.hackl4bs.com` → queda
 ⏳ y avisa al admin; `/aprobar xampl3 …` (siendo el mismo) → rechazado ("no podés
