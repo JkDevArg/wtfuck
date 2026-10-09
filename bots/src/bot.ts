@@ -20,6 +20,7 @@ import type { Bitacora } from './bitacora.ts';
 import type { Orquestador, PasoPlan } from './orquestador.ts';
 import type { Agente, LimitesAgente } from './agente.ts';
 import { planearEgress, type MotorContenedor } from './sandbox.ts';
+import { Alcance } from './alcance.ts';
 
 export type Modo = 'eco' | 'charla' | 'herramienta';
 
@@ -98,6 +99,7 @@ export class Bot {
   private readonly recon = new Map<string, SesionRecon>(); // por conversacionId
   private readonly ultimasPeticiones = new Map<string, number[]>(); // rate limit por operador
   private readonly porNombre = new Map<string, Herramienta>(); // /nombre → herramienta
+  private readonly alcance: Alcance; // scope contra el server (aprobado por el panel)
   private ocupado = false; // una sola herramienta corriendo a la vez
 
   constructor(private readonly o: OpcionesBot) {
@@ -111,6 +113,7 @@ export class Bot {
       nivel: o.nivel,
       log: o.log,
     });
+    this.alcance = new Alcance(this.cliente, o.excluidos ?? ['169.254.0.0/16', '127.0.0.0/8']);
     this.cola = new Cola(o.inactividadMs, (siguiente) => this.alPasarTurno(siguiente));
     this.cliente.onMensaje = (m) => void this.alRecibir(m).catch((e) => o.log(`error: ${(e as Error).message}`));
   }
@@ -224,55 +227,29 @@ export class Bot {
     if (cmd === '/alcance') {
       const sub = resto[0];
       if (!sub) {
-        const lista = ops.alcance(u);
-        if (!lista.length) return this.responder(conv, 'No pediste ningún objetivo todavía. /alcance <objetivo> para pedir (lo aprueba el administrador).');
-        const txt = lista.map((o) => `- ${o.objetivo} ${o.estado === 'aprobado' ? '✓ aprobado' : '⏳ pendiente de aprobación'}`).join('\n');
-        return this.responder(conv, `Tu alcance:\n${txt}`);
+        let aprob: string[] = [];
+        try {
+          aprob = await this.alcance.aprobados(u);
+        } catch (e) {
+          return this.responder(conv, `No pude consultar tu alcance: ${(e as Error).message}`);
+        }
+        const lista = aprob.length ? `Aprobados:\n- ${aprob.join('\n- ')}` : 'No tenés objetivos aprobados todavía.';
+        return this.responder(conv, `${lista}\n\nPara pedir uno: /alcance <objetivo> (lo aprueba un administrador desde el panel).`);
       }
-      if (sub === 'quitar') {
-        const obj = resto[1];
-        if (!obj) return this.responder(conv, 'Uso: /alcance quitar <objetivo>');
-        const quito = ops.quitarAlcance(u, obj);
-        return this.responder(conv, quito ? `Saqué ${obj.toLowerCase()} de tu alcance.` : 'Eso no estaba en tu alcance.');
-      }
-      const r = ops.pedirAlcance(u, sub);
+      const r = await this.alcance.pedir(u, sub);
       if (!r.ok) {
-        // Un intento de pedir algo excluido (p.ej. metadatos de nube) es justo
-        // lo que conviene auditar: queda en la bitacora.
         this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: sub.toLowerCase(), resultado: 'rechazado-scope', detalle: `pedido rechazado: ${r.motivo}` });
-        return this.responder(conv, `No pude agregarlo: ${r.motivo}.`);
+        return this.responder(conv, `No pude registrar el pedido: ${r.motivo}.`);
       }
       if (r.estado === 'aprobado') return this.responder(conv, `${r.objetivo} ya está aprobado. Podés auditarlo.`);
-      this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: r.objetivo, resultado: 'ejecutado', detalle: 'pide alcance (atesta autorizacion), pendiente de aprobacion' });
-      this.avisarAdmins(`Pedido de alcance: @${u} quiere auditar "${r.objetivo}". Aprobá con /aprobar ${u} ${r.objetivo} o /pendientes para ver todo.`);
-      return this.responder(conv, `Pedí "${r.objetivo}" (declarás que estás autorizado a auditarlo). Queda ⏳ pendiente de aprobación del administrador. Te aviso cuando pase el check.`);
+      this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: r.objetivo, resultado: 'ejecutado', detalle: 'pide alcance (pendiente de aprobacion en el panel)' });
+      this.avisarAdmins(`Pedido de alcance: @${u} quiere auditar "${r.objetivo}". Aprobalo desde el panel de administración.`);
+      return this.responder(conv, `Pedí "${r.objetivo}". Queda ⏳ pendiente de aprobación: un administrador lo aprueba desde el panel de la app. Probá de nuevo cuando esté.`);
     }
 
-    // ---- Comandos de admin ----
+    // La aprobación ahora es por el PANEL, no por chat. Avisamos si alguien usa los viejos comandos.
     if (cmd === '/pendientes' || cmd === '/aprobar' || cmd === '/rechazar') {
-      if (!ops.esAdmin(u)) return this.responder(conv, 'Ese comando es solo para el administrador.');
-      if (cmd === '/pendientes') {
-        const pend = ops.pendientes();
-        if (!pend.length) return this.responder(conv, 'No hay pedidos pendientes.');
-        const txt = pend.map((p) => `- @${p.operador} → ${p.objetivo}  (/aprobar ${p.operador} ${p.objetivo})`).join('\n');
-        return this.responder(conv, `Pedidos pendientes:\n${txt}`);
-      }
-      const operador = resto[0];
-      const objetivo = resto[1];
-      if (!operador || !objetivo) return this.responder(conv, `Uso: ${cmd} <operador> <objetivo>`);
-      if (cmd === '/aprobar') {
-        const r = ops.aprobar(u, operador, objetivo);
-        if (!r.ok) return this.responder(conv, `No pude aprobar: ${r.motivo}.`);
-        this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: r.objetivo, resultado: 'ejecutado', detalle: `aprobo alcance de @${operador.toLowerCase().replace(/^@/, '')}` });
-        this.avisarOperador(operador, `✓ El administrador aprobó "${r.objetivo}". Ya podés auditarlo (/nmap ${r.objetivo}, otra herramienta, o pedime un reconocimiento).`);
-        return this.responder(conv, `Aprobado: @${operador} ya puede auditar "${r.objetivo}".`);
-      }
-      // /rechazar
-      const r = ops.rechazar(u, operador, objetivo);
-      if (!r.ok) return this.responder(conv, `No pude rechazar: ${r.motivo}.`);
-      this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: objetivo.toLowerCase(), resultado: 'rechazado-scope', detalle: `admin rechazo pedido de @${operador.toLowerCase().replace(/^@/, '')}` });
-      this.avisarOperador(operador, `El administrador rechazó tu pedido de "${objetivo.toLowerCase()}".`);
-      return this.responder(conv, `Rechazado el pedido de @${operador} para "${objetivo.toLowerCase()}".`);
+      return this.responder(conv, 'La aprobación de alcances se hace desde el panel de administración de la app (sección Alcances), no por chat.');
     }
 
     if (cmd === '/perfiles' || cmd === '/herramientas') {
@@ -320,7 +297,7 @@ export class Bot {
     }
 
     await this.responder(conv, 'Pensando...');
-    const plan = await this.o.orquestador!.decidir(texto, { alcance: ops.aprobados(u) });
+    const plan = await this.o.orquestador!.decidir(texto, { alcance: await this.alcance.aprobados(u) });
 
     if (plan.accion === 'responder') {
       return this.responder(conv, plan.texto);
@@ -340,7 +317,7 @@ export class Bot {
     const ops = this.o.operadores!;
 
     // El objetivo tiene que estar APROBADO antes de empezar. La IA no habilita nada.
-    const ev = ops.permitido(u, objetivo);
+    const ev = await this.alcance.permitido(u, objetivo);
     if (!ev.ok) {
       this.o.bitacora?.registrar({ operador: u, herramienta: 'recon', objetivo, resultado: 'rechazado-scope', detalle: ev.motivo });
       return this.responder(conv, `Para reconocer "${objetivo}" primero tiene que estar aprobado: ${ev.motivo}.`);
@@ -407,7 +384,7 @@ export class Bot {
     const u = m.autorUsuario;
     if (!h) return this.responder(m.conversacionId, `No tengo la herramienta "${nombre}".`);
 
-    const ev = ops.permitido(u, objetivo);
+    const ev = await this.alcance.permitido(u, objetivo);
     if (!ev.ok) {
       bitacora?.registrar({ operador: u, herramienta: h.nombre, objetivo, resultado: 'rechazado-scope', detalle: ev.motivo });
       return this.responder(m.conversacionId, `No puedo escanear "${objetivo}": ${ev.motivo}.`);
@@ -450,7 +427,7 @@ export class Bot {
     const bitacora = this.o.bitacora;
 
     // El objetivo tiene que estar APROBADO (la IA no habilita nada).
-    const ev = ops.permitido(u, objetivo);
+    const ev = await this.alcance.permitido(u, objetivo);
     if (!ev.ok) {
       bitacora?.registrar({ operador: u, herramienta: 'shell', objetivo, resultado: 'rechazado-scope', detalle: ev.motivo });
       return this.responder(conv, `Para un pentest de "${objetivo}" primero tiene que estar aprobado: ${ev.motivo}.`);
@@ -594,7 +571,7 @@ export class Bot {
     const yaEstaban: string[] = [];
     const rechazados: string[] = [];
     for (const obj of validos) {
-      const r = ops.pedirAlcance(u, obj);
+      const r = await this.alcance.pedir(u, obj);
       if (!r.ok) rechazados.push(obj);
       else if (r.estado === 'aprobado') yaEstaban.push(obj);
       else pedidos.push(obj);

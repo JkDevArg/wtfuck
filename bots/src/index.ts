@@ -104,9 +104,9 @@ if (modo === 'herramienta') {
     .filter(Boolean);
   if (abierto) console.warn('WTFUCK_BOT_ABIERTO=true: cualquiera que acepte los terminos puede usarlo. La unica proteccion es la atestacion registrada y la aprobacion del admin.');
   else if (invitados.length === 0 && admins.length === 0) console.warn('Sin WTFUCK_BOT_OPERADORES/ADMIN y sin modo abierto: nadie podra usar el bot.');
-  if (admins.length === 0) console.warn('Sin WTFUCK_BOT_ADMIN: nadie puede aprobar alcances, asi que nadie podra escanear. Configuralo.');
+  if (admins.length === 0) console.warn('Sin WTFUCK_BOT_ADMIN: los avisos de pedidos no se mandan a nadie por chat (igual se aprueban desde el panel).');
 
-  operadores = new Operadores(join(datos, 'operadores.json'), excluidos, abierto, invitados, admins);
+  operadores = new Operadores(join(datos, 'operadores.json'), abierto, invitados, admins);
 
   const terminosRuta = process.env['WTFUCK_BOT_TERMINOS'];
   terminos = terminosRuta && existsSync(terminosRuta) ? readFileSync(terminosRuta, 'utf8') : TERMINOS_POR_DEFECTO;

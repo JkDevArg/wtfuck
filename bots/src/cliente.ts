@@ -307,6 +307,18 @@ export class Cliente {
     }
   }
 
+  /** Registra en el server que un operador pidió un objetivo. Devuelve el estado. */
+  async pedirAlcance(operador: string, objetivo: string): Promise<string> {
+    const r = await this.api.pedir<{ estado: string }>('POST', '/v1/bot/alcance', { operador, objetivo });
+    return r.estado;
+  }
+
+  /** Los objetivos aprobados de un operador (según el server). */
+  async alcanceAprobados(operador: string): Promise<string[]> {
+    const r = await this.api.pedir<{ aprobados: string[] }>('GET', `/v1/bot/alcance?operador=${encodeURIComponent(operador)}`);
+    return r.aprobados ?? [];
+  }
+
   /** Baja el blob cifrado de un adjunto y lo descifra. Devuelve el claro. */
   async descargarAdjunto(a: AdjuntoEntrante): Promise<Buffer> {
     const info = await this.api.pedir<{ urlDescarga: string }>('GET', `/v1/adjuntos/${a.adjuntoId}`);
