@@ -85,6 +85,8 @@ export class Cliente {
   private intentos = 0;
   private cerrado = false;
   private colaBajadas: Promise<void> = Promise.resolve();
+  private readonly vistos = new Set<string>(); // sobreIds ya procesados (dedup)
+  private readonly vistosOrden: string[] = []; // para acotar el tamaño del Set
   private readonly pendientes = new Map<string, { ok: () => void; falla: (e: Error) => void }>();
   private readonly cacheDestinos = new Map<string, { hasta: number; lista: Destino[] }>();
 
@@ -241,6 +243,16 @@ export class Cliente {
   }
 
   // Las bajadas se procesan de a una: descifrar cambia el ratchet.
+  /** Recuerda un sobre como visto, manteniendo solo los últimos 2000. */
+  private recordarVisto(sobreId: string): void {
+    this.vistos.add(sobreId);
+    this.vistosOrden.push(sobreId);
+    if (this.vistosOrden.length > 2000) {
+      const viejo = this.vistosOrden.shift();
+      if (viejo) this.vistos.delete(viejo);
+    }
+  }
+
   private encolar(b: Bajada): void {
     this.colaBajadas = this.colaBajadas.then(() => this.manejar(b)).catch((e) => this.cfg.log(`bajada: ${(e as Error).message}`));
   }
@@ -272,6 +284,16 @@ export class Cliente {
   }
 
   private async recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
+    // Idempotencia: el servidor puede entregar el mismo sobre más de una vez
+    // (reentrega si se perdió el acuse, o fan-out a varios aparatos del bot). Sin
+    // esto el bot descifra y RESPONDE dos veces. Si ya lo vimos, reacusamos y
+    // cortamos: ni se descifra de nuevo (no se toca el ratchet) ni se reprocesa.
+    if (this.vistos.has(e.sobreId)) {
+      this.mandar({ type: 'acuse', sobreIds: [e.sobreId] });
+      return;
+    }
+    this.recordarVisto(e.sobreId);
+
     let carga: Carga | null = null;
     try {
       const claro =
