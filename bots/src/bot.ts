@@ -10,7 +10,8 @@
 //                  (ver operadores.ts): acepta, declara lo que esta autorizado a
 //                  auditar, y recien ahi escanea eso.
 
-import { Cliente, type MensajeEntrante } from './cliente.ts';
+import { Cliente, type AdjuntoEntrante, type MensajeEntrante } from './cliente.ts';
+import { esListaDeTexto, parsearObjetivos, MAX_BYTES_LISTA } from './adjuntos.ts';
 import { Cola } from './cola.ts';
 import type { IA, Turno } from './ia.ts';
 import type { Herramienta } from './herramientas.ts';
@@ -55,6 +56,12 @@ interface SesionRecon {
   pasos: PasoPlan[];
   indice: number;
   estado: 'esperando' | 'corriendo';
+}
+
+/** Lista corta para un mensaje: los primeros y "y N más". */
+function resumirLista(xs: string[], tope = 10): string {
+  if (xs.length <= tope) return xs.join(', ');
+  return `${xs.slice(0, tope).join(', ')} y ${xs.length - tope} más`;
 }
 
 /** ¿El texto es un sí, un no, o ninguno? (para confirmar pasos sin gastar IA). */
@@ -181,6 +188,9 @@ export class Bot {
     if (!ops.aceptado(u)) {
       return this.responder(conv, `${this.o.terminos ?? ''}\n\nPara usarme, escribí /acepto.`);
     }
+
+    // ¿Mandó un archivo/lista? Lo tratamos como objetivos candidatos (a pedir).
+    if (m.adjunto) return this.cargarLista(m, m.adjunto);
 
     // ¿Hay un reconocimiento en curso en esta conversación? Lo atendemos primero.
     const sesion = this.recon.get(conv);
@@ -451,6 +461,66 @@ export class Bot {
     if (conv) void this.responder(conv, texto);
   }
 
+  /**
+   * Un archivo de texto con objetivos → los PIDE (pendientes de aprobación). Un
+   * adjunto no saltea ningún control: solo es una forma cómoda de cargar la lista.
+   */
+  private async cargarLista(m: MensajeEntrante, a: AdjuntoEntrante): Promise<void> {
+    const conv = m.conversacionId;
+    const u = m.autorUsuario;
+    const ops = this.o.operadores!;
+
+    if (!esListaDeTexto(a.mime, a.nombre)) {
+      return this.responder(conv, 'Solo puedo leer listas de texto (.txt, .csv, .list…). Ese archivo no parece texto seguro, así que no lo abro.');
+    }
+    if (a.bytes > MAX_BYTES_LISTA) {
+      return this.responder(conv, `Ese archivo es muy grande para una lista (${Math.round(a.bytes / 1024)} KiB). Mandá uno de hasta ${Math.round(MAX_BYTES_LISTA / 1024)} KiB.`);
+    }
+
+    let texto: string;
+    try {
+      const buf = await this.cliente.descargarAdjunto(a);
+      if (buf.length > MAX_BYTES_LISTA) return this.responder(conv, 'El archivo resultó más grande de lo declarado; no lo proceso.');
+      texto = buf.toString('utf8');
+    } catch (e) {
+      return this.responder(conv, `No pude leer el archivo: ${(e as Error).message}.`);
+    }
+
+    const { validos, invalidas, truncado } = parsearObjetivos(texto);
+    if (!validos.length) {
+      return this.responder(conv, 'No encontré objetivos válidos (hosts, IPs o CIDR) en el archivo.');
+    }
+
+    const pedidos: string[] = [];
+    const yaEstaban: string[] = [];
+    const rechazados: string[] = [];
+    for (const obj of validos) {
+      const r = ops.pedirAlcance(u, obj);
+      if (!r.ok) rechazados.push(obj);
+      else if (r.estado === 'aprobado') yaEstaban.push(obj);
+      else pedidos.push(obj);
+    }
+
+    this.o.bitacora?.registrar({
+      operador: u,
+      herramienta: '-',
+      objetivo: `lista:${a.nombre || 'archivo'}`,
+      resultado: 'ejecutado',
+      detalle: `pide ${pedidos.length}, ya ${yaEstaban.length}, rechaza ${rechazados.length}, invalidas ${invalidas}${truncado ? ', truncada' : ''}`,
+    });
+    if (pedidos.length) {
+      this.avisarAdmins(`@${u} cargó una lista: ${pedidos.length} objetivo(s) pendiente(s) de aprobación. Mirá /pendientes.`);
+    }
+
+    const partes = [`De "${a.nombre || 'tu archivo'}" saqué ${validos.length} objetivo(s) válido(s):`];
+    if (pedidos.length) partes.push(`⏳ Pedí ${pedidos.length} (pendientes de aprobación del admin): ${resumirLista(pedidos)}`);
+    if (yaEstaban.length) partes.push(`✓ ${yaEstaban.length} ya estaban aprobados.`);
+    if (rechazados.length) partes.push(`✗ ${rechazados.length} rechazados (excluidos por el admin): ${resumirLista(rechazados)}`);
+    if (invalidas) partes.push(`${invalidas} línea(s) no eran objetivos válidos y las descarté.`);
+    if (truncado) partes.push(`Corté en ${validos.length} objetivos (la lista era más larga).`);
+    return this.responder(conv, partes.join('\n'));
+  }
+
   private ayuda(): string {
     if (this.o.modo === 'charla') {
       return ['Soy un bot de wtfuck con IA. Escribime y te respondo.', '', 'Comandos:', '  /ayuda   esto', '  /olvida  borro lo que llevamos hablado'].join('\n');
@@ -468,7 +538,9 @@ export class Bot {
         '  /alcance quitar <obj>   lo saco',
         `  /${h.nombre} <objetivo> [perfil]   escanea algo de tu alcance aprobado`,
         '  /perfiles               perfiles disponibles',
-        '  /turno    /fin          la cola',
+        '  /turno    /fin          la cola (/fin o /cancelar corta un recon)',
+        '',
+        'También podés mandarme un archivo de texto (.txt/.csv) con una lista de objetivos: los pido por vos (quedan pendientes de aprobación).',
         '',
         'Admin:',
         '  /pendientes             pedidos esperando aprobación',

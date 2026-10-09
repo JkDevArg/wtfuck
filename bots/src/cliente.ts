@@ -16,6 +16,7 @@ import {
   aBytes,
   b64,
   deBytes,
+  esAdjunto,
   esConClave,
   esTexto,
   mencionesEn,
@@ -24,11 +25,13 @@ import {
   TIPO_CIFRADO,
   type Bajada,
   type Carga,
+  type CargaAdjunto,
   type CopiaCifrada,
   type Destino,
   type PaqueteClaves,
   type Subida,
 } from '../../web/app/src/datos/protocolo.ts';
+import { descifrarArchivo } from './adjuntos.ts';
 
 const PREKEYS_OBJETIVO = 100;
 const PREKEYS_MINIMO = 20;
@@ -42,11 +45,22 @@ interface Sesion {
   sig: { firmada: number; kyber: number; unica: number };
 }
 
+export interface AdjuntoEntrante {
+  adjuntoId: string;
+  mime: string;
+  nombre: string;
+  clase: string;
+  clave: string;
+  nonce: string;
+  bytes: number;
+}
+
 export interface MensajeEntrante {
   conversacionId: string;
   autorUsuario: string;
   autorUsuarioId: string;
   texto: string;
+  adjunto?: AdjuntoEntrante;
 }
 
 export interface ConfigCliente {
@@ -278,14 +292,28 @@ export class Cliente {
     this.mandar({ type: 'acuse', sobreIds: [e.sobreId] });
 
     const esMio = e.origenUsername.toLowerCase() === this.usuario.toLowerCase();
-    if (!esMio && carga && esTexto(carga) && carga.cuerpo.trim()) {
+    if (esMio || !carga) return;
+    if (esTexto(carga) && carga.cuerpo.trim()) {
+      this.onMensaje({ conversacionId: e.conversacionId, autorUsuario: e.origenUsername, autorUsuarioId: e.origenUsuarioId, texto: carga.cuerpo });
+    } else if (esAdjunto(carga)) {
+      const a = carga as CargaAdjunto;
       this.onMensaje({
         conversacionId: e.conversacionId,
         autorUsuario: e.origenUsername,
         autorUsuarioId: e.origenUsuarioId,
-        texto: carga.cuerpo,
+        texto: (a.pie ?? '').trim(),
+        adjunto: { adjuntoId: a.adjuntoId, mime: a.mime, nombre: a.nombre, clase: a.clase, clave: a.clave, nonce: a.nonce, bytes: a.bytes ?? 0 },
       });
     }
+  }
+
+  /** Baja el blob cifrado de un adjunto y lo descifra. Devuelve el claro. */
+  async descargarAdjunto(a: AdjuntoEntrante): Promise<Buffer> {
+    const info = await this.api.pedir<{ urlDescarga: string }>('GET', `/v1/adjuntos/${a.adjuntoId}`);
+    const r = await fetch(info.urlDescarga);
+    if (!r.ok) throw new Error(`no se pudo bajar el adjunto (${r.status})`);
+    const claro = await descifrarArchivo(await r.arrayBuffer(), a.clave, a.nonce);
+    return Buffer.from(claro);
   }
 
   // ------------------------------------------------------------------
