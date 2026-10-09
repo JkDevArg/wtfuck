@@ -135,6 +135,10 @@ const bot = new Bot({
   bitacora,
   terminos,
   orquestador,
+  // Rate limit de peticiones a la IA por operador. Un valor invalido cae al
+  // default (nunca NaN, que desactivaria el limite sin avisar).
+  rateMax: Number(env('WTFUCK_BOT_RATE_MAX', '8')) || 8,
+  rateVentanaMs: (Number(env('WTFUCK_BOT_RATE_VENTANA_S', '60')) || 60) * 1000,
 });
 
 await bot.arrancar();

@@ -176,6 +176,8 @@ empezar. `sí`/`no`/`/cancelar` controlan el avance sin gastar IA.
 **3. Rate limit / un paso a la vez.** Ventana deslizante por operador sobre las
 peticiones a la IA: si escribís de más, frena ("vas muy rápido") en vez de encolar
 trabajo y buguearse. Mientras un paso corre, los mensajes reciben "esperá".
+Ajustable por entorno: `WTFUCK_BOT_RATE_MAX` (default 8 peticiones) y
+`WTFUCK_BOT_RATE_VENTANA_S` (default 60 s). Un valor inválido cae al default.
 
 **4. Cargar objetivos desde un archivo de texto.** Si mandás un `.txt`/`.csv`/
 `.list`, el bot lo baja, lo descifra (AES-256-GCM, espejo de
