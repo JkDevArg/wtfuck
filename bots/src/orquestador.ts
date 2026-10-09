@@ -15,6 +15,7 @@
 import type { IA, Turno } from './ia.ts';
 import type { Herramienta } from './herramientas.ts';
 import { clasificar } from './scope.ts';
+import { extraerJson } from './json.ts';
 
 export interface PasoPlan {
   herramienta: string;
@@ -162,15 +163,3 @@ export class Orquestador {
   }
 }
 
-/** Saca el primer objeto JSON de un texto (tolerante a ```json o texto alrededor). */
-function extraerJson(crudo: string): Record<string, unknown> | null {
-  const i = crudo.indexOf('{');
-  const j = crudo.lastIndexOf('}');
-  if (i < 0 || j <= i) return null;
-  try {
-    const v = JSON.parse(crudo.slice(i, j + 1)) as unknown;
-    return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
