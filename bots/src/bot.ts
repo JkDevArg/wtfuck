@@ -18,6 +18,8 @@ import type { Herramienta } from './herramientas.ts';
 import type { Operadores } from './operadores.ts';
 import type { Bitacora } from './bitacora.ts';
 import type { Orquestador, PasoPlan } from './orquestador.ts';
+import type { Agente, LimitesAgente } from './agente.ts';
+import { planearEgress, type MotorContenedor } from './sandbox.ts';
 
 export type Modo = 'eco' | 'charla' | 'herramienta';
 
@@ -47,6 +49,13 @@ export interface OpcionesBot {
   // rate limit de peticiones a la IA, por operador:
   rateVentanaMs?: number;
   rateMax?: number;
+  // agente-shell (opcional): la IA corre comandos en un sandbox con red al scope.
+  agente?: Agente;
+  motorContenedor?: MotorContenedor;
+  sandboxCfg?: { imagen: string; memoria: string; cpus: string; pids: number };
+  limitesAgente?: LimitesAgente;
+  comandoTimeoutMs?: number;
+  excluidos?: string[];
 }
 
 /** Un reconocimiento en curso: plan de pasos que avanza con confirmación. */
@@ -270,6 +279,13 @@ export class Bot {
       const txt = [...this.porNombre.values()].map((h) => `  /${h.nombre} — ${h.descripcion}\n     perfiles: ${h.perfiles.join(', ')}`).join('\n');
       return this.responder(conv, `Herramientas:\n${txt}`);
     }
+
+    if (cmd === '/pentest') {
+      if (!this.o.agente || !this.o.motorContenedor) return this.responder(conv, 'El modo pentest (shell en sandbox) no está activo en este bot.');
+      const objetivo = resto[0];
+      if (!objetivo) return this.responder(conv, 'Uso: /pentest <objetivo> (tiene que estar aprobado). La IA corre comandos en un sandbox con la red limitada a ese objetivo.');
+      return this.pentest(m, objetivo);
+    }
     // ¿El comando es /<herramienta>?
     if (cmd.startsWith('/')) {
       const nombre = cmd.slice(1).toLowerCase();
@@ -421,6 +437,80 @@ export class Bot {
     }
   }
 
+  /**
+   * Agente-shell: la IA corre comandos en un sandbox efímero cuya red SOLO
+   * alcanza el objetivo aprobado. Streamea cada comando y su salida al chat.
+   */
+  private async pentest(m: MensajeEntrante, objetivo: string): Promise<void> {
+    const conv = m.conversacionId;
+    const u = m.autorUsuario;
+    const ops = this.o.operadores!;
+    const motor = this.o.motorContenedor!;
+    const agente = this.o.agente!;
+    const bitacora = this.o.bitacora;
+
+    // El objetivo tiene que estar APROBADO (la IA no habilita nada).
+    const ev = ops.permitido(u, objetivo);
+    if (!ev.ok) {
+      bitacora?.registrar({ operador: u, herramienta: 'shell', objetivo, resultado: 'rechazado-scope', detalle: ev.motivo });
+      return this.responder(conv, `Para un pentest de "${objetivo}" primero tiene que estar aprobado: ${ev.motivo}.`);
+    }
+    if (!this.rateOk(u)) return this.responder(conv, 'Vas muy rápido. Esperá unos segundos.');
+
+    const pos = this.cola.pedir(u);
+    if (pos !== 'activo') return this.responder(conv, `El bot esta ocupado. Estas en la cola, posicion ${pos}.`);
+    if (this.ocupado) return this.responder(conv, 'Ya hay algo corriendo. Esperá a que termine.');
+
+    if (!this.avisados.has(conv)) {
+      this.avisados.add(conv);
+      await this.responder(conv, AVISO_IA);
+    }
+
+    // El sandbox solo ve ESTE objetivo (más restrictivo que todo el alcance).
+    const egress = await planearEgress([ev.objetivo], this.o.excluidos ?? []);
+    if (!egress.permitidas.length) {
+      return this.responder(conv, `No pude resolver "${ev.objetivo}" a una IP, así que no abro el sandbox (quedaría sin red). Probá con una IP o revisá el DNS.`);
+    }
+
+    this.ocupado = true;
+    const id = `wtfuck-pentest-${u}-${Date.now()}`.replace(/[^a-zA-Z0-9_.-]/g, '');
+    bitacora?.registrar({ operador: u, herramienta: 'shell', objetivo: ev.objetivo, resultado: 'ejecutado', detalle: `inicia sandbox (egress: ${egress.permitidas.join(',')})` });
+    await this.responder(conv, `🧪 Abriendo sandbox para ${ev.objetivo} (red limitada a: ${egress.permitidas.join(', ')}). La IA va a encadenar comandos; te muestro cada uno.`);
+
+    const cfg = this.o.sandboxCfg!;
+    try {
+      await motor.crear({ imagen: cfg.imagen, nombre: id, egress, limites: { memoria: cfg.memoria, cpus: cfg.cpus, pids: cfg.pids } });
+    } catch (e) {
+      this.ocupado = false;
+      this.cola.tocar(u);
+      bitacora?.registrar({ operador: u, herramienta: 'shell', objetivo: ev.objetivo, resultado: 'error', detalle: `no se pudo crear el sandbox: ${(e as Error).message}` });
+      return this.responder(conv, `No pude abrir el sandbox: ${(e as Error).message}`);
+    }
+
+    const ejecutar = (comando: string) => motor.ejecutar(id, comando, this.o.comandoTimeoutMs ?? 120_000, 20_000);
+    try {
+      await agente.correr(ev.objetivo, ejecutar, this.o.limitesAgente ?? { maxComandos: 15, sesionTimeoutMs: 1_800_000 }, (e) => {
+        if (e.tipo === 'comando') {
+          bitacora?.registrar({ operador: u, herramienta: 'shell', objetivo: ev.objetivo, resultado: 'ejecutado', detalle: e.comando });
+          void this.responder(conv, `🖥️ [${e.n}] $ ${e.comando}${e.motivo ? `\n   (${e.motivo})` : ''}`);
+        } else if (e.tipo === 'salida') {
+          const extra = (e.vencio ? '\n[cortado por tiempo]' : '') + (e.recortado ? '\n[salida recortada]' : '');
+          void this.responder(conv, (e.salida.trim() || '(sin salida)') + extra);
+        } else if (e.tipo === 'fin') {
+          const cab = e.motivo === 'terminado' ? '✅ Pentest terminado' : `⏹️ Pentest cortado (${e.motivo})`;
+          void this.responder(conv, `${cab}:\n${e.resumen}`);
+        }
+      });
+    } catch (e) {
+      await this.responder(conv, `Error en el pentest: ${(e as Error).message}`);
+    } finally {
+      await motor.destruir(id).catch(() => undefined);
+      bitacora?.registrar({ operador: u, herramienta: 'shell', objetivo: ev.objetivo, resultado: 'ejecutado', detalle: 'cierra sandbox' });
+      this.ocupado = false;
+      this.cola.tocar(u);
+    }
+  }
+
   // ------------------------------------------------------------------
   //  Modo charla
   // ------------------------------------------------------------------
@@ -548,6 +638,7 @@ export class Bot {
         `  /<herramienta> <objetivo> [perfil]   corre esa herramienta sobre tu alcance aprobado`,
         `  herramientas: ${nombres.map((n) => '/' + n).join(' ')}`,
         '  /herramientas           qué hace cada una y sus perfiles',
+        ...(this.o.agente ? ['  /pentest <objetivo>     la IA audita con shell en un sandbox (red solo a ese objetivo)'] : []),
         '  /turno    /fin          la cola (/fin o /cancelar corta un recon)',
         '',
         'También podés mandarme un archivo de texto (.txt/.csv) con una lista de objetivos: los pido por vos (quedan pendientes de aprobación).',

@@ -16,6 +16,8 @@ import { Bitacora } from './bitacora.ts';
 import { crearHerramientas, ejecutorReal, type Ejecutor } from './herramientas.ts';
 import { Operadores } from './operadores.ts';
 import { Orquestador } from './orquestador.ts';
+import { Agente } from './agente.ts';
+import { motorDocker, type MotorContenedor } from './sandbox.ts';
 
 function env(nombre: string, porDefecto?: string): string {
   const v = process.env[nombre] ?? porDefecto;
@@ -63,6 +65,28 @@ let operadores;
 let bitacora;
 let terminos;
 let orquestador;
+let agente;
+let motorContenedor: MotorContenedor | undefined;
+let sandboxCfg;
+let limitesAgente;
+let comandoTimeoutMs;
+
+/** Motor de sandbox de mentira: para probar el flujo del agente sin Docker/Kali. */
+function motorFalso(): MotorContenedor {
+  return {
+    async crear() {
+      return 'falso';
+    },
+    async ejecutar(_id, comando) {
+      await new Promise((r) => setTimeout(r, 400));
+      return { salida: `[sandbox FALSO] habría corrido: ${comando}`, codigo: 0, recortado: false, vencio: false };
+    },
+    async destruir() {
+      /* nada */
+    },
+  };
+}
+
 if (modo === 'herramienta') {
   bitacora = new Bitacora(join(datos, 'bitacora.jsonl'));
   const excluidos = env('WTFUCK_BOT_EXCLUIDOS', '169.254.0.0/16,127.0.0.0/8')
@@ -122,6 +146,25 @@ if (modo === 'herramienta') {
     const iaAuditor = new Groq({ apiKey: claveIA, modelo: env('GROQ_MODELO', 'openai/gpt-oss-120b'), base: process.env['GROQ_BASE'] });
     orquestador = new Orquestador(iaAuditor, herramientas, process.env['WTFUCK_BOT_SYSTEM_EXTRA']);
     console.log('Orquestador IA activo (modelo ' + env('GROQ_MODELO', 'openai/gpt-oss-120b') + '). Se puede hablar en lenguaje natural.');
+
+    // Agente-shell (opcional): la IA corre comandos en un sandbox con red al scope.
+    if (env('WTFUCK_BOT_SANDBOX', 'false') === 'true') {
+      agente = new Agente(iaAuditor, process.env['WTFUCK_BOT_SYSTEM_EXTRA']);
+      const sandboxFalso = env('WTFUCK_BOT_SANDBOX_FALSO', 'false') === 'true';
+      motorContenedor = sandboxFalso ? motorFalso() : motorDocker;
+      sandboxCfg = {
+        imagen: env('WTFUCK_BOT_IMAGEN', 'kalilinux/kali-rolling'),
+        memoria: env('WTFUCK_BOT_MEM', '2g'),
+        cpus: env('WTFUCK_BOT_CPUS', '1.0'),
+        pids: Number(env('WTFUCK_BOT_PIDS', '256')) || 256,
+      };
+      limitesAgente = {
+        maxComandos: Number(env('WTFUCK_BOT_MAX_COMANDOS', '15')) || 15,
+        sesionTimeoutMs: (Number(env('WTFUCK_BOT_SESION_TIMEOUT_S', '1800')) || 1800) * 1000,
+      };
+      comandoTimeoutMs = (Number(env('WTFUCK_BOT_COMANDO_TIMEOUT_S', '120')) || 120) * 1000;
+      console.log(`Agente-shell activo (${sandboxFalso ? 'sandbox FALSO' : 'Docker: ' + sandboxCfg.imagen}). /pentest <objetivo>.`);
+    }
   } else {
     console.log('Sin GROQ_API_KEY: el bot funciona solo por comandos (/nmap, /alcance...).');
   }
@@ -152,6 +195,15 @@ const bot = new Bot({
   // default (nunca NaN, que desactivaria el limite sin avisar).
   rateMax: Number(env('WTFUCK_BOT_RATE_MAX', '8')) || 8,
   rateVentanaMs: (Number(env('WTFUCK_BOT_RATE_VENTANA_S', '60')) || 60) * 1000,
+  agente,
+  motorContenedor,
+  sandboxCfg,
+  limitesAgente,
+  comandoTimeoutMs,
+  excluidos: env('WTFUCK_BOT_EXCLUIDOS', '169.254.0.0/16,127.0.0.0/8')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
 });
 
 await bot.arrancar();
