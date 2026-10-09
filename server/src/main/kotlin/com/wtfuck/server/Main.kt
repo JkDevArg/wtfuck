@@ -91,6 +91,21 @@ object Config {
     val permitirSoftwareDev = leerPermitirSoftwareDev(System.getenv("WTFUCK_PERMITIR_SOFTWARE_DEV"))
 
     /**
+     * Usernames de cuentas de BOT (de servicio) que pueden registrarse sin enclave
+     * seguro, aunque [permitirSoftwareDev] global sea `false`.
+     *
+     * Un bot headless (ver docs/14-BOTS.md) no tiene chip: no puede atestar. En vez
+     * de abrir el registro sin enclave a TODO el mundo, el admin declara aqui los
+     * usernames concretos que son bots. El resto de las cuentas sigue exigiendo
+     * enclave. Es una allowlist por nombre: solo el admin del server la controla, y
+     * el username, una vez registrado, no se puede volver a tomar.
+     *
+     *     WTFUCK_BOTS=mrrobot,otrobot
+     */
+    val bots: Set<String> = (System.getenv("WTFUCK_BOTS") ?: "")
+        .split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+
+    /**
      * Solo `true` (sin importar mayusculas) abre. Cualquier otra cosa -ausente,
      * vacia, "1", "si", una errata- cierra: ante la duda, el lado seguro.
      */

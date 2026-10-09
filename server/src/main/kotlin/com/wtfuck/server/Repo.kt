@@ -84,7 +84,15 @@ object Repo {
         // decide es si el nivel es cierto: es el que declara el cliente, sin
         // atestacion que lo respalde. Ver docs/04-DEVICE-BINDING.md
         val desdeLaWeb = r.hardwareNivel == NivelHardware.NAVEGADOR
-        nivelParaPrincipal(r.hardwareNivel, permitirNavegador = desdeLaWeb)
+        // Una cuenta de bot declarada (WTFUCK_BOTS) puede registrarse sin enclave
+        // aunque el server no lo permita en general: es headless, no tiene chip.
+        // Solo afecta a esos usernames; el resto sigue exigiendo enclave.
+        val esBot = user in Config.bots
+        nivelParaPrincipal(
+            r.hardwareNivel,
+            permitirSoftwareDev = Config.permitirSoftwareDev || esBot,
+            permitirNavegador = desdeLaWeb,
+        )
 
         val hwHash = Base64Util.dec(r.hardwareHash)
         val identidad = Base64Util.dec(r.identidadPub)
