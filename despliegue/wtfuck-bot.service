@@ -1,0 +1,41 @@
+# Servicio systemd para el bot de wtfuck (ver docs/14-BOTS.md).
+#
+# Instalar en el VPS (como root):
+#   cp /opt/wtfuck/despliegue/wtfuck-bot.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now wtfuck-bot
+#   systemctl status wtfuck-bot          # ver estado
+#   journalctl -u wtfuck-bot -f          # ver el log en vivo
+#
+# Ajustá las rutas si tu instalacion difiere:
+#   - WorkingDirectory: donde esta bots/ (con su .env y node_modules).
+#   - ExecStart: la ruta de node (verificá con `which node`; NodeSource = /usr/bin/node).
+#
+# Node carga el .env con --env-file (no se usa EnvironmentFile de systemd, para
+# que no tenga que parsear contraseñas con caracteres especiales).
+#
+# Corre como root a proposito: el bot lanza contenedores Docker para /pentest y
+# necesita hablar con el daemon. Si preferis no-root, agrega ese usuario al grupo
+# `docker` y cambia User=.
+
+[Unit]
+Description=wtfuck bot (herramientas de pentesting)
+Documentation=https://github.com/JkDevArg/wtfuck
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/wtfuck/bots
+ExecStart=/usr/bin/node --env-file=.env node_modules/tsx/dist/cli.mjs src/index.ts
+Restart=on-failure
+RestartSec=5
+# El log va a journald (journalctl -u wtfuck-bot).
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wtfuck-bot
+
+[Install]
+WantedBy=multi-user.target
