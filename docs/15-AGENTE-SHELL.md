@@ -79,7 +79,25 @@ sandbox real se valida en el VPS Linux.
 | Parte | Estado |
 |---|---|
 | Diseño | **Hecho** (este doc) |
-| `sandbox.ts` (motor + egress) | en curso |
-| `agente.ts` (bucle ReAct) | pendiente |
-| Integración en el bot | pendiente |
-| Prueba real en el VPS (Kali) | pendiente (la corre el usuario) |
+| `sandbox.ts` (motor + egress) | **Hecho** (10 tests del egress) |
+| `agente.ts` (bucle ReAct) | **Hecho** (6 tests) |
+| Integración en el bot (`/pentest`) | **Hecho** |
+| Prueba con Groq real + sandbox falso | **Hecha** en el emulador (ver abajo) |
+| Prueba real en el VPS (Docker + Kali + egress) | pendiente (la corre el usuario) |
+
+**Probado en el emulador (2026-10-09), Groq real + sandbox falso:** `/pentest
+scanme.nmap.org` → la IA encadenó `dig` → `ping` → `nmap -Pn -T4 -p- -sV` →
+`curl -D - | head` → `curl robots.txt`, cada comando con su motivo, streameado al
+chat, y cortó en el tope de comandos. El egress se armó con la IP real resuelta
+(`45.33.32.156`); cada comando quedó en la bitácora.
+
+### Cómo correrlo REAL en el VPS
+
+1. Docker instalado y corriendo.
+2. Imagen: `docker pull kalilinux/kali-rolling` (o una custom con tus tools).
+   Kali rolling viene pelada; instalá adentro lo que uses, o armá tu imagen.
+3. En `bots/.env`: `WTFUCK_BOT_SANDBOX=true` (y **sin** `WTFUCK_BOT_SANDBOX_FALSO`),
+   `WTFUCK_BOT_IMAGEN=kalilinux/kali-rolling`, y los topes que quieras.
+4. El usuario del bot necesita permiso para hablar con el Docker daemon.
+5. `/pentest <objetivo>` (el objetivo tiene que estar **aprobado** por el admin).
+   El contenedor solo podrá alcanzar por red ese objetivo.
