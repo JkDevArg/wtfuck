@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { Bot, type Modo } from './bot.ts';
 import { Groq } from './ia.ts';
 import { Bitacora } from './bitacora.ts';
-import { crearNmap, ejecutorReal, type Ejecutor } from './herramientas.ts';
+import { crearHerramientas, ejecutorReal, type Ejecutor } from './herramientas.ts';
 import { Operadores } from './operadores.ts';
 import { Orquestador } from './orquestador.ts';
 
@@ -58,7 +58,7 @@ const TERMINOS_POR_DEFECTO = [
   'Si estás de acuerdo, escribí /acepto.',
 ].join('\n');
 
-let herramienta;
+let herramientas;
 let operadores;
 let bitacora;
 let terminos;
@@ -87,19 +87,32 @@ if (modo === 'herramienta') {
   const terminosRuta = process.env['WTFUCK_BOT_TERMINOS'];
   terminos = terminosRuta && existsSync(terminosRuta) ? readFileSync(terminosRuta, 'utf8') : TERMINOS_POR_DEFECTO;
 
-  // Un nmap de mentira para probar el flujo sin tener nmap instalado.
-  const ejecutor: Ejecutor =
-    env('WTFUCK_BOT_NMAP_FALSO', 'false') === 'true'
-      ? async (_cmd, args) => {
-          await new Promise((r) => setTimeout(r, 1500));
-          return { codigo: 0, salida: `[nmap de MENTIRA] argv: ${args.join(' ')}\n22/tcp open ssh\n80/tcp open http`, recortado: false, vencio: false };
-        }
-      : ejecutorReal;
+  // Un ejecutor de mentira para probar el flujo sin tener las herramientas
+  // instaladas: devuelve el argv que se habria corrido (asi se ve que el objetivo
+  // va aparte, sin shell). WTFUCK_BOT_NMAP_FALSO se mantiene por compatibilidad.
+  const falso = env('WTFUCK_BOT_HERRAMIENTAS_FALSAS', env('WTFUCK_BOT_NMAP_FALSO', 'false')) === 'true';
+  const ejecutor: Ejecutor = falso
+    ? async (cmd, args) => {
+        await new Promise((r) => setTimeout(r, 1200));
+        return { codigo: 0, salida: `[${cmd} de MENTIRA] argv: ${args.join(' ')}`, recortado: false, vencio: false };
+      }
+    : ejecutorReal;
 
-  herramienta = crearNmap(ejecutor, {
+  const cfgHerr = {
     timeoutMs: Number(env('WTFUCK_BOT_TIMEOUT_S', '300')) * 1000,
     maxBytes: Number(env('WTFUCK_BOT_MAXBYTES', '20000')),
-  });
+  };
+  // WTFUCK_BOT_HERRAMIENTAS=nmap,subfinder,... limita el menu; vacio = todo el catalogo.
+  const quiere = env('WTFUCK_BOT_HERRAMIENTAS', '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  herramientas = crearHerramientas(quiere, ejecutor, cfgHerr);
+  if (!herramientas.length) {
+    console.error('No se configuro ninguna herramienta valida. Revisa WTFUCK_BOT_HERRAMIENTAS.');
+    process.exit(1);
+  }
+  console.log(`Herramientas: ${herramientas.map((h) => h.nombre).join(', ')}.`);
 
   // Orquestador (opcional): si hay GROQ_API_KEY, el bot ademas entiende
   // lenguaje natural y PROPONE acciones. Nunca se saltea el alcance: lo que la
@@ -107,7 +120,7 @@ if (modo === 'herramienta') {
   const claveIA = process.env['GROQ_API_KEY'];
   if (claveIA) {
     const iaAuditor = new Groq({ apiKey: claveIA, modelo: env('GROQ_MODELO', 'openai/gpt-oss-120b'), base: process.env['GROQ_BASE'] });
-    orquestador = new Orquestador(iaAuditor, [herramienta], process.env['WTFUCK_BOT_SYSTEM_EXTRA']);
+    orquestador = new Orquestador(iaAuditor, herramientas, process.env['WTFUCK_BOT_SYSTEM_EXTRA']);
     console.log('Orquestador IA activo (modelo ' + env('GROQ_MODELO', 'openai/gpt-oss-120b') + '). Se puede hablar en lenguaje natural.');
   } else {
     console.log('Sin GROQ_API_KEY: el bot funciona solo por comandos (/nmap, /alcance...).');
@@ -130,7 +143,7 @@ const bot = new Bot({
   ia,
   systemPrompt: env('WTFUCK_BOT_SYSTEM', SYSTEM_POR_DEFECTO),
   historialMax: Number(env('WTFUCK_BOT_HISTORIAL', '8')),
-  herramienta,
+  herramientas,
   operadores,
   bitacora,
   terminos,

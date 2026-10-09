@@ -6,6 +6,7 @@ import type { Herramienta } from './herramientas.ts';
 // Una herramienta de mentira con los mismos perfiles que nmap.
 const nmapFalso: Herramienta = {
   nombre: 'nmap',
+  descripcion: 'puertos y servicios',
   perfiles: ['rapido', 'normal', 'servicios', 'completo'],
   async correr() {
     return { ok: true, salida: 'ok' };
@@ -151,6 +152,6 @@ test('el prompt le pasa el menú y el alcance declarado', async () => {
   await o.decidir('probá scanme', { alcance: ['scanme.nmap.org'] });
   const system = ultimo()[0]!.texto;
   const user = ultimo()[1]!.texto;
-  expect(system).toContain('nmap — perfiles: rapido, normal, servicios, completo');
+  expect(system).toContain('nmap: puertos y servicios — perfiles: rapido, normal, servicios, completo');
   expect(user).toContain('scanme.nmap.org'); // el alcance declarado entra en contexto
 });

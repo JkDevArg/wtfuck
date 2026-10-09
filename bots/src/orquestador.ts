@@ -88,7 +88,7 @@ export class Orquestador {
   ) {}
 
   private menu(): string {
-    const lineas = this.herramientas.map((h) => `  - ${h.nombre} — perfiles: ${h.perfiles.join(', ')}`);
+    const lineas = this.herramientas.map((h) => `  - ${h.nombre}: ${h.descripcion} — perfiles: ${h.perfiles.join(', ')}`);
     return `MENÚ DE HERRAMIENTAS (es lo ÚNICO que podés ejecutar):\n${lineas.join('\n')}`;
   }
 

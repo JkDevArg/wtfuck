@@ -38,7 +38,7 @@ export interface OpcionesBot {
   systemPrompt?: string;
   historialMax?: number;
   // herramienta:
-  herramienta?: Herramienta;
+  herramientas?: Herramienta[];
   operadores?: Operadores;
   bitacora?: Bitacora;
   terminos?: string;
@@ -88,9 +88,11 @@ export class Bot {
   private readonly avisados = new Set<string>();
   private readonly recon = new Map<string, SesionRecon>(); // por conversacionId
   private readonly ultimasPeticiones = new Map<string, number[]>(); // rate limit por operador
+  private readonly porNombre = new Map<string, Herramienta>(); // /nombre → herramienta
   private ocupado = false; // una sola herramienta corriendo a la vez
 
   constructor(private readonly o: OpcionesBot) {
+    for (const h of o.herramientas ?? []) this.porNombre.set(h.nombre, h);
     this.cliente = new Cliente({
       base: o.base,
       datos: o.datos,
@@ -166,11 +168,10 @@ export class Bot {
   // ------------------------------------------------------------------
 
   private async herramienta(m: MensajeEntrante, cmd: string, resto: string[]): Promise<void> {
-    const h = this.o.herramienta;
     const ops = this.o.operadores;
     const conv = m.conversacionId;
     const u = m.autorUsuario;
-    if (!h || !ops) return this.responder(conv, 'Este bot no tiene herramientas configuradas.');
+    if (!this.porNombre.size || !ops) return this.responder(conv, 'Este bot no tiene herramientas configuradas.');
 
     if (!ops.puedeEntrar(u)) {
       return this.responder(conv, 'Este bot es por invitación. Pedile acceso a quien lo administra.');
@@ -254,7 +255,7 @@ export class Bot {
         const r = ops.aprobar(u, operador, objetivo);
         if (!r.ok) return this.responder(conv, `No pude aprobar: ${r.motivo}.`);
         this.o.bitacora?.registrar({ operador: u, herramienta: '-', objetivo: r.objetivo, resultado: 'ejecutado', detalle: `aprobo alcance de @${operador.toLowerCase().replace(/^@/, '')}` });
-        this.avisarOperador(operador, `✓ El administrador aprobó "${r.objetivo}". Ya podés auditarlo (/${h.nombre} ${r.objetivo} o pedime un reconocimiento).`);
+        this.avisarOperador(operador, `✓ El administrador aprobó "${r.objetivo}". Ya podés auditarlo (/nmap ${r.objetivo}, otra herramienta, o pedime un reconocimiento).`);
         return this.responder(conv, `Aprobado: @${operador} ya puede auditar "${r.objetivo}".`);
       }
       // /rechazar
@@ -265,8 +266,15 @@ export class Bot {
       return this.responder(conv, `Rechazado el pedido de @${operador} para "${objetivo.toLowerCase()}".`);
     }
 
-    if (cmd === '/perfiles') return this.responder(conv, `Perfiles de ${h.nombre}: ${h.perfiles.join(', ')}.`);
-    if (cmd === `/${h.nombre}`) return this.correrHerramienta(m, resto);
+    if (cmd === '/perfiles' || cmd === '/herramientas') {
+      const txt = [...this.porNombre.values()].map((h) => `  /${h.nombre} — ${h.descripcion}\n     perfiles: ${h.perfiles.join(', ')}`).join('\n');
+      return this.responder(conv, `Herramientas:\n${txt}`);
+    }
+    // ¿El comando es /<herramienta>?
+    if (cmd.startsWith('/')) {
+      const nombre = cmd.slice(1).toLowerCase();
+      if (this.porNombre.has(nombre)) return this.correrHerramienta(m, nombre, resto);
+    }
 
     // Si hay orquestador y esto NO es un comando, lo entiende la IA.
     if (this.o.orquestador && !cmd.startsWith('/')) {
@@ -303,7 +311,7 @@ export class Bot {
     }
     if (plan.accion === 'ejecutar') {
       if (plan.nota) await this.responder(conv, `(${plan.nota})`);
-      return this.correrObjetivo(m, plan.objetivo, plan.perfil);
+      return this.correrObjetivo(m, plan.herramienta, plan.objetivo, plan.perfil);
     }
     // plan.accion === 'recon': plan de varios pasos, con confirmación entre cada uno.
     return this.iniciarRecon(m, plan.objetivo, plan.pasos);
@@ -339,7 +347,7 @@ export class Bot {
 
     sesion.estado = 'corriendo';
     await this.responder(conv, `🔍 Paso ${sesion.indice + 1}/${sesion.pasos.length}: ${paso.descripcion}`);
-    await this.correrObjetivo(m, sesion.objetivo, paso.perfil); // misma puerta: permitido + cola + bitacora
+    await this.correrObjetivo(m, paso.herramienta, sesion.objetivo, paso.perfil); // misma puerta: permitido + cola + bitacora
 
     sesion.indice++;
     sesion.estado = 'esperando';
@@ -366,21 +374,22 @@ export class Bot {
     return true;
   }
 
-  private async correrHerramienta(m: MensajeEntrante, resto: string[]): Promise<void> {
-    const h = this.o.herramienta!;
+  private async correrHerramienta(m: MensajeEntrante, nombre: string, resto: string[]): Promise<void> {
+    const h = this.porNombre.get(nombre)!;
     const objetivo = resto[0] ?? '';
     if (!objetivo) {
       return this.responder(m.conversacionId, `Uso: /${h.nombre} <objetivo> [perfil]. Perfiles: ${h.perfiles.join(', ')}. /alcance para ver lo tuyo.`);
     }
-    return this.correrObjetivo(m, objetivo, resto[1] ?? 'normal');
+    return this.correrObjetivo(m, nombre, objetivo, resto[1] ?? h.perfiles[0]!);
   }
 
   /** Única puerta de ejecución: valida alcance, toma el turno y corre con bitacora. */
-  private async correrObjetivo(m: MensajeEntrante, objetivo: string, perfil: string): Promise<void> {
-    const h = this.o.herramienta!;
+  private async correrObjetivo(m: MensajeEntrante, nombre: string, objetivo: string, perfil: string): Promise<void> {
+    const h = this.porNombre.get(nombre);
     const ops = this.o.operadores!;
     const bitacora = this.o.bitacora;
     const u = m.autorUsuario;
+    if (!h) return this.responder(m.conversacionId, `No tengo la herramienta "${nombre}".`);
 
     const ev = ops.permitido(u, objetivo);
     if (!ev.ok) {
@@ -525,10 +534,10 @@ export class Bot {
     if (this.o.modo === 'charla') {
       return ['Soy un bot de wtfuck con IA. Escribime y te respondo.', '', 'Comandos:', '  /ayuda   esto', '  /olvida  borro lo que llevamos hablado'].join('\n');
     }
-    if (this.o.modo === 'herramienta' && this.o.herramienta) {
-      const h = this.o.herramienta;
+    if (this.o.modo === 'herramienta' && this.porNombre.size) {
+      const nombres = [...this.porNombre.keys()];
       return [
-        'Soy un bot de herramientas de wtfuck. Vos declarás qué estás autorizado a auditar, y escaneo eso (de a uno).',
+        'Soy un bot de herramientas de wtfuck. Vos declarás qué estás autorizado a auditar, y corro eso (de a uno).',
         '',
         'Comandos:',
         '  /terminos               los términos de uso',
@@ -536,8 +545,9 @@ export class Bot {
         '  /alcance                lo que pediste y su estado (✓/⏳)',
         '  /alcance <objetivo>     pido auditar ese objetivo (lo aprueba el admin)',
         '  /alcance quitar <obj>   lo saco',
-        `  /${h.nombre} <objetivo> [perfil]   escanea algo de tu alcance aprobado`,
-        '  /perfiles               perfiles disponibles',
+        `  /<herramienta> <objetivo> [perfil]   corre esa herramienta sobre tu alcance aprobado`,
+        `  herramientas: ${nombres.map((n) => '/' + n).join(' ')}`,
+        '  /herramientas           qué hace cada una y sus perfiles',
         '  /turno    /fin          la cola (/fin o /cancelar corta un recon)',
         '',
         'También podés mandarme un archivo de texto (.txt/.csv) con una lista de objetivos: los pido por vos (quedan pendientes de aprobación).',
