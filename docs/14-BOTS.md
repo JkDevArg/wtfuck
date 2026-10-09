@@ -188,8 +188,50 @@ descartan). Cada objetivo se **pide** (pendiente de aprobación): un adjunto no
 saltea el control, es solo una forma cómoda de cargar la lista. `adjuntos.ts`
 tiene el descifrado y el parseo (8 tests).
 
-Pruebas: **59 en total** (cola 5, ia 6, scope 7, herramientas 5, operadores 9,
+Pruebas: **67 en total** (cola 5, ia 6, scope 7, herramientas 13, operadores 15,
 orquestador 13, adjuntos 8).
+
+## Catálogo de herramientas (2026-10-08)
+
+`herramientas.ts` pasó de un nmap suelto a un **catálogo** con una fábrica
+genérica. Cada herramienta declara su binario, cómo recibe el objetivo
+(posicional o tras una flag), un subcomando opcional y sus perfiles de flags
+fijos. **Agregar una herramienta es agregar una entrada al catálogo**: no hay
+código nuevo por herramienta, así que no hay forma de colar una ejecución
+arbitraria. El modelo de seguridad no cambia: perfil fijo (no flags libres),
+argv sin shell, objetivo como un solo argumento (y `clasificar()` garantiza que
+no empiece con `-`).
+
+| Herramienta | Uso | Objetivo |
+|---|---|---|
+| nmap | puertos/servicios/scripts | host/IP |
+| masscan | puertos a gran escala | IP/rango |
+| rustscan | descubrimiento rápido de puertos | host/IP (`-a`) |
+| naabu | descubrimiento de puertos | host/IP (`-host`) |
+| amass | activos y subdominios | dominio (`enum -d`) |
+| subfinder | subdominios (pasivo) | dominio (`-d`) |
+| findomain | subdominios | dominio (`-t`) |
+| theharvester | OSINT público | dominio (`-d`) |
+| bbot | recon/descubrimiento | dominio (`-t`) |
+| dnsx | consultas/validación DNS | dominio (`-d`) |
+| dnsenum | enumeración DNS | dominio |
+| fierce | infraestructura DNS | dominio (`--domain`) |
+| whois | registro del dominio | dominio |
+
+Comandos: `/<nombre> <objetivo> [perfil]`, `/herramientas` lista el menú con
+descripciones y perfiles. El orquestador recibe todo el catálogo y las
+descripciones entran al prompt para que la IA elija bien. `WTFUCK_BOT_HERRAMIENTAS`
+limita el menú (vacío = todo); `WTFUCK_BOT_HERRAMIENTAS_FALSAS` usa un ejecutor de
+mentira (reemplaza a `WTFUCK_BOT_NMAP_FALSO`, que sigue por compat).
+
+**Probado en el emulador:** `/herramientas` lista las 13; `/whois` (objetivo
+posicional) y `/subfinder` (objetivo con `-d`) corren con el argv correcto y bajo
+el mismo alcance aprobado.
+
+**recon-ng y spiderfoot quedan fuera a propósito:** son frameworks
+interactivos/servidores, no herramientas de "un comando + perfil + argv de un
+disparo". Meterlas con seguridad pide otra integración (recon-ng con *resource
+scripts*; spiderfoot por su API/servidor), no una fila del catálogo.
 
 ## Metodología que sabe el orquestador (fuentes)
 
