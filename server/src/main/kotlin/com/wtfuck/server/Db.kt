@@ -91,6 +91,7 @@ object Db {
         51 to "/db/V51__web_push.sql",
         52 to "/db/V52__registro_web.sql",
         53 to "/db/V53__atestacion.sql",
+        54 to "/db/V54__pedidos_de_alcance.sql",
     )
 
     /**
