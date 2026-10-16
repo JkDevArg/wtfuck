@@ -156,7 +156,9 @@ if (modo === 'herramienta') {
   // IA propone pasa por la misma validacion que un comando manual.
   const claveIA = process.env['GROQ_API_KEY'];
   if (claveIA) {
-    const iaAuditor = new Groq({ apiKey: claveIA, modelo: env('GROQ_MODELO', 'openai/gpt-oss-120b'), base: process.env['GROQ_BASE'] });
+    // maxTokens alto: el plan de recon (JSON con varios pasos) no debe truncarse,
+    // porque un JSON cortado no se puede parsear y se perderia el plan.
+    const iaAuditor = new Groq({ apiKey: claveIA, modelo: env('GROQ_MODELO', 'openai/gpt-oss-120b'), base: process.env['GROQ_BASE'], maxTokens: Number(env('GROQ_MAX_TOKENS', '2000')) || 2000 });
     orquestador = new Orquestador(iaAuditor, herramientas, process.env['WTFUCK_BOT_SYSTEM_EXTRA']);
     console.log('Orquestador IA activo (modelo ' + env('GROQ_MODELO', 'openai/gpt-oss-120b') + '). Se puede hablar en lenguaje natural.');
 

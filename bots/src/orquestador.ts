@@ -60,8 +60,9 @@ const SYSTEM_AUDITOR = [
   'REGLAS DURAS (no las rompas nunca):',
   '1. Solo podés ejecutar herramientas y perfiles que estén en el MENÚ de abajo.',
   '   Nunca inventes flags, comandos ni herramientas que no estén listadas.',
-  '2. El objetivo tiene que ser algo que el operador pidió EXPLÍCITAMENTE. Nunca',
-  '   lo cambies, lo amplíes, ni agregues objetivos por tu cuenta.',
+  '2. El objetivo es SIEMPRE UNO SOLO, exactamente el que el operador nombró.',
+  '   Nunca lo cambies, nunca agregues un segundo objetivo, nunca uses los de los',
+  '   ejemplos. "objetivo" es un único host/IP/dominio, no una lista.',
   '3. Vos NO autorizás nada. La autorización es responsabilidad del operador y la',
   '   gobierna su alcance declarado, que el sistema valida por separado. Si algo',
   '   parece faltar en el alcance, decílo en texto; nunca asumas permiso.',
@@ -117,12 +118,15 @@ export class Orquestador {
   /** Parsea y VALIDA la decisión de la IA contra el registro de herramientas. */
   private interpretar(crudo: string): Plan {
     const obj = extraerJson(crudo);
-    // Sin JSON parseable: tratamos todo como una respuesta de texto.
-    if (!obj) return { accion: 'responder', texto: crudo.trim() || '(sin respuesta)' };
+    if (!obj) {
+      // Si parece un JSON que no cerró (respuesta cortada), no mostramos el crudo.
+      if (crudo.trim().startsWith('{')) return { accion: 'responder', texto: 'Me quedé a mitad de la respuesta. Probá de nuevo, o pedímelo más puntual (p. ej. "nmap rápido de <objetivo>").' };
+      return { accion: 'responder', texto: crudo.trim() || '(sin respuesta)' };
+    }
 
     if (obj['accion'] === 'ejecutar') {
       const nombre = typeof obj['herramienta'] === 'string' ? obj['herramienta'].trim().toLowerCase() : '';
-      const objetivo = typeof obj['objetivo'] === 'string' ? obj['objetivo'].trim() : '';
+      const objetivo = typeof obj['objetivo'] === 'string' ? primerObjetivo(obj['objetivo']) : '';
       const perfilPedido = typeof obj['perfil'] === 'string' ? obj['perfil'].trim().toLowerCase() : '';
       const nota = typeof obj['nota'] === 'string' ? obj['nota'].trim() : undefined;
 
@@ -135,7 +139,7 @@ export class Orquestador {
     }
 
     if (obj['accion'] === 'recon') {
-      const objetivo = typeof obj['objetivo'] === 'string' ? obj['objetivo'].trim() : '';
+      const objetivo = typeof obj['objetivo'] === 'string' ? primerObjetivo(obj['objetivo']) : '';
       if (!objetivo || !clasificar(objetivo)) return { accion: 'responder', texto: 'Decime contra qué objetivo (un host, IP o rango) querés el reconocimiento.' };
       const crudos = Array.isArray(obj['pasos']) ? obj['pasos'] : [];
       const pasos: PasoPlan[] = [];
@@ -161,5 +165,17 @@ export class Orquestador {
     // JSON con forma inesperada: no inventamos una ejecución, respondemos.
     return { accion: 'responder', texto: 'No te entendí bien. ¿Qué querés auditar y contra qué objetivo?' };
   }
+}
+
+/**
+ * El objetivo es SIEMPRE uno solo. Si la IA devuelve varios ("a.com, b.com"),
+ * tomamos el primero válido: nunca escaneamos algo que el operador no pidió.
+ */
+function primerObjetivo(crudo: string): string {
+  // Solo por coma/;: una LISTA usa esos separadores. Una frase con espacios
+  // ("esto no es un host") queda como una pieza y la rechaza clasificar() después.
+  const partes = crudo.split(/[,;]+/).map((s) => s.trim()).filter(Boolean);
+  for (const p of partes) if (clasificar(p)) return p;
+  return crudo.trim();
 }
 

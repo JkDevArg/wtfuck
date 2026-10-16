@@ -119,6 +119,22 @@ describe('plan de reconocimiento', () => {
     const p = await o.decidir('x', { alcance: [] });
     expect(p.accion).toBe('responder');
   });
+
+  test('si la IA devuelve varios objetivos, toma el primero (no inventa targets)', async () => {
+    const { o } = orq('{"accion":"recon","objetivo":"hackl4bs.com, scanme.nmap.org","pasos":[{"herramienta":"nmap","perfil":"rapido","descripcion":"x"}]}');
+    const p = await o.decidir('reconocé hackl4bs.com', { alcance: ['hackl4bs.com'] });
+    expect(p.accion).toBe('recon');
+    if (p.accion === 'recon') expect(p.objetivo).toBe('hackl4bs.com');
+  });
+});
+
+describe('respuestas rotas de la IA', () => {
+  test('un JSON truncado no se muestra crudo', async () => {
+    const { o } = orq('{"accion":"recon","objetivo":"example.com","pasos":[{"herramienta":"nmap",'); // cortado
+    const p = await o.decidir('x', { alcance: [] });
+    expect(p.accion).toBe('responder');
+    if (p.accion === 'responder') expect(p.texto).not.toContain('{');
+  });
 });
 
 describe('robustez: nunca rompe, siempre da un Plan', () => {
