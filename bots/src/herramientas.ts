@@ -241,9 +241,9 @@ export function crearHerramientas(nombres: string[], ejecutor: Ejecutor, cfg: Co
   return out;
 }
 
-/** El ejecutor real: spawn sin shell, con tope de tiempo y de salida. */
-export const ejecutorReal: Ejecutor = (cmd, args, timeoutMs, maxBytes) =>
-  new Promise((resolve) => {
+/** Corre un proceso sin shell, con tope de tiempo y de salida. */
+function correrProceso(cmd: string, args: string[], timeoutMs: number, maxBytes: number): Promise<Ejecucion> {
+  return new Promise((resolve) => {
     let hijo;
     try {
       hijo = spawn(cmd, args, { shell: false });
@@ -277,3 +277,29 @@ export const ejecutorReal: Ejecutor = (cmd, args, timeoutMs, maxBytes) =>
       resolve({ codigo, salida, recortado, vencio });
     });
   });
+}
+
+/** El ejecutor real: corre el binario en el HOST (requiere tenerlo instalado). */
+export const ejecutorReal: Ejecutor = (cmd, args, timeoutMs, maxBytes) => correrProceso(cmd, args, timeoutMs, maxBytes);
+
+/**
+ * Ejecutor que corre cada herramienta DENTRO de un contenedor efímero de la
+ * imagen de pentesting (Kali), en vez del host. Así el catálogo y el recon usan
+ * el mismo arsenal que `/pentest` sin tener que instalar nada en el VPS.
+ *
+ * El alcance ya se validó antes de llegar acá (operadores/alcance), así que el
+ * contenedor usa la red normal; el `/pentest` (shell libre) es el que lleva el
+ * egress estricto, porque ahí la IA corre comandos arbitrarios.
+ */
+export function crearEjecutorDocker(imagen: string, limites: { memoria: string; cpus: string; pids: number }): Ejecutor {
+  return (cmd, args, timeoutMs, maxBytes) => {
+    const dockerArgs = [
+      'run', '--rm',
+      '--cap-drop', 'ALL', '--cap-add', 'NET_RAW',
+      '--security-opt', 'no-new-privileges',
+      '--memory', limites.memoria, '--cpus', limites.cpus, '--pids-limit', String(limites.pids),
+      imagen, cmd, ...args,
+    ];
+    return correrProceso('docker', dockerArgs, timeoutMs, maxBytes);
+  };
+}

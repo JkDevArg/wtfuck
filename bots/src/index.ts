@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { Bot, type Modo } from './bot.ts';
 import { Groq } from './ia.ts';
 import { Bitacora } from './bitacora.ts';
-import { crearHerramientas, ejecutorReal, type Ejecutor } from './herramientas.ts';
+import { crearHerramientas, crearEjecutorDocker, ejecutorReal, type Ejecutor } from './herramientas.ts';
 import { Operadores } from './operadores.ts';
 import { Orquestador } from './orquestador.ts';
 import { Agente } from './agente.ts';
@@ -111,16 +111,29 @@ if (modo === 'herramienta') {
   const terminosRuta = process.env['WTFUCK_BOT_TERMINOS'];
   terminos = terminosRuta && existsSync(terminosRuta) ? readFileSync(terminosRuta, 'utf8') : TERMINOS_POR_DEFECTO;
 
-  // Un ejecutor de mentira para probar el flujo sin tener las herramientas
-  // instaladas: devuelve el argv que se habria corrido (asi se ve que el objetivo
-  // va aparte, sin shell). WTFUCK_BOT_NMAP_FALSO se mantiene por compatibilidad.
+  // Config del sandbox (tambien la usa el agente-shell mas abajo).
+  const sandboxActivo = env('WTFUCK_BOT_SANDBOX', 'false') === 'true';
+  const imagenSandbox = env('WTFUCK_BOT_IMAGEN', 'kalilinux/kali-rolling');
+  const limitesSandbox = {
+    memoria: env('WTFUCK_BOT_MEM', '2g'),
+    cpus: env('WTFUCK_BOT_CPUS', '1.0'),
+    pids: Number(env('WTFUCK_BOT_PIDS', '256')) || 256,
+  };
+
+  // El ejecutor del catalogo y el recon:
+  //  - FALSO: no corre nada, muestra el argv (para probar el flujo).
+  //  - sandbox ACTIVO: corre cada herramienta en un contenedor de la imagen Kali
+  //    (ahi viven subfinder/amass/nuclei/etc.). Es lo que resuelve el ENOENT.
+  //  - si no: en el host (requiere tener las herramientas instaladas en el VPS).
   const falso = env('WTFUCK_BOT_HERRAMIENTAS_FALSAS', env('WTFUCK_BOT_NMAP_FALSO', 'false')) === 'true';
   const ejecutor: Ejecutor = falso
     ? async (cmd, args) => {
         await new Promise((r) => setTimeout(r, 1200));
         return { codigo: 0, salida: `[${cmd} de MENTIRA] argv: ${args.join(' ')}`, recortado: false, vencio: false };
       }
-    : ejecutorReal;
+    : sandboxActivo
+      ? crearEjecutorDocker(imagenSandbox, limitesSandbox)
+      : ejecutorReal;
 
   const cfgHerr = {
     timeoutMs: Number(env('WTFUCK_BOT_TIMEOUT_S', '300')) * 1000,
@@ -148,16 +161,11 @@ if (modo === 'herramienta') {
     console.log('Orquestador IA activo (modelo ' + env('GROQ_MODELO', 'openai/gpt-oss-120b') + '). Se puede hablar en lenguaje natural.');
 
     // Agente-shell (opcional): la IA corre comandos en un sandbox con red al scope.
-    if (env('WTFUCK_BOT_SANDBOX', 'false') === 'true') {
+    if (sandboxActivo) {
       agente = new Agente(iaAuditor, process.env['WTFUCK_BOT_SYSTEM_EXTRA']);
       const sandboxFalso = env('WTFUCK_BOT_SANDBOX_FALSO', 'false') === 'true';
       motorContenedor = sandboxFalso ? motorFalso() : motorDocker;
-      sandboxCfg = {
-        imagen: env('WTFUCK_BOT_IMAGEN', 'kalilinux/kali-rolling'),
-        memoria: env('WTFUCK_BOT_MEM', '2g'),
-        cpus: env('WTFUCK_BOT_CPUS', '1.0'),
-        pids: Number(env('WTFUCK_BOT_PIDS', '256')) || 256,
-      };
+      sandboxCfg = { imagen: imagenSandbox, ...limitesSandbox };
       limitesAgente = {
         maxComandos: Number(env('WTFUCK_BOT_MAX_COMANDOS', '15')) || 15,
         sesionTimeoutMs: (Number(env('WTFUCK_BOT_SESION_TIMEOUT_S', '1800')) || 1800) * 1000,
