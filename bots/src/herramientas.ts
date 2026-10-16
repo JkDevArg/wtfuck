@@ -147,14 +147,9 @@ export const CATALOGO: Record<string, SpecHerramienta> = {
       subdominios: ['-p', 'subdomain-enum', '-y', '--silent'],
     },
   },
-  dnsx: {
-    nombre: 'dnsx',
-    descripcion: 'consultas y validación DNS de un dominio (rinde más con listas)',
-    objetivo: { modo: 'flag', flag: '-d' },
-    perfiles: {
-      resolver: ['-silent', '-a', '-aaaa', '-cname', '-resp'],
-    },
-  },
+  // dnsx NO está: su modo `-d <dominio>` exige una wordlist (es brute de
+  // subdominios), y resolver un dominio suelto necesita pasarlo por stdin, que no
+  // encaja con "un objetivo por flag". subfinder/dnsenum/fierce cubren DNS.
   dnsenum: {
     nombre: 'dnsenum',
     descripcion: 'enumeración DNS de un dominio',
@@ -295,8 +290,11 @@ export function crearEjecutorDocker(imagen: string, limites: { memoria: string; 
   return (cmd, args, timeoutMs, maxBytes) => {
     const dockerArgs = [
       'run', '--rm',
-      '--cap-drop', 'ALL', '--cap-add', 'NET_RAW',
-      '--security-opt', 'no-new-privileges',
+      // NET_RAW/NET_ADMIN para nmap/masscan (raw sockets). NO se usa
+      // no-new-privileges: en Kali el binario de nmap tiene file-capabilities y
+      // con no-new-privileges el kernel rechaza ejecutarlo (EPERM). El contenedor
+      // sigue acotado: cap-drop ALL + solo estas dos, sin --privileged, efímero.
+      '--cap-drop', 'ALL', '--cap-add', 'NET_RAW', '--cap-add', 'NET_ADMIN',
       '--memory', limites.memoria, '--cpus', limites.cpus, '--pids-limit', String(limites.pids),
       imagen, cmd, ...args,
     ];

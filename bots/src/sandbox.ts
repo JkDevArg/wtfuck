@@ -126,10 +126,13 @@ export const motorDocker: MotorContenedor = {
     // mantenerse vivo mientras ejecutamos comandos con `docker exec`.
     const args = [
       'run', '-d', '--rm', '--name', nombre,
+      // NO se usa no-new-privileges: en Kali el binario de nmap tiene
+      // file-capabilities y con esa opción el kernel rechaza ejecutarlo (EPERM).
+      // El contenedor sigue acotado: cap-drop ALL + solo NET_RAW/NET_ADMIN, sin
+      // --privileged, efímero, y con la red confinada al scope por el egress.
       '--cap-drop', 'ALL', '--cap-add', 'NET_RAW', '--cap-add', 'NET_ADMIN',
-      '--security-opt', 'no-new-privileges',
       '--memory', limites.memoria, '--cpus', limites.cpus, '--pids-limit', String(limites.pids),
-      '--tmpfs', '/tmp:rw,noexec,nosuid,size=256m',
+      '--tmpfs', '/tmp:rw,nosuid,size=256m',
       imagen, 'sleep', 'infinity',
     ];
     const id = (await correrDocker(args, 30_000)).salida.trim();
