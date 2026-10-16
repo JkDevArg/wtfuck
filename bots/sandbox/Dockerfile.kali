@@ -27,6 +27,14 @@ FROM kalilinux/kali-rolling
 
 ARG KALI_META=kali-linux-large
 
+# Herramientas EXTRA que vos decidís, sin tocar el resto del archivo. Es el lugar
+# curado para "que el bot tenga tal tool": la agregás acá y reconstruís una vez,
+# y el agente la usa sola para siempre (persiste, a diferencia de instalarla en un
+# contenedor efímero en runtime, que se borra al terminar la sesión).
+#   docker build -f bots/sandbox/Dockerfile.kali \
+#     --build-arg TOOLS_EXTRA="feroxbuster wafw00f sslscan" -t wtfuck-kali:latest bots/sandbox
+ARG TOOLS_EXTRA=""
+
 # El arsenal de Kali + utilidades que el agente/egress necesitan. Sin
 # --no-install-recommends: queremos que los metapaquetes traigan sus tools.
 RUN apt-get update && \
@@ -42,9 +50,11 @@ RUN apt-get update && \
 # bbot es de Python (no siempre en apt): se intenta pipx y luego pip.
 RUN apt-get update && \
     for p in nmap masscan whois dnsutils dnsenum fierce nikto \
-             nuclei gobuster ffuf amass subfinder findomain naabu dnsx theharvester; do \
+             nuclei gobuster ffuf feroxbuster amass subfinder findomain naabu dnsx \
+             httpx-toolkit katana dalfox wafw00f whatweb sslscan wfuzz dirb \
+             theharvester $TOOLS_EXTRA; do \
       DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$p" \
-        || echo "AVISO: '$p' no esta en apt de Kali; instalalo a mano si lo necesitas"; \
+        || echo "AVISO: '$p' no esta en apt de Kali; revisá el nombre o instalalo aparte"; \
     done; \
     (pipx install bbot || pip3 install --break-system-packages bbot || echo "AVISO: bbot no instalado"); \
     apt-get clean && rm -rf /var/lib/apt/lists/*

@@ -40,6 +40,22 @@ pueden **combinar** separados por espacio, p.ej. `kali-tools-top10 kali-tools-we
 Categorías útiles: `kali-tools-web`, `kali-tools-information-gathering`,
 `kali-tools-vulnerability`, `kali-tools-passwords`.
 
+### Sumar herramientas (vos decidís el arsenal)
+
+Para agregar tools sin tocar el resto del archivo, pasalas en `TOOLS_EXTRA`:
+
+```bash
+docker build -f bots/sandbox/Dockerfile.kali \
+  --build-arg KALI_META="kali-tools-top10 kali-tools-web" \
+  --build-arg TOOLS_EXTRA="feroxbuster wafw00f sslscan arjun" \
+  -t wtfuck-kali:latest bots/sandbox
+```
+
+Se instalan desde los repos **oficiales y firmados** de Kali. Es el lugar
+correcto para "que el bot tenga tal herramienta": queda en la imagen (persiste) y
+el agente la usa sola. Instalar en runtime no sirve: el contenedor es efímero
+(`--rm`), lo instalado se borra al terminar la sesión.
+
 ## Config (cualquiera de las dos)
 
 En `bots/.env`, apuntá a la que construiste:
