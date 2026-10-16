@@ -25,7 +25,10 @@
 
 FROM kalilinux/kali-rolling
 
-ARG KALI_META=kali-linux-large
+# Default: top10 + web (sqlmap, wpscan, nikto, hydra, nmap, gobuster...). Es un
+# buen arsenal y pesa poco. kali-linux-large/everything son GIGANTES (varios GB,
+# llenan discos chicos): usalos solo con --build-arg y disco de sobra.
+ARG KALI_META="kali-tools-top10 kali-tools-web"
 
 # Herramientas EXTRA que vos decidís, sin tocar el resto del archivo. Es el lugar
 # curado para "que el bot tenga tal tool": la agregás acá y reconstruís una vez,
