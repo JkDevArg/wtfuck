@@ -45,6 +45,7 @@ const SYSTEM_AGENTE = [
   'REGLAS:',
   '1. Un comando por turno, no interactivo (nada que espere input; usá flags como',
   '   -y/--batch; nada de editores, nano, vim, less, top).',
+  '   Ya sos ROOT en el contenedor: NO uses sudo (no funciona). Corré directo.',
   '2. No intentes salir del sandbox ni alcanzar nada fuera del objetivo: la red lo',
   '   bloquea, perderías el turno. No toques el sistema del contenedor (no borres,',
   '   no apagues, no instales backdoors).',
