@@ -2,6 +2,9 @@ package com.wtfuck.app.ui
 
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -288,13 +291,23 @@ private fun VisorImagen(archivo: File, pie: String, onCerrar: () -> Unit) {
         // alrededor. Un visor de fotos a medio abrir no es un visor.
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        // Zoom con los dedos (pellizco), arrastre cuando esta ampliada y doble
+        // toque para acercar/alejar. 1x..5x. El pan se limita para que la imagen
+        // no se escape de la pantalla.
+        var escala by remember { mutableFloatStateOf(1f) }
+        var desp by remember { mutableStateOf(Offset.Zero) }
+        fun limitar(o: Offset, s: Float, w: Int, h: Int): Offset {
+            val maxX = (w * (s - 1f)) / 2f
+            val maxY = (h * (s - 1f)) / 2f
+            return Offset(o.x.coerceIn(-maxX, maxX), o.y.coerceIn(-maxY, maxY))
+        }
+
         Box(
             Modifier
                 .fillMaxSize()
                 // Negro opaco, no casi opaco: con un 3% de transparencia el
                 // chat de atras se sigue viendo y el visor parece a medio abrir.
-                .background(Color.Black)
-                .clickable(onClick = onCerrar),
+                .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
             // Coil, por lo mismo que la burbuja: abrir un GIF a pantalla
@@ -303,13 +316,47 @@ private fun VisorImagen(archivo: File, pie: String, onCerrar: () -> Unit) {
             coil3.compose.SubcomposeAsyncImage(
                 model = archivo,
                 contentDescription = null,
-                modifier = Modifier.fillMaxWidth(),
                 contentScale = ContentScale.Fit,
                 // `SubcomposeAsyncImage` y no `AsyncImage` solo por esto: el
                 // hueco de error acepta contenido componible, y un visor que
                 // no puede abrir el archivo tiene que decirlo en vez de
                 // quedarse negro.
                 error = { Text("No se pudo abrir la imagen", color = TextoSecundario) },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = escala
+                        scaleY = escala
+                        translationX = desp.x
+                        translationY = desp.y
+                    }
+                    // El pellizco (zoom) y el arrastre (pan). Dos gestos en el
+                    // mismo detector: mientras esta ampliada, un dedo la mueve.
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            escala = (escala * zoom).coerceIn(1f, 5f)
+                            desp = if (escala > 1f) limitar(desp + pan, escala, size.width, size.height)
+                            else Offset.Zero
+                        }
+                    }
+                    // Un toque cierra (como antes); el doble toque acerca al punto
+                    // tocado y, si ya esta ampliada, vuelve a 1x.
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { if (escala > 1f) { escala = 1f; desp = Offset.Zero } else onCerrar() },
+                            onDoubleTap = { p ->
+                                if (escala > 1f) { escala = 1f; desp = Offset.Zero }
+                                else {
+                                    val s = 2.5f
+                                    desp = limitar(
+                                        Offset(-(p.x - size.width / 2f) * s, -(p.y - size.height / 2f) * s),
+                                        s, size.width, size.height,
+                                    )
+                                    escala = s
+                                }
+                            },
+                        )
+                    },
             )
             if (pie.isNotBlank()) {
                 Text(
