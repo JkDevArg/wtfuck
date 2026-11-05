@@ -90,6 +90,13 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.8.1",
+            fecha = "05/11/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.MEJORA, "Ahora podés ampliar las fotos del chat: pellizcá para hacer zoom, arrastrá para moverte y tocá dos veces para acercar."),
+            ),
+        ),
+        NotasVersion(
             version = "0.8.0",
             fecha = "09/10/2026",
             cambios = listOf(
