@@ -12,6 +12,8 @@ import { decodificarOnda, Grabacion, mimeDeGrabacion } from './datos/grabadora';
 import { ErrorApi } from './datos/api';
 import { Avatar } from './Avatar';
 import { fotoDeConversacion } from './datos/avatares';
+import { CapaLlamada } from './Llamada';
+import { iniciarLlamada } from './datos/llamadas';
 
 const usarMotor = () => useSyncExternalStore(motor.suscribir, motor.instantanea);
 
@@ -30,6 +32,7 @@ export function App() {
       )}
       {e.sesion ? <Principal /> : <Entrada onCodigo={setCodigoNuevo} />}
       {e.sesion && codigoNuevo && <CodigoNuevo codigo={codigoNuevo} onListo={() => setCodigoNuevo(null)} />}
+      {e.sesion && <CapaLlamada />}
     </>
   );
 }
@@ -602,6 +605,15 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
         <button className="atras" onClick={onAtras} aria-label="Volver a la lista">←</button>
         <span className="nombre">{titulo(c)}</span>
         {esGrupo && <span className="miembros">{c.participantes.length + 1} miembros</span>}
+        {c.tipo === 'directa' && (
+          <button
+            className="enlace cian derecha"
+            title="Llamar"
+            onClick={() => void iniciarLlamada(c.id, titulo(c)).catch(() => undefined)}
+          >
+            📞 Llamar
+          </button>
+        )}
         <button className="enlace cian derecha" onClick={() => setVerHuellas(true)}>Verificar cifrado</button>
       </header>
       {!!c.identidadCambio?.length && (

@@ -86,13 +86,73 @@ export interface CargaConClave {
   interior: Carga;
 }
 
+// --- señalización de llamadas (modulo K). Viaja CIFRADA como cualquier carga:
+//     el SDP y los candidatos ICE no pueden pasar en claro por el servidor, o
+//     podria cambiar las huellas DTLS y escuchar la llamada. Ver Sobre.kt. ---
+export const TIPO_LLAMADA_OFERTA = 'com.wtfuck.protocol.Carga.LlamadaOferta';
+export const TIPO_LLAMADA_RESPUESTA = 'com.wtfuck.protocol.Carga.LlamadaRespuesta';
+export const TIPO_LLAMADA_CANDIDATO = 'com.wtfuck.protocol.Carga.LlamadaCandidato';
+export const TIPO_LLAMADA_FIN = 'com.wtfuck.protocol.Carga.LlamadaFin';
+
+export interface CargaLlamadaOferta {
+  type: typeof TIPO_LLAMADA_OFERTA;
+  llamadaId: string;
+  sdp: string;
+  conVideo: boolean;
+}
+export interface CargaLlamadaRespuesta {
+  type: typeof TIPO_LLAMADA_RESPUESTA;
+  llamadaId: string;
+  sdp: string;
+}
+export interface CargaLlamadaCandidato {
+  type: typeof TIPO_LLAMADA_CANDIDATO;
+  llamadaId: string;
+  candidato: string;
+  sdpMid: string | null;
+  sdpMLineIndex: number;
+}
+export interface CargaLlamadaFin {
+  type: typeof TIPO_LLAMADA_FIN;
+  llamadaId: string;
+  motivo: string;
+}
+
 /** Cualquier otra carga: la web todavía no la muestra, pero la acusa. */
 export interface CargaOtra {
   type: string;
   [campo: string]: unknown;
 }
 
-export type Carga = CargaTexto | CargaHistorial | CargaConClave | CargaEdicion | CargaAdjunto | CargaOtra;
+export type Carga =
+  | CargaTexto
+  | CargaHistorial
+  | CargaConClave
+  | CargaEdicion
+  | CargaAdjunto
+  | CargaLlamadaOferta
+  | CargaLlamadaRespuesta
+  | CargaLlamadaCandidato
+  | CargaLlamadaFin
+  | CargaOtra;
+
+// Constructores de señalización. Los campos van EN EL ORDEN de Kotlin (Sobre.kt):
+// el cifrado es sobre el JSON y el otro lado deserializa posicionalmente-tolerante,
+// pero se respeta el orden por las dudas y para que se lea igual que en la app.
+export function llamadaOferta(llamadaId: string, sdp: string, conVideo: boolean): CargaLlamadaOferta {
+  return { type: TIPO_LLAMADA_OFERTA, llamadaId, sdp, conVideo };
+}
+export function llamadaRespuesta(llamadaId: string, sdp: string): CargaLlamadaRespuesta {
+  return { type: TIPO_LLAMADA_RESPUESTA, llamadaId, sdp };
+}
+export function llamadaCandidato(
+  llamadaId: string, candidato: string, sdpMid: string | null, sdpMLineIndex: number,
+): CargaLlamadaCandidato {
+  return { type: TIPO_LLAMADA_CANDIDATO, llamadaId, candidato, sdpMid, sdpMLineIndex };
+}
+export function llamadaFin(llamadaId: string, motivo: string): CargaLlamadaFin {
+  return { type: TIPO_LLAMADA_FIN, llamadaId, motivo };
+}
 
 /** Un texto con los campos en el orden y con los null que pone Kotlin. */
 export function texto(cuerpo: string): CargaTexto {
@@ -149,6 +209,10 @@ export const esHistorial = (c: Carga): c is CargaHistorial => c.type === TIPO_HI
 export const esConClave = (c: Carga): c is CargaConClave => c.type === TIPO_CON_CLAVE;
 export const esEdicion = (c: Carga): c is CargaEdicion => c.type === TIPO_EDICION;
 export const esAdjunto = (c: Carga): c is CargaAdjunto => c.type === TIPO_ADJUNTO;
+export const esLlamadaOferta = (c: Carga): c is CargaLlamadaOferta => c.type === TIPO_LLAMADA_OFERTA;
+export const esLlamadaRespuesta = (c: Carga): c is CargaLlamadaRespuesta => c.type === TIPO_LLAMADA_RESPUESTA;
+export const esLlamadaCandidato = (c: Carga): c is CargaLlamadaCandidato => c.type === TIPO_LLAMADA_CANDIDATO;
+export const esLlamadaFin = (c: Carga): c is CargaLlamadaFin => c.type === TIPO_LLAMADA_FIN;
 
 // ---------------------------------------------------------------------------
 //  Relleno (protocol/Relleno.kt): esconder el largo del mensaje
@@ -229,6 +293,39 @@ export interface Destino {
   registrationId: number;
   identidad: string;
   etiqueta: string;
+}
+
+// --- llamadas (modulo K): metadatos por HTTP; la señalizacion va cifrada arriba ---
+export interface ConfigTurn {
+  urls: string[];
+  usuario: string;
+  clave: string;
+  expiraEnSegundos: number;
+  hay: boolean;
+}
+export interface IniciarLlamadaReq {
+  conversacionId: string;
+  conVideo: boolean;
+  invitados: string[];
+}
+export interface LlamadaCreada {
+  llamadaId: string;
+  destinos: Destino[];
+  turn: ConfigTurn;
+}
+export interface TerminarLlamadaReq {
+  motivo: string;
+}
+export interface LlamadaEnCurso {
+  llamadaId: string;
+  conversacionId: string;
+  conVideo: boolean;
+  origen: string;
+  estado: string;
+  turn: ConfigTurn;
+  destinos: Destino[];
+  miEstado: string;
+  estados: Record<string, string>;
 }
 
 export interface UsuarioPublico {

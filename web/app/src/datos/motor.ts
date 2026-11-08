@@ -12,6 +12,7 @@ import { borrar, guardar, leer, todas, vaciarTodo } from './boveda';
 import * as cripto from './cripto';
 import {
   aBytes, adjunto, b64, deBytes, edicion, esAdjunto, esConClave, esEdicion, esHistorial, esTexto, mencionesEn,
+  esLlamadaOferta, esLlamadaRespuesta, esLlamadaCandidato, esLlamadaFin,
   nuevoId, respuesta, texto, TIPO_CIFRADO,
   type Bajada, type Carga, type ConversacionResumen, type CopiaCifrada, type Destino, type PaqueteClaves,
   type Subida, type UsuarioPublico, type VincularHecho,
@@ -780,6 +781,21 @@ async function recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
   }
   if (carga !== null && e.conversacionId) await revisarIdentidad(e.conversacionId, e.origenDispositivo, e.origenUsername);
 
+  // Señalizacion de llamada: no es un mensaje. Va al motor de llamadas y se
+  // acusa el sobre para que el servidor no lo reentregue. Ver llamadas.ts.
+  if (
+    carga !== null &&
+    (esLlamadaOferta(carga) || esLlamadaRespuesta(carga) || esLlamadaCandidato(carga) || esLlamadaFin(carga))
+  ) {
+    try {
+      onSenalLlamada?.(e.conversacionId, e.origenDispositivo, e.origenUsername, carga);
+    } catch (x) {
+      console.warn('senal de llamada', x);
+    }
+    mandar({ type: 'acuse', sobreIds: [e.sobreId] });
+    return;
+  }
+
   const esMio = e.origenUsername.toLowerCase() === s.username.toLowerCase();
   if (carga === null) {
     // Igual que la app: se deja constancia y se acusa, para no reentregarlo
@@ -1193,6 +1209,28 @@ async function refrescarReacciones(mensajeId: string): Promise<void> {
   if (!porId.has(mensajeId)) return;
   const meta = await pedir<{ reacciones: Reaccion[] }>('GET', `/v1/mensajes/${mensajeId}`);
   await actualizarMensaje(mensajeId, { reacciones: meta.reacciones });
+}
+
+// --- señalizacion de llamadas (modulo K): lo usa llamadas.ts ---
+
+/** El socket recibio una carga de llamada; llamadas.ts se registra aqui. */
+let onSenalLlamada:
+  | ((conversacionId: string, origenDispositivo: string, origenUsername: string, carga: Carga) => void)
+  | null = null;
+export function registrarSenalLlamada(
+  fn: (conversacionId: string, origenDispositivo: string, origenUsername: string, carga: Carga) => void,
+): void {
+  onSenalLlamada = fn;
+}
+
+/** Cifra y manda una carga de señalizacion a los dispositivos de la conversacion. */
+export async function enviarSenalLlamada(conversacionId: string, carga: Carga): Promise<void> {
+  await cifrarYMandar(conversacionId, nuevoId(), carga, Date.now());
+}
+
+/** La sesion actual (para llamadas.ts: mi usuario y dispositivo). */
+export function miSesion(): Sesion | null {
+  return estado.sesion;
 }
 
 let despachando = false;
