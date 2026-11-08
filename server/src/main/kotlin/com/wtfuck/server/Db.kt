@@ -94,6 +94,7 @@ object Db {
         54 to "/db/V54__pedidos_de_alcance.sql",
         55 to "/db/V55__foto_de_conversacion.sql",
         56 to "/db/V56__publicar_como_canal.sql",
+        57 to "/db/V57__sobre_de_frase.sql",
     )
 
     /**

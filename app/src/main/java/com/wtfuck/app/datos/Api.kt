@@ -885,6 +885,10 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun estadoRecuperacion(): EstadoRecuperacion =
         pedir("$RUTA_CUENTA/recuperacion", "GET", null, true)
 
+    /** El sobre de frase de una cuenta, para un telefono nuevo. Sin sesion. */
+    suspend fun pedirSobreFrase(username: String): SobreRecuperacion =
+        pedir("$RUTA_CUENTA/recuperacion/sobre", "POST", jsonApp.encodeToString(PedirSobreReq(username)), false)
+
     /** Sin sesion: es justo el caso en que no se puede tener una. */
     suspend fun recuperarDispositivo(req: RecuperarDispositivoReq): SesionResp =
         pedir("$RUTA_CUENTA/recuperar-dispositivo", "POST", jsonApp.encodeToString(req), false)

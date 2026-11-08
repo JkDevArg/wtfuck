@@ -1343,6 +1343,12 @@ fun Application.modulo() {
             call.respond(Identidad.estadoRecuperacion(call.autenticar()))
         }
 
+        // El sobre de frase, para un telefono nuevo. SIN sesion: recuperar es
+        // justo el caso en que no se puede entrar. Ver Identidad.sobreDeFrase.
+        post("$RUTA_CUENTA/recuperacion/sobre") {
+            call.respond(Identidad.sobreDeFrase(call.receive(), call.ipCliente()))
+        }
+
         // Da de alta un telefono NUEVO. Cuatro puertas: SMS, codigo de
         // recuperacion, segundo factor y contrasena nueva. Ver
         // `RecuperarDispositivoReq`.

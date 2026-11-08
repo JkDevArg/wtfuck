@@ -4042,20 +4042,47 @@ class Repositorio(
         codigo: String,
         password: String,
         totp: String? = null,
+        /**
+         * Fase 1: si viene, se guarda ademas el "sobre" con el codigo cifrado
+         * con esta frase. Asi se puede recuperar en un telefono nuevo con la
+         * frase, sin el papel. El codigo sigue siendo la raiz.
+         */
+        frase: String? = null,
     ): Result<Unit> = runCatching {
         val limpio = CodigoRecuperacion.normalizar(codigo)
             ?: throw IllegalArgumentException("Ese código de recuperación no es válido.")
+        // La frase cifra el codigo AQUI; al servidor va el sobre, nunca la frase
+        // ni el codigo. Vacio = la cuenta no usa frase (y borra el sobre viejo).
+        val sobre = frase?.takeIf { it.isNotBlank() }
+            ?.let { Base64Util.enc(FraseRecuperacion.envolver(limpio, it)) }
+            ?: ""
         api.fijarRecuperacion(
             FijarRecuperacionReq(
                 verificadorB64 = Base64Util.enc(CodigoRecuperacion.verificadorServidor(limpio)),
                 password = password,
                 totp = totp,
+                sobreFraseB64 = sobre,
             )
         )
     }
 
     suspend fun estadoRecuperacion(): Result<EstadoRecuperacion> =
         runCatching { api.estadoRecuperacion() }
+
+    /**
+     * Fase 1: obtiene el codigo de recuperacion a partir de la FRASE, en un
+     * telefono nuevo. Baja el sobre de la cuenta y lo abre con la frase.
+     *
+     * Devuelve el codigo con guiones, listo para seguir la recuperacion normal.
+     * Falla con 404 si la cuenta no tiene frase, o con un mensaje claro si la
+     * frase no es la correcta (el sobre no abre).
+     */
+    suspend fun codigoDesdeFrase(username: String, frase: String): Result<String> = runCatching {
+        val sobre = Base64Util.dec(api.pedirSobreFrase(username.trim()).sobreFraseB64)
+        val codigo = FraseRecuperacion.abrir(sobre, frase)
+            ?: throw IllegalArgumentException("La frase no es correcta.")
+        CodigoRecuperacion.conGuiones(codigo)
+    }
 
     /**
      * Da de alta ESTE telefono con el codigo de recuperacion.

@@ -556,11 +556,26 @@ object Identidad {
             throw ErrorNegocio(400, "El verificador de recuperacion no es valido.")
         }
 
+        // Fase 1: el sobre con el codigo cifrado con la frase, si viene. Se
+        // guarda SIEMPRE junto con el verificador -el sobre nuevo, o NULL si no
+        // hay frase-: fijar un codigo nuevo invalida el sobre anterior, que fue
+        // hecho con el codigo viejo y ya no abre nada.
+        val sobre: ByteArray? = req.sobreFraseB64.ifBlank { null }?.let { b64 ->
+            val bytes = runCatching { Base64Util.dec(b64) }.getOrNull()
+            // [sal 16][nonce 12][codigo cifrado + tag]. Un rango holgado: lo
+            // justo para rechazar basura sin atarse al tamano exacto del cifrado.
+            if (bytes == null || bytes.size !in 40..512) {
+                throw ErrorNegocio(400, "El sobre de recuperacion no es valido.")
+            }
+            bytes
+        }
+
         c.prepareStatement(
-            "UPDATE usuario SET recuperacion_hash = ?, recuperacion_fijado_en = now() WHERE id = ?"
+            "UPDATE usuario SET recuperacion_hash = ?, recuperacion_fijado_en = now(), recuperacion_sobre = ? WHERE id = ?"
         ).use { st ->
             st.setString(1, Cripto.hashPassword(Base64Util.enc(verificador)))
-            st.setObject(2, yo.usuarioId)
+            st.setBytes(2, sobre)
+            st.setObject(3, yo.usuarioId)
             st.executeUpdate()
         }
 
@@ -569,18 +584,39 @@ object Identidad {
         Unit
     }
 
-    /** Si la cuenta tiene codigo, y de cuando es. */
+    /** Si la cuenta tiene codigo, de cuando es, y si ademas tiene frase. */
     fun estadoRecuperacion(yo: Auth): EstadoRecuperacion = Db.query { c ->
         c.prepareStatement(
             """SELECT recuperacion_hash IS NOT NULL,
-                      coalesce(extract(epoch FROM recuperacion_fijado_en) * 1000, 0)
+                      coalesce(extract(epoch FROM recuperacion_fijado_en) * 1000, 0),
+                      recuperacion_sobre IS NOT NULL
                  FROM usuario WHERE id = ?"""
         ).use { st ->
             st.setObject(1, yo.usuarioId)
             st.executeQuery().use { rs ->
-                rs.primero { EstadoRecuperacion(it.getBoolean(1), it.getDouble(2).toLong()) }
+                rs.primero { EstadoRecuperacion(it.getBoolean(1), it.getDouble(2).toLong(), it.getBoolean(3)) }
             }
         } ?: EstadoRecuperacion(false)
+    }
+
+    /**
+     * Entrega el sobre de frase de una cuenta, para un telefono nuevo. SIN
+     * sesion: el caso entero es no poder entrar. Con rate-limit por IP, porque
+     * cualquiera que sepa un username puede pedirlo; el KDF caro de la frase y el
+     * que el codigo sea solo una puerta de cuatro hacen que entregarlo sea
+     * aceptable. 404 -no 403- si no hay sobre: no revela si la cuenta existe.
+     */
+    fun sobreDeFrase(req: PedirSobreReq, ip: String): SobreRecuperacion = Db.query { c ->
+        Limitador.exigir(null, ip, "sobre_frase", Limitador.SOBRE_FRASE)
+        val user = req.username.trim().lowercase()
+        val sobre = c.prepareStatement(
+            "SELECT recuperacion_sobre FROM usuario WHERE username = ?"
+        ).use { st ->
+            st.setString(1, user)
+            st.executeQuery().use { rs -> rs.primero { it.getBytes(1) } }
+        }
+        if (sobre == null) throw ErrorNegocio(404, "No hay una frase de recuperacion para esta cuenta.")
+        SobreRecuperacion(Base64Util.enc(sobre))
     }
 
     /**

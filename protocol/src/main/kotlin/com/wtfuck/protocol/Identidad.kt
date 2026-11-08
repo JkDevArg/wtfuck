@@ -249,6 +249,15 @@ data class FijarRecuperacionReq(
     /** Base64 del verificador derivado. Nunca el codigo. */
     val verificadorB64: String,
     /**
+     * Fase 1 de recuperacion con frase: el "sobre" opcional con el CODIGO
+     * cifrado con una clave derivada de una frase que eligio la persona.
+     *
+     * Formato (antes de base64): `[sal(16)][nonce(12)][codigo cifrado + tag GCM]`.
+     * Vacio = la cuenta no usa frase; queda solo el codigo en papel. El servidor
+     * no puede abrirlo: no tiene la frase. Ver `V57__sobre_de_frase.sql`.
+     */
+    val sobreFraseB64: String = "",
+    /**
      * La contrasena actual.
      *
      * Fijar un codigo nuevo INVALIDA el anterior, asi que quien se siente un
@@ -267,7 +276,23 @@ data class EstadoRecuperacion(
     val configurado: Boolean,
     /** Cuando se fijo, en epoch ms. `0` si no hay. */
     val fijadoEn: Long = 0,
+    /** Fase 1: si ademas del codigo hay una frase que lo protege. */
+    val tieneFrase: Boolean = false,
 )
+
+/**
+ * Pedir el "sobre" de frase de una cuenta, SIN sesion: es para un telefono
+ * nuevo, donde no se puede entrar. Con rate-limit y 404 si no hay sobre.
+ *
+ * Entregarlo es aceptable porque el codigo que esconde es solo UNA de las
+ * cuatro puertas de la recuperacion, y la frase lo protege con un KDF caro.
+ */
+@Serializable
+data class PedirSobreReq(val username: String)
+
+/** El sobre de frase, para descifrar con la frase en el telefono nuevo. */
+@Serializable
+data class SobreRecuperacion(val sobreFraseB64: String)
 
 /**
  * Recupera la cuenta EN UN TELEFONO NUEVO. No pide sesion: es justo el caso

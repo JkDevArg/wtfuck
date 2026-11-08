@@ -74,6 +74,13 @@ object Limitador {
     val ROTAR_ENLACE get() = efectiva("rotar_enlace", Regla(10, Duration.ofHours(1)))
 
     /**
+     * Pedir el sobre de frase de recuperacion (Fase 1), por IP y sin sesion.
+     * Estricto a proposito: el sobre esconde el codigo cifrado con una frase, y
+     * aunque el KDF es caro, no hay razon para dejar bajar sobres a mansalva.
+     */
+    val SOBRE_FRASE get() = efectiva("sobre_frase", Regla(10, Duration.ofHours(1)))
+
+    /**
      * Guardar la ficha de empresa. **La rafaga, no el uso sostenido.**
      *
      * La ficha es lo unico que una cuenta escribe y otra gente lee como dato

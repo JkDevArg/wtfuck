@@ -60,6 +60,12 @@ fun DialogoRecuperarCuenta(
     var trabajando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var deprueba by remember { mutableStateOf<String?>(null) }
+    // Fase 1: en vez de escribir el código del papel, usar la frase. Al
+    // descifrar el sobre se rellena `codigo` y el resto del flujo sigue igual.
+    var usarFrase by remember { mutableStateOf(false) }
+    var frase by remember { mutableStateOf("") }
+    var buscandoFrase by remember { mutableStateOf(false) }
+    var fraseOk by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = { if (!trabajando) onCerrar() },
@@ -134,11 +140,63 @@ fun DialogoRecuperarCuenta(
                     }
 
                     Spacer(Modifier.height(12.dp))
-                    CampoCodigoRecuperacion(
-                        valor = codigo,
-                        onCambio = { codigo = it; error = null },
-                        ayuda = "Los 28 caracteres que anotaste al crearlo.",
-                    )
+                    // Elegir entre la frase (si la configuraste) o el código de papel.
+                    Row {
+                        TextButton(
+                            onClick = { usarFrase = false; error = null },
+                            enabled = usarFrase,
+                        ) { Text("Con el código", color = if (!usarFrase) Cian else TextoSecundario) }
+                        TextButton(
+                            onClick = { usarFrase = true; error = null },
+                            enabled = !usarFrase,
+                        ) { Text("Con mi frase", color = if (usarFrase) Cian else TextoSecundario) }
+                    }
+
+                    if (usarFrase) {
+                        OutlinedTextField(
+                            value = frase,
+                            onValueChange = { frase = it; fraseOk = false; codigo = ""; error = null },
+                            label = { Text("Tu frase de recuperación") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            supportingText = {
+                                Text(
+                                    if (fraseOk) "Frase correcta: ya podés recuperar la cuenta."
+                                    else "La que elegiste al crear el código. Solo funciona si la configuraste.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (fraseOk) Cian else TextoTerciario,
+                                )
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (!fraseOk) {
+                            Spacer(Modifier.height(6.dp))
+                            TextButton(
+                                enabled = frase.isNotBlank() && !buscandoFrase,
+                                onClick = {
+                                    buscandoFrase = true
+                                    error = null
+                                    ambito.launch {
+                                        app.repo.codigoDesdeFrase(usuario.trim().lowercase(), frase)
+                                            .onSuccess { codigo = it; fraseOk = true }
+                                            .onFailure {
+                                                error = (it as? ApiError)?.takeIf { e -> e.codigo == 404 }
+                                                    ?.let { "Esta cuenta no tiene una frase de recuperación configurada." }
+                                                    ?: (it.message ?: "No se pudo usar la frase.")
+                                            }
+                                        buscandoFrase = false
+                                    }
+                                },
+                            ) { Text(if (buscandoFrase) "Comprobando…" else "Usar la frase", color = Cian) }
+                        }
+                    } else {
+                        CampoCodigoRecuperacion(
+                            valor = codigo,
+                            onCambio = { codigo = it; error = null },
+                            ayuda = "Los 28 caracteres que anotaste al crearlo.",
+                        )
+                    }
 
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(

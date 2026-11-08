@@ -90,6 +90,14 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.11.0",
+            fecha = "07/11/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "Recuperación con frase: al crear tu código de recuperación podés elegir también una frase. Con esa frase recuperás la cuenta en un teléfono nuevo, sin tener el papel a mano."),
+                Cambio(TipoCambio.SEGURIDAD, "La frase cifra tu código en este teléfono y solo se guarda el resultado; el servidor nunca ve tu frase ni tu código. El código de papel sigue funcionando igual."),
+            ),
+        ),
+        NotasVersion(
             version = "0.10.0",
             fecha = "07/11/2026",
             cambios = listOf(

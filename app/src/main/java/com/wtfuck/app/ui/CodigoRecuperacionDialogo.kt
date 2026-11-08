@@ -71,6 +71,10 @@ fun DialogoCodigoRecuperacion(
     var escrito by remember { mutableStateOf("") }
     var clave by remember { mutableStateOf("") }
     var totp by remember { mutableStateOf("") }
+    // Fase 1: una frase OPCIONAL que guarda el codigo cifrado, para recuperar en
+    // un telefono nuevo sin el papel. Minimo 8 y con confirmacion.
+    var frase by remember { mutableStateOf("") }
+    var frase2 by remember { mutableStateOf("") }
     var trabajando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var copiado by remember { mutableStateOf(false) }
@@ -223,6 +227,65 @@ fun DialogoCodigoRecuperacion(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
+
+                    // --- frase de recuperacion (opcional) ---------------------
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "Frase de recuperación (opcional)",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Si elegís una frase, vas a poder recuperar la cuenta en un " +
+                            "teléfono nuevo con la frase, sin tener el papel a mano. " +
+                            "Elegí una que no uses en ningún otro lado y que no puedas olvidar.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = frase,
+                        onValueChange = { frase = it; error = null },
+                        label = { Text("Frase (mínimo 8 caracteres)") },
+                        singleLine = true,
+                        visualTransformation =
+                            androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Cian, unfocusedBorderColor = Slate,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (frase.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = frase2,
+                            onValueChange = { frase2 = it; error = null },
+                            label = { Text("Repetí la frase") },
+                            singleLine = true,
+                            isError = frase2.isNotEmpty() && frase2 != frase,
+                            visualTransformation =
+                                androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            supportingText = {
+                                Text(
+                                    when {
+                                        frase.length < 8 -> "La frase necesita al menos 8 caracteres."
+                                        frase2.isEmpty() -> "Escribila de nuevo para confirmar."
+                                        frase2 != frase -> "No coincide."
+                                        else -> "Coincide."
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (frase.length >= 8 && frase2 == frase) Cian else TextoTerciario,
+                                )
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Cian, unfocusedBorderColor = Slate,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
 
                 error?.let {
@@ -237,13 +300,17 @@ fun DialogoCodigoRecuperacion(
                     Text("Ya lo anoté", color = Cian, fontWeight = FontWeight.Medium)
                 }
             } else {
+                // La frase es opcional: o está vacía, o es válida (>=8 y confirmada).
+                val fraseOk = frase.isEmpty() || (frase.length >= 8 && frase == frase2)
                 TextButton(
-                    enabled = coincide && clave.isNotBlank() && !trabajando,
+                    enabled = coincide && clave.isNotBlank() && fraseOk && !trabajando,
                     onClick = {
                         trabajando = true
                         error = null
                         ambito.launch {
-                            app.repo.fijarRecuperacion(codigo, clave, totp.ifBlank { null })
+                            app.repo.fijarRecuperacion(
+                                codigo, clave, totp.ifBlank { null }, frase.ifBlank { null },
+                            )
                                 .onSuccess { onListo() }
                                 .onFailure { error = it.message ?: "No se pudo guardar." }
                             trabajando = false
