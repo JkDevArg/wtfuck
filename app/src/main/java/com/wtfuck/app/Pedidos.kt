@@ -34,6 +34,8 @@ sealed interface Pedido {
     data class AbrirEnlace(val codigo: String) : Pedido
     /** `wtfuck://reseteo?t=<token>`: resetear la contrasena con el enlace de un admin. */
     data class Reseteo(val token: String) : Pedido
+    /** `wtfuck://abrir?p=<ruta>`: abre una pantalla de ayuda (lo usan los enlaces del bot de recepcion). */
+    data class Abrir(val ruta: String) : Pedido
     /** [destino]: el chat que se eligio en la fila de compartir del sistema, si fue asi. */
     data class Compartir(val compartido: Compartido, val destino: String?) : Pedido
 }
@@ -44,6 +46,17 @@ sealed interface Pedido {
  * tocarlas abria la app en la lista y no en el chat.
  */
 object Pedidos {
+
+    /**
+     * Pantallas que un enlace EXTERNO (ej. el bot de recepcion) puede abrir.
+     * Lista blanca a proposito: un `wtfuck://abrir?p=...` lo escribe cualquiera,
+     * asi que solo dejamos pantallas de ayuda sin parametros ni datos sensibles
+     * (nada de panel admin, chats concretos, consola, etc.).
+     */
+    private val RUTAS_PERMITIDAS = setOf(
+        "bots", "seguridad", "copia-seguridad", "mi-enlace", "invitar",
+        "novedades", "privacidad", "contactos",
+    )
 
     /** Lo facil, sin tocar disco. Compartir va aparte: ver [compartido]. */
     fun simple(i: Intent): Pedido? {
@@ -57,6 +70,11 @@ object Pedidos {
             if (i.data?.host == "reseteo") {
                 return i.data?.getQueryParameter("t")?.takeIf { it.isNotBlank() }
                     ?.let { Pedido.Reseteo(it) }
+            }
+            // `wtfuck://abrir?p=<ruta>`: solo rutas de la lista blanca.
+            if (i.data?.host == "abrir") {
+                return i.data?.getQueryParameter("p")?.trim()?.takeIf { it in RUTAS_PERMITIDAS }
+                    ?.let { Pedido.Abrir(it) }
             }
             return com.wtfuck.app.datos.EnlaceDeContacto.codigoDe(i.dataString.orEmpty())
                 ?.let { Pedido.AbrirEnlace(it) }

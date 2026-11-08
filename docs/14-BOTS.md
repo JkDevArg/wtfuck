@@ -13,6 +13,9 @@ no puede leer nada; el bot, que es un participante, sí.
   como con los canales públicos.
 - **De herramienta:** corren nmap, nuclei, nikto, nessus. Son de doble uso, así
   que van con guardarraíles (abajo).
+- **De recepción (@rootbot):** bot **oficial** de bienvenida y ayuda. Guionado,
+  **sin IA**: saluda, explica cómo usar wtfuck y enlaza pantallas. No saca nada
+  de la burbuja E2EE. Ver "Bot de recepción" abajo.
 
 ## El modelo, decidido con el usuario (2026-10-08)
 
@@ -58,6 +61,45 @@ no puede leer nada; el bot, que es un participante, sí.
 | 3 | Bots de herramienta con scope (nmap primero) | **Hecha** (2026-10-08). nmap con términos + alcance por operador, exclusiones no anulables, cola y bitacora; probado de punta a punta en el emulador con un nmap de mentira |
 | 4 | Orquestador IA (lenguaje natural → acción) | **Hecha** (2026-10-08). gpt-oss-120b con metodología PTES/WSTG; agencia acotada (solo propone, no ejecuta). Falta la corrida e2e contra Groq real |
 | 5 | Aprobación del admin + agente de recon + listas | **Hecha** (2026-10-08). Alcance con aprobación (control de dos personas, probado en el emulador); agente de reconocimiento paso a paso con confirmación; rate limit; cargar objetivos desde un archivo de texto. Falta e2e del recon (Groq real) y de la carga por adjunto |
+| recepción | Bot oficial de bienvenida/ayuda (@rootbot), guionado sin IA | **Hecha** (2026-11-08). Modo `recepcion`: saludo + router de intención por palabras clave + deep-links a pantallas (`recepcion.ts`, 12 tests). Deep-link `wtfuck://abrir?p=<ruta>` en la app con lista blanca. Falta e2e contra el servidor |
+
+## Bot de recepción (@rootbot)
+
+Un bot **oficial** del sistema con el que cualquier usuario puede chatear para la
+bienvenida, aprender a usar wtfuck y resolver dudas. Decidido con el usuario
+(2026-11-08): **guionado, sin IA**, y **solo guía** (no crea bots por el usuario).
+
+**Por qué guionado y no IA.** Es el primer contacto de cada usuario nuevo. Con
+IA, cada mensaje saldría de la burbuja E2EE hacia un proveedor; para un bot
+oficial masivo eso contradice el producto. Guionado = nada sale, es determinista
+y no se puede "jailbreakear" para que hable en nombre de wtfuck. Todo lo que
+contesta vive en `bots/src/recepcion.ts` (respuestas fijas elegidas por
+intención: palabras clave sobre el texto normalizado, sin tildes ni mayúsculas).
+
+**Qué NO hace.** No tiene la sesión del usuario, así que **no crea ni lista los
+bots del usuario** por él. Explica y lo manda a la pantalla correcta con un
+deep-link `wtfuck://abrir?p=<ruta>`. La app solo abre rutas de una **lista
+blanca** de pantallas de ayuda (`Pedidos.RUTAS_PERMITIDAS`: bots, seguridad,
+copia-seguridad, mi-enlace, invitar, novedades, privacidad, contactos); un
+enlace lo escribe cualquiera, así que nada de panel admin, chats ni parámetros.
+
+**Cómo registrarlo (bot oficial, sin atestación).** El usuario del bot tiene que
+estar en `WTFUCK_BOTS` del **servidor** (`.env.produccion`), que es la lista de
+cuentas que pueden registrarse sin enclave (ver `Main.kt` / `Repo.kt`). Ej:
+
+    # en el servidor
+    WTFUCK_BOTS=rootbot
+
+    # en bots/.env del cliente que hospedás
+    WTFUCK_BOT_MODO=recepcion
+    WTFUCK_BOT_USUARIO=rootbot
+    WTFUCK_BOT_NOMBRE=RootBot
+    WTFUCK_BOT_WEB=webfck.tu-dominio.com   # opcional, aparece en los textos
+
+A diferencia de los bots de un usuario (que se crean desde "Mis bots" con un
+código de un solo uso), el de recepción es de la instancia y se declara en el
+servidor. Corre con el mismo cliente (`bots/`), reusa `cliente.ts` (E2EE) y no
+necesita Groq ni cola.
 
 ## Fase 1, lo que quedó
 

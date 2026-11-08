@@ -8,6 +8,9 @@
 //   charla      - responde con IA (Groq). Necesita GROQ_API_KEY.
 //   herramienta - corre nmap con alcance obligatorio. Necesita WTFUCK_BOT_SCOPE
 //                 y WTFUCK_BOT_OPERADORES.
+//   recepcion   - bot oficial de bienvenida y ayuda (@rootbot). Guionado, sin
+//                 IA: saluda, explica y enlaza pantallas. WTFUCK_BOT_WEB (opc.)
+//                 pone el dominio de la version web en los textos de ayuda.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Bot, type Modo } from './bot.ts';
@@ -192,6 +195,7 @@ const bot = new Bot({
   codigoBot: env('WTFUCK_BOT_CODIGO', ''),
   nombre,
   modo,
+  web: process.env['WTFUCK_BOT_WEB'],
   conCola: env('WTFUCK_BOT_COLA', esCharla ? 'false' : 'true') === 'true',
   inactividadMs: Number(env('WTFUCK_BOT_INACTIVIDAD_S', '600')) * 1000,
   log,

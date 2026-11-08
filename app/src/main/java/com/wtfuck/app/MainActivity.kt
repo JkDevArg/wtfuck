@@ -267,6 +267,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
                 .onSuccess { nav.navigate("chat/$it") }
             is Pedido.Compartir -> compartiendo = p
             is Pedido.Reseteo -> Unit // ya se atendio arriba
+            is Pedido.Abrir -> nav.navigate(p.ruta) // ruta ya validada contra la lista blanca
         }
     }
 

@@ -234,6 +234,16 @@
                 <data android:scheme="wtfuck" android:host="reseteo" />
             </intent-filter>
 
+            <!-- Enlace de navegacion: wtfuck://abrir?p=<ruta>. Lo usan los enlaces
+                 del bot de recepcion para abrir una pantalla de ayuda. Solo rutas
+                 de la lista blanca (ver `Pedidos.RUTAS_PERMITIDAS`). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="wtfuck" android:host="abrir" />
+            </intent-filter>
+
             <!-- Atajo fijo y destino de compartir. Ver `Atajos`. -->
             <meta-data
                 android:name="android.app.shortcuts"

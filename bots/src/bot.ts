@@ -21,8 +21,9 @@ import type { Orquestador, PasoPlan } from './orquestador.ts';
 import type { Agente, LimitesAgente } from './agente.ts';
 import { planearEgress, type MotorContenedor } from './sandbox.ts';
 import { Alcance } from './alcance.ts';
+import { bienvenida, menu, responder as responderRecepcion } from './recepcion.ts';
 
-export type Modo = 'eco' | 'charla' | 'herramienta';
+export type Modo = 'eco' | 'charla' | 'herramienta' | 'recepcion';
 
 export interface OpcionesBot {
   base: string;
@@ -35,6 +36,8 @@ export interface OpcionesBot {
   codigoBot?: string;
   nombre: string;
   modo: Modo;
+  // recepcion: dominio de la version web (opcional), para los textos de ayuda.
+  web?: string;
   conCola: boolean;
   inactividadMs: number;
   log: (m: string) => void;
@@ -102,6 +105,7 @@ export class Bot {
   private readonly ultimasPeticiones = new Map<string, number[]>(); // rate limit por operador
   private readonly porNombre = new Map<string, Herramienta>(); // /nombre → herramienta
   private readonly alcance: Alcance; // scope contra el server (aprobado por el panel)
+  private readonly saludadas = new Set<string>(); // recepcion: conversaciones ya saludadas
   private ocupado = false; // una sola herramienta corriendo a la vez
 
   constructor(private readonly o: OpcionesBot) {
@@ -138,6 +142,9 @@ export class Bot {
     this.conversacionDe.set(m.autorUsuario, m.conversacionId);
     const texto = m.texto.trim();
     const [cmd = '', ...resto] = texto.split(/\s+/);
+
+    // Recepción (@rootbot): guionado, sin cola ni IA. Se atiende entero acá.
+    if (this.o.modo === 'recepcion') return this.recepcion(m);
 
     if (cmd === '/ayuda' || cmd === '/start' || cmd === '/help') {
       return this.responder(m.conversacionId, this.ayuda());
@@ -176,6 +183,30 @@ export class Bot {
     }
     this.cola.tocar(m.autorUsuario);
     return this.responder(m.conversacionId, `Recibi: ${texto}`);
+  }
+
+  // ------------------------------------------------------------------
+  //  Modo recepcion: bot oficial de bienvenida y ayuda (@rootbot)
+  // ------------------------------------------------------------------
+
+  /**
+   * Guionado, sin IA ni cola: la primera vez en una conversación saluda con el
+   * menú; después responde la intención de cada mensaje (ver recepcion.ts). No
+   * tiene la sesión del usuario: solo explica y enlaza a las pantallas.
+   */
+  private async recepcion(m: MensajeEntrante): Promise<void> {
+    const conv = m.conversacionId;
+    const cfg = { web: this.o.web, nombre: this.o.nombre };
+    if (!this.saludadas.has(conv)) {
+      this.saludadas.add(conv);
+      await this.responder(conv, bienvenida(cfg));
+      // Si además trajo una pregunta concreta, la contesto (sin repetir el menú,
+      // que ya va en la bienvenida).
+      const r = responderRecepcion(m.texto, cfg);
+      if (r !== menu()) await this.responder(conv, r);
+      return;
+    }
+    return this.responder(conv, responderRecepcion(m.texto, cfg));
   }
 
   // ------------------------------------------------------------------
