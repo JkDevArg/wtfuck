@@ -610,13 +610,22 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
         <span className="nombre">{titulo(c)}</span>
         {esGrupo && <span className="miembros">{c.participantes.length + 1} miembros</span>}
         {c.tipo === 'directa' && (
-          <button
-            className="enlace cian derecha"
-            title="Llamar"
-            onClick={() => void iniciarLlamada(c.id, titulo(c)).catch(() => undefined)}
-          >
-            📞 Llamar
-          </button>
+          <>
+            <button
+              className="enlace cian derecha"
+              title="Llamar"
+              onClick={() => void iniciarLlamada(c.id, titulo(c), false).catch(() => undefined)}
+            >
+              📞
+            </button>
+            <button
+              className="enlace cian derecha"
+              title="Videollamada"
+              onClick={() => void iniciarLlamada(c.id, titulo(c), true).catch(() => undefined)}
+            >
+              🎥
+            </button>
+          </>
         )}
         <button className="enlace cian derecha" onClick={() => setVerHuellas(true)}>Verificar cifrado</button>
       </header>

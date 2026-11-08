@@ -29,11 +29,25 @@ export interface EstadoLlamada {
   conQuien: string;
   desdeMs: number;
   muteado: boolean;
+  /** Si la llamada es con video. */
+  conVideo: boolean;
+  /** La camara propia esta encendida. */
+  camaraEncendida: boolean;
+  /** Ya llega video del otro (para decidir si dibujar su recuadro). */
+  hayVideoRemoto: boolean;
+  /** Ya hay stream del otro (audio o video): la UI engancha el reproductor. */
+  remotoListo: boolean;
 }
 
 const inicial = (): EstadoLlamada => ({
   fase: 'inactiva', llamadaId: '', conversacionId: '', conQuien: '', desdeMs: 0, muteado: false,
+  conVideo: false, camaraEncendida: false, hayVideoRemoto: false, remotoListo: false,
 });
+
+/** Los streams para la UI (no van en el estado: son objetos, no datos). */
+let streamRemoto: MediaStream | null = null;
+export const streamLocalActual = (): MediaStream | null => streamLocal;
+export const streamRemotoActual = (): MediaStream | null => streamRemoto;
 
 // --- store observable (mismo patron que motor.ts, para useSyncExternalStore) ---
 let estado: EstadoLlamada = inicial();
@@ -53,9 +67,9 @@ export const llamadas = {
 // --- WebRTC ---
 let pc: RTCPeerConnection | null = null;
 let streamLocal: MediaStream | null = null;
-let audioRemoto: HTMLAudioElement | null = null;
 let turnActual: ConfigTurn | null = null;
 let ofertaPendiente: string | null = null;
+let conVideoPendiente = false;
 let candidatosPendientes: RTCIceCandidateInit[] = [];
 
 function iceServers(turn: ConfigTurn | null): RTCIceServer[] {
@@ -68,8 +82,8 @@ function iceServers(turn: ConfigTurn | null): RTCIceServer[] {
   return [];
 }
 
-function micro(): Promise<MediaStream> {
-  return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+function medios(conVideo: boolean): Promise<MediaStream> {
+  return navigator.mediaDevices.getUserMedia({ audio: true, video: conVideo });
 }
 
 function crearPc(conversacionId: string, llamadaId: string): RTCPeerConnection {
@@ -83,12 +97,10 @@ function crearPc(conversacionId: string, llamadaId: string): RTCPeerConnection {
     }
   };
   p.ontrack = (ev) => {
-    if (!audioRemoto) {
-      audioRemoto = new Audio();
-      audioRemoto.autoplay = true;
-    }
-    audioRemoto.srcObject = ev.streams[0] ?? null;
-    void audioRemoto.play().catch(() => undefined);
+    // El stream remoto (audio y, si hay, video) lo reproduce la UI en un
+    // elemento <audio>/<video>; aca solo se guarda y se avisa.
+    streamRemoto = ev.streams[0] ?? null;
+    emitir({ hayVideoRemoto: !!streamRemoto?.getVideoTracks().length, remotoListo: true });
   };
   p.onconnectionstatechange = () => {
     if (p.connectionState === 'failed') void colgar();
@@ -106,13 +118,11 @@ async function aplicarCandidatosPendientes(): Promise<void> {
 function cerrar(): void {
   streamLocal?.getTracks().forEach((t) => t.stop());
   streamLocal = null;
-  if (audioRemoto) {
-    audioRemoto.srcObject = null;
-    audioRemoto = null;
-  }
+  streamRemoto = null;
   pc?.close();
   pc = null;
   ofertaPendiente = null;
+  conVideoPendiente = false;
   candidatosPendientes = [];
   turnActual = null;
   estado = inicial();
@@ -121,21 +131,21 @@ function cerrar(): void {
 
 // --- acciones (las usa la UI) ---
 
-/** Llamar a la persona de una conversacion directa. */
-export async function iniciarLlamada(conversacionId: string, conQuien: string): Promise<void> {
+/** Llamar a la persona de una conversacion directa, con o sin video. */
+export async function iniciarLlamada(conversacionId: string, conQuien: string, conVideo = false): Promise<void> {
   if (estado.fase !== 'inactiva') return;
   try {
     const creada = await pedir<LlamadaCreada>('POST', '/v1/llamadas', {
-      conversacionId, conVideo: false, invitados: [],
+      conversacionId, conVideo, invitados: [],
     } satisfies IniciarLlamadaReq);
     turnActual = creada.turn;
-    streamLocal = await micro();
+    streamLocal = await medios(conVideo);
     pc = crearPc(conversacionId, creada.llamadaId);
     streamLocal.getTracks().forEach((t) => pc!.addTrack(t, streamLocal!));
     const oferta = await pc.createOffer();
     await pc.setLocalDescription(oferta);
-    await enviarSenalLlamada(conversacionId, llamadaOferta(creada.llamadaId, oferta.sdp ?? '', false));
-    emitir({ fase: 'llamando', llamadaId: creada.llamadaId, conversacionId, conQuien });
+    await enviarSenalLlamada(conversacionId, llamadaOferta(creada.llamadaId, oferta.sdp ?? '', conVideo));
+    emitir({ fase: 'llamando', llamadaId: creada.llamadaId, conversacionId, conQuien, conVideo, camaraEncendida: conVideo });
   } catch (x) {
     console.warn('no se pudo iniciar la llamada', x);
     cerrar();
@@ -150,7 +160,7 @@ export async function aceptar(): Promise<void> {
   try {
     const curso = await pedir<LlamadaEnCurso>('POST', `/v1/llamadas/${estado.llamadaId}/contestar`);
     turnActual = curso.turn;
-    streamLocal = await micro();
+    streamLocal = await medios(conVideoPendiente);
     pc = crearPc(estado.conversacionId, estado.llamadaId);
     streamLocal.getTracks().forEach((t) => pc!.addTrack(t, streamLocal!));
     await pc.setRemoteDescription({ type: 'offer', sdp: sdpOferta });
@@ -159,7 +169,7 @@ export async function aceptar(): Promise<void> {
     await pc.setLocalDescription(resp);
     await enviarSenalLlamada(estado.conversacionId, llamadaRespuesta(estado.llamadaId, resp.sdp ?? ''));
     ofertaPendiente = null;
-    emitir({ fase: 'en-curso', desdeMs: Date.now() });
+    emitir({ fase: 'en-curso', desdeMs: Date.now(), conVideo: conVideoPendiente, camaraEncendida: conVideoPendiente });
   } catch (x) {
     console.warn('no se pudo aceptar la llamada', x);
     await colgar();
@@ -194,6 +204,14 @@ export function alternarMute(): void {
   emitir({ muteado: nuevo });
 }
 
+/** Encender/apagar la camara (solo en videollamada). */
+export function alternarCamara(): void {
+  if (!streamLocal || !estado.conVideo) return;
+  const encender = !estado.camaraEncendida;
+  streamLocal.getVideoTracks().forEach((t) => { t.enabled = encender; });
+  emitir({ camaraEncendida: encender });
+}
+
 // --- señalizacion entrante (registrada en motor.ts) ---
 
 function alRecibirSenal(conversacionId: string, _origenDispositivo: string, origenUsername: string, carga: Carga): void {
@@ -206,8 +224,9 @@ function alRecibirSenal(conversacionId: string, _origenDispositivo: string, orig
       return;
     }
     ofertaPendiente = carga.sdp;
+    conVideoPendiente = carga.conVideo;
     candidatosPendientes = [];
-    emitir({ fase: 'sonando', llamadaId: carga.llamadaId, conversacionId, conQuien: origenUsername });
+    emitir({ fase: 'sonando', llamadaId: carga.llamadaId, conversacionId, conQuien: origenUsername, conVideo: carga.conVideo });
   } else if (esLlamadaRespuesta(carga)) {
     if (pc && estado.llamadaId === carga.llamadaId) {
       void pc.setRemoteDescription({ type: 'answer', sdp: carga.sdp })
