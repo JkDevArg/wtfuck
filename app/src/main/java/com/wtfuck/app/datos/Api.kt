@@ -999,6 +999,14 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun cambiarStaffPanel(username: String, nivel: Int): UsuarioPanel =
         pedir("$RUTA_PANEL/usuarios/$username/staff", "PUT", jsonApp.encodeToString(StaffReq(nivel)), true)
 
+    /** Genera un enlace de reseteo de contrasena para un usuario. Solo admin. */
+    suspend fun generarReseteo(username: String): EnlaceReseteo =
+        pedir("$RUTA_PANEL/usuarios/$username/reseteo", "POST", null, true)
+
+    /** Resetea la contrasena con el token del enlace. Sin sesion. */
+    suspend fun resetearConToken(token: String, passwordNueva: String): Unit =
+        pedir("$RUTA_CUENTA/reseteo", "POST", jsonApp.encodeToString(ReseteoReq(token, passwordNueva)), false)
+
     // --- modulo P: tipos de cuenta desde el panel ---------------------
     //
     // Cuelgan de /v1/panel y no de /v1/cuenta porque son de staff actuando

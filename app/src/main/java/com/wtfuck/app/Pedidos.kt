@@ -32,6 +32,8 @@ sealed interface Pedido {
     data object AbrirCopias : Pedido
     /** `wtfuck://c/<codigo>`: el enlace de contacto de alguien. */
     data class AbrirEnlace(val codigo: String) : Pedido
+    /** `wtfuck://reseteo?t=<token>`: resetear la contrasena con el enlace de un admin. */
+    data class Reseteo(val token: String) : Pedido
     /** [destino]: el chat que se eligio en la fila de compartir del sistema, si fue asi. */
     data class Compartir(val compartido: Compartido, val destino: String?) : Pedido
 }
@@ -51,6 +53,11 @@ object Pedidos {
         // El codigo sale validado o no sale: lo que llega por un enlace lo
         // escribio cualquiera.
         if (i.action == Intent.ACTION_VIEW && i.data?.scheme == "wtfuck") {
+            // El enlace de reseteo trae el token en `?t=`. Se maneja sin sesion.
+            if (i.data?.host == "reseteo") {
+                return i.data?.getQueryParameter("t")?.takeIf { it.isNotBlank() }
+                    ?.let { Pedido.Reseteo(it) }
+            }
             return com.wtfuck.app.datos.EnlaceDeContacto.codigoDe(i.dataString.orEmpty())
                 ?.let { Pedido.AbrirEnlace(it) }
         }

@@ -79,16 +79,25 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
  *
  * El numero tiene tres partes: MAYOR.MENOR.PARCHE (p.ej. 0.5.1).
  *
- *  - **Mejora pequena** —un arreglo, un pulido, un detalle—: sube el ULTIMO.
- *    0.5.0 -> 0.5.1 -> 0.5.2.
- *  - **Mejora grande** —una funcion nueva, un cambio que se nota mucho—: sube
- *    el DEL MEDIO y el ultimo vuelve a 0. 0.5.3 -> 0.6.0.
+ *  - **Mejora o arreglo** —una funcion nueva, un fix, un pulido, un detalle—:
+ *    sube el ULTIMO. 0.11.0 -> 0.11.1 -> 0.11.2. La mayoria de las versiones
+ *    son de estas; el numero del medio no deberia subir rapido.
+ *  - **Cambio grande** —un MODULO nuevo, una reescritura, algo que cambia la
+ *    app de fondo—: solo ahi sube el DEL MEDIO y el ultimo vuelve a 0.
+ *    0.11.7 -> 0.12.0.
  *
  * El primer numero (0.x) se queda en 0 hasta que la app se considere
  * terminada; ahi pasa a 1.0.0.
  */
 object Novedades {
     val historial: List<NotasVersion> = listOf(
+        NotasVersion(
+            version = "0.11.1",
+            fecha = "08/11/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "Recuperar la contraseña sin SMS ni correo: un administrador puede generarte un enlace de un solo uso. Lo abrís (en la web o en la app) y elegís una contraseña nueva."),
+            ),
+        ),
         NotasVersion(
             version = "0.11.0",
             fecha = "07/11/2026",

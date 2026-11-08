@@ -579,6 +579,18 @@ fun Application.modulo() {
             )
         }
 
+        // Pagina de reseteo de contrasena (enlace de un solo uso que genera un
+        // admin). Sin autenticar: el token ES la autorizacion. La pagina postea a
+        // /v1/cuenta/reseteo. Ver Panel.generarReseteo / Identidad.resetearConToken.
+        get("/r/{token}") {
+            call.response.headers.append(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'",
+            )
+            call.response.headers.append("Referrer-Policy", "no-referrer")
+            call.respondText(paginaReseteo(call.parameters["token"].orEmpty()), ContentType.Text.Html)
+        }
+
         // La version web: archivos estaticos, mismo origen. Ver `Web`.
         with(Web) { rutasWeb() }
 
@@ -1349,6 +1361,13 @@ fun Application.modulo() {
             call.respond(Identidad.sobreDeFrase(call.receive(), call.ipCliente()))
         }
 
+        // Resetear la contrasena con el token de un enlace que genero un admin.
+        // SIN sesion: la persona no puede entrar. Ver Identidad.resetearConToken.
+        post("$RUTA_CUENTA/reseteo") {
+            Identidad.resetearConToken(call.receive())
+            call.respond(HttpStatusCode.NoContent)
+        }
+
         // Da de alta un telefono NUEVO. Cuatro puertas: SMS, codigo de
         // recuperacion, segundo factor y contrasena nueva. Ver
         // `RecuperarDispositivoReq`.
@@ -1730,6 +1749,15 @@ fun Application.modulo() {
         put("$RUTA_PANEL/usuarios/{username}/staff") {
             val yo = call.autenticarPanel()
             call.respond(Panel.staff(yo, call.parameters["username"].orEmpty(), call.receive()))
+        }
+
+        // Genera un enlace de reseteo de contrasena para una persona que olvido
+        // la suya y no tiene SMS ni correo. Ver Panel.generarReseteo.
+        post("$RUTA_PANEL/usuarios/{username}/reseteo") {
+            val yo = call.autenticarPanel()
+            val base = System.getenv("WTFUCK_WEB_URL")?.takeIf { it.isNotBlank() }
+                ?: "https://${call.request.host()}"
+            call.respond(Panel.generarReseteo(yo, call.parameters["username"].orEmpty(), base))
         }
 
         // ============================================================
@@ -2348,6 +2376,71 @@ private fun io.ktor.server.application.ApplicationCall.autenticarPanel(): Auth {
             ?: throw ErrorNegocio(401, "Consola invalida o expirada.")
     }
     return autenticar()
+}
+
+/**
+ * La pagina que abre el enlace de reseteo de contrasena en un navegador.
+ *
+ * Autocontenida (como `EnlaceContacto.pagina`): no consulta la base, solo lleva
+ * el token y postea a `/v1/cuenta/reseteo`. El token es base32/base64url, asi que
+ * se filtra a [A-Za-z0-9-_] antes de inyectarlo, para no abrir un hueco de XSS.
+ * Si la persona tiene la app, Android puede abrir este mismo enlace en ella
+ * (App Links); esta pagina es el camino para quien no la tiene.
+ */
+private fun paginaReseteo(token: String): String {
+    val t = token.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+    return """<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recuperar contraseña</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; background:#0b0f14; color:#e6edf3; font-family:system-ui,sans-serif;
+         display:flex; min-height:100vh; align-items:center; justify-content:center; padding:16px; }
+  .caja { width:100%; max-width:380px; background:#131a22; border:1px solid #223042; border-radius:16px; padding:24px; }
+  h1 { font-size:20px; margin:0 0 6px; }
+  p { color:#9fb0c0; font-size:14px; margin:0 0 10px; }
+  label { display:block; font-size:13px; color:#9fb0c0; margin:12px 0 4px; }
+  input { width:100%; box-sizing:border-box; padding:11px 12px; border-radius:10px;
+          border:1px solid #2a3642; background:#0b0f14; color:#e6edf3; font-size:15px; }
+  button { width:100%; margin-top:18px; padding:12px; border:0; border-radius:10px;
+           background:#2bd4c4; color:#04302b; font-weight:700; font-size:15px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .msg { margin-top:14px; font-size:14px; }
+  .err { color:#ff6b6b; }
+  .ok { color:#2bd4c4; }
+</style></head>
+<body><div class="caja">
+  <h1>Recuperar contraseña</h1>
+  <p>Elegí una contraseña nueva para tu cuenta. Después vas a poder entrar con ella en la app.</p>
+  <label for="p1">Contraseña nueva (mínimo 10)</label>
+  <input id="p1" type="password" autocomplete="new-password">
+  <label for="p2">Repetila</label>
+  <input id="p2" type="password" autocomplete="new-password">
+  <button id="b">Guardar</button>
+  <div id="m" class="msg"></div>
+  <a href="wtfuck://reseteo?t=$t" style="display:block;text-align:center;margin-top:16px;color:#9fb0c0;font-size:13px;text-decoration:none;">¿Tenés la app instalada? Abrir en wtfuck</a>
+</div>
+<script>
+  var token = "$t";
+  var b = document.getElementById('b'), m = document.getElementById('m');
+  b.onclick = function() {
+    var p1 = document.getElementById('p1').value, p2 = document.getElementById('p2').value;
+    m.className = 'msg'; m.textContent = '';
+    if (p1.length < 10) { m.className='msg err'; m.textContent='La contraseña necesita al menos 10 caracteres.'; return; }
+    if (p1 !== p2) { m.className='msg err'; m.textContent='Las dos no coinciden.'; return; }
+    b.disabled = true;
+    fetch('/v1/cuenta/reseteo', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token: token, passwordNueva: p1 })
+    }).then(function(r){
+      if (r.ok) { m.className='msg ok'; m.textContent='Listo. Ya podés entrar a la app con tu contraseña nueva.'; b.style.display='none'; }
+      else { return r.json().then(function(j){ throw new Error((j&&j.motivo)||('Error '+r.status)); }); }
+    }).catch(function(e){ m.className='msg err'; m.textContent = e.message || 'No se pudo.'; b.disabled=false; });
+  };
+</script>
+</body></html>"""
 }
 
 private fun io.ktor.server.application.ApplicationCall.autenticar(): Auth {

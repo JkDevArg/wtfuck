@@ -250,9 +250,13 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
     // Lo que se pidio desde afuera. Ver `Pedidos`.
     var compartiendo by remember { mutableStateOf<Pedido.Compartir?>(null) }
     var enlaceAbierto by remember { mutableStateOf<String?>(null) }
+    var reseteoToken by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(pedido) {
         val p = pedido ?: return@LaunchedEffect
         onAtendido()
+        // El reseteo de contrasena funciona SIN sesion -es justo cuando no se
+        // puede entrar-, asi que se atiende antes del gate de sesion.
+        if (p is Pedido.Reseteo) { reseteoToken = p.token; return@LaunchedEffect }
         // Sin sesion no hay a donde ir: el pedido se descarta.
         if (!app.sesion.hayS) return@LaunchedEffect
         when (p) {
@@ -262,6 +266,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
             Pedido.AbrirNota -> runCatching { app.repo.abrirNotaParaMi() }
                 .onSuccess { nav.navigate("chat/$it") }
             is Pedido.Compartir -> compartiendo = p
+            is Pedido.Reseteo -> Unit // ya se atendio arriba
         }
     }
 
@@ -297,6 +302,16 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
                 preseleccion = c.destino,
                 onCerrar = { compartiendo = null },
                 onAbrirChat = { nav.navigate("chat/$it") },
+            )
+        }
+    }
+
+    reseteoToken?.let { tok ->
+        // Funciona con o sin sesion. Nunca encima del bloqueo.
+        if (!bloqueada) {
+            com.wtfuck.app.ui.DialogoReseteoClave(
+                token = tok,
+                onCerrar = { reseteoToken = null },
             )
         }
     }

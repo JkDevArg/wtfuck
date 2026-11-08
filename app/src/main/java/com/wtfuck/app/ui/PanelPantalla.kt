@@ -977,9 +977,12 @@ private fun HojaPersona(
 
     // La ficha trae nombre, estado y foto, que UsuarioPanel no tiene. Se pide al
     // abrir; mientras llega, la hoja muestra lo de moderacion igual.
+    val portapapeles = androidx.compose.ui.platform.LocalClipboardManager.current
     var ficha by remember { mutableStateOf<FichaUsuarioPanel?>(null) }
     var nombre by remember { mutableStateOf("") }
     var estado by remember { mutableStateOf("") }
+    // Enlace de reseteo de contrasena recien generado, para copiar/pasar.
+    var enlace by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(persona.username) {
         app.repo.fichaUsuarioPanel(persona.username).onSuccess {
             ficha = it; nombre = it.nombreMostrado; estado = it.estadoTexto
@@ -1148,6 +1151,42 @@ private fun HojaPersona(
                                 }
                             }
                         }
+                }
+
+                // --- recuperar contraseña (enlace de un solo uso) -------------
+                if (puedeSancionar) {
+                    Spacer(Modifier.height(14.dp))
+                    Text("Recuperar contraseña", style = MaterialTheme.typography.labelLarge, color = TextoSecundario)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Para quien olvidó la contraseña y no tiene SMS ni correo. Generás un " +
+                            "enlace de un solo uso y se lo pasás; con él elige una contraseña nueva.",
+                        style = MaterialTheme.typography.bodySmall, color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    val lnk = enlace
+                    if (lnk == null) {
+                        Accion("Generar enlace de recuperación", Cian, trabajando) {
+                            trabajando = true
+                            ambito.launch {
+                                app.repo.generarReseteo(persona.username)
+                                    .onSuccess { enlace = it.url; trabajando = false }
+                                    .onFailure { onError(it.message ?: "No se pudo."); trabajando = false }
+                            }
+                        }
+                    } else {
+                        Surface(color = BgSurface, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            Text(lnk, color = Cian, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Vence en 48 horas y sirve una sola vez. Pasáselo por un medio seguro.",
+                            style = MaterialTheme.typography.labelSmall, color = TextoTerciario,
+                        )
+                        Accion("Copiar el enlace", Cian, false) {
+                            portapapeles.setText(androidx.compose.ui.text.AnnotatedString(lnk))
+                        }
+                    }
                 }
             }
         },

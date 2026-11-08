@@ -418,6 +418,38 @@ object Panel {
         return ficha(yo, username)
     }
 
+    private val rndReseteo = java.security.SecureRandom()
+
+    /**
+     * Genera un enlace de reseteo de contrasena para un usuario, de un solo uso
+     * y con vencimiento. Para quien olvido la clave y no tiene SMS ni correo.
+     *
+     * Solo administrador y por encima del objetivo. Se guarda el HASH del token;
+     * la URL (con el token en claro) se devuelve una sola vez, para pasarsela a
+     * la persona. Ver `V58__reseteo_de_password.sql` y `Identidad.resetearConToken`.
+     */
+    fun generarReseteo(yo: Auth, username: String, baseUrl: String): EnlaceReseteo = Db.tx { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+        val objetivo = Moderacion.idDeUsername(c, username)
+        if (objetivo != yo.usuarioId && Moderacion.nivel(c, objetivo) >= Moderacion.nivel(c, yo.usuarioId)) {
+            throw ErrorNegocio(403, "No puedes resetear la contrasena de alguien de tu mismo nivel o superior.")
+        }
+        val bytes = ByteArray(32).also { rndReseteo.nextBytes(it) }
+        val token = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        val expira = c.prepareStatement(
+            """INSERT INTO reseteo_password (token_hash, usuario_id, creado_por, expira_en)
+               VALUES (?, ?, ?, now() + interval '48 hours')
+               RETURNING extract(epoch FROM expira_en) * 1000"""
+        ).use { st ->
+            st.setBytes(1, Cripto.hashToken(token))
+            st.setObject(2, objetivo)
+            st.setObject(3, yo.usuarioId)
+            st.executeQuery().use { rs -> rs.next(); rs.getDouble(1).toLong() }
+        }
+        Autz.auditar(c, yo.usuarioId, "usuario.reseteo_generado", "usuario", objetivo, objetivoId = objetivo)
+        EnlaceReseteo("${baseUrl.trimEnd('/')}/r/$token", expira)
+    }
+
     /**
      * Semilla del primer propietario.
      *

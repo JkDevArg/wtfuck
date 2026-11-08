@@ -225,6 +225,15 @@
                 <data android:scheme="wtfuck" android:host="c" />
             </intent-filter>
 
+            <!-- Enlace de reseteo de contrasena: wtfuck://reseteo?t=<token>. Lo
+                 abre el boton de la pagina del servidor. Ver `Pedidos`. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="wtfuck" android:host="reseteo" />
+            </intent-filter>
+
             <!-- Atajo fijo y destino de compartir. Ver `Atajos`. -->
             <meta-data
                 android:name="android.app.shortcuts"

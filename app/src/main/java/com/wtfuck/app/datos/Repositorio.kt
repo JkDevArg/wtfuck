@@ -4606,6 +4606,14 @@ class Repositorio(
     suspend fun cambiarStaffPanel(username: String, nivel: Int): Result<UsuarioPanel> =
         runCatching { api.cambiarStaffPanel(username, nivel) }
 
+    /** Genera un enlace de reseteo de contrasena para un usuario. Solo admin. */
+    suspend fun generarReseteo(username: String): Result<EnlaceReseteo> =
+        runCatching { api.generarReseteo(username) }
+
+    /** Resetea la contrasena con el token del enlace (quien olvido la clave). */
+    suspend fun resetearConToken(token: String, passwordNueva: String): Result<Unit> =
+        runCatching { api.resetearConToken(token, passwordNueva) }
+
     /**
      * Asigna un tipo de cuenta a otra persona. Solo administrador.
      *

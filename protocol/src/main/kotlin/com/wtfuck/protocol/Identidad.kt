@@ -295,6 +295,19 @@ data class PedirSobreReq(val username: String)
 data class SobreRecuperacion(val sobreFraseB64: String)
 
 /**
+ * Resetear la contrasena con el token de un enlace que genero un administrador.
+ * Sin sesion: la persona no puede entrar, justamente por eso lo pidio.
+ *
+ * Cambia SOLO la contrasena (la credencial de ingreso). No descifra nada ni da
+ * de alta aparatos: el device binding y el E2EE siguen intactos.
+ */
+@Serializable
+data class ReseteoReq(
+    val token: String,
+    val passwordNueva: String,
+)
+
+/**
  * Recupera la cuenta EN UN TELEFONO NUEVO. No pide sesion: es justo el caso
  * en que no se puede tener una.
  *

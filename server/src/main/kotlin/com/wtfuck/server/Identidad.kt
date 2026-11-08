@@ -521,6 +521,45 @@ object Identidad {
         Unit
     }
 
+    /**
+     * Resetea la contrasena con el token de un enlace que genero un admin.
+     *
+     * Cambia SOLO la credencial de ingreso y cierra las sesiones (no los
+     * dispositivos: el device binding sigue, asi que la persona re-ingresa en su
+     * telefono con la clave nueva). No descifra nada ni da de alta aparatos.
+     * El token es de un solo uso y con vencimiento: se quema al usarse.
+     */
+    fun resetearConToken(req: ReseteoReq) = Db.tx { c ->
+        if (req.passwordNueva.length < 10) {
+            throw ErrorNegocio(400, "La contrasena nueva necesita al menos 10 caracteres.")
+        }
+        val hash = Cripto.hashToken(req.token.trim())
+        val id = c.prepareStatement(
+            """SELECT usuario_id FROM reseteo_password
+               WHERE token_hash = ? AND usado_en IS NULL AND expira_en > now()
+               FOR UPDATE"""
+        ).use { st ->
+            st.setBytes(1, hash)
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+        } ?: throw ErrorNegocio(400, "Este enlace no existe, ya se uso o vencio. Pedi uno nuevo.")
+
+        c.prepareStatement("UPDATE usuario SET password_hash = ? WHERE id = ?").use { st ->
+            st.setString(1, Cripto.hashPassword(req.passwordNueva))
+            st.setObject(2, id)
+            st.executeUpdate()
+        }
+        c.prepareStatement("UPDATE reseteo_password SET usado_en = now() WHERE token_hash = ?").use { st ->
+            st.setBytes(1, hash); st.executeUpdate()
+        }
+        val cerradas = revocarTodas(c, id, salvo = null, porQuien = id)
+        Seguridad.anotar(
+            c, id, "ingreso",
+            detalle = """{"accion":"reseteo_admin","sesiones_cerradas":$cerradas}""",
+        )
+        Autz.auditar(c, id, "cuenta.reseteo_admin", "usuario", id)
+        Unit
+    }
+
     // ============================================================
     //  El codigo de recuperacion
     // ============================================================

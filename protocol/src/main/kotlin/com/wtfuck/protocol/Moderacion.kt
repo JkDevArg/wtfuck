@@ -339,6 +339,18 @@ data class SuspenderReq(
 @Serializable
 data class StaffReq(val nivel: Int)
 
+/**
+ * El enlace de reseteo de contrasena que genera un administrador para una
+ * persona que olvido la suya y no tiene SMS ni correo. De un solo uso.
+ */
+@Serializable
+data class EnlaceReseteo(
+    /** La URL completa para pasarle a la persona. Abre en web o en la app. */
+    val url: String,
+    /** Cuando vence, epoch ms. */
+    val expiraEn: Long,
+)
+
 /** Editar, desde el panel, el nombre mostrado y el estado de un usuario. */
 @Serializable
 data class EditarPerfilPanelReq(
