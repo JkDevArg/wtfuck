@@ -1007,6 +1007,15 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun resetearConToken(token: String, passwordNueva: String): Unit =
         pedir("$RUTA_CUENTA/reseteo", "POST", jsonApp.encodeToString(ReseteoReq(token, passwordNueva)), false)
 
+    // --- bots gestionados (V59) ---------------------------------------
+    suspend fun crearBot(req: CrearBotReq): BotCreado =
+        pedir(RUTA_BOTS, "POST", jsonApp.encodeToString(req), true)
+    suspend fun misBots(): MisBots = pedir(RUTA_BOTS, "GET", null, true)
+    suspend fun borrarBot(username: String): Unit =
+        pedir("$RUTA_BOTS/$username", "DELETE", null, true)
+    suspend fun directorioBots(q: String): DirectorioBots =
+        pedir("$RUTA_BOTS/directorio?q=${java.net.URLEncoder.encode(q, "UTF-8")}", "GET", null, true)
+
     // --- modulo P: tipos de cuenta desde el panel ---------------------
     //
     // Cuelgan de /v1/panel y no de /v1/cuenta porque son de staff actuando

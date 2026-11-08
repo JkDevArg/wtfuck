@@ -4614,6 +4614,16 @@ class Repositorio(
     suspend fun resetearConToken(token: String, passwordNueva: String): Result<Unit> =
         runCatching { api.resetearConToken(token, passwordNueva) }
 
+    // --- bots gestionados ---
+    suspend fun crearBot(nombre: String, publico: Boolean, descripcion: String): Result<BotCreado> =
+        runCatching { api.crearBot(CrearBotReq(nombre, publico, descripcion)) }
+    suspend fun misBots(): List<BotResumen> =
+        runCatching { api.misBots().bots }.getOrElse { emptyList() }
+    suspend fun borrarBot(username: String): Result<Unit> =
+        runCatching { api.borrarBot(username) }
+    suspend fun directorioBots(q: String): List<BotEnDirectorio> =
+        runCatching { api.directorioBots(q).bots }.getOrElse { emptyList() }
+
     /**
      * Asigna un tipo de cuenta a otra persona. Solo administrador.
      *

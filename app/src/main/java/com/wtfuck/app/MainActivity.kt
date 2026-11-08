@@ -381,6 +381,7 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
                     onPanel = { nav.navigate("panel") },
                     onNovedades = { nav.navigate("novedades") },
                     onCopiaSeguridad = { nav.navigate("copia-seguridad") },
+                    onBots = { nav.navigate("bots") },
                     onMiEnlace = { nav.navigate("mi-enlace") },
                     onInvitar = { nav.navigate("invitar") },
                     onDifusiones = { nav.navigate("difusiones") },
@@ -520,6 +521,9 @@ private fun Raiz(bloqueada: Boolean = false, pedido: Pedido? = null, onAtendido:
             NovedadesPantalla(onAtras = { nav.popBackStack() })
         }
 
+        composable("bots") {
+            com.wtfuck.app.ui.BotsPantalla(onAtras = { nav.popBackStack() })
+        }
         composable("copia-seguridad") {
             CopiaSeguridadPantalla(onAtras = { nav.popBackStack() })
         }

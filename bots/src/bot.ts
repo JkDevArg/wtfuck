@@ -31,6 +31,8 @@ export interface OpcionesBot {
   password: string;
   etiqueta: string;
   nivel: string;
+  /** Codigo de alta del bot (primer arranque). Ver ConfigCliente.codigoBot. */
+  codigoBot?: string;
   nombre: string;
   modo: Modo;
   conCola: boolean;
@@ -111,6 +113,7 @@ export class Bot {
       password: o.password,
       etiqueta: o.etiqueta,
       nivel: o.nivel,
+      codigoBot: o.codigoBot,
       log: o.log,
     });
     this.alcance = new Alcance(this.cliente, o.excluidos ?? ['169.254.0.0/16', '127.0.0.0/8']);

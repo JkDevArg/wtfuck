@@ -72,6 +72,12 @@ export interface ConfigCliente {
   etiqueta: string;
   /** STRONGBOX | TEE | SOFTWARE_DEV (local). El servidor decide si lo acepta. */
   nivel: string;
+  /**
+   * El codigo de alta del bot (lo da "Mis bots" en la app). Solo hace falta en
+   * el PRIMER arranque, para registrar la cuenta del bot sin atestacion. Despues
+   * queda la sesion guardada y ya no se usa.
+   */
+  codigoBot?: string;
   log: (m: string) => void;
 }
 
@@ -134,6 +140,7 @@ export class Cliente {
         identidadPub: identidad,
         hardwareHash,
         hardwareNivel: this.cfg.nivel,
+        codigoBot: this.cfg.codigoBot ?? '',
       },
       false,
     );

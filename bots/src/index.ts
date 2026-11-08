@@ -188,6 +188,8 @@ const bot = new Bot({
   password: env('WTFUCK_BOT_PASSWORD'),
   etiqueta: env('WTFUCK_BOT_ETIQUETA', 'bot'),
   nivel: env('WTFUCK_BOT_NIVEL', 'SOFTWARE_DEV'),
+  // El codigo de alta que da "Mis bots" en la app. Solo el primer arranque.
+  codigoBot: env('WTFUCK_BOT_CODIGO', ''),
   nombre,
   modo,
   conCola: env('WTFUCK_BOT_COLA', esCharla ? 'false' : 'true') === 'true',

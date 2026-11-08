@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shield
@@ -125,6 +126,7 @@ fun PerfilPantalla(
     onPanel: () -> Unit,
     onNovedades: () -> Unit,
     onCopiaSeguridad: () -> Unit,
+    onBots: () -> Unit,
     onSeguridad: () -> Unit,
     onLlamadas: () -> Unit,
     onNotificaciones: () -> Unit,
@@ -504,8 +506,14 @@ fun PerfilPantalla(
                         else -> "Guarda tus chats cifrados para no perderlos"
                     },
                     tinte = if (copiaVencida) Ambar else Cian,
-                    conDivisor = false,
                     onClick = onCopiaSeguridad,
+                )
+                FilaAjuste(
+                    icono = Icons.Filled.SmartToy,
+                    titulo = "Mis bots",
+                    detalle = "Creá bots para automatizar o responder por vos",
+                    conDivisor = false,
+                    onClick = onBots,
                 )
             }
 
