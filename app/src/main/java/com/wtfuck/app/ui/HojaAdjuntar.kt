@@ -40,6 +40,8 @@ private data class OpcionAdjunto(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HojaAdjuntar(
+    /** Sacar una foto con la camara y adjuntarla (pasa por el editor). */
+    onCamara: () -> Unit,
     onGaleria: () -> Unit,
     /** Foto o video para ver una vez. Ver `CargaAdjunto.unaVez`. */
     onUnaVez: () -> Unit,
@@ -62,6 +64,7 @@ fun HojaAdjuntar(
     onCerrar: () -> Unit,
 ) {
     val opciones = listOfNotNull(
+        OpcionAdjunto("Camara", Icons.Filled.PhotoCamera, Cian, onCamara),
         OpcionAdjunto("Galeria", Icons.Filled.Image, Cian, onGaleria),
         OpcionAdjunto("Ver una vez", Icons.Filled.LooksOne, Coral, onUnaVez),
         OpcionAdjunto("Videonota", Icons.Filled.RadioButtonChecked, Ambar, onVideonota),

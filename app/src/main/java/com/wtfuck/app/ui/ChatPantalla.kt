@@ -521,6 +521,9 @@ private fun ChatAbierto(
     /** La foto elegida que se esta editando antes de mandarla. Ver `EditorFotoChat`. */
     var fotoAEditar by remember { mutableStateOf<android.net.Uri?>(null) }
 
+    /** Donde la camara escribe la foto recien sacada (FileProvider). */
+    var fotoCamaraUri by remember { mutableStateOf<android.net.Uri?>(null) }
+
     fotoAEditar?.let { foto ->
         EditorFotoChat(
             foto = foto,
@@ -618,6 +621,38 @@ private fun ChatAbierto(
     val elegirDocumento = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { mandarArchivo(it, ClaseAdjunto.DOCUMENTO) } }
+
+    // Sacar una foto con la camara. La camara del sistema escribe en la Uri que
+    // le damos (un temporal via FileProvider); al volver, la foto pasa por el
+    // MISMO editor que las de galeria (`fotoAEditar`) y de ahi se envia.
+    val sacarFoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { ok ->
+        val uri = fotoCamaraUri
+        fotoCamaraUri = null
+        if (ok && uri != null) {
+            fotoUnaVez = false
+            fotoAEditar = uri
+        }
+    }
+
+    fun abrirCamara() {
+        runCatching {
+            val archivo = app.archivos.temporalNombrado("foto-${java.util.UUID.randomUUID()}.jpg")
+            val uri = app.archivos.uriCompartible(archivo)
+            fotoCamaraUri = uri
+            sacarFoto.launch(uri)
+        }.onFailure { aviso = "No se pudo abrir la cámara." }
+    }
+
+    // La camara con ACTION_IMAGE_CAPTURE pide el permiso CAMARA porque la app lo
+    // declara en el manifest. Se pide en el momento, no al arrancar.
+    val permisoCamara = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { concedido ->
+        if (concedido) abrirCamara()
+        else aviso = "Sin permiso de cámara no puedo sacar la foto."
+    }
 
     /**
      * El reloj de la barra de grabacion.
@@ -1565,6 +1600,13 @@ private fun ChatAbierto(
 
     if (hojaAdjuntar) {
         HojaAdjuntar(
+            onCamara = {
+                hojaAdjuntar = false
+                val ya = androidx.core.content.ContextCompat.checkSelfPermission(
+                    contexto, android.Manifest.permission.CAMERA,
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (ya) abrirCamara() else permisoCamara.launch(android.Manifest.permission.CAMERA)
+            },
             onGaleria = {
                 elegirVarios.launch(
                     androidx.activity.result.PickVisualMediaRequest(
