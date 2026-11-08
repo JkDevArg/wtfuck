@@ -859,6 +859,23 @@ fun Application.modulo() {
 
         get(RUTA_CONVERSACIONES) { call.respond(Repo.listar(call.autenticar())) }
 
+        // Bots gestionados (V59). Crear/listar/borrar los propios, y el
+        // directorio de bots publicos. Ver Bots.kt y protocol/Bots.kt.
+        post(RUTA_BOTS) {
+            call.respond(Bots.crear(call.autenticar(), call.receive()))
+        }
+        get(RUTA_BOTS) {
+            call.respond(MisBots(Bots.mios(call.autenticar())))
+        }
+        delete("$RUTA_BOTS/{username}") {
+            call.autenticar().let { Bots.borrar(it, call.parameters["username"].orEmpty()) }
+            call.respond(HttpStatusCode.NoContent)
+        }
+        get("$RUTA_BOTS/directorio") {
+            call.autenticar()
+            call.respond(DirectorioBots(Bots.directorio(call.request.queryParameters["q"].orEmpty())))
+        }
+
         post(RUTA_DIRECTA) {
             val yo = call.autenticar()
             val req = call.receive<DirectaReq>()

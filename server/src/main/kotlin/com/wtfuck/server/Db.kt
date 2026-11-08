@@ -96,6 +96,7 @@ object Db {
         56 to "/db/V56__publicar_como_canal.sql",
         57 to "/db/V57__sobre_de_frase.sql",
         58 to "/db/V58__reseteo_de_password.sql",
+        59 to "/db/V59__bots.sql",
     )
 
     /**

@@ -93,6 +93,12 @@ data class RegistroReq(
      * Vacia desde la web y desde una app vieja. Ver `Atestacion.kt`.
      */
     val atestacion: List<String> = emptyList(),
+    /**
+     * El codigo de un bot (ver [RUTA_BOTS]). Si viene y es valido, esta cuenta
+     * se registra como bot: sin atestacion de hardware -un bot no tiene chip- y
+     * vinculada al bot que el dueno creo. Vacio en un registro normal.
+     */
+    val codigoBot: String = "",
 )
 
 /**

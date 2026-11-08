@@ -88,7 +88,11 @@ object Repo {
         // Una cuenta de bot declarada (WTFUCK_BOTS) puede registrarse sin enclave
         // aunque el server no lo permita en general: es headless, no tiene chip.
         // Solo afecta a esos usernames; el resto sigue exigiendo enclave.
-        val esBot = user in Config.bots
+        // Un bot creado por un dueno (V59) se registra con su codigo de un solo
+        // uso, sin enclave: es headless, no tiene chip. `duenoDelBot` no nulo
+        // significa que el codigo es valido y la cuenta del bot aun no existe.
+        val duenoDelBot: UUID? = if (r.codigoBot.isNotBlank()) Bots.validar(c, user, r.codigoBot) else null
+        val esBot = user in Config.bots || duenoDelBot != null
         nivelParaPrincipal(
             r.hardwareNivel,
             permitirSoftwareDev = Config.permitirSoftwareDev || esBot,
@@ -188,6 +192,9 @@ object Repo {
         // Quien entro con cada codigo. Despues del INSERT, que es cuando ya
         // hay un id al que apuntar.
         invitacion?.let { Invitaciones.anotarUso(c, it, usuarioId) }
+
+        // Si es el alta de un bot por su codigo, se vincula la cuenta al bot.
+        if (duenoDelBot != null) Bots.marcarRegistrado(c, user, usuarioId)
 
         // El propietario queda con su nivel AL REGISTRARSE, no solo al
         // arrancar el servidor.
