@@ -74,12 +74,15 @@ object Web {
 
     val CSP: String = listOf(
         "default-src 'none'",
-        "script-src 'self' 'wasm-unsafe-eval'",
+        // El CAPTCHA (Cloudflare Turnstile) carga su script y un iframe desde
+        // challenges.cloudflare.com. Si no se usa, no cambia nada.
+        "script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com",
         "style-src 'self'",
         "img-src 'self' blob: data:",
         "media-src 'self' blob:",
         "font-src 'self'",
         "connect-src 'self'" + (origenAlmacen?.let { " $it" } ?: ""),
+        "frame-src https://challenges.cloudflare.com",
         "worker-src 'self'",
         "manifest-src 'self'",
         "base-uri 'none'",

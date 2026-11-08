@@ -115,7 +115,11 @@ object Invitaciones {
      * que alguien rellene un formulario entero para que lo rechacen al final.
      */
     fun modo(): ModoRegistroResp =
-        ModoRegistroResp(requiereInvitacion = exigeInvitacion, registroWeb = Correos.disponible)
+        ModoRegistroResp(
+            requiereInvitacion = exigeInvitacion,
+            registroWeb = Correos.disponible,
+            captchaSitekey = Turnstile.sitekey,
+        )
 
     // ------------------------------------------------------------------
     //  La puerta, antes del limite de ritmo

@@ -99,6 +99,12 @@ data class RegistroReq(
      * vinculada al bot que el dueno creo. Vacio en un registro normal.
      */
     val codigoBot: String = "",
+    /**
+     * Token del CAPTCHA (Cloudflare Turnstile). Lo manda la web; el servidor lo
+     * verifica si tiene el CAPTCHA activo. Vacio desde la app (va por atestacion)
+     * o si el servidor no lo usa.
+     */
+    val captcha: String = "",
 )
 
 /**
@@ -117,6 +123,11 @@ data class ModoRegistroResp(
      * nadie y el registro web queda cerrado.
      */
     val registroWeb: Boolean = false,
+    /**
+     * CAPTCHA (Cloudflare Turnstile): la clave publica para dibujar el widget, o
+     * vacio si el servidor no usa CAPTCHA. La web lo muestra solo si viene.
+     */
+    val captchaSitekey: String = "",
 )
 
 /**

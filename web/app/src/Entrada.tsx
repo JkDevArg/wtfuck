@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ErrorApi } from './datos/api';
+import { WidgetTurnstile } from './Turnstile';
 import {
   crearInvitacion, misInvitaciones, modoRegistro, pedirCodigoCorreo, recuperarCuenta, registrarse, revocarInvitacion,
   type Invitacion, type ModoRegistro,
@@ -30,7 +31,7 @@ export function AvisoIos() {
 //  Crear la cuenta
 // ---------------------------------------------------------------------------
 
-export function Registro({ etiquetaInicial, onCodigo }: { etiquetaInicial: string; onCodigo: (c: string) => void }) {
+export function Registro({ etiquetaInicial, captchaSitekey, onCodigo }: { etiquetaInicial: string; captchaSitekey?: string; onCodigo: (c: string) => void }) {
   const [invitacion, setInvitacion] = useState(() => new URLSearchParams(location.search).get('invitacion') ?? '');
   const [correo, setCorreo] = useState('');
   const [paso, setPaso] = useState<'correo' | 'cuenta'>('correo');
@@ -42,6 +43,7 @@ export function Registro({ etiquetaInicial, onCodigo }: { etiquetaInicial: strin
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [captcha, setCaptcha] = useState('');
 
   async function enviarCodigo(ev: FormEvent) {
     ev.preventDefault();
@@ -66,11 +68,15 @@ export function Registro({ etiquetaInicial, onCodigo }: { etiquetaInicial: strin
       setError('Las contraseñas no coinciden.');
       return;
     }
+    if (captchaSitekey && !captcha) {
+      setError('Primero resuelve el CAPTCHA.');
+      return;
+    }
     setOcupado(true);
     setError(null);
     try {
       const codigoRecuperacion = await registrarse({
-        username: usuario, password: clave, correo, codigoCorreo: codigo, invitacion, etiqueta: etiqueta.trim() || 'Navegador',
+        username: usuario, password: clave, correo, codigoCorreo: codigo, invitacion, etiqueta: etiqueta.trim() || 'Navegador', captcha,
       });
       onCodigo(codigoRecuperacion);
     } catch (x) {
@@ -114,8 +120,9 @@ export function Registro({ etiquetaInicial, onCodigo }: { etiquetaInicial: strin
       <label>Nombre de este navegador
         <input value={etiqueta} onChange={(e) => setEtiqueta(e.target.value)} maxLength={64} />
       </label>
+      {captchaSitekey && <WidgetTurnstile sitekey={captchaSitekey} onToken={setCaptcha} />}
       {error && <p className="error" role="alert">{error}</p>}
-      <button type="submit" disabled={ocupado}>{ocupado ? 'Creando la cuenta…' : 'Crear la cuenta'}</button>
+      <button type="submit" disabled={ocupado || (!!captchaSitekey && !captcha)}>{ocupado ? 'Creando la cuenta…' : 'Crear la cuenta'}</button>
       <button type="button" className="enlace" onClick={() => setPaso('correo')}>Cambiar el correo o la invitación</button>
     </form>
   );

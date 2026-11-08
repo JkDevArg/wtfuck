@@ -177,7 +177,11 @@ object Correos {
 
     fun exigir(crudo: String): String {
         val c = normalizar(crudo) ?: throw ErrorNegocio(400, "Ese correo no parece valido.")
-        if (desechable(c)) {
+        // Los correos temporales se PERMITEN por defecto: el abuso se corta con
+        // el limite de registros por IP y el CAPTCHA, no bloqueando dominios (una
+        // lista que nunca esta al dia). Se pueden volver a bloquear con
+        // WTFUCK_BLOQUEAR_CORREOS_TEMPORALES=true.
+        if (System.getenv("WTFUCK_BLOQUEAR_CORREOS_TEMPORALES") == "true" && desechable(c)) {
             throw ErrorNegocio(400, "No se aceptan correos temporales. Usa uno que vayas a conservar.")
         }
         return c

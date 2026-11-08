@@ -652,7 +652,10 @@ object Cupos {
      * hardware, que hoy no se verifica. Esto convierte "sin tope" en "un tope
      * por sitio", y nada mas.
      */
-    val REGISTROS_POR_RED_DIA get() = Limitador.efectiva("registro_red_dia", Regla(2000, Duration.ofDays(1)))
+    // Holgado a proposito: bajo para cortar el abuso (registros masivos con
+    // correos temporales), pero no tanto que rompa una IP compartida (una
+    // oficina, un campus). Ajustable desde el panel de Limites sin recompilar.
+    val REGISTROS_POR_RED_DIA get() = Limitador.efectiva("registro_red_dia", Regla(10, Duration.ofDays(1)))
 
     /**
      * Suma uno y devuelve el total de la ventana. Una sola ida a la base:

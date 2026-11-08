@@ -634,6 +634,9 @@ fun Application.modulo() {
             val red = Seguridad.redDe(ip)
             Limitador.exigir(null, red, "registro_red", Limitador.REGISTRO_RED)
             Cupos.exigirPorRed(red, ip, "registro", Cupos.REGISTROS_POR_RED_DIA)
+            // CAPTCHA solo para el registro WEB: la app ya pasa por la atestacion
+            // del chip. Si el CAPTCHA no esta configurado, no exige nada.
+            if (req.hardwareNivel == NivelHardware.NAVEGADOR) Turnstile.verificar(req.captcha, ip)
 
             val resp = Repo.registrar(req, ip, call.request.headers["User-Agent"])
             // El alta es el primer evento de la cuenta, y es el que da sentido

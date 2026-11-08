@@ -72,7 +72,7 @@ function Entrada({ onCodigo }: { onCodigo: (c: string) => void }) {
           <button role="tab" aria-selected={actual === 'recuperar'} className={actual === 'recuperar' ? 'activa' : ''} onClick={() => setPestana('recuperar')}>Recuperar</button>
         )}
       </div>
-      {actual === 'crear' && <Registro etiquetaInicial={nombreDelNavegador()} onCodigo={onCodigo} />}
+      {actual === 'crear' && <Registro etiquetaInicial={nombreDelNavegador()} captchaSitekey={modo?.captchaSitekey ?? ''} onCodigo={onCodigo} />}
       {actual === 'vincular' && <Vincular />}
       {actual === 'recuperar' && <Recuperar etiquetaInicial={nombreDelNavegador()} />}
       <Confianza />

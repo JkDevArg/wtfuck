@@ -393,7 +393,7 @@ export async function vincular(username: string, codigo: string, etiqueta: strin
 // Pasa dos puertas que la app no pasa: una invitación web y un correo
 // verificado. Ver docs/12-VERSION-WEB.md, "W5".
 
-export interface ModoRegistro { requiereInvitacion: boolean; registroWeb: boolean }
+export interface ModoRegistro { requiereInvitacion: boolean; registroWeb: boolean; captchaSitekey?: string }
 
 export const modoRegistro = () => pedir<ModoRegistro>('GET', '/v1/registro/modo', undefined, false);
 
@@ -426,6 +426,7 @@ async function entrar(r: SesionNueva, hardwareHash: string, etiqueta: string): P
  */
 export async function registrarse(datos: {
   username: string; password: string; correo: string; codigoCorreo: string; invitacion: string; etiqueta: string;
+  captcha?: string;
 }): Promise<string> {
   const { identidad } = await cripto.crearIdentidad();
   const hardwareHash = b64.a(crypto.getRandomValues(new Uint8Array(32)));
@@ -439,6 +440,7 @@ export async function registrarse(datos: {
     codigoInvitacion: datos.invitacion.trim(),
     correo: datos.correo.trim(),
     codigoCorreo: datos.codigoCorreo.trim(),
+    captcha: datos.captcha ?? '',
   }, false);
   await entrar(r, hardwareHash, datos.etiqueta);
   const codigo = await recuperacion.generar();
