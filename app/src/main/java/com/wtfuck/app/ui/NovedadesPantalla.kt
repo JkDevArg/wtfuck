@@ -92,6 +92,14 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.11.2",
+            fecha = "08/11/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.MEJORA, "Aviso para activar la copia de seguridad: tus mensajes viven solo en el teléfono, y una copia es la única forma de no perderlos si lo cambiás, reinstalás la app o recuperás la cuenta."),
+                Cambio(TipoCambio.SEGURIDAD, "Al recuperar la contraseña, un aviso claro para que no borres el historial por error (no desinstalar ni usar \"Perdí mi teléfono\")."),
+            ),
+        ),
+        NotasVersion(
             version = "0.11.1",
             fecha = "08/11/2026",
             cambios = listOf(

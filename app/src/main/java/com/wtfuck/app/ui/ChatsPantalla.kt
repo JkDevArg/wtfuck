@@ -113,6 +113,8 @@ fun ChatsPantalla(
     modifier: Modifier = Modifier,
     /** Las listas de difusion. Ver `DifusionesPantalla`. */
     onDifusiones: () -> Unit = {},
+    /** Ir a la copia de seguridad, desde el aviso que empuja a activarla. */
+    onCopiaSeguridad: () -> Unit = {},
 ) {
     val app = LocalContext.current.applicationContext as WtfuckApp
     var cercaAbierto by remember { mutableStateOf(false) }
@@ -153,6 +155,18 @@ fun ChatsPantalla(
     // Social. Ver `SocialPantalla`.
 
     var verArchivados by rememberSaveable { mutableStateOf(false) }
+    // Empujar la copia de seguridad: la unica red real contra perder el
+    // historial local (que vive solo en el telefono). Se muestra si no hay
+    // copia activa y no se descarto antes.
+    val prefsUi = remember {
+        contextoLista.getSharedPreferences("wtfuck_ui", android.content.Context.MODE_PRIVATE)
+    }
+    var avisoCopia by remember {
+        mutableStateOf(
+            !com.wtfuck.app.datos.CopiaAutomatica.Config(contextoLista).activa &&
+                !prefsUi.getBoolean("copia_aviso_off", false)
+        )
+    }
     var filtro by rememberSaveable { mutableStateOf(Filtro.TODOS) }
     // Carpetas: ver `Carpetas`. Si hay una elegida, manda sobre `filtro`.
     val carpetas by app.repo.carpetas.collectAsStateWithLifecycle(emptyList())
@@ -572,6 +586,37 @@ fun ChatsPantalla(
                 // llega hasta abajo.
                 contentPadding = PaddingValues(bottom = 88.dp),
             ) {
+                if (avisoCopia && busqueda.isBlank()) {
+                    item {
+                        Surface(
+                            color = Ambar.copy(alpha = 0.10f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(
+                                    "Activá la copia de seguridad",
+                                    style = MaterialTheme.typography.titleSmall, color = TextoPrimario,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Tus mensajes viven solo en este teléfono. Si lo cambiás, " +
+                                        "reinstalás la app o recuperás la cuenta, sin una copia se pierden.",
+                                    style = MaterialTheme.typography.bodySmall, color = TextoSecundario,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = onCopiaSeguridad) { Text("Activar", color = Cian) }
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(onClick = {
+                                        avisoCopia = false
+                                        prefsUi.edit().putBoolean("copia_aviso_off", true).apply()
+                                    }) { Text("Ahora no", color = TextoSecundario) }
+                                }
+                            }
+                        }
+                    }
+                }
                 if (!verArchivados && nArchivados > 0) {
                     item {
                         Row(

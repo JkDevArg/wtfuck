@@ -54,6 +54,16 @@ fun DialogoReseteoClave(token: String, onCerrar: () -> Unit) {
                         "Elegí una contraseña nueva para tu cuenta.",
                         style = MaterialTheme.typography.bodySmall, color = TextoSecundario,
                     )
+                    Spacer(Modifier.height(10.dp))
+                    Surface(color = Ambar.copy(alpha = 0.10f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Importante: después entrá con la contraseña nueva en ESTE teléfono. " +
+                                "No desinstales la app ni uses \"Perdí mi teléfono\": tus mensajes " +
+                                "viejos viven solo acá y se perderían.",
+                            style = MaterialTheme.typography.labelSmall, color = Ambar,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = p1,

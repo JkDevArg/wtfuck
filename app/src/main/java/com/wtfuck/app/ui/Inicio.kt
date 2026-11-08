@@ -156,6 +156,7 @@ fun Inicio(
                     onContactos = onContactos,
                     modifier = hueco,
                     onDifusiones = onDifusiones,
+                    onCopiaSeguridad = onCopiaSeguridad,
                 )
 
                 Pestana.SOCIAL -> SocialPantalla(

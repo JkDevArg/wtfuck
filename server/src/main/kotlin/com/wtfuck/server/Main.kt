@@ -2414,6 +2414,9 @@ private fun paginaReseteo(token: String): String {
 <body><div class="caja">
   <h1>Recuperar contraseña</h1>
   <p>Elegí una contraseña nueva para tu cuenta. Después vas a poder entrar con ella en la app.</p>
+  <p style="background:#2a1f00;border:1px solid #5a4300;border-radius:10px;padding:10px 12px;color:#e9c46a;font-size:13px;">
+    <b>Importante:</b> cuando vuelvas a entrar, hacelo desde tu app en ESTE teléfono con la contraseña nueva. <b>No desinstales la app</b> ni uses "Perdí mi teléfono": tus mensajes viejos viven solo en el teléfono y se perderían.
+  </p>
   <label for="p1">Contraseña nueva (mínimo 10)</label>
   <input id="p1" type="password" autocomplete="new-password">
   <label for="p2">Repetila</label>
