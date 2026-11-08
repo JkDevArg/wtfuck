@@ -231,3 +231,17 @@ form button[type=submit], .escribir button {
 .velo { padding-top: calc(16px + env(safe-area-inset-top)); padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 /* Safari en iPhone hace zoom al enfocar un campo con letra de menos de 16 px. */
 @media (pointer: coarse) { input, textarea, select { font-size: 16px; } }
+
+/* Grid del buscador de GIFs. */
+.gifs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; margin-top: 10px; max-height: 50vh; overflow-y: auto; }
+.gif-item { padding: 0; border: 0; background: var(--borde); border-radius: 8px; overflow: hidden; cursor: pointer; aspect-ratio: 1; }
+.gif-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gif-cargando { display: block; width: 100%; height: 100%; background: var(--borde); }
+/* El boton "GIF" de la barra: mismo alto que los demas, con texto. */
+.escribir .adjuntar { font-weight: 700; font-size: 13px; }
+
+/* Mis stickers. */
+.sticker-item { position: relative; background: var(--borde); }
+.sticker-enviar { width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.sticker-enviar img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.sticker-x { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border: 0; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; font-size: 15px; line-height: 1; cursor: pointer; padding: 0; }

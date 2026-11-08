@@ -295,6 +295,20 @@ export interface Destino {
   etiqueta: string;
 }
 
+// --- GIFs (modulo del buscador): servicio del servidor, no van cifrados en el
+//     catalogo; al enviarse se bajan y van como un adjunto de imagen normal ---
+export interface GifResumen {
+  id: string;
+  titulo: string;
+  ancho: number;
+  alto: number;
+  bytes: number;
+}
+export interface BusquedaGifs {
+  resultados: GifResumen[];
+  aviso: string;
+}
+
 // --- llamadas (modulo K): metadatos por HTTP; la señalizacion va cifrada arriba ---
 export interface ConfigTurn {
   urls: string[];

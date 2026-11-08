@@ -14,6 +14,8 @@ import { Avatar } from './Avatar';
 import { fotoDeConversacion } from './datos/avatares';
 import { CapaLlamada } from './Llamada';
 import { iniciarLlamada } from './datos/llamadas';
+import { PanelGifs } from './Gifs';
+import { PanelStickers } from './Stickers';
 
 const usarMotor = () => useSyncExternalStore(motor.suscribir, motor.instantanea);
 
@@ -551,6 +553,8 @@ function Burbuja({ m, esGrupo, onResponder, onEditar }: {
 function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; onAtras: () => void }) {
   const [borrador, setBorrador] = useState('');
   const [verHuellas, setVerHuellas] = useState(false);
+  const [verGifs, setVerGifs] = useState(false);
+  const [verStickers, setVerStickers] = useState(false);
   const [citado, setCitado] = useState<Mensaje | null>(null);
   const [editando, setEditando] = useState<Mensaje | null>(null);
   const [errorArchivo, setErrorArchivo] = useState<string | null>(null);
@@ -629,6 +633,8 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
         </div>
       )}
       {verHuellas && <Huellas c={c} onCerrar={() => setVerHuellas(false)} />}
+      {verGifs && <PanelGifs conversacionId={c.id} onCerrar={() => setVerGifs(false)} />}
+      {verStickers && <PanelStickers conversacionId={c.id} onCerrar={() => setVerStickers(false)} />}
       <div className="mensajes" role="log" aria-live="polite">
         {mensajes.map((m) => (
           <Burbuja key={m.id} m={m} esGrupo={esGrupo}
@@ -663,6 +669,12 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
           <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6L15 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
+        </button>
+        <button className="adjuntar" onClick={() => setVerGifs(true)} aria-label="Enviar un GIF" title="GIF" disabled={!!editando}>
+          GIF
+        </button>
+        <button className="adjuntar" onClick={() => setVerStickers(true)} aria-label="Enviar un sticker" title="Stickers" disabled={!!editando}>
+          🙂
         </button>
         {!borrador.trim() && !editando && <Grabador conversacionId={c.id} onError={setErrorArchivo} />}
         <textarea
