@@ -317,6 +317,19 @@ data class UsuarioPanel(
 @Serializable
 data class UsuariosPanel(val usuarios: List<UsuarioPanel> = emptyList())
 
+/**
+ * La ficha completa de un usuario en el panel: lo de moderacion ([UsuarioPanel])
+ * mas los datos de perfil que el panel puede ver y editar.
+ */
+@Serializable
+data class FichaUsuarioPanel(
+    val usuario: UsuarioPanel,
+    val nombreMostrado: String = "",
+    val estadoTexto: String = "",
+    /** Foto de perfil, 0 si no tiene. URL con ?v=, como en el resto. */
+    val avatarVersion: Long = 0,
+)
+
 @Serializable
 data class SuspenderReq(
     val motivo: String,
@@ -325,6 +338,13 @@ data class SuspenderReq(
 
 @Serializable
 data class StaffReq(val nivel: Int)
+
+/** Editar, desde el panel, el nombre mostrado y el estado de un usuario. */
+@Serializable
+data class EditarPerfilPanelReq(
+    val nombreMostrado: String = "",
+    val estadoTexto: String = "",
+)
 
 // ============================================================
 //  Eventos de seguridad

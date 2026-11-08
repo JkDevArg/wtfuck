@@ -237,6 +237,8 @@ export interface UsuarioPublico {
   nombreMostrado?: string;
   enLinea?: boolean;
   ultimaVez?: number;
+  /** Marca de tiempo de la foto, o 0/ausente si no tiene. Cache-buster. */
+  avatarVersion?: number;
 }
 
 export interface ConversacionResumen {
@@ -247,6 +249,8 @@ export interface ConversacionResumen {
   archivado: boolean;
   fijado: boolean;
   esSolicitud: boolean;
+  /** Foto del grupo o canal, o 0/ausente si no tiene. En directas es 0. */
+  avatarVersion?: number;
 }
 
 export interface VincularHecho {

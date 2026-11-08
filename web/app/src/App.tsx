@@ -10,6 +10,8 @@ import { AvisoIos, CodigoNuevo, Invitaciones, Recuperar, Registro, usarModoRegis
 import { NuevoChat } from './Contactos';
 import { decodificarOnda, Grabacion, mimeDeGrabacion } from './datos/grabadora';
 import { ErrorApi } from './datos/api';
+import { Avatar } from './Avatar';
+import { fotoDeConversacion } from './datos/avatares';
 
 const usarMotor = () => useSyncExternalStore(motor.suscribir, motor.instantanea);
 
@@ -342,7 +344,7 @@ function FilaChat({ c, activa, onAbrir }: { c: Conversacion; activa: boolean; on
   return (
     <li>
       <button className={`fila ${activa ? 'activa' : ''}`} onClick={onAbrir}>
-        <span className="avatar" aria-hidden="true">{t.slice(0, 2).toUpperCase()}</span>
+        <Avatar nombre={t} {...fotoDeConversacion(c)} />
         <span className="cuerpo">
           <span className="arriba">
             <span className="nombre">{t}</span>

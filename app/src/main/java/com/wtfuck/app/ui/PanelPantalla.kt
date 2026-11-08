@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wtfuck.app.WtfuckApp
+import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.*
 import kotlinx.coroutines.launch
@@ -974,7 +975,25 @@ private fun HojaPersona(
     var motivo by remember { mutableStateOf("") }
     var trabajando by remember { mutableStateOf(false) }
 
+    // La ficha trae nombre, estado y foto, que UsuarioPanel no tiene. Se pide al
+    // abrir; mientras llega, la hoja muestra lo de moderacion igual.
+    var ficha by remember { mutableStateOf<FichaUsuarioPanel?>(null) }
+    var nombre by remember { mutableStateOf("") }
+    var estado by remember { mutableStateOf("") }
+    LaunchedEffect(persona.username) {
+        app.repo.fichaUsuarioPanel(persona.username).onSuccess {
+            ficha = it; nombre = it.nombreMostrado; estado = it.estadoTexto
+        }
+    }
+    val avatarVersion = ficha?.avatarVersion ?: 0L
+
+    // Administrador y estrictamente por encima del objetivo: la misma regla que
+    // exige el servidor para suspender, editar, quitar foto o cambiar staff.
     val puedeSancionar = nivelPropio >= 80 && persona.staffNivel < nivelPropio
+
+    // Los niveles que ESTE admin puede asignar: por debajo del suyo. Nombre
+    // legible para la linea "ahora es ...".
+    val nivelesStaff = listOf("Usuario" to 0, "Moderador" to 50, "Administrador" to 80, "Propietario" to 100)
 
     AlertDialog(
         onDismissRequest = { if (!trabajando) onCerrar() },
@@ -982,6 +1001,79 @@ private fun HojaPersona(
         title = { Text("@${persona.username}", color = TextoPrimario, fontSize = 18.sp) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                // Foto, centrada. Quien puede sancionar y hay foto, puede quitarla.
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Avatar(persona.username, ApiCliente.urlImagen(persona.username, "avatar", avatarVersion), 72.dp)
+                }
+                if (puedeSancionar && avatarVersion > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    Accion("Quitar la foto de perfil", Coral, trabajando) {
+                        trabajando = true
+                        ambito.launch {
+                            app.repo.quitarFotoPanel(persona.username)
+                                .onSuccess { ficha = it; trabajando = false }
+                                .onFailure { onError(it.message ?: "No se pudo."); trabajando = false }
+                        }
+                    }
+                }
+
+                // Editar nombre y estado. Solo administrador (y por encima).
+                if (puedeSancionar) {
+                    Spacer(Modifier.height(14.dp))
+                    Text("Perfil", style = MaterialTheme.typography.labelLarge, color = TextoSecundario)
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = nombre,
+                        onValueChange = { if (it.length <= 48) nombre = it },
+                        label = { Text("Nombre mostrado") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cian, unfocusedBorderColor = Slate),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = estado,
+                        onValueChange = { if (it.length <= 140) estado = it },
+                        label = { Text("Estado") },
+                        minLines = 2,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cian, unfocusedBorderColor = Slate),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Accion("Guardar nombre y estado", Cian, trabajando) {
+                        trabajando = true
+                        ambito.launch {
+                            app.repo.editarPerfilPanel(persona.username, nombre.trim(), estado.trim())
+                                .onSuccess { ficha = it; trabajando = false }
+                                .onFailure { onError(it.message ?: "No se pudo."); trabajando = false }
+                        }
+                    }
+
+                    // Nivel de staff: solo los niveles por debajo del propio y
+                    // distintos del actual. El servidor lo vuelve a exigir.
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "Nivel actual: " + (nivelesStaff.firstOrNull { it.second == persona.staffNivel }?.first ?: "Usuario"),
+                        style = MaterialTheme.typography.labelLarge, color = TextoSecundario,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    nivelesStaff.filter { it.second < nivelPropio && it.second != persona.staffNivel }.forEach { (etq, n) ->
+                        Accion(if (n == 0) "Quitar staff (pasar a Usuario)" else "Hacer $etq", Cian, trabajando) {
+                            trabajando = true
+                            ambito.launch {
+                                app.repo.cambiarStaffPanel(persona.username, n)
+                                    .onSuccess { onHecho("@${persona.username} ahora es $etq.", it) }
+                                    .onFailure { onError(it.message ?: "No se pudo."); trabajando = false }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Text("Moderación", style = MaterialTheme.typography.labelLarge, color = TextoSecundario)
+                Spacer(Modifier.height(6.dp))
                 if (persona.suspendido) {
                     Text(
                         "Suspendido" + (persona.suspendidoHasta

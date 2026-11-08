@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { ErrorApi } from './datos/api';
 import { buscarPersonas, crearGrupo, empezarChat, personaExacta } from './datos/motor';
 import type { UsuarioPublico } from './datos/protocolo';
+import { Avatar } from './Avatar';
+import { fotoDeUsuario } from './datos/avatares';
 
 const mensaje = (x: unknown, otro: string) => (x instanceof ErrorApi || x instanceof Error ? x.message : otro);
 
@@ -94,7 +96,7 @@ export function NuevoChat({ onCerrar, onAbrir }: { onCerrar: () => void; onAbrir
                 onClick={() => (modo === 'chat' ? void chatCon(u) : alternar(u))}
                 disabled={ocupado}
               >
-                <span className="avatar" aria-hidden="true">{(u.nombreMostrado || u.username).slice(0, 2).toUpperCase()}</span>
+                <Avatar nombre={u.nombreMostrado || u.username} {...fotoDeUsuario(u)} />
                 <span className="cuerpo">
                   <span className="arriba"><span className="nombre">{u.nombreMostrado || '@' + u.username}</span>{u.enLinea && <span className="cuando">en línea</span>}</span>
                   <span className="abajo"><span className="previa">@{u.username}</span>{elegido && <span className="globo">✓</span>}</span>

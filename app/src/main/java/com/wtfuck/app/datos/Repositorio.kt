@@ -4563,6 +4563,22 @@ class Repositorio(
     suspend fun restaurarUsuario(username: String): Result<UsuarioPanel> =
         runCatching { api.restaurarUsuario(username) }
 
+    /** La ficha completa de un usuario para el panel (perfil + moderacion). */
+    suspend fun fichaUsuarioPanel(username: String): Result<FichaUsuarioPanel> =
+        runCatching { api.fichaUsuarioPanel(username) }
+
+    /** Edita nombre y estado de un usuario desde el panel. Solo administrador. */
+    suspend fun editarPerfilPanel(username: String, nombre: String, estado: String): Result<FichaUsuarioPanel> =
+        runCatching { api.editarPerfilPanel(username, EditarPerfilPanelReq(nombre, estado)) }
+
+    /** Quita la foto de perfil de un usuario (moderacion). Solo administrador. */
+    suspend fun quitarFotoPanel(username: String): Result<FichaUsuarioPanel> =
+        runCatching { api.quitarFotoPanel(username) }
+
+    /** Cambia el nivel de staff de un usuario (0/50/80/100). Solo administrador. */
+    suspend fun cambiarStaffPanel(username: String, nivel: Int): Result<UsuarioPanel> =
+        runCatching { api.cambiarStaffPanel(username, nivel) }
+
     /**
      * Asigna un tipo de cuenta a otra persona. Solo administrador.
      *

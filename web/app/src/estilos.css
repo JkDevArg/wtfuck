@@ -105,7 +105,10 @@ form button[type=submit], .escribir button {
 .avatar {
   width: 42px; height: 42px; border-radius: 50%; background: var(--borde); color: var(--cian);
   display: grid; place-items: center; font-weight: 600; font-size: 14px; flex-shrink: 0;
+  overflow: hidden;
 }
+/* La foto cubre el circulo entero; sin object-fit se deformaria. */
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cuerpo { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .arriba, .abajo { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 /* min-width: 0 en los hijos de un flex: sin eso no se encogen y la fila

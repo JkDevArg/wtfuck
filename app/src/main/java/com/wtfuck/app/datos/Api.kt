@@ -983,6 +983,18 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun restaurarUsuario(username: String): UsuarioPanel =
         pedir("$RUTA_PANEL/usuarios/$username/restaurar", "POST", null, true)
 
+    suspend fun fichaUsuarioPanel(username: String): FichaUsuarioPanel =
+        pedir("$RUTA_PANEL/usuarios/$username", "GET", null, true)
+
+    suspend fun editarPerfilPanel(username: String, req: EditarPerfilPanelReq): FichaUsuarioPanel =
+        pedir("$RUTA_PANEL/usuarios/$username/perfil", "PUT", jsonApp.encodeToString(req), true)
+
+    suspend fun quitarFotoPanel(username: String): FichaUsuarioPanel =
+        pedir("$RUTA_PANEL/usuarios/$username/foto", "DELETE", null, true)
+
+    suspend fun cambiarStaffPanel(username: String, nivel: Int): UsuarioPanel =
+        pedir("$RUTA_PANEL/usuarios/$username/staff", "PUT", jsonApp.encodeToString(StaffReq(nivel)), true)
+
     // --- modulo P: tipos de cuenta desde el panel ---------------------
     //
     // Cuelgan de /v1/panel y no de /v1/cuenta porque son de staff actuando

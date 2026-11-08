@@ -347,6 +347,78 @@ object Panel {
     }
 
     /**
+     * La ficha completa de un usuario: lo de moderacion ([uno]) mas los datos de
+     * perfil (nombre, estado, foto). La puede ver cualquier staff.
+     */
+    fun ficha(yo: Auth, username: String): FichaUsuarioPanel {
+        val base = uno(yo, username)
+        return Db.query { c ->
+            c.prepareStatement(
+                """SELECT coalesce(nombre_mostrado,''), coalesce(estado_texto,''),
+                          coalesce(extract(epoch FROM avatar_actualizado) * 1000, 0)::bigint
+                   FROM usuario WHERE username = ?"""
+            ).use { st ->
+                st.setString(1, base.username)
+                st.executeQuery().use { rs ->
+                    rs.primero {
+                        FichaUsuarioPanel(
+                            usuario = base,
+                            nombreMostrado = it.getString(1),
+                            estadoTexto = it.getString(2),
+                            avatarVersion = it.getLong(3),
+                        )
+                    }
+                } ?: FichaUsuarioPanel(base)
+            }
+        }
+    }
+
+    /**
+     * Editar el nombre mostrado y el estado de un usuario desde el panel.
+     *
+     * Solo administrador, y nunca sobre alguien de nivel igual o mayor: la misma
+     * regla que suspender o cambiar staff. Los limites (48 / 140) son los del
+     * CHECK de la base (V2), para no chocar con la restriccion.
+     */
+    fun editarPerfil(yo: Auth, username: String, req: EditarPerfilPanelReq): FichaUsuarioPanel {
+        Db.tx { c ->
+            Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+            val objetivo = Moderacion.idDeUsername(c, username)
+            if (objetivo != yo.usuarioId && Moderacion.nivel(c, objetivo) >= Moderacion.nivel(c, yo.usuarioId)) {
+                throw ErrorNegocio(403, "No puedes editar el perfil de alguien de tu mismo nivel o superior.")
+            }
+            val nombre = req.nombreMostrado.trim().take(48).ifBlank { null }
+            val estado = req.estadoTexto.trim().take(140).ifBlank { null }
+            c.prepareStatement("UPDATE usuario SET nombre_mostrado = ?, estado_texto = ? WHERE id = ?").use { st ->
+                st.setString(1, nombre); st.setString(2, estado); st.setObject(3, objetivo)
+                st.executeUpdate()
+            }
+            Autz.auditar(c, yo.usuarioId, "usuario.editar_perfil", "usuario", objetivo, objetivoId = objetivo)
+        }
+        return ficha(yo, username)
+    }
+
+    /**
+     * Quitar la foto de perfil de un usuario (moderacion de un avatar
+     * inapropiado). Solo administrador, y no sobre un igual o superior. No se
+     * pone una foto nueva en su nombre: solo se borra.
+     */
+    fun quitarFoto(yo: Auth, username: String): FichaUsuarioPanel {
+        Db.tx { c ->
+            Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+            val objetivo = Moderacion.idDeUsername(c, username)
+            if (objetivo != yo.usuarioId && Moderacion.nivel(c, objetivo) >= Moderacion.nivel(c, yo.usuarioId)) {
+                throw ErrorNegocio(403, "No puedes tocar a alguien de tu mismo nivel o superior.")
+            }
+            c.prepareStatement("UPDATE usuario SET avatar = NULL, avatar_actualizado = NULL WHERE id = ?").use { st ->
+                st.setObject(1, objetivo); st.executeUpdate()
+            }
+            Autz.auditar(c, yo.usuarioId, "usuario.quitar_foto", "usuario", objetivo, objetivoId = objetivo)
+        }
+        return ficha(yo, username)
+    }
+
+    /**
      * Semilla del primer propietario.
      *
      * Hay un problema de arranque real: solo un administrador puede nombrar

@@ -1689,11 +1689,26 @@ fun Application.modulo() {
             call.respond(UsuariosPanel(Panel.usuarios(yo, q)))
         }
 
+        get("$RUTA_PANEL/usuarios/{username}") {
+            val yo = call.autenticarPanel()
+            call.respond(Panel.ficha(yo, call.parameters["username"].orEmpty()))
+        }
+
         get("$RUTA_PANEL/usuarios/{username}/eventos") {
             val yo = call.autenticarPanel()
             call.respond(
                 EventosSeguridadResp(Panel.eventosDe(yo, call.parameters["username"].orEmpty()))
             )
+        }
+
+        put("$RUTA_PANEL/usuarios/{username}/perfil") {
+            val yo = call.autenticarPanel()
+            call.respond(Panel.editarPerfil(yo, call.parameters["username"].orEmpty(), call.receive()))
+        }
+
+        delete("$RUTA_PANEL/usuarios/{username}/foto") {
+            val yo = call.autenticarPanel()
+            call.respond(Panel.quitarFoto(yo, call.parameters["username"].orEmpty()))
         }
 
         post("$RUTA_PANEL/usuarios/{username}/suspender") {
