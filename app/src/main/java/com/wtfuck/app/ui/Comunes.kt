@@ -89,6 +89,19 @@ fun claseDeTipo(tipo: String?): ClaseDeChat = when (tipo) {
 }
 
 /**
+ * La URL de la foto de un chat: la del OTRO si es una directa, la de la
+ * CONVERSACION si es grupo o canal. `null` cuando no hay foto, para que el
+ * avatar caiga al icono de la clase o a las iniciales.
+ */
+fun urlAvatarChat(convId: String, tipo: String?, avatarUsername: String, avatarVersion: Long): String? =
+    when (claseDeTipo(tipo)) {
+        ClaseDeChat.DIRECTA -> com.wtfuck.app.datos.ApiCliente.urlImagen(avatarUsername, "avatar", avatarVersion)
+        ClaseDeChat.GRUPO, ClaseDeChat.CANAL ->
+            com.wtfuck.app.datos.ApiCliente.urlImagenConversacion(convId, avatarVersion)
+        ClaseDeChat.NOTAS -> null
+    }
+
+/**
  * El avatar de una CONVERSACION.
  *
  * Aparte de [Avatar] a proposito: el que dibuja una persona no necesita

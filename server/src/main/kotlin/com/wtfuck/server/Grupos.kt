@@ -30,7 +30,8 @@ object Grupos {
         c.prepareStatement(
             """SELECT coalesce(nombre,''), coalesce(descripcion,''), publico, solo_admins,
                       historial_visible, aprobar_ingreso, permitir_media, permitir_enlaces,
-                      coalesce(alias::text,'')
+                      coalesce(alias::text,''),
+                      coalesce(extract(epoch FROM avatar_actualizado) * 1000, 0)::bigint
                FROM conversacion WHERE id = ?"""
         ).use { st ->
             st.setObject(1, convId)
@@ -46,6 +47,7 @@ object Grupos {
                         permitirMedia = it.getBoolean(7),
                         permitirEnlaces = it.getBoolean(8),
                         alias = it.getString(9),
+                        avatarVersion = it.getLong(10),
                     )
                 }
             } ?: throw ErrorNegocio(404, "Conversacion no encontrada.")
@@ -104,25 +106,36 @@ object Grupos {
     fun miembros(yo: Auth, convId: UUID): List<MiembroDetalle> = Db.query { c ->
         Autz.exigir(c, yo.usuarioId, convId, Permisos.MIEMBRO_VER)
 
+        // Un usuario con varios dispositivos tiene varias filas en `dispositivo`,
+        // y el JOIN las multiplicaba: la persona aparecia repetida en la lista.
+        // Esta vista es SOLO para UI (info del grupo, hoja de llamada), NO para
+        // cifrar: el fan-out a dispositivos lo resuelve DestinosConversacion.
+        // Por eso deduplicamos a UNA fila por usuario con DISTINCT ON, tomando un
+        // dispositivo representativo (el de menor id) para la huella/identidad.
         c.prepareStatement(
-            """SELECT u.id, u.username, d.id, d.identidad_pub,
-                      coalesce(u.nombre_mostrado,''), coalesce(u.estado_texto,''),
-                      coalesce(extract(epoch FROM u.avatar_actualizado) * 1000, 0),
-                      r.clave, r.nombre, r.jerarquia,
+            """SELECT * FROM (
+                 SELECT DISTINCT ON (u.id)
+                      u.id, u.username, d.id AS disp_id, d.identidad_pub,
+                      coalesce(u.nombre_mostrado,'') AS nombre_mostrado,
+                      coalesce(u.estado_texto,'') AS estado_texto,
+                      coalesce(extract(epoch FROM u.avatar_actualizado) * 1000, 0) AS avatar_ms,
+                      r.clave, r.nombre AS rol_nombre, r.jerarquia,
                       (SELECT tipo FROM restriccion x
                         WHERE x.conversacion_id = p.conversacion_id AND x.usuario_id = u.id
                           AND x.levantada_en IS NULL AND (x.hasta IS NULL OR x.hasta > now())
-                        LIMIT 1),
+                        LIMIT 1) AS restr_tipo,
                       (SELECT extract(epoch FROM hasta) * 1000 FROM restriccion x
                         WHERE x.conversacion_id = p.conversacion_id AND x.usuario_id = u.id
                           AND x.levantada_en IS NULL AND (x.hasta IS NULL OR x.hasta > now())
-                        LIMIT 1)
-               FROM participante p
-                 JOIN usuario u     ON u.id = p.usuario_id
-                 JOIN dispositivo d ON d.usuario_id = u.id AND d.revocado_en IS NULL
-                 JOIN rol r         ON r.id = p.rol_id
-               WHERE p.conversacion_id = ? AND p.salido_en IS NULL
-               ORDER BY r.jerarquia DESC, u.username"""
+                        LIMIT 1) AS restr_hasta
+                 FROM participante p
+                   JOIN usuario u     ON u.id = p.usuario_id
+                   JOIN dispositivo d ON d.usuario_id = u.id AND d.revocado_en IS NULL
+                   JOIN rol r         ON r.id = p.rol_id
+                 WHERE p.conversacion_id = ? AND p.salido_en IS NULL
+                 ORDER BY u.id, disp_id
+               ) m
+               ORDER BY m.jerarquia DESC, m.username"""
         ).use { st ->
             st.setObject(1, convId)
             st.executeQuery().use { rs ->
@@ -145,6 +158,47 @@ object Grupos {
                     )
                 }
             }
+        }
+    }
+
+    // ============================================================
+    //  Foto del grupo o canal (V55)
+    // ============================================================
+
+    /**
+     * Guarda (o reemplaza) la foto de un grupo o canal.
+     *
+     * Exige [Permisos.GRUPO_CAMBIAR_FOTO] -lo tienen propietario y
+     * administrador, no el moderador-. La foto se valida por su firma real igual
+     * que el avatar de usuario: un perfil no es un almacen de binarios, y una
+     * foto es lo que mas sirve para hacerse pasar por un grupo ajeno.
+     */
+    fun guardarImagen(yo: Auth, convId: UUID, bytes: ByteArray) = Db.tx { c ->
+        Autz.exigir(c, yo.usuarioId, convId, Permisos.GRUPO_CAMBIAR_FOTO)
+        if (bytes.isEmpty()) throw ErrorNegocio(400, "Imagen vacia.")
+        if (bytes.size > 524_288) throw ErrorNegocio(413, "La imagen supera el limite permitido.")
+        if (!Repo.pareceImagen(bytes)) throw ErrorNegocio(400, "El archivo no es una imagen valida.")
+
+        c.prepareStatement(
+            "UPDATE conversacion SET avatar = ?, avatar_actualizado = now() WHERE id = ?"
+        ).use { st ->
+            st.setBytes(1, bytes)
+            st.setObject(2, convId)
+            st.executeUpdate()
+        }
+        Autz.auditar(c, yo.usuarioId, "grupo.cambiar_foto", "conversacion", convId)
+    }
+
+    /**
+     * La foto de un grupo o canal. Solo la ve quien puede ver la info -miembros,
+     * o suscriptores en un canal-: igual que el avatar privado de usuario,
+     * adivinar la URL no debe alcanzar para verla.
+     */
+    fun imagen(yo: Auth, convId: UUID): ByteArray? = Db.query { c ->
+        Autz.exigir(c, yo.usuarioId, convId, Permisos.GRUPO_VER_INFO)
+        c.prepareStatement("SELECT avatar FROM conversacion WHERE id = ?").use { st ->
+            st.setObject(1, convId)
+            st.executeQuery().use { rs -> rs.primero { it.getBytes(1) } }
         }
     }
 
@@ -171,7 +225,32 @@ object Grupos {
 
             Autz.auditar(c, yo.usuarioId, "grupo.rol_cambiado", "conversacion", convId, objetivoId,
                 """{"rol":"$rolClave"}""")
-            Eventos.emitir(c, listOf(objetivoId), "rol_cambiado", convId, yo.username, rolClave)
+
+            // Para que la linea de sistema diga "@pepito ahora es Administrador"
+            // hace falta el username del promovido y el NOMBRE legible del rol
+            // (que para un rol propio del grupo no es su clave).
+            val objetivoUsername = c.prepareStatement("SELECT username FROM usuario WHERE id = ?").use { st ->
+                st.setObject(1, objetivoId)
+                st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+            } ?: "alguien"
+            val rolNombre = c.prepareStatement("SELECT nombre FROM rol WHERE id = ?").use { st ->
+                st.setObject(1, rol.first)
+                st.executeQuery().use { rs -> rs.primero { it.getString(1) } }
+            } ?: rolClave
+
+            // El aviso va a TODO el grupo, no solo al promovido: que alguien
+            // pase a mandar es un hecho del grupo y tiene que quedar escrito
+            // para todos, igual que un cambio de nombre. El detalle lleva a
+            // quien y a que rol; el nombre del rol se escapa por si es propio.
+            val miembros = c.prepareStatement(
+                "SELECT usuario_id FROM participante WHERE conversacion_id = ? AND salido_en IS NULL"
+            ).use { st ->
+                st.setObject(1, convId)
+                st.executeQuery().use { rs -> rs.mapear { it.getObject(1, UUID::class.java) } }
+            }
+            val rolEsc = rolNombre.replace("\\", "\\\\").replace("\"", "\\\"")
+            val detalle = """{"usuario":"$objetivoUsername","rol":"$rolEsc"}"""
+            Eventos.emitir(c, miembros, "rol_cambiado", convId, yo.username, detalle)
         }
 
     fun expulsar(yo: Auth, convId: UUID, objetivoId: UUID, req: ExpulsarReq): List<Pair<UUID, Bajada.Evento>> =

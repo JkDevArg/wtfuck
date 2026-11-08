@@ -773,6 +773,12 @@ data class ConversacionResumen(
      * mensajes no llegan como los de un chat cualquiera.
      */
     val esSolicitud: Boolean = false,
+    /**
+     * Foto del grupo o canal, en epoch ms, o 0 si no tiene. Para chats directos
+     * no se usa (ahi la foto es el avatar del otro). Cache-buster: la URL lleva
+     * `?v=<esto>`, igual que el avatar de usuario.
+     */
+    val avatarVersion: Long = 0,
 )
 
 @Serializable

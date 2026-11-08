@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,9 +32,17 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.datos.ApiCliente
+import com.wtfuck.app.datos.Media
 import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 
@@ -71,6 +80,7 @@ fun GrupoPantalla(
     var editandoInfo by remember { mutableStateOf(false) }
     var confirmarSalir by remember { mutableStateOf(false) }
     var eligiendoTemporales by remember { mutableStateOf(false) }
+    var subiendoFoto by remember { mutableStateOf(false) }
 
     /**
      * El temporizador de mensajes del grupo, en segundos. `0` = permanentes.
@@ -108,6 +118,25 @@ fun GrupoPantalla(
 
     LaunchedEffect(conversacionId) { recargar() }
 
+    val ctx = LocalContext.current
+    // Cambiar la foto: elegir imagen, comprimirla en IO y subirla. Solo lo
+    // ofrece la UI a quien puede administrar; el permiso real lo vuelve a exigir
+    // el servidor (GRUPO_CAMBIAR_FOTO).
+    val elegirFoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        subiendoFoto = true
+        ambito.launch {
+            runCatching {
+                val bytes = withContext(Dispatchers.IO) { Media.paraSubir(ctx, uri, 1280, 512 * 1024) }
+                app.repo.subirAvatarConversacion(conversacionId, bytes)
+            }.onFailure { aviso = it.message ?: "No se pudo subir la foto." }
+            subiendoFoto = false
+            recargar()
+        }
+    }
+
     Scaffold(
         containerColor = BgBase,
         topBar = {
@@ -144,7 +173,35 @@ fun GrupoPantalla(
                 Modifier.fillMaxWidth().padding(vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                AvatarDeChat(cfg?.nombre.orEmpty(), null, ClaseDeChat.GRUPO, 88.dp)
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    AvatarDeChat(
+                        cfg?.nombre.orEmpty(),
+                        ApiCliente.urlImagenConversacion(conversacionId, cfg?.avatarVersion ?: 0L),
+                        ClaseDeChat.GRUPO,
+                        88.dp,
+                        modifier = if (puedoAdministrar) Modifier.clickable(enabled = !subiendoFoto) {
+                            elegirFoto.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        } else Modifier,
+                    )
+                    if (subiendoFoto) {
+                        Box(
+                            Modifier.matchParentSize().clip(CircleShape).background(BgBase.copy(alpha = 0.55f)),
+                            contentAlignment = Alignment.Center,
+                        ) { CircularProgressIndicator(color = Cian, modifier = Modifier.size(28.dp)) }
+                    } else if (puedoAdministrar) {
+                        Box(
+                            Modifier.size(30.dp).clip(CircleShape).background(Cian),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.PhotoCamera, "Cambiar foto",
+                                tint = BgBase, modifier = Modifier.size(17.dp),
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.height(14.dp))
                 Text(
                     cfg?.nombre.orEmpty(),

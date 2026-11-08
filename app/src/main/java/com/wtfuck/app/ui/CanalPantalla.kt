@@ -21,6 +21,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
+import androidx.compose.material.icons.filled.PhotoCamera
+import com.wtfuck.app.datos.ApiCliente
+import com.wtfuck.app.datos.Media
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
@@ -99,9 +104,17 @@ fun CanalPantalla(
     /** La imagen abierta a pantalla completa, si hay alguna. */
     var viendoImagen by remember { mutableStateOf<String?>(null) }
     var publicando by remember { mutableStateOf(false) }
+    // Identidad de la proxima publicacion: true = habla el canal (default),
+    // false = con mi username. Ver PublicarReq.comoCanal.
+    var comoCanal by remember { mutableStateOf(true) }
     val elegirImagen = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) imagen = uri }
+
+    // La foto DEL CANAL (distinta de la imagen de una publicacion). Solo la
+    // ofrece la UI a quien puede gestionar; el servidor la vuelve a exigir.
+    val ctx = LocalContext.current
+    var subiendoFoto by remember { mutableStateOf(false) }
     val chats by app.repo.todasLasConversaciones.collectAsStateWithLifecycle(emptyList())
 
     /**
@@ -133,6 +146,21 @@ fun CanalPantalla(
     }
 
     LaunchedEffect(conversacionId) { refrescar() }
+
+    val elegirFotoCanal = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri: android.net.Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        subiendoFoto = true
+        ambito.launch {
+            runCatching {
+                val bytes = withContext(Dispatchers.IO) { Media.paraSubir(ctx, uri, 1280, 512 * 1024) }
+                app.repo.subirAvatarConversacion(conversacionId, bytes)
+            }.onFailure { aviso = it.message ?: "No se pudo subir la foto." }
+            subiendoFoto = false
+            refrescar()
+        }
+    }
 
     // Una publicación nueva llega como aviso del servidor, no como mensaje:
     // se recarga el feed en vez de insertar nada a mano.
@@ -255,6 +283,36 @@ fun CanalPantalla(
                         }
                         HorizontalDivider(color = Slate.copy(alpha = 0.25f))
                     }
+                    // Con que identidad sale esta publicacion. Default: el canal.
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Publicar como", color = TextoTerciario, fontSize = 12.sp)
+                        Spacer(Modifier.width(8.dp))
+                        listOf(
+                            true to c.nombre.ifBlank { "El canal" },
+                            false to ("@" + app.sesion.username.orEmpty()),
+                        ).forEach { (valor, etiqueta) ->
+                            val activo = comoCanal == valor
+                            Box(
+                                Modifier
+                                    .padding(end = 6.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (activo) Cian else BgElev)
+                                    .clickable(enabled = !publicando) { comoCanal = valor }
+                                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                            ) {
+                                Text(
+                                    etiqueta,
+                                    color = if (activo) TextoSobreAcento else TextoSecundario,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
                     Row(
                         Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.Bottom,
@@ -294,7 +352,7 @@ fun CanalPantalla(
                                 imagen = null
                                 publicando = true
                                 ambito.launch {
-                                    app.repo.publicar(conversacionId, t, img)
+                                    app.repo.publicar(conversacionId, t, img, comoCanal)
                                         .onSuccess { refrescar() }
                                         // Se devuelven las DOS cosas al
                                         // compositor: perder el texto y la foto
@@ -557,6 +615,42 @@ fun CanalPantalla(
             title = { Text(c?.nombre.orEmpty(), color = TextoPrimario) },
             text = {
                 Column {
+                    // La foto del canal, centrada. Quien puede gestionar la
+                    // cambia tocandola; el resto solo la ve.
+                    Box(
+                        Modifier.fillMaxWidth().padding(bottom = 14.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(contentAlignment = Alignment.BottomEnd) {
+                            AvatarDeChat(
+                                c?.nombre.orEmpty(),
+                                ApiCliente.urlImagenConversacion(conversacionId, c?.avatarVersion ?: 0L),
+                                ClaseDeChat.CANAL,
+                                84.dp,
+                                modifier = if (c?.puedoGestionar == true) Modifier.clickable(enabled = !subiendoFoto) {
+                                    elegirFotoCanal.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                } else Modifier,
+                            )
+                            if (subiendoFoto) {
+                                Box(
+                                    Modifier.matchParentSize().clip(CircleShape).background(BgBase.copy(alpha = 0.55f)),
+                                    contentAlignment = Alignment.Center,
+                                ) { CircularProgressIndicator(color = Cian, modifier = Modifier.size(26.dp)) }
+                            } else if (c?.puedoGestionar == true) {
+                                Box(
+                                    Modifier.size(28.dp).clip(CircleShape).background(Cian),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.PhotoCamera, "Cambiar foto",
+                                        tint = BgBase, modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
                     c?.alias?.let { FilaDatoCanal("Alias", "@$it") }
                     FilaDatoCanal("Tipo", if (c?.publico == true) "Publico" else "Privado")
                     FilaDatoCanal("Cifrado", if (c?.cifrado == true) "De extremo a extremo" else "No")

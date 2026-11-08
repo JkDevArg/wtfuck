@@ -1169,7 +1169,7 @@ private fun FilaChat(
             // unos pocos y el resto lee- y ahora se ven distintas.
             AvatarDeChat(
                 nombre = c.titulo,
-                url = ApiCliente.urlImagen(c.avatarUsername, "avatar", c.avatarVersion),
+                url = urlAvatarChat(c.id, c.tipo, c.avatarUsername, c.avatarVersion),
                 clase = claseDeTipo(c.tipo),
                 tamano = 50.dp,
             )
@@ -1804,7 +1804,7 @@ private fun FilaResultado(
     ) {
         AvatarDeChat(
             nombre = r.titulo,
-            url = ApiCliente.urlImagen(r.avatarUsername, "avatar", r.avatarVersion),
+            url = urlAvatarChat(r.conversacionId, r.tipo, r.avatarUsername, r.avatarVersion),
             clase = claseDeTipo(r.tipo),
             tamano = 46.dp,
         )

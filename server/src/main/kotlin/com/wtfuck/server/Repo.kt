@@ -31,6 +31,7 @@ private data class MetaConv(
     val nombre: String?,
     val expiraEn: Long,
     val temporalesSegundos: Int?,
+    val avatarVersion: Long = 0,
 )
 
 /** Rol y preferencias del usuario que consulta, dentro de una conversacion. */
@@ -1097,7 +1098,7 @@ object Repo {
      * No basta con confiar en el Content-Type: se revisa la firma real del
      * archivo. Evita que alguien use el perfil como almacen de binarios.
      */
-    private fun pareceImagen(b: ByteArray): Boolean {
+    internal fun pareceImagen(b: ByteArray): Boolean {
         if (b.size < 12) return false
         val jpg = b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte()
         val png = b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() &&
@@ -1544,7 +1545,8 @@ object Repo {
         val meta = c.prepareStatement(
             """SELECT tipo, nombre,
                       coalesce(extract(epoch FROM expira_en) * 1000, 0),
-                      temporales_segundos
+                      temporales_segundos,
+                      coalesce(extract(epoch FROM avatar_actualizado) * 1000, 0)::bigint
                  FROM conversacion WHERE id = ?"""
         ).use { st ->
             st.setObject(1, conv)
@@ -1559,6 +1561,7 @@ object Repo {
                         // aparte o "permanentes" se convertiria en "cero
                         // segundos".
                         temporalesSegundos = it.getObject(4) as? Int,
+                        avatarVersion = it.getLong(5),
                     )
                 }
             }
@@ -1643,6 +1646,9 @@ object Repo {
             silenciadoHasta = mio.silenciado.takeIf { it != 0L },
             archivado = mio.archivado,
             fijado = mio.fijado,
+            // Solo grupos y canales tienen foto propia; en una directa la cara
+            // es el avatar del otro, que ya viaja en `participantes`.
+            avatarVersion = if (meta.tipo == "grupo" || meta.tipo == "canal") meta.avatarVersion else 0,
         )
     }
 

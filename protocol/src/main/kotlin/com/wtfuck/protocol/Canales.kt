@@ -91,6 +91,12 @@ data class ConfigCanal(
     val estado: String = EstadoCanal.APROBADO,
 
     /**
+     * Marca de tiempo de la foto del canal, o 0 si no tiene. Cache-buster: la
+     * URL de la foto lleva `?v=<esto>`, igual que el avatar de usuario.
+     */
+    val avatarVersion: Long = 0,
+
+    /**
      * Por que se rechazo. Solo viene cuando el estado es `rechazado`.
      *
      * Rechazar sin decir por que deja a quien lo creo sin nada que hacer, y
@@ -134,6 +140,15 @@ data class PublicarReq(
      * porque es el unico sitio donde puede leerla. Ver `Adjuntos.confirmar`.
      */
     val adjuntoId: String? = null,
+    /**
+     * Con que identidad aparece la publicacion.
+     *
+     * `true` (por defecto): habla el canal, y el historial muestra el NOMBRE DEL
+     * CANAL como autor. `false`: habla la persona, y muestra su username. Es una
+     * eleccion por publicacion: el mismo canal puede tener avisos "del canal" y
+     * mensajes firmados por quien los escribe.
+     */
+    val comoCanal: Boolean = true,
 )
 
 @Serializable

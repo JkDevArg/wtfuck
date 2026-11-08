@@ -92,6 +92,8 @@ object Db {
         52 to "/db/V52__registro_web.sql",
         53 to "/db/V53__atestacion.sql",
         54 to "/db/V54__pedidos_de_alcance.sql",
+        55 to "/db/V55__foto_de_conversacion.sql",
+        56 to "/db/V56__publicar_como_canal.sql",
     )
 
     /**

@@ -890,8 +890,9 @@ private fun ChatAbierto(
                     ) {
                         AvatarDeChat(
                             nombre = chat?.titulo.orEmpty(),
-                            url = ApiCliente.urlImagen(
-                                chat?.avatarUsername.orEmpty(), "avatar", chat?.avatarVersion ?: 0L,
+                            url = urlAvatarChat(
+                                chat?.id.orEmpty(), chat?.tipo,
+                                chat?.avatarUsername.orEmpty(), chat?.avatarVersion ?: 0L,
                             ),
                             clase = claseDeTipo(chat?.tipo),
                             tamano = 38.dp,

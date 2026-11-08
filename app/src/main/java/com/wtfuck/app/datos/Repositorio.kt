@@ -897,8 +897,9 @@ class Repositorio(
 
     private suspend fun guardarResumen(r: ConversacionResumen) {
         val previa = dao.conversacion(r.id)
-        // En una directa la foto es la del otro; en un grupo aun no hay foto de
-        // grupo, asi que se cae a las iniciales.
+        // En una directa la foto es la del OTRO (avatarUsername + su version); en
+        // un grupo o canal es la foto de la CONVERSACION, y entonces la version es
+        // la de la conversacion (r.avatarVersion) y la URL se arma por conv id.
         val otro = if (r.tipo == "directa") r.participantes.firstOrNull() else null
         dao.guardarConversacion(
             ConversacionEnt(
@@ -908,7 +909,7 @@ class Repositorio(
                 nombreMostrado = otro?.nombreMostrado.orEmpty(),
                 participantes = r.participantes.joinToString(",") { it.username },
                 avatarUsername = otro?.username.orEmpty(),
-                avatarVersion = otro?.avatarVersion ?: 0L,
+                avatarVersion = if (r.tipo == "directa") (otro?.avatarVersion ?: 0L) else r.avatarVersion,
                 noLeidos = previa?.noLeidos ?: 0,
                 // Si el servidor lo devuelve, sigo dentro.
                 soyMiembro = true,
@@ -1581,6 +1582,17 @@ class Repositorio(
             "expulsado" -> "@${e.actor} te saco de este grupo"
             "sacado_grupo" -> "@${e.actor} te saco del grupo"
             "grupo_renombrado" -> "@${e.actor} cambio el nombre a ${e.detalle.orEmpty()}"
+            // El detalle es JSON con a quien se promovio y a que rol. Queda
+            // escrito para todo el grupo: "@pepito ahora es Administrador".
+            "rol_cambiado" -> {
+                val (usuario, rolNombre) = runCatching {
+                    val o = jsonApp.parseToJsonElement(e.detalle.orEmpty()).jsonObject
+                    (o["usuario"]?.jsonPrimitive?.content.orEmpty()) to
+                        (o["rol"]?.jsonPrimitive?.content.orEmpty())
+                }.getOrDefault("" to "")
+                if (usuario.isNotBlank() && rolNombre.isNotBlank()) "@$usuario ahora es $rolNombre"
+                else "@${e.actor} cambio un rol del grupo"
+            }
             // H.3. Va como mensaje DENTRO del chat y no como una notificacion
             // que se va: es la explicacion de por que a partir de aqui no se
             // puede escribir, y tiene que seguir ahi cuando alguien abra el
@@ -4757,6 +4769,8 @@ class Repositorio(
         convId: String,
         texto: String,
         imagen: Uri? = null,
+        /** true: aparece como el canal; false: con mi username. Ver [PublicarReq]. */
+        comoCanal: Boolean = true,
     ): Result<Unit> {
         val limpio = texto.trim()
         if (limpio.isEmpty() && imagen == null) return Result.success(Unit)
@@ -4775,7 +4789,7 @@ class Repositorio(
             // publicacion visible con un hueco donde deberia estar la foto.
             // El fallo barato es el invisible.
             val adjuntoId = imagen?.let { subirImagenDeCanal(convId, it) }
-            api.publicarEnCanal(convId, PublicarReq(mensajeId, limpio, adjuntoId))
+            api.publicarEnCanal(convId, PublicarReq(mensajeId, limpio, adjuntoId, comoCanal))
         }
     }
 
@@ -5982,6 +5996,13 @@ class Repositorio(
     }
 
     suspend fun miembros(convId: String) = api.miembros(convId)
+
+    /**
+     * Sube la foto de un grupo o canal y sincroniza, para que la lista de chats
+     * repinte el nuevo avatar (la version cambia y con ella la URL).
+     */
+    suspend fun subirAvatarConversacion(convId: String, bytes: ByteArray) =
+        api.subirAvatarConversacion(convId, bytes).also { sincronizar() }
 
     suspend fun agregarMiembros(convId: String, usernames: List<String>) =
         api.agregarMiembros(convId, usernames).also { sincronizar() }

@@ -239,13 +239,15 @@ object Canales {
         }
 
         c.prepareStatement(
-            """INSERT INTO publicacion_contenido (mensaje_id, conversacion_id, cuerpo, adjunto_id)
-               VALUES (?, ?, ?, ?)
+            """INSERT INTO publicacion_contenido (mensaje_id, conversacion_id, cuerpo, adjunto_id, como_canal)
+               VALUES (?, ?, ?, ?, ?)
                ON CONFLICT (mensaje_id) DO UPDATE
-                 SET cuerpo = EXCLUDED.cuerpo, adjunto_id = EXCLUDED.adjunto_id"""
+                 SET cuerpo = EXCLUDED.cuerpo, adjunto_id = EXCLUDED.adjunto_id,
+                     como_canal = EXCLUDED.como_canal"""
         ).use { st ->
             st.setObject(1, msgId); st.setObject(2, convId); st.setString(3, cuerpo)
             st.setObject(4, adjId)
+            st.setBoolean(5, req.comoCanal)
             st.executeUpdate()
         }
 
@@ -289,7 +291,9 @@ object Canales {
             val corte = antesDe?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
             val sql = StringBuilder(
-                """SELECT p.mensaje_id, u.username, p.cuerpo,
+                """SELECT p.mensaje_id,
+                          CASE WHEN p.como_canal THEN coalesce(v.nombre,'') ELSE u.username END,
+                          p.cuerpo,
                           extract(epoch FROM m.creado_en) * 1000,
                           m.editado_en IS NOT NULL, m.fijado_en IS NOT NULL,
                           -- Cuenta los comentarios QUE SE PUEDEN LEER, no las
@@ -314,6 +318,7 @@ object Canales {
                    FROM publicacion_contenido p
                      JOIN mensaje_meta m ON m.id = p.mensaje_id
                      JOIN usuario u      ON u.id = m.autor_id
+                     JOIN conversacion v ON v.id = p.conversacion_id
                      LEFT JOIN adjunto a ON a.id = p.adjunto_id
                    WHERE p.conversacion_id = ? AND m.retirado_en IS NULL"""
             )
@@ -745,7 +750,8 @@ object Canales {
                       coalesce((SELECT r.clave FROM participante p JOIN rol r ON r.id = p.rol_id
                         WHERE p.conversacion_id = k.conversacion_id
                           AND p.usuario_id = ? AND p.salido_en IS NULL), ''),
-                      k.estado, k.motivo_rechazo
+                      k.estado, k.motivo_rechazo,
+                      coalesce(extract(epoch FROM v.avatar_actualizado) * 1000, 0)::bigint
                FROM canal k JOIN conversacion v ON v.id = k.conversacion_id
                WHERE k.conversacion_id = ?"""
         ).use { st ->
@@ -779,6 +785,7 @@ object Canales {
                         cifrado = !publico,
                         estado = it.getString(10),
                         motivoRechazo = it.getString(11),
+                        avatarVersion = it.getLong(12),
                     )
                 }
             }

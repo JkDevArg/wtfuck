@@ -44,6 +44,14 @@ data class ConfigGrupo(
     val permitirEnlaces: Boolean = true,
     /** Alias publico sin arroba. Vacio = sin alias. */
     val alias: String = "",
+    /**
+     * Marca de tiempo de la foto del grupo, o 0 si no tiene.
+     *
+     * Igual que el avatar de usuario: la URL de la foto lleva `?v=<esto>`, asi
+     * que al cambiarla cambia la URL y ningun cache sirve una foto vieja. `0`
+     * significa "sin foto", y la interfaz dibuja el avatar por defecto.
+     */
+    val avatarVersion: Long = 0,
 )
 
 // ============================================================

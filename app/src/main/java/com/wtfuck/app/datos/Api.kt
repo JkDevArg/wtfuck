@@ -441,6 +441,32 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun miembros(convId: String): List<MiembroDetalle> =
         pedir("$RUTA_CONVERSACIONES/$convId/miembros", "GET", null, true)
 
+    /** Sube (o reemplaza) la foto de un grupo o canal. Devuelve al terminar. */
+    suspend fun subirAvatarConversacion(convId: String, bytes: ByteArray): Unit =
+        withContext(Dispatchers.IO) {
+            val t = sesion.token ?: throw ApiError(401, "No hay sesion activa.")
+            val req = Request.Builder()
+                .url("${BuildConfig.SERVIDOR}$RUTA_CONVERSACIONES/$convId/avatar")
+                .header("Authorization", "Bearer $t")
+                .put(bytes.toRequestBody("application/octet-stream".toMediaType()))
+                .build()
+            val resp = try {
+                http.newCall(req).execute()
+            } catch (e: Exception) {
+                android.util.Log.w("Api", "Fallo subida de foto de grupo: ${e.message}", e)
+                throw ApiError(0, "No se pudo subir la imagen.")
+            }
+            resp.use {
+                if (!it.isSuccessful) {
+                    val txt = it.body?.string().orEmpty()
+                    val motivo = runCatching {
+                        jsonApp.decodeFromString(ErrorResp.serializer(), txt).motivo
+                    }.getOrDefault("Error ${it.code}.")
+                    throw ApiError(it.code, motivo)
+                }
+            }
+        }
+
     suspend fun rolesDe(convId: String): List<RolDetalle> =
         pedir("$RUTA_CONVERSACIONES/$convId/roles", "GET", null, true)
 
@@ -1035,5 +1061,14 @@ class ApiCliente(private val sesion: Sesion) {
         fun urlImagen(username: String, campo: String, version: Long): String? =
             if (version <= 0L) null
             else "${BuildConfig.SERVIDOR}$RUTA_USUARIO/$username/$campo?v=$version"
+
+        /**
+         * URL de la foto de un grupo o canal. Mismo trato que [urlImagen]: la
+         * version es cache-buster y `0` significa "sin foto" -> la UI dibuja el
+         * icono por defecto de la clase de chat en vez de pedir un 404.
+         */
+        fun urlImagenConversacion(convId: String, version: Long): String? =
+            if (version <= 0L) null
+            else "${BuildConfig.SERVIDOR}$RUTA_CONVERSACIONES/$convId/avatar?v=$version"
     }
 }

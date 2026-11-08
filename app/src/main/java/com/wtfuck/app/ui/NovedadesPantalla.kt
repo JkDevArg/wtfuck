@@ -90,6 +90,16 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.9.0",
+            fecha = "07/11/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "Los grupos y los canales ya pueden tener foto. Los administradores la cambian tocando la imagen en la info del grupo o del canal."),
+                Cambio(TipoCambio.NUEVO, "Al publicar en un canal elegís con qué nombre aparece cada publicación: con el nombre del canal o con tu usuario."),
+                Cambio(TipoCambio.MEJORA, "Cuando un administrador cambia el rol de alguien, queda escrito en el grupo: \"@fulano ahora es Administrador\"."),
+                Cambio(TipoCambio.ARREGLO, "La info del grupo ya no muestra a la misma persona repetida cuando tiene varios dispositivos."),
+            ),
+        ),
+        NotasVersion(
             version = "0.8.1",
             fecha = "05/11/2026",
             cambios = listOf(

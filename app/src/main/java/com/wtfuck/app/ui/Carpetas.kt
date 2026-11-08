@@ -177,7 +177,7 @@ fun EditorCarpeta(carpetaId: String?, onCerrar: () -> Unit, conChat: String? = n
                         ) {
                             AvatarDeChat(
                                 nombre = c.titulo,
-                                url = ApiCliente.urlImagen(c.avatarUsername, "avatar", c.avatarVersion),
+                                url = urlAvatarChat(c.id, c.tipo, c.avatarUsername, c.avatarVersion),
                                 clase = claseDeTipo(c.tipo),
                                 tamano = 36.dp,
                             )

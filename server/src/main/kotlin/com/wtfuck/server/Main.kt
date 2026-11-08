@@ -875,6 +875,24 @@ fun Application.modulo() {
             call.respond(r.resumen)
         }
 
+        // Foto del grupo o canal (V55). Mismo patron que el avatar de usuario:
+        // se sube acotado y se sirve con cache inmutable + ?v=<marca> en la URL.
+        put("$RUTA_CONVERSACIONES/{id}/avatar") {
+            val yo = call.autenticar()
+            val id = call.idRuta()
+            // Un byte mas que el limite: si llena el buffer, es que se paso.
+            val bytes = call.receiveStream().readNBytes(524_289)
+            Grupos.guardarImagen(yo, id, bytes)
+            call.respond(HttpStatusCode.NoContent)
+        }
+        get("$RUTA_CONVERSACIONES/{id}/avatar") {
+            val yo = call.autenticar()
+            val id = call.idRuta()
+            val bytes = Grupos.imagen(yo, id) ?: throw ErrorNegocio(404, "Sin imagen.")
+            call.response.headers.append(HttpHeaders.CacheControl, "private, max-age=31536000, immutable")
+            call.respondBytes(bytes, ContentType.Image.Any)
+        }
+
         // ============================================================
         //  Modulo D: adjuntos
         // ============================================================
