@@ -77,6 +77,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -500,6 +501,17 @@ private fun ChatAbierto(
     }
     var grabando by remember { mutableStateOf(false) }
     var segundosGrabados by remember { mutableIntStateOf(0) }
+
+    // Mientras se graba, la pantalla no se suspende. Si se apagara, la app pasa
+    // a segundo plano y Android silencia el microfono: la nota seguiria
+    // "grabando" pero sin voz. Con la pantalla encendida la app queda en primer
+    // plano y el mic no se corta. Se limpia solo al dejar de grabar o salir del
+    // chat (no cambia el apagado normal cuando no se graba).
+    val vista = LocalView.current
+    DisposableEffect(grabando) {
+        vista.keepScreenOn = grabando
+        onDispose { vista.keepScreenOn = false }
+    }
 
     DisposableEffect(Unit) {
         onDispose {

@@ -92,6 +92,13 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.12.1",
+            fecha = "11/11/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.ARREGLO, "Notas de voz: mientras grabás, la pantalla ya no se apaga sola. Antes, si se suspendía, la nota seguía grabando pero sin tu voz (en silencio); ahora se graba completa."),
+            ),
+        ),
+        NotasVersion(
             version = "0.12.0",
             fecha = "08/11/2026",
             cambios = listOf(
