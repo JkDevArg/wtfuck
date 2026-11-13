@@ -682,10 +682,19 @@ object Cupos {
     fun exigir(c: Connection, usuarioId: UUID, accion: String, tope: Int, ventana: Duration) {
         val n = sumar(c, usuarioId, accion, ventana)
         if (n > tope) {
-            Seguridad.anotar(
-                c, usuarioId, "limite_excedido",
-                detalle = """{"accion":"$accion","tope":$tope,"ventana_h":${ventana.toHours()}}""",
-            )
+            // El evento va en su PROPIA transaccion (no en `c`): el throw de
+            // abajo dispara el ROLLBACK de la transaccion del caller, y si el
+            // evento se anotara en `c` se iria con ella y el intento excedido
+            // no quedaria registrado. Mismo motivo y mismo patron que
+            // exigirPorRed. runCatching: perder el log no debe tapar el 429.
+            runCatching {
+                Db.tx { cc ->
+                    Seguridad.anotar(
+                        cc, usuarioId, "limite_excedido",
+                        detalle = """{"accion":"$accion","tope":$tope,"ventana_h":${ventana.toHours()}}""",
+                    )
+                }
+            }
             throw ErrorNegocio(429, "Alcanzaste el limite de $tope por ${etiqueta(ventana)}.")
         }
     }
