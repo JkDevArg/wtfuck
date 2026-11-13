@@ -1,5 +1,13 @@
 # Cobertura del brief, punto por punto
 
+> **Actualización 2026-11-12.** Dos cosas que este doc (del 2026-09-25) da por
+> faltantes YA ESTÁN HECHAS: el **cliente web de mensajería** (módulo `web/`,
+> fases W0–W5, ver [12-VERSION-WEB](12-VERSION-WEB.md)) y los **bots**,
+> incluida la gestión desde la app, el catálogo de herramientas y el bot de
+> recepción @rootbot (ver [14-BOTS](14-BOTS.md)). Donde abajo se lee "no hay
+> cliente web" o "falta gestionar bots", léase como superado. El resto del
+> análisis sigue vigente.
+
 Este documento responde una sola pregunta: **de las 18 secciones del brief, qué
 está hecho, qué falta, y dónde se hace cada cosa.**
 

@@ -3415,9 +3415,9 @@ saberlo fue revertir el arreglo dos minutos y volver a correrla.
 | Punto del brief | Situación |
 |---|---|
 | Push real | El camino está entero y probado contra un FCM de mentira. Falta **una credencial de Firebase**: proyecto, cuenta de servicio y clave. Se pone en el servidor, sin recompilar |
-| Cliente web de **mensajería** | Exige libsignal en el navegador (WASM, claves en IndexedDB) y la pregunta seria de si un navegador es sitio para claves de largo plazo. En web está la consola de **administración**, que es otra cosa |
+| Cliente web de **mensajería** | ~~Exige libsignal en el navegador…~~ **HECHO (2026-11):** módulo `web/` con libsignal en WASM y claves en IndexedDB, fases W0–W5 (chats, grupos, canales, adjuntos, notas de voz, llamadas 1:1, Web Push, alta web). Ver [12-VERSION-WEB](12-VERSION-WEB.md). La consola de **administración** sigue siendo aparte |
 | SFU para llamadas de más de 4 | La malla tiene techo declarado: con N participantes son N-1 conexiones por aparato |
-| Bots e integraciones | No está planificado. Requiere su propio modelo de seguridad |
+| Bots e integraciones | ~~No está planificado.~~ **HECHO (2026-10/11):** subsistema `bots/` (clientes headless E2EE), bot de herramientas con términos+alcance, orquestador IA de agencia acotada, gestión multi-usuario desde la app (tabla `bot`, "Mis bots") y bot de recepción @rootbot. Ver [14-BOTS](14-BOTS.md) |
 
 Lo que **salió** de esta tabla en el módulo N: el tema claro (se rederivó la
 escala y está medido), la interfaz de tablet y escritorio (dos paneles), y el
