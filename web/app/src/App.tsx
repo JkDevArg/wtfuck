@@ -542,7 +542,7 @@ function Adjunto({ m }: { m: Mensaje }) {
       <button className={`adjunto imagen ${destapado ? '' : 'spoiler'}`} style={{ aspectRatio: String(proporcion) }}
         onClick={() => (destapado ? f?.url && window.open(f.url, '_blank', 'noopener') : setDestapado(true))}
         aria-label={destapado ? 'Abrir la foto' : 'Spoiler: toca para ver'}>
-        {src && <img src={src} alt="" onLoad={seguirAbajo} />}
+        {src && <img src={src} alt="" onLoad={seguirAbajo} onContextMenu={(e) => e.preventDefault()} />}
         {!destapado && <span className="velo-texto">Spoiler · toca para ver</span>}
         {f?.estado === 'bajando' && <span className="velo-texto">Bajando…</span>}
         {f?.estado === 'error' && <span className="velo-texto error">{f.error}</span>}
@@ -554,7 +554,7 @@ function Adjunto({ m }: { m: Mensaje }) {
     return (
       <div className="adjunto voz">
         {f?.estado === 'listo' ? (
-          <audio src={f.url} controls autoPlay />
+          <audio src={f.url} controls autoPlay controlsList="nodownload noplaybackrate" onContextMenu={(e) => e.preventDefault()} />
         ) : (
           <button className="reproducir" onClick={() => void descargar(m)} aria-label="Escuchar la nota de voz" disabled={f?.estado === 'bajando'}>
             {f?.estado === 'bajando' ? '…' : '▶'}
@@ -572,8 +572,8 @@ function Adjunto({ m }: { m: Mensaje }) {
   }
   if ((a.clase === 'video' || a.clase === 'audio') && f?.estado === 'listo') {
     return a.clase === 'video'
-      ? <video className="adjunto video" src={f.url} controls style={{ aspectRatio: String(proporcion) }} />
-      : <audio className="adjunto" src={f.url} controls />;
+      ? <video className="adjunto video" src={f.url} controls controlsList="nodownload" onContextMenu={(e) => e.preventDefault()} style={{ aspectRatio: String(proporcion) }} />
+      : <audio className="adjunto" src={f.url} controls controlsList="nodownload noplaybackrate" onContextMenu={(e) => e.preventDefault()} />;
   }
   return (
     <div className="adjunto archivo">
