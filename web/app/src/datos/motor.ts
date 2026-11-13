@@ -1185,6 +1185,33 @@ export async function retirar(m: Mensaje): Promise<void> {
 }
 
 /**
+ * Reenviar un mensaje a otra conversación. Un reenvío es un mensaje NUEVO: el
+ * texto se manda tal cual, y un adjunto se baja, se descifra y se vuelve a
+ * subir cifrado para el destino (no se comparte la clave del original, que es
+ * de otra conversación). Sin cita: el reenviado no responde a nada en el
+ * destino.
+ */
+export async function reenviar(m: Mensaje, destinoId: string): Promise<void> {
+  if (m.retirado) return;
+  if (m.adjunto) {
+    const adj = m.adjunto;
+    if (!estado.archivos[m.id]?.url) await descargar(m);
+    const info = estado.archivos[m.id];
+    if (info?.estado === 'error') throw new Error(info.error || 'No se pudo bajar el archivo.');
+    if (!info?.url) throw new Error('No se pudo preparar el archivo para reenviar.');
+    const blob = await (await fetch(info.url)).blob();
+    const file = new File([blob], adj.nombre || 'archivo', { type: adj.mime || blob.type });
+    if (adj.clase === 'nota_voz') {
+      await enviarNotaDeVoz(destinoId, { archivo: file, onda: adj.onda ?? '', duracionMs: adj.duracionMs ?? 0 });
+    } else {
+      await enviarArchivo(destinoId, file, '');
+    }
+  } else if (m.texto.trim()) {
+    await enviarTexto(destinoId, m.texto);
+  }
+}
+
+/**
  * Una publicación nueva en un canal: no es un mensaje (vive en el servidor),
  * así que solo se mueve la lista, se avisa y la vista abierta recarga.
  */

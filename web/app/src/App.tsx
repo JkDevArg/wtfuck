@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
 import {
   abrirConversacion, activarAvisosCerrado, decidirSolicitud, soyElUnicoAparato, avisosConQuien, desactivarAvisosCerrado, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarNotaDeVoz, enviarTexto,
-  huellasDe, identidadRevisada, motor, pedirPermisoDeAvisos, reaccionar, retirar, salir, titulo, vincular,
+  huellasDe, identidadRevisada, motor, pedirPermisoDeAvisos, reaccionar, reenviar, retirar, salir, titulo, vincular,
   type Conexion, type Conversacion, type Mensaje,
 } from './datos/motor';
 import { tamanoLegible } from './datos/archivos';
@@ -408,6 +408,50 @@ function Huellas({ c, onCerrar }: { c: Conversacion; onCerrar: () => void }) {
   );
 }
 
+/** Reenviar un mensaje: elegir un chat o grupo destino de la lista. */
+function DialogoReenviar({ m, actual, onCerrar }: { m: Mensaje; actual: string; onCerrar: () => void }) {
+  const e = usarMotor();
+  const [enviando, setEnviando] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  // Destinos: chats y grupos ya aceptados (no canales, no solicitudes), menos
+  // el chat actual.
+  const destinos = e.conversaciones.filter((c) => c.tipo !== 'canal' && !c.esSolicitud && c.id !== actual);
+  const mandar = (destino: Conversacion) => {
+    setEnviando(destino.id);
+    setAviso(null);
+    void reenviar(m, destino.id)
+      .then(onCerrar)
+      .catch((x: Error) => { setAviso(x.message); setEnviando(null); });
+  };
+  return (
+    <div className="velo" role="dialog" aria-modal="true" aria-label="Reenviar" onClick={onCerrar}>
+      <div className="panel" onClick={(ev) => ev.stopPropagation()}>
+        <h2>Reenviar</h2>
+        <p className="tenue">
+          {m.adjunto ? 'El archivo se sube de nuevo, cifrado para el destino.' : 'Elegí a quién reenviar este mensaje.'}
+        </p>
+        {!destinos.length && <p className="tenue">No tenés otros chats a los que reenviar.</p>}
+        <ul className="chats">
+          {destinos.map((c) => {
+            const t = titulo(c);
+            return (
+              <li key={c.id}>
+                <button className="fila" disabled={enviando !== null} onClick={() => mandar(c)}>
+                  <Avatar nombre={t} {...fotoDeConversacion(c)} />
+                  <span className="cuerpo"><span className="nombre">{t}</span></span>
+                  {enviando === c.id && <span className="cuando">Enviando…</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {aviso && <p className="error">{aviso}</p>}
+        <button onClick={onCerrar}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Una imagen que termina de cargar agranda el chat: si quien lee estaba al
  * final, que siga al final. Si había subido a leer algo, no se lo mueve.
@@ -494,8 +538,8 @@ function Adjunto({ m }: { m: Mensaje }) {
   );
 }
 
-function Burbuja({ m, esGrupo, onResponder, onEditar }: {
-  m: Mensaje; esGrupo: boolean; onResponder: () => void; onEditar: () => void;
+function Burbuja({ m, esGrupo, onResponder, onEditar, onReenviar }: {
+  m: Mensaje; esGrupo: boolean; onResponder: () => void; onEditar: () => void; onReenviar: () => void;
 }) {
   const [eligiendo, setEligiendo] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -530,6 +574,7 @@ function Burbuja({ m, esGrupo, onResponder, onEditar }: {
         <span className="acciones-msj">
           <button onClick={onResponder}>Responder</button>
           <button onClick={() => setEligiendo((x) => !x)}>Reaccionar</button>
+          {(m.texto.trim() || m.adjunto) && <button onClick={onReenviar}>Reenviar</button>}
           {m.esMio && !m.adjunto && <button onClick={onEditar}>Editar</button>}
           {m.esMio && (
             <button className="peligro" onClick={() => {
@@ -557,6 +602,7 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
   const [verStickers, setVerStickers] = useState(false);
   const [citado, setCitado] = useState<Mensaje | null>(null);
   const [editando, setEditando] = useState<Mensaje | null>(null);
+  const [reenviando, setReenviando] = useState<Mensaje | null>(null);
   const [errorArchivo, setErrorArchivo] = useState<string | null>(null);
   const fin = useRef<HTMLDivElement>(null);
   const caja = useRef<HTMLTextAreaElement>(null);
@@ -644,11 +690,13 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
       {verHuellas && <Huellas c={c} onCerrar={() => setVerHuellas(false)} />}
       {verGifs && <PanelGifs conversacionId={c.id} onCerrar={() => setVerGifs(false)} />}
       {verStickers && <PanelStickers conversacionId={c.id} onCerrar={() => setVerStickers(false)} />}
+      {reenviando && <DialogoReenviar m={reenviando} actual={c.id} onCerrar={() => setReenviando(null)} />}
       <div className="mensajes" role="log" aria-live="polite">
         {mensajes.map((m) => (
           <Burbuja key={m.id} m={m} esGrupo={esGrupo}
             onResponder={() => { setEditando(null); setCitado(m); caja.current?.focus(); }}
-            onEditar={() => { setCitado(null); setEditando(m); setBorrador(m.texto); caja.current?.focus(); }} />
+            onEditar={() => { setCitado(null); setEditando(m); setBorrador(m.texto); caja.current?.focus(); }}
+            onReenviar={() => setReenviando(m)} />
         ))}
         <div ref={fin} />
       </div>
