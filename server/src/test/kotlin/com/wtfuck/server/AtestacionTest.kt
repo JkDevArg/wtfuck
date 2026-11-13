@@ -185,7 +185,9 @@ class AtestacionTest {
         ) { _, m, _ -> error("no tenia que usar la base: ${m.name}") } as java.sql.Connection
         val b64 = cadena.map { java.util.Base64.getEncoder().encodeToString(it.encoded) }
         assertEquals("raiz-desconocida", Atestacion.verificar(sinBase, b64).motivo)
-        // Y una cadena con un eslabon cambiado ya no firma.
-        assertEquals("firma-rota-en-0", Atestacion.verificar(sinBase, listOf(b64[0], b64[0], b64[2])).motivo)
+        // Y una cadena con un eslabon cambiado se rechaza: aqui la HOJA (b64[0])
+        // se puso en el lugar del intermedio, y una hoja no es una CA, asi que
+        // no puede firmar a nadie. Se corta por eso, antes de mirar la firma.
+        assertEquals("emisor-no-es-ca-en-1", Atestacion.verificar(sinBase, listOf(b64[0], b64[0], b64[2])).motivo)
     }
 }

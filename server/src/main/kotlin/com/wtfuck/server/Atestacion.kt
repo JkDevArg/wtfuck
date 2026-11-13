@@ -205,8 +205,16 @@ object Atestacion {
         }.getOrElse { return Veredicto("cadena-ilegible") }
 
         // 1. Cada uno firmado por el siguiente, y el ultimo, por una raiz de Google.
+        //
+        // El emisor TIENE que ser una CA (Basic Constraints cA=true). Sin esta
+        // comprobacion, verificar solo la firma deja un agujero conocido: un
+        // certificado HOJA legitimo -no-CA, firmado por un intermedio de
+        // Google- podria usarse como eslabon para firmar una cadena fraudulenta.
+        // getBasicConstraints() devuelve -1 cuando el certificado no es una CA.
         for (i in 0 until cadena.size - 1) {
-            val ok = runCatching { cadena[i].verify(cadena[i + 1].publicKey) }.isSuccess
+            val emisor = cadena[i + 1]
+            if (emisor.basicConstraints < 0) return Veredicto("emisor-no-es-ca-en-${i + 1}")
+            val ok = runCatching { cadena[i].verify(emisor.publicKey) }.isSuccess
             if (!ok) return Veredicto("firma-rota-en-$i")
         }
         val ultimo = cadena.last()
