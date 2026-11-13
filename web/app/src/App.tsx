@@ -19,6 +19,20 @@ import { PanelStickers } from './Stickers';
 
 const usarMotor = () => useSyncExternalStore(motor.suscribir, motor.instantanea);
 
+/**
+ * ¿El cursor está escribiendo una mención? Devuelve dónde empieza la `@` y lo
+ * tecleado después, para ofrecer el selector y luego reemplazarlo. Solo cuenta
+ * si la `@` está al principio o tras un espacio, y no hay espacios hasta el
+ * cursor.
+ */
+export function detectarMencion(texto: string, cursor: number): { desde: number; prefijo: string } | null {
+  const antes = texto.slice(0, cursor);
+  const m = /(^|\s)@([a-zA-Z0-9._-]*)$/.exec(antes);
+  if (!m) return null;
+  const prefijo = m[2];
+  return { desde: cursor - prefijo.length - 1, prefijo: prefijo.toLowerCase() };
+}
+
 export function App() {
   const e = usarMotor();
   // El código de recuperación de una cuenta recién creada: se muestra encima
@@ -603,6 +617,7 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
   const [citado, setCitado] = useState<Mensaje | null>(null);
   const [editando, setEditando] = useState<Mensaje | null>(null);
   const [reenviando, setReenviando] = useState<Mensaje | null>(null);
+  const [mencion, setMencion] = useState<{ desde: number; prefijo: string } | null>(null);
   const [errorArchivo, setErrorArchivo] = useState<string | null>(null);
   const fin = useRef<HTMLDivElement>(null);
   const caja = useRef<HTMLTextAreaElement>(null);
@@ -616,12 +631,33 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
   useEffect(() => {
     setCitado(null);
     setEditando(null);
+    setMencion(null);
   }, [c.id]);
+
+  // En un grupo, al teclear @ se ofrecen los miembros que coincidan.
+  const sugerencias = mencion && esGrupo && !editando
+    ? c.participantes.filter((p) =>
+        p.username.toLowerCase().startsWith(mencion.prefijo) ||
+        (p.nombreMostrado?.toLowerCase().includes(mencion.prefijo) ?? false),
+      ).slice(0, 6)
+    : [];
+
+  function elegirMencion(username: string) {
+    const caja0 = caja.current;
+    if (!mencion) return;
+    const cursor = caja0?.selectionStart ?? borrador.length;
+    const nuevo = borrador.slice(0, mencion.desde) + '@' + username + ' ' + borrador.slice(cursor);
+    setBorrador(nuevo);
+    setMencion(null);
+    const pos = mencion.desde + username.length + 2;
+    requestAnimationFrame(() => { caja0?.focus(); caja0?.setSelectionRange(pos, pos); });
+  }
 
   function enviar() {
     const t = borrador.trim();
     if (!t) return;
     setBorrador('');
+    setMencion(null);
     if (editando) {
       const m = editando;
       setEditando(null);
@@ -734,10 +770,19 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
           🙂
         </button>
         {!borrador.trim() && !editando && <Grabador conversacionId={c.id} onError={setErrorArchivo} />}
+        {sugerencias.length > 0 && (
+          <div className="menciones" role="listbox">
+            {sugerencias.map((p) => (
+              <button key={p.username} role="option" aria-selected={false} onClick={() => elegirMencion(p.username)}>
+                <b>@{p.username}</b>{p.nombreMostrado ? ` · ${p.nombreMostrado}` : ''}
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           ref={caja}
           value={borrador}
-          onChange={(e) => setBorrador(e.target.value)}
+          onChange={(e) => { setBorrador(e.target.value); setMencion(detectarMencion(e.target.value, e.target.selectionStart ?? e.target.value.length)); }}
           onKeyDown={tecla}
           placeholder="Mensaje"
           rows={1}

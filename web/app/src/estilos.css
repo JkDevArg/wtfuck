@@ -136,7 +136,20 @@ form button[type=submit], .escribir button {
 .estado.leido { color: #0B6E6D; }
 .burbuja.mia .estado.fallido, .motivo { color: #8A1C10; font-weight: 600; }
 .motivo { font-size: 12px; }
-.escribir { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--borde); background: var(--superficie); }
+.escribir { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--borde); background: var(--superficie); position: relative; }
+
+/* Selector de menciones (@) en grupos: flota sobre la barra de escribir. */
+.menciones {
+  position: absolute; left: 12px; right: 12px; bottom: calc(100% + 4px);
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px;
+  overflow: hidden auto; z-index: 5; max-height: 220px;
+  box-shadow: 0 -4px 16px rgb(0 0 0 / .25);
+}
+.menciones button {
+  display: block; width: 100%; text-align: left; background: transparent; color: inherit;
+  border: 0; border-radius: 0; padding: 10px 12px; cursor: pointer; font-size: 14px; font-weight: 400;
+}
+.menciones button:hover { background: var(--fondo); }
 .burbuja { position: relative; }
 .burbuja.retirada { font-style: italic; opacity: .6; }
 .cita { display: grid; gap: 1px; border-left: 3px solid var(--ambar); padding: 2px 8px; border-radius: 4px; background: rgb(0 0 0 / .12); font-size: 13px; }
