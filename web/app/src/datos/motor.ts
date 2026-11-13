@@ -82,6 +82,8 @@ export interface Mensaje {
   /** Un mensaje ajeno que ya se acusó como leído. */
   leidoPorMi?: boolean;
   deHistorial?: boolean;
+  /** Mensajes temporales: epoch ms tras el cual se borra solo. 0/ausente = permanente. */
+  venceEn?: number;
 }
 
 export interface Conversacion extends ConversacionResumen {
@@ -238,6 +240,13 @@ const porId = new Map<string, Mensaje>();
 async function guardarMensaje(m: Mensaje): Promise<boolean> {
   const ya = porId.get(m.id);
   if (ya && ya !== m) return false; // repetido: el buzón reentrega por diseño
+  // Mensajes temporales: el vencimiento lo fija QUIEN GUARDA, con el ajuste
+  // vigente de la conversación y desde creadoEn (igual que la app). Lo que ya
+  // estaba escrito no se toca; solo los mensajes nuevos.
+  if (!m.venceEn) {
+    const seg = estado.conversaciones.find((c) => c.id === m.conversacionId)?.temporalesSegundos ?? 0;
+    if (seg > 0) m = { ...m, venceEn: m.creadoEn + seg * 1000 };
+  }
   porId.set(m.id, m);
   await guardar('mensajes', claveMsj(m), m);
   avisarCambio();
@@ -724,7 +733,7 @@ async function manejar(b: Bajada): Promise<void> {
     case 'entrega':
       return recibir(b);
     case 'evento':
-      if (['agregado_grupo', 'sacado_grupo', 'expulsado', 'grupo_renombrado'].includes(b.tipo)) {
+      if (['agregado_grupo', 'sacado_grupo', 'expulsado', 'grupo_renombrado', 'conversacion_temporales'].includes(b.tipo)) {
         await sincronizarConversaciones().catch(() => undefined);
       } else if (b.tipo === 'mensaje_retirado' && b.detalle) {
         await actualizarMensaje(b.detalle, { retirado: true, texto: '', adjunto: undefined, cita: undefined });
@@ -1052,8 +1061,14 @@ let abierta: string | null = null;
 
 export async function abrirConversacion(id: string | null): Promise<void> {
   abierta = id;
-  if (id) await marcarLeida(id);
+  if (id) {
+    await limpiarVencidos().catch(() => undefined);
+    await marcarLeida(id);
+  }
 }
+
+// Barrido periódico de mensajes temporales vencidos mientras la pestaña vive.
+setInterval(() => { if (estado.sesion) void limpiarVencidos().catch(() => undefined); }, 30_000);
 
 async function marcarLeida(conversacionId: string): Promise<void> {
   if (!soyTitular) {
@@ -1209,6 +1224,35 @@ export async function reenviar(m: Mensaje, destinoId: string): Promise<void> {
   } else if (m.texto.trim()) {
     await enviarTexto(destinoId, m.texto);
   }
+}
+
+/**
+ * Mensajes temporales: cambia el temporizador de la conversación (null/0 =
+ * desactivar). El servidor avisa a los dos lados; cada cliente borra sus
+ * propios mensajes al vencer. Lo ya escrito no cambia.
+ */
+export async function cambiarTemporales(conversacionId: string, segundos: number | null): Promise<void> {
+  const valor = segundos && segundos > 0 ? segundos : null;
+  await pedir('PUT', `/v1/conversaciones/${conversacionId}/temporales`, { segundos: valor });
+  await publicarConversaciones(
+    estado.conversaciones.map((c) => (c.id === conversacionId ? { ...c, temporalesSegundos: valor ?? 0 } : c)),
+  );
+}
+
+/** Borra los mensajes temporales cuyo plazo ya venció (de memoria y bóveda). */
+export async function limpiarVencidos(): Promise<void> {
+  const ahora = Date.now();
+  const vencidos = [...porId.values()].filter((m) => m.venceEn && m.venceEn <= ahora);
+  if (!vencidos.length) return;
+  for (const m of vencidos) {
+    porId.delete(m.id);
+    await borrar('mensajes', claveMsj(m));
+  }
+  const afectadas = new Set(vencidos.map((m) => m.conversacionId));
+  const mensajes = { ...estado.mensajes };
+  for (const conv of afectadas) mensajes[conv] = (mensajes[conv] ?? []).filter((m) => !(m.venceEn && m.venceEn <= ahora));
+  cambiar({ mensajes });
+  avisarCambio();
 }
 
 /**

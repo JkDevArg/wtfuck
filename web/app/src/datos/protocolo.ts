@@ -362,7 +362,26 @@ export interface ConversacionResumen {
   esSolicitud: boolean;
   /** Foto del grupo o canal, o 0/ausente si no tiene. En directas es 0. */
   avatarVersion?: number;
+  /** Mensajes temporales: segundos tras los que un mensaje nuevo se borra solo. 0/ausente = permanentes. */
+  temporalesSegundos?: number;
 }
+
+/**
+ * Mensajes temporales: las duraciones que ofrece el selector y cómo se nombran.
+ * Espejo de `DuracionMensaje` del protocolo Kotlin (el servidor acepta 60..7776000).
+ */
+export const DuracionMensaje = {
+  OPCIONES: [60, 5 * 60, 3600, 8 * 3600, 24 * 3600, 7 * 24 * 3600, 28 * 24 * 3600] as number[],
+  texto(seg: number): string {
+    if (seg <= 0) return 'Desactivado';
+    const d = [
+      [28 * 24 * 3600, '4 semanas'], [7 * 24 * 3600, '1 semana'], [24 * 3600, '1 día'],
+      [8 * 3600, '8 horas'], [3600, '1 hora'], [5 * 60, '5 minutos'], [60, '1 minuto'],
+    ] as const;
+    for (const [s, t] of d) if (seg >= s) return t;
+    return `${seg} segundos`;
+  },
+};
 
 export interface VincularHecho {
   token: string;

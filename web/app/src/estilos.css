@@ -150,6 +150,15 @@ form button[type=submit], .escribir button {
   border: 0; border-radius: 0; padding: 10px 12px; cursor: pointer; font-size: 14px; font-weight: 400;
 }
 .menciones button:hover { background: var(--fondo); }
+
+/* Selector de mensajes temporales. */
+.opciones { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.opciones .opcion {
+  width: 100%; text-align: left; background: var(--fondo); border: 1px solid var(--borde);
+  border-radius: 10px; padding: 12px 14px; color: inherit; cursor: pointer; font-weight: 500;
+}
+.opciones .opcion.activa { border-color: var(--cian); color: var(--cian); }
+.opciones .opcion:hover { background: var(--superficie); }
 .burbuja { position: relative; }
 .burbuja.retirada { font-style: italic; opacity: .6; }
 .cita { display: grid; gap: 1px; border-left: 3px solid var(--ambar); padding: 2px 8px; border-radius: 4px; background: rgb(0 0 0 / .12); font-size: 13px; }

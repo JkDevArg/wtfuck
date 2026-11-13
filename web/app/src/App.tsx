@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
 import {
   abrirConversacion, activarAvisosCerrado, decidirSolicitud, soyElUnicoAparato, avisosConQuien, desactivarAvisosCerrado, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarNotaDeVoz, enviarTexto,
-  huellasDe, identidadRevisada, motor, pedirPermisoDeAvisos, reaccionar, reenviar, retirar, salir, titulo, vincular,
+  cambiarTemporales, huellasDe, identidadRevisada, motor, pedirPermisoDeAvisos, reaccionar, reenviar, retirar, salir, titulo, vincular,
   type Conexion, type Conversacion, type Mensaje,
 } from './datos/motor';
 import { tamanoLegible } from './datos/archivos';
+import { DuracionMensaje } from './datos/protocolo';
 import { Canal, DescubrirCanales } from './Canal';
 import { AvisoIos, CodigoNuevo, Invitaciones, Recuperar, Registro, usarModoRegistro } from './Entrada';
 import { NuevoChat } from './Contactos';
@@ -466,6 +467,46 @@ function DialogoReenviar({ m, actual, onCerrar }: { m: Mensaje; actual: string; 
   );
 }
 
+/** Mensajes temporales: elegir el plazo tras el que se borran solos (o apagarlo). */
+function DialogoTemporales({ actual, conversacionId, onCerrar }: { actual: number; conversacionId: string; onCerrar: () => void }) {
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const elegir = (segundos: number) => {
+    setGuardando(true);
+    setAviso(null);
+    void cambiarTemporales(conversacionId, segundos > 0 ? segundos : null)
+      .then(onCerrar)
+      .catch((x: Error) => { setAviso(x.message); setGuardando(false); });
+  };
+  return (
+    <div className="velo" role="dialog" aria-modal="true" aria-label="Mensajes temporales" onClick={onCerrar}>
+      <div className="panel" onClick={(e) => e.stopPropagation()}>
+        <h2>Mensajes temporales</h2>
+        <p className="tenue">
+          Los mensajes nuevos de este chat se borran solos, en todos los aparatos, pasado el tiempo que elijas.
+          Lo que ya está escrito no se toca.
+        </p>
+        <ul className="opciones">
+          <li>
+            <button className={`opcion ${actual <= 0 ? 'activa' : ''}`} disabled={guardando} onClick={() => elegir(0)}>
+              Desactivado{actual <= 0 ? ' ✓' : ''}
+            </button>
+          </li>
+          {DuracionMensaje.OPCIONES.map((s) => (
+            <li key={s}>
+              <button className={`opcion ${actual === s ? 'activa' : ''}`} disabled={guardando} onClick={() => elegir(s)}>
+                {DuracionMensaje.texto(s)}{actual === s ? ' ✓' : ''}
+              </button>
+            </li>
+          ))}
+        </ul>
+        {aviso && <p className="error">{aviso}</p>}
+        <button onClick={onCerrar}>Cerrar</button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Una imagen que termina de cargar agranda el chat: si quien lee estaba al
  * final, que siga al final. Si había subido a leer algo, no se lo mueve.
@@ -614,6 +655,7 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
   const [verHuellas, setVerHuellas] = useState(false);
   const [verGifs, setVerGifs] = useState(false);
   const [verStickers, setVerStickers] = useState(false);
+  const [verTemporales, setVerTemporales] = useState(false);
   const [citado, setCitado] = useState<Mensaje | null>(null);
   const [editando, setEditando] = useState<Mensaje | null>(null);
   const [reenviando, setReenviando] = useState<Mensaje | null>(null);
@@ -669,13 +711,23 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
   }
 
   function elegirArchivo(fs: FileList | null) {
-    const f = fs?.[0];
-    if (!f) return;
+    const files = fs ? Array.from(fs) : [];
+    if (!files.length) return;
     setErrorArchivo(null);
     const pie = borrador.trim();
     setBorrador('');
-    void enviarArchivo(c.id, f, pie).catch((x: Error) => setErrorArchivo(x.message));
     if (selector.current) selector.current.value = '';
+    // En orden, uno tras otro, para que no se mezclen; el texto escrito va como
+    // pie solo del primero.
+    void (async () => {
+      for (let i = 0; i < files.length; i++) {
+        try {
+          await enviarArchivo(c.id, files[i]!, i === 0 ? pie : '');
+        } catch (x) {
+          setErrorArchivo((x as Error).message);
+        }
+      }
+    })();
   }
 
   function tecla(ev: KeyboardEvent<HTMLTextAreaElement>) {
@@ -709,6 +761,13 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
             </button>
           </>
         )}
+        <button
+          className={`enlace derecha ${c.temporalesSegundos ? 'cian' : ''}`}
+          title={c.temporalesSegundos ? `Mensajes temporales: ${DuracionMensaje.texto(c.temporalesSegundos)}` : 'Mensajes temporales'}
+          onClick={() => setVerTemporales(true)}
+        >
+          ⏱{c.temporalesSegundos ? ` ${DuracionMensaje.texto(c.temporalesSegundos)}` : ''}
+        </button>
         <button className="enlace cian derecha" onClick={() => setVerHuellas(true)}>Verificar cifrado</button>
       </header>
       {!!c.identidadCambio?.length && (
@@ -727,6 +786,7 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
       {verGifs && <PanelGifs conversacionId={c.id} onCerrar={() => setVerGifs(false)} />}
       {verStickers && <PanelStickers conversacionId={c.id} onCerrar={() => setVerStickers(false)} />}
       {reenviando && <DialogoReenviar m={reenviando} actual={c.id} onCerrar={() => setReenviando(null)} />}
+      {verTemporales && <DialogoTemporales actual={c.temporalesSegundos ?? 0} conversacionId={c.id} onCerrar={() => setVerTemporales(false)} />}
       <div className="mensajes" role="log" aria-live="polite">
         {mensajes.map((m) => (
           <Burbuja key={m.id} m={m} esGrupo={esGrupo}
@@ -757,7 +817,7 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
         </footer>
       ) : (
       <footer className="escribir">
-        <input ref={selector} type="file" hidden onChange={(e) => elegirArchivo(e.target.files)} />
+        <input ref={selector} type="file" multiple hidden onChange={(e) => elegirArchivo(e.target.files)} />
         <button className="adjuntar" onClick={() => selector.current?.click()} aria-label="Adjuntar un archivo" title="Adjuntar (el texto escrito va como pie)" disabled={!!editando}>
           <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6L15 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
