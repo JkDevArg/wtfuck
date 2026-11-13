@@ -116,6 +116,7 @@ object Notificaciones {
      * el `setOngoing(true)` de la notificacion, no el canal.
      */
     const val CANAL_UBICACION = "ubicacion"
+    const val CANAL_GRABACION = "grabacion"
 
     fun crearCanales(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
@@ -126,6 +127,14 @@ object Notificaciones {
                 // Baja: no avisa de nada nuevo, dice que la radio escucha.
                 NotificationManager.IMPORTANCE_LOW,
             ).apply { description = "Mientras el modo cerca esta encendido" }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CANAL_GRABACION,
+                "Grabando",
+                // Baja: dice que el microfono esta abierto, no es una alerta.
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply { description = "Mientras se graba una nota de voz" }
         )
         nm.createNotificationChannel(
             NotificationChannel(

@@ -95,7 +95,7 @@ object Novedades {
             version = "0.12.1",
             fecha = "11/11/2026",
             cambios = listOf(
-                Cambio(TipoCambio.ARREGLO, "Notas de voz: mientras grabás, la pantalla ya no se apaga sola. Antes, si se suspendía, la nota seguía grabando pero sin tu voz (en silencio); ahora se graba completa."),
+                Cambio(TipoCambio.ARREGLO, "Notas de voz: ahora se graban completas aunque se apague la pantalla. Antes, si la pantalla se suspendía, la nota seguía grabando pero sin tu voz (en silencio). Mientras grabás, la pantalla no se apaga sola y el micrófono sigue activo aunque la bloquees."),
             ),
         ),
         NotasVersion(

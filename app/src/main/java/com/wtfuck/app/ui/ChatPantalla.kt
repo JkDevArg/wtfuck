@@ -95,6 +95,7 @@ import com.wtfuck.app.datos.EstadoConexion
 import com.wtfuck.app.datos.jsonApp
 import com.wtfuck.app.datos.Media
 import com.wtfuck.app.datos.MensajeEnt
+import com.wtfuck.app.datos.ServicioGrabacionFg
 import com.wtfuck.app.datos.ServicioUbicacionViva
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -502,15 +503,16 @@ private fun ChatAbierto(
     var grabando by remember { mutableStateOf(false) }
     var segundosGrabados by remember { mutableIntStateOf(0) }
 
-    // Mientras se graba, la pantalla no se suspende. Si se apagara, la app pasa
-    // a segundo plano y Android silencia el microfono: la nota seguiria
-    // "grabando" pero sin voz. Con la pantalla encendida la app queda en primer
-    // plano y el mic no se corta. Se limpia solo al dejar de grabar o salir del
-    // chat (no cambia el apagado normal cuando no se graba).
+    // Mientras se graba: (1) la pantalla no se suspende sola, y (2) un servicio
+    // en primer plano de tipo microfono mantiene el mic vivo aunque la pantalla
+    // se apague a proposito o la app pase a segundo plano (si no, Android la
+    // silencia y la nota sale muda). Las dos cosas se apagan al dejar de grabar
+    // o al salir del chat; con la pantalla encendida y sin grabar, nada cambia.
     val vista = LocalView.current
     DisposableEffect(grabando) {
         vista.keepScreenOn = grabando
-        onDispose { vista.keepScreenOn = false }
+        if (grabando) ServicioGrabacionFg.arrancar(contexto) else ServicioGrabacionFg.detener(contexto)
+        onDispose { vista.keepScreenOn = false; ServicioGrabacionFg.detener(contexto) }
     }
 
     DisposableEffect(Unit) {

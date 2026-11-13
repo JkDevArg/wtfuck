@@ -163,6 +163,16 @@
             android:stopWithTask="false" />
 
         <!--
+          Nota de voz grabandose: mantiene el microfono vivo con la pantalla
+          apagada o la app en segundo plano. stopWithTask="false" NO: una nota a
+          medias no sirve, si cierran la app desde recientes se corta y ya.
+        -->
+        <service
+            android:name=".datos.ServicioGrabacionFg"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!--
           Modulo AM. Compartir la ubicacion en tiempo real.
 
           `stopWithTask="false"` porque el compartido tiene que sobrevivir a
