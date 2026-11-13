@@ -4624,6 +4624,14 @@ class Repositorio(
     suspend fun directorioBots(q: String): List<BotEnDirectorio> =
         runCatching { api.directorioBots(q).bots }.getOrElse { emptyList() }
 
+    // Delegacion: autorizar al bot de recepcion a crear/listar bots por mi.
+    suspend fun crearDelegacionBot(): Result<DelegacionCreada> =
+        runCatching { api.crearDelegacionBot() }
+    suspend fun delegacionesBot(): List<DelegacionActiva> =
+        runCatching { api.delegacionesBot().delegaciones }.getOrElse { emptyList() }
+    suspend fun revocarDelegacionBot(id: String): Result<Unit> =
+        runCatching { api.revocarDelegacionBot(id) }
+
     /**
      * Asigna un tipo de cuenta a otra persona. Solo administrador.
      *

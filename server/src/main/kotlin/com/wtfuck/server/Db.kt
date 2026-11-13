@@ -97,6 +97,7 @@ object Db {
         57 to "/db/V57__sobre_de_frase.sql",
         58 to "/db/V58__reseteo_de_password.sql",
         59 to "/db/V59__bots.sql",
+        60 to "/db/V60__delegacion_bot.sql",
     )
 
     /**

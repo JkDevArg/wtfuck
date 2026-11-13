@@ -17,13 +17,18 @@ object Bots {
 
     private val rnd = SecureRandom()
 
-    fun crear(yo: Auth, req: CrearBotReq): BotCreado = Db.tx { c ->
+    fun crear(yo: Auth, req: CrearBotReq): BotCreado = crearPara(yo.usuarioId, req, viaDelegacion = false)
+
+    /** Igual que [crear] pero para el flujo delegado (@rootbot con un token). */
+    fun crearDelegado(duenoId: UUID, req: CrearBotReq): BotCreado = crearPara(duenoId, req, viaDelegacion = true)
+
+    private fun crearPara(usuarioId: UUID, req: CrearBotReq, viaDelegacion: Boolean): BotCreado = Db.tx { c ->
         val nombre = req.nombre.trim().lowercase().removePrefix("@")
         if (!Regex("^[a-z0-9_]{3,20}$").matches(nombre)) {
             throw ErrorNegocio(400, "El nombre del bot admite 3-20 caracteres: letras, numeros y guion bajo.")
         }
         val cuantos = c.prepareStatement("SELECT count(*) FROM bot WHERE dueno_id = ?").use { st ->
-            st.setObject(1, yo.usuarioId)
+            st.setObject(1, usuarioId)
             st.executeQuery().use { rs -> rs.primero { it.getInt(1) } } ?: 0
         }
         if (cuantos >= MAX_BOTS_POR_DUENO) {
@@ -46,23 +51,26 @@ object Bots {
                VALUES (?, ?, ?, ?, ?)"""
         ).use { st ->
             st.setString(1, nombre)
-            st.setObject(2, yo.usuarioId)
+            st.setObject(2, usuarioId)
             st.setBytes(3, Cripto.hashToken(codigo))
             st.setBoolean(4, req.publico)
             st.setString(5, req.descripcion.trim().take(200))
             st.executeUpdate()
         }
-        Autz.auditar(c, yo.usuarioId, "bot.crear", "bot", null)
+        Autz.auditar(c, usuarioId, if (viaDelegacion) "bot.crear.delegado" else "bot.crear", "bot", null)
         BotCreado(nombre, codigo)
     }
 
-    fun mios(yo: Auth): List<BotResumen> = Db.query { c ->
+    fun mios(yo: Auth): List<BotResumen> = miosDe(yo.usuarioId)
+
+    /** Los bots de un dueno por id (lo usan [mios] y el flujo delegado). */
+    fun miosDe(usuarioId: UUID): List<BotResumen> = Db.query { c ->
         c.prepareStatement(
             """SELECT username, publico, descripcion, usuario_id IS NOT NULL,
                       extract(epoch FROM creado_en) * 1000
                FROM bot WHERE dueno_id = ? ORDER BY creado_en DESC"""
         ).use { st ->
-            st.setObject(1, yo.usuarioId)
+            st.setObject(1, usuarioId)
             st.executeQuery().use { rs ->
                 rs.mapear {
                     BotResumen(

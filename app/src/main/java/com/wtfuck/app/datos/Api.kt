@@ -1016,6 +1016,14 @@ class ApiCliente(private val sesion: Sesion) {
     suspend fun directorioBots(q: String): DirectorioBots =
         pedir("$RUTA_BOTS/directorio?q=${java.net.URLEncoder.encode(q, "UTF-8")}", "GET", null, true)
 
+    // Delegacion: autorizar al bot de recepcion a crear/listar bots por mi.
+    suspend fun crearDelegacionBot(): DelegacionCreada =
+        pedir(RUTA_DELEGACIONES_BOT, "POST", "{}", true)
+    suspend fun delegacionesBot(): MisDelegaciones =
+        pedir(RUTA_DELEGACIONES_BOT, "GET", null, true)
+    suspend fun revocarDelegacionBot(id: String): Unit =
+        pedir("$RUTA_DELEGACIONES_BOT/$id", "DELETE", null, true)
+
     // --- modulo P: tipos de cuenta desde el panel ---------------------
     //
     // Cuelgan de /v1/panel y no de /v1/cuenta porque son de staff actuando

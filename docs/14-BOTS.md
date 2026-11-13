@@ -101,6 +101,29 @@ código de un solo uso), el de recepción es de la instancia y se declara en el
 servidor. Corre con el mismo cliente (`bots/`), reusa `cliente.ts` (E2EE) y no
 necesita Groq ni cola.
 
+### Delegación: que @rootbot gestione tus bots
+
+Por defecto @rootbot solo guía (no tiene tu sesión). Para que **cree y liste tus
+bots por vos**, el usuario genera un **token de delegación acotado** (decidido
+con el usuario, 2026-11-12):
+
+- **App** → Mis bots → "Generar código de autorización" → `POST /v1/delegaciones/bot`
+  devuelve un token (una vez) que vale **24 h** y se puede **revocar**.
+- El usuario le pega el token al bot: `/autorizar <código>` (va cifrado E2EE).
+- El bot usa el token con `/crearbot <nombre>` y `/misbots`, que llaman a
+  `POST /v1/bots/delegado` y `/v1/bots/delegado/listar` (el token va en el
+  CUERPO, no en la URL: una URL queda en los logs de acceso).
+- **Alcance fijo: solo crear y listar. Borrar NUNCA se delega** (queda en la
+  app). Un token respeta los límites del dueño (máx 3) y, si se filtra, no puede
+  destruir bots.
+
+Piezas: server `Delegacion.kt` + migración `V60__delegacion_bot.sql` (token
+hasheado, `vence_en`, `revocado_en`); protocolo `Bots.kt` (RUTA_DELEGACIONES_BOT,
+RUTA_BOTS_DELEGADO, DELEGACION_BOT_VIDA_MS); `Bots.crearDelegado`/`miosDe`; bot
+`cliente.ts` (crearBotDelegado/listarBotsDelegado) + `bot.ts` (comandos en modo
+recepción, token en memoria por conversación); app `BotsPantalla.kt` (sección de
+delegación). El token en memoria del bot se pierde al reiniciar (se re-autoriza).
+
 ## Fase 1, lo que quedó
 
 - `bots/` (Node + TypeScript), que reutiliza el WASM de `web/cripto` y el

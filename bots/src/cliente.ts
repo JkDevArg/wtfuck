@@ -351,6 +351,20 @@ export class Cliente {
     return r.aprobados ?? [];
   }
 
+  /**
+   * Delegacion: crea un bot en nombre del dueno del token (ver protocol/Bots.kt).
+   * `conSesion=false`: la credencial es el token en el cuerpo, no la sesion del
+   * bot; el endpoint delegado no mira el Bearer.
+   */
+  async crearBotDelegado(token: string, nombre: string): Promise<{ username: string; codigo: string }> {
+    return this.api.pedir('POST', '/v1/bots/delegado', { token, nombre }, false);
+  }
+
+  /** Delegacion: lista los bots del dueno del token. */
+  async listarBotsDelegado(token: string): Promise<{ bots: { username: string; registrado: boolean; descripcion: string }[] }> {
+    return this.api.pedir('POST', '/v1/bots/delegado/listar', { token }, false);
+  }
+
   /** Baja el blob cifrado de un adjunto y lo descifra. Devuelve el claro. */
   async descargarAdjunto(a: AdjuntoEntrante): Promise<Buffer> {
     const info = await this.api.pedir<{ urlDescarga: string }>('GET', `/v1/adjuntos/${a.adjuntoId}`);

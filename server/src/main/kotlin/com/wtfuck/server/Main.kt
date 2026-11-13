@@ -879,6 +879,34 @@ fun Application.modulo() {
             call.respond(DirectorioBots(Bots.directorio(call.request.queryParameters["q"].orEmpty())))
         }
 
+        // Delegacion: dejar que el bot de recepcion (@rootbot) cree/liste bots en
+        // mi nombre. La GESTION del token va con mi sesion; el USO del token, no
+        // (lo presenta el bot). Ver Delegacion.kt y protocol/Bots.kt.
+        post(RUTA_DELEGACIONES_BOT) {
+            call.respond(Delegacion.crear(call.autenticar()))
+        }
+        get(RUTA_DELEGACIONES_BOT) {
+            call.respond(MisDelegaciones(Delegacion.activas(call.autenticar())))
+        }
+        delete("$RUTA_DELEGACIONES_BOT/{id}") {
+            Delegacion.revocar(call.autenticar(), call.parameters["id"].orEmpty())
+            call.respond(HttpStatusCode.NoContent)
+        }
+        // Lo que usa el bot con el token (el token va en el cuerpo, no en la URL):
+        // alcance fijo, solo crear y listar; borrar NO se delega.
+        post(RUTA_BOTS_DELEGADO) {
+            val req = call.receive<CrearBotDelegadoReq>()
+            val dueno = Delegacion.resolverDueno(req.token)
+                ?: throw ErrorNegocio(401, "Autorizacion invalida, vencida o revocada.")
+            call.respond(Bots.crearDelegado(dueno, CrearBotReq(req.nombre, req.publico, req.descripcion)))
+        }
+        post("$RUTA_BOTS_DELEGADO/listar") {
+            val req = call.receive<ListarBotsDelegadoReq>()
+            val dueno = Delegacion.resolverDueno(req.token)
+                ?: throw ErrorNegocio(401, "Autorizacion invalida, vencida o revocada.")
+            call.respond(MisBots(Bots.miosDe(dueno)))
+        }
+
         post(RUTA_DIRECTA) {
             val yo = call.autenticar()
             val req = call.receive<DirectaReq>()

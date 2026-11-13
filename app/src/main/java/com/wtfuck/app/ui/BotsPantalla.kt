@@ -27,6 +27,8 @@ import com.wtfuck.app.WtfuckApp
 import com.wtfuck.app.ui.theme.*
 import com.wtfuck.protocol.BotCreado
 import com.wtfuck.protocol.BotResumen
+import com.wtfuck.protocol.DelegacionActiva
+import com.wtfuck.protocol.DelegacionCreada
 import com.wtfuck.protocol.MAX_BOTS_POR_DUENO
 import kotlinx.coroutines.launch
 
@@ -46,8 +48,14 @@ fun BotsPantalla(onAtras: () -> Unit) {
     var creado by remember { mutableStateOf<BotCreado?>(null) }
     var aviso by remember { mutableStateOf<String?>(null) }
     var cargando by remember { mutableStateOf(true) }
+    var delegaciones by remember { mutableStateOf<List<DelegacionActiva>>(emptyList()) }
+    var tokenNuevo by remember { mutableStateOf<DelegacionCreada?>(null) }
 
-    suspend fun recargar() { bots = app.repo.misBots(); cargando = false }
+    suspend fun recargar() {
+        bots = app.repo.misBots()
+        delegaciones = app.repo.delegacionesBot()
+        cargando = false
+    }
     LaunchedEffect(Unit) { recargar() }
 
     Scaffold(
@@ -99,8 +107,31 @@ fun BotsPantalla(onAtras: () -> Unit) {
                     Spacer(Modifier.height(8.dp))
                 }
             }
+
+            if (!cargando) {
+                Spacer(Modifier.height(24.dp))
+                SeccionDelegacion(
+                    delegaciones = delegaciones,
+                    onAutorizar = {
+                        ambito.launch {
+                            app.repo.crearDelegacionBot()
+                                .onSuccess { tokenNuevo = it; recargar() }
+                                .onFailure { aviso = it.message ?: "No se pudo autorizar." }
+                        }
+                    },
+                    onRevocar = { id ->
+                        ambito.launch {
+                            app.repo.revocarDelegacionBot(id)
+                                .onSuccess { recargar() }
+                                .onFailure { aviso = it.message }
+                        }
+                    },
+                )
+            }
         }
     }
+
+    tokenNuevo?.let { t -> DialogoTokenDelegacion(t, onCerrar = { tokenNuevo = null }) }
 
     if (creando) {
         DialogoCrearBot(
@@ -206,6 +237,77 @@ private fun DialogoCrearBot(onCerrar: () -> Unit, onCrear: (String, Boolean, Str
             ) { Text("Crear", color = Cian) }
         },
         dismissButton = { TextButton(onClick = onCerrar) { Text("Cancelar", color = TextoSecundario) } },
+    )
+}
+
+@Composable
+private fun SeccionDelegacion(
+    delegaciones: List<DelegacionActiva>,
+    onAutorizar: () -> Unit,
+    onRevocar: (String) -> Unit,
+) {
+    val fmt = remember { java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.getDefault()) }
+    Surface(color = BgSurface, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Text("Que un bot te ayude a crear bots", color = TextoPrimario, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Generá un código y pegáselo al bot de recepción en el chat con /autorizar. " +
+                    "Así puede crear y listar tus bots por vos (nunca borrarlos). Vale 24 horas y " +
+                    "lo podés revocar acá cuando quieras.",
+                style = MaterialTheme.typography.bodySmall, color = TextoSecundario,
+            )
+            Spacer(Modifier.height(12.dp))
+            delegaciones.forEach { d ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Autorización activa", color = TextoPrimario, style = MaterialTheme.typography.bodySmall)
+                        Text("Vence ${fmt.format(java.util.Date(d.venceEn))}", color = TextoTerciario, style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(onClick = { onRevocar(d.id) }) { Text("Revocar", color = Coral) }
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+            Spacer(Modifier.height(4.dp))
+            FilledTonalButton(
+                onClick = onAutorizar,
+                colors = ButtonDefaults.filledTonalButtonColors(containerColor = BgElev, contentColor = Cian),
+            ) { Text("Generar código de autorización") }
+        }
+    }
+}
+
+@Composable
+private fun DialogoTokenDelegacion(t: DelegacionCreada, onCerrar: () -> Unit) {
+    val portapapeles = LocalClipboardManager.current
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        containerColor = BgElev,
+        title = { Text("Código de autorización", color = TextoPrimario) },
+        text = {
+            Column {
+                Text(
+                    "Pegáselo al bot de recepción en el chat con:  /autorizar <código>. " +
+                        "Se muestra UNA sola vez. Vale 24 horas; podés revocarlo desde Mis bots.",
+                    style = MaterialTheme.typography.bodySmall, color = TextoSecundario,
+                )
+                Spacer(Modifier.height(12.dp))
+                Surface(color = BgSurface, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        t.token,
+                        fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Cian,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                TextButton(onClick = { portapapeles.setText(AnnotatedString("/autorizar ${t.token}")) }) {
+                    Icon(Icons.Filled.ContentCopy, null, Modifier.size(16.dp), tint = Cian)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Copiar  /autorizar <código>", color = Cian)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onCerrar) { Text("Listo", color = Cian) } },
     )
 }
 

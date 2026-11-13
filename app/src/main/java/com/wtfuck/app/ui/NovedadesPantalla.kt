@@ -92,6 +92,13 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.12.2",
+            fecha = "12/11/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "Mis bots: ahora el bot de recepción puede crear bots por vos. Generás un código de autorización, se lo pegás al bot (/autorizar) y le pedís /crearbot y /misbots. Solo crear y listar (nunca borrar), vale 24 horas y lo revocás cuando quieras."),
+            ),
+        ),
+        NotasVersion(
             version = "0.12.1",
             fecha = "11/11/2026",
             cambios = listOf(

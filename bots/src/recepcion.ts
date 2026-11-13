@@ -63,6 +63,8 @@ const TEMAS: Tema[] = [
         '3. En tu servidor, configurás el cliente del bot con ese código y lo prendés.',
         '',
         'El servidor de wtfuck nunca corre ni descifra tu bot: todo lo que hable va cifrado igual que el resto.',
+        '',
+        'Si querés, puedo crear bots por vos desde acá: en la app, Mis bots → "Dejar que te ayude", generás un código y me lo pegás con /autorizar <código>. Después usás /crearbot <nombre> y /misbots.',
       ].join('\n'),
   },
   {

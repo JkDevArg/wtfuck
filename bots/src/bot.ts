@@ -106,6 +106,7 @@ export class Bot {
   private readonly porNombre = new Map<string, Herramienta>(); // /nombre → herramienta
   private readonly alcance: Alcance; // scope contra el server (aprobado por el panel)
   private readonly saludadas = new Set<string>(); // recepcion: conversaciones ya saludadas
+  private readonly delegacionDe = new Map<string, string>(); // recepcion: token de delegacion por conversacion
   private ocupado = false; // una sola herramienta corriendo a la vez
 
   constructor(private readonly o: OpcionesBot) {
@@ -197,6 +198,52 @@ export class Bot {
   private async recepcion(m: MensajeEntrante): Promise<void> {
     const conv = m.conversacionId;
     const cfg = { web: this.o.web, nombre: this.o.nombre };
+    const [cmd = '', ...resto] = m.texto.trim().split(/\s+/);
+    const bajo = cmd.toLowerCase();
+
+    // Gestion delegada: requiere un token que el usuario genera en la app y me
+    // pega. El token vale 24 h, es revocable, y solo deja crear y listar (nunca
+    // borrar: eso queda en la app). Lo guardo en memoria, por conversacion.
+    if (bajo === '/autorizar') {
+      const token = resto[0] ?? '';
+      if (!token) {
+        return this.responder(conv, 'Pegame el código de autorización: /autorizar <código>. Lo generás en la app: Perfil → Mis bots → "Dejar que @' + this.cliente.usuario + ' cree bots por mí".');
+      }
+      try {
+        await this.cliente.listarBotsDelegado(token); // si el token sirve, esto no falla
+      } catch {
+        return this.responder(conv, 'Ese código no sirve (inválido, vencido o revocado). Generá uno nuevo en la app.');
+      }
+      this.delegacionDe.set(conv, token);
+      return this.responder(conv, ['Listo, quedé autorizado (24 h, o hasta que lo revoques en la app). Ahora podés:', '  /crearbot <nombre>   crea un bot tuyo', '  /misbots             lista tus bots', '  /salir               me olvido del código'].join('\n'));
+    }
+    if (bajo === '/salir' || bajo === '/revocar') {
+      const tenia = this.delegacionDe.delete(conv);
+      return this.responder(conv, tenia ? 'Me olvidé de tu código. Para revocarlo del todo (que no sirva más), hacelo en la app.' : 'No tenía ningún código tuyo guardado.');
+    }
+    if (bajo === '/crearbot' || bajo === '/misbots') {
+      const token = this.delegacionDe.get(conv);
+      if (!token) return this.responder(conv, 'Primero autorizame: /autorizar <código> (lo generás en la app, en Mis bots).');
+      try {
+        if (bajo === '/crearbot') {
+          const nombre = resto[0] ?? '';
+          if (!nombre) return this.responder(conv, 'Decime el nombre: /crearbot <nombre> (3-20 letras, números o guión bajo).');
+          const r = await this.cliente.crearBotDelegado(token, nombre);
+          return this.responder(conv, [`Creé el bot @${r.username}. Su código de alta (una sola vez, guardalo):`, '', r.codigo, '', 'Con ese código das de alta la cuenta del bot en tu servidor (ver docs/14-BOTS.md).'].join('\n'));
+        }
+        const r = await this.cliente.listarBotsDelegado(token);
+        if (!r.bots.length) return this.responder(conv, 'No tenés bots todavía. Creá uno con /crearbot <nombre>.');
+        return this.responder(conv, 'Tus bots:\n' + r.bots.map((b) => `  @${b.username} — ${b.registrado ? 'activo' : 'sin registrar'}`).join('\n'));
+      } catch (e) {
+        const msg = (e as Error).message || 'no se pudo';
+        if (/401|invalid|vencid|revocad|autorizac/i.test(msg)) {
+          this.delegacionDe.delete(conv);
+          return this.responder(conv, 'Tu autorización venció o se revocó. Generá un código nuevo en la app y volvé a /autorizar.');
+        }
+        return this.responder(conv, `No pude: ${msg}`);
+      }
+    }
+
     if (!this.saludadas.has(conv)) {
       this.saludadas.add(conv);
       await this.responder(conv, bienvenida(cfg));
