@@ -238,7 +238,32 @@ services:
       db:
         condition: service_healthy
 
+  # Bot oficial de recepcion (@rootbot): bienvenida y ayuda, guionado y E2EE.
+  # La IMAGEN se arma en la PC y se envia con despliegue/publicar-bot.sh (no se
+  # construye aca: necesita el WASM de web/cripto/pkg, que esta en .gitignore).
+  # Habla con el servidor por la red interna (servidor:8300); su cuenta tiene que
+  # estar en WTFUCK_BOTS para registrarse sin enclave. Ver docs/14-BOTS.md.
+  rootbot:
+    image: wtfuck-rootbot:latest
+    restart: unless-stopped
+    environment:
+      WTFUCK_BASE: http://servidor:8300
+      WTFUCK_BOT_MODO: recepcion
+      WTFUCK_BOT_USUARIO: rootbot
+      WTFUCK_BOT_NOMBRE: RootBot
+      WTFUCK_BOT_ETIQUETA: Bot oficial
+      WTFUCK_BOT_NIVEL: SOFTWARE_DEV
+      # La clave de la cuenta del bot. Se pone en .env.produccion (no en el repo).
+      WTFUCK_BOT_PASSWORD: ${ROOTBOT_PASS:?hace falta ROOTBOT_PASS en .env.produccion}
+      # Dominio de la version web, para los textos de ayuda (opcional).
+      WTFUCK_BOT_WEB: ${WTFUCK_BOT_WEB:-}
+    volumes:
+      - rootbotdatos:/app/bots/datos
+    depends_on:
+      - servidor
+
 volumes:
   pgdata:
   almacen:
   redisdatos:
+  rootbotdatos:

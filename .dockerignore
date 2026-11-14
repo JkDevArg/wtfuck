@@ -1,0 +1,22 @@
+# Fuera del contexto de build (server y bots). Nada de esto lo copia ningun
+# Dockerfile: solo agranda el contexto y, en la PC, enviarlo al daemon tarda.
+#
+# OJO: NO excluir web/cripto/pkg ni web/app/src/datos — el bot (bots/Dockerfile)
+# los necesita. web/cripto/target (el build de Rust) SI se excluye con **/target.
+.git
+.gitignore
+**/node_modules
+**/build
+**/target
+**/.gradle
+**/.idea
+**/.vscode
+*.apk
+*.aab
+*.keystore
+*.jks
+*.log
+despliegue/descarga
+web-publicada
+bots/datos
+bots/sandbox

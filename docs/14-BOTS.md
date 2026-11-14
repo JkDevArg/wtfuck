@@ -101,6 +101,17 @@ código de un solo uso), el de recepción es de la instancia y se declara en el
 servidor. Corre con el mismo cliente (`bots/`), reusa `cliente.ts` (E2EE) y no
 necesita Groq ni cola.
 
+**Hosting en el VPS (servicio `rootbot`).** El cliente corre como un servicio más
+del `docker-compose`, con `restart: unless-stopped`, hablando con el servidor por
+la red interna (`http://servidor:8300`). La imagen se **arma en la PC** y se
+envía con `despliegue/publicar-bot.sh` (`docker save | ssh docker load`): no se
+construye en el VPS porque carga el WASM de `web/cripto/pkg` (gitignored, se
+genera con `web/cripto/construir.sh`), igual que la versión web. En el VPS, el
+`.env.produccion` lleva `WTFUCK_BOTS=...,rootbot`, `ROOTBOT_PASS=<secreto>` y, si
+hay web, `WTFUCK_BOT_WEB=<dominio>`. Los datos del bot (claves + sesión) viven en
+el volumen `rootbotdatos`. Piezas: `bots/Dockerfile`, el servicio en
+`docker-compose.tras-proxy.yml`, `despliegue/publicar-bot.sh`.
+
 ### Delegación: que @rootbot gestione tus bots
 
 Por defecto @rootbot solo guía (no tiene tu sesión). Para que **cree y liste tus
