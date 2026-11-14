@@ -11,6 +11,13 @@
   --sobre-cian: #0E1313;
   --ambar: #F5B969;
   --coral: #FF8A7A;
+  /* Burbuja propia: teal profundo (no el cian neón), para que el texto largo no
+     queme la vista. El cian queda para acentos: enlaces, botón de enviar, estados. */
+  --mio: #0F4B47;
+  --mio-borde: #16655F;
+  /* Fondo del área de mensajes: un degradado muy sutil para dar profundidad en
+     vez de un plano muerto. */
+  --lienzo: radial-gradient(1200px 600px at 75% -5%, #14201F 0%, var(--fondo) 60%);
   color-scheme: dark;
 }
 
@@ -20,11 +27,18 @@ body {
   background: var(--fondo);
   color: var(--texto);
   font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 button { font: inherit; cursor: pointer; }
 button:disabled { cursor: default; opacity: .5; }
 input, textarea { font: inherit; color: var(--texto); }
 :focus-visible { outline: 2px solid var(--cian); outline-offset: 2px; }
+
+/* Barras de desplazamiento discretas, a tono con el fondo. */
+* { scrollbar-width: thin; scrollbar-color: var(--borde) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--borde); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--elevada); background-clip: padding-box; }
 
 .marca { color: var(--cian); font-weight: 700; letter-spacing: .2px; }
 
@@ -99,13 +113,15 @@ form button[type=submit], .escribir button {
 .fila {
   width: 100%; display: flex; gap: 12px; align-items: center; text-align: left;
   background: none; border: 0; color: inherit; padding: 10px 16px;
+  border-left: 2px solid transparent; transition: background .12s ease;
 }
 .fila:hover { background: var(--elevada); }
-.fila.activa { background: var(--elevada); }
+.fila.activa { background: var(--elevada); border-left-color: var(--cian); }
 .avatar {
-  width: 42px; height: 42px; border-radius: 50%; background: var(--borde); color: var(--cian);
+  width: 42px; height: 42px; border-radius: 50%;
+  background: linear-gradient(145deg, var(--elevada), var(--borde)); color: var(--cian);
   display: grid; place-items: center; font-weight: 600; font-size: 14px; flex-shrink: 0;
-  overflow: hidden;
+  overflow: hidden; box-shadow: inset 0 0 0 1px var(--borde);
 }
 /* La foto cubre el circulo entero; sin object-fit se deformaria. */
 .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -116,7 +132,7 @@ form button[type=submit], .escribir button {
 .nombre { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .cuando { color: var(--terciario); font-size: 12px; flex-shrink: 0; }
 .previa { color: var(--secundario); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
-.globo { background: var(--cian); color: var(--sobre-cian); border-radius: 10px; font-size: 12px; font-weight: 700; padding: 0 7px; }
+.globo { background: var(--cian); color: var(--sobre-cian); border-radius: 999px; font-size: 11px; font-weight: 700; min-width: 20px; height: 20px; padding: 0 6px; display: grid; place-items: center; }
 
 .chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .sin-chat { margin: auto; max-width: 420px; padding: 16px; color: var(--secundario); text-align: center; }
@@ -124,17 +140,23 @@ form button[type=submit], .escribir button {
 .cabecera .nombre { font-size: 16px; }
 .miembros { color: var(--terciario); font-size: 12px; }
 .atras { display: none; background: none; border: 0; color: var(--texto); font-size: 20px; padding: 0 4px; }
-.mensajes { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+.mensajes { flex: 1; overflow-y: auto; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; background: var(--lienzo); }
 .burbuja {
-  max-width: min(72%, 560px); padding: 7px 11px 6px; border-radius: 14px; display: grid; gap: 2px;
-  white-space: pre-wrap; overflow-wrap: anywhere;
+  max-width: min(72%, 560px); padding: 8px 12px 6px; border-radius: 16px; display: grid; gap: 2px;
+  white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 1px 2px rgb(0 0 0 / .25);
+  animation: burbuja-entra .16s ease-out;
 }
-.burbuja.mia { align-self: flex-end; background: var(--cian); color: var(--sobre-cian); border-bottom-right-radius: 4px; }
-.burbuja.suya { align-self: flex-start; background: var(--elevada); border: 1px solid var(--borde); border-bottom-left-radius: 4px; }
+@keyframes burbuja-entra { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .burbuja { animation: none; } }
+.burbuja.mia { align-self: flex-end; background: var(--mio); color: var(--texto); border: 1px solid var(--mio-borde); border-bottom-right-radius: 5px; }
+.burbuja.suya { align-self: flex-start; background: var(--elevada); border: 1px solid var(--borde); border-bottom-left-radius: 5px; }
+/* Mensajes seguidos del mismo lado se juntan: menos cola repetida, más aire. */
+.burbuja.mia + .burbuja.mia { border-top-right-radius: 6px; }
+.burbuja.suya + .burbuja.suya { border-top-left-radius: 6px; }
 .autor { color: var(--ambar); font-size: 12px; font-weight: 600; }
-.pie { justify-self: end; font-size: 11px; opacity: .75; display: inline-flex; gap: 4px; align-items: center; }
-.estado.leido { color: #0B6E6D; }
-.burbuja.mia .estado.fallido, .motivo { color: #8A1C10; font-weight: 600; }
+.pie { justify-self: end; font-size: 11px; opacity: .7; display: inline-flex; gap: 4px; align-items: center; }
+.estado.leido { color: var(--cian); opacity: 1; }
+.estado.fallido, .motivo { color: var(--coral); font-weight: 600; }
 .motivo { font-size: 12px; }
 .escribir { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--borde); background: var(--superficie); position: relative; }
 
@@ -175,8 +197,7 @@ form button[type=submit], .escribir button {
 .reacciones button.mia { border-color: var(--cian); }
 .acciones-msj { display: none; gap: 10px; font-size: 12px; }
 .acciones-msj button { background: none; border: 0; padding: 0; color: inherit; opacity: .8; text-decoration: underline; }
-.acciones-msj .peligro { color: #8A1C10; }
-.burbuja.suya .acciones-msj .peligro { color: var(--coral); }
+.acciones-msj .peligro { color: var(--coral); }
 .burbuja:hover .acciones-msj, .burbuja:focus-within .acciones-msj { display: flex; }
 .contexto { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 8px 16px; background: var(--elevada); border-top: 1px solid var(--borde); font-size: 13px; color: var(--secundario); }
 .adjunto.voz { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: rgb(0 0 0 / .14); min-width: 240px; }
@@ -261,6 +282,53 @@ form button[type=submit], .escribir button {
 .gif-cargando { display: block; width: 100%; height: 100%; background: var(--borde); }
 /* El boton "GIF" de la barra: mismo alto que los demas, con texto. */
 .escribir .adjuntar { font-weight: 700; font-size: 13px; }
+
+/* --- Refinamiento visual (hovers, foco, profundidad) ------------------ */
+.cabecera { box-shadow: 0 1px 0 rgb(0 0 0 / .2); }
+.escribir { box-shadow: 0 -1px 0 rgb(0 0 0 / .2); }
+
+/* Acciones de la cabecera con iconos SVG (antes emojis). Los atributos del
+   trazo viven aquí una sola vez, así cada icono en el JSX es solo su path. */
+.acciones-cab { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.icono-cab {
+  background: none; border: 0; color: var(--secundario); cursor: pointer;
+  height: 36px; min-width: 36px; padding: 0 8px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  transition: color .12s ease, background .12s ease;
+}
+.icono-cab:hover { color: var(--cian); background: color-mix(in srgb, var(--cian) 10%, transparent); }
+.icono-cab.activo { color: var(--cian); }
+.icono-cab svg { width: 20px; height: 20px; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.temporal-txt { font-size: 11px; font-weight: 600; }
+
+/* El botón de acento (enviar, crear, nuevo chat) reacciona al pasar y pulsar. */
+form button[type=submit], .escribir button:not(.adjuntar), .lista .nuevo,
+.panel button, .comentar button, .solicitud button:not(.enlace), .grabando button:not(.enlace) {
+  transition: filter .12s ease, transform .06s ease;
+}
+form button[type=submit]:hover, .escribir button:not(.adjuntar):hover, .lista .nuevo:hover,
+.panel button:hover, .comentar button:hover, .solicitud button:not(.enlace):hover,
+.grabando button:not(.enlace):hover { filter: brightness(1.08); }
+form button[type=submit]:active, .escribir button:not(.adjuntar):active,
+.lista .nuevo:active, .panel button:active { transform: translateY(1px); }
+
+/* Botones-icono de la barra de escribir: se iluminan en cian al pasar. */
+.adjuntar { transition: color .12s ease, border-color .12s ease, background .12s ease; }
+.adjuntar:hover:not(:disabled) { color: var(--cian); border-color: color-mix(in srgb, var(--cian) 45%, var(--borde)); background: color-mix(in srgb, var(--cian) 8%, transparent); }
+
+.escribir textarea { transition: border-color .12s ease; }
+.escribir textarea:focus-visible { outline: none; border-color: var(--cian); }
+input:focus-visible { outline: none; border-color: var(--cian); }
+
+.reproducir { transition: filter .12s ease; }
+.reproducir:hover { filter: brightness(1.12); }
+.adjunto.voz { border-radius: 12px; }
+.reacciones button { transition: border-color .12s ease, background .12s ease; }
+.reacciones button:hover { border-color: var(--cian); }
+
+/* El panel de "elige un chat": centrado y con un respiro. */
+.sin-chat { display: grid; gap: 14px; place-items: center; }
+.sin-chat p { font-size: 15px; }
 
 /* Mis stickers. */
 .sticker-item { position: relative; background: var(--borde); }

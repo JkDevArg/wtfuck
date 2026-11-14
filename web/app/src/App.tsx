@@ -519,6 +519,16 @@ function seguirAbajo(e: { currentTarget: HTMLElement }) {
 /** Las mismas reacciones rápidas que la app (AccionesMensaje.kt). */
 const REACCIONES = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
+/**
+ * Iconos de la cabecera. Trazo fino; tamaño, color y grosor los pone el CSS
+ * (.icono-cab svg) una sola vez, así cada icono es solo su trazo. aria-hidden
+ * porque el botón que los envuelve ya lleva su aria-label.
+ */
+const IconoLlamar = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" /></svg>;
+const IconoVideo = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 8-6 4 6 4V8Z" /><rect x="2" y="6" width="14" height="12" rx="2" /></svg>;
+const IconoTemporal = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2h4" /><path d="M12 14l3-3" /><circle cx="12" cy="14" r="8" /></svg>;
+const IconoCifrado = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v6c0 4 3 6.5 7 8 4-1.5 7-4 7-8V6l-7-3z" /><path d="m9 12 2 2 4-4" /></svg>;
+
 function Adjunto({ m }: { m: Mensaje }) {
   const { archivos } = usarMotor();
   const a = m.adjunto!;
@@ -743,32 +753,38 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
         <button className="atras" onClick={onAtras} aria-label="Volver a la lista">←</button>
         <span className="nombre">{titulo(c)}</span>
         {esGrupo && <span className="miembros">{c.participantes.length + 1} miembros</span>}
-        {c.tipo === 'directa' && (
-          <>
-            <button
-              className="enlace cian derecha"
-              title="Llamar"
-              onClick={() => void iniciarLlamada(c.id, titulo(c), false).catch(() => undefined)}
-            >
-              📞
-            </button>
-            <button
-              className="enlace cian derecha"
-              title="Videollamada"
-              onClick={() => void iniciarLlamada(c.id, titulo(c), true).catch(() => undefined)}
-            >
-              🎥
-            </button>
-          </>
-        )}
-        <button
-          className={`enlace derecha ${c.temporalesSegundos ? 'cian' : ''}`}
-          title={c.temporalesSegundos ? `Mensajes temporales: ${DuracionMensaje.texto(c.temporalesSegundos)}` : 'Mensajes temporales'}
-          onClick={() => setVerTemporales(true)}
-        >
-          ⏱{c.temporalesSegundos ? ` ${DuracionMensaje.texto(c.temporalesSegundos)}` : ''}
-        </button>
-        <button className="enlace cian derecha" onClick={() => setVerHuellas(true)}>Verificar cifrado</button>
+        <span className="acciones-cab">
+          {c.tipo === 'directa' && (
+            <>
+              <button
+                className="icono-cab"
+                aria-label="Llamar" title="Llamar"
+                onClick={() => void iniciarLlamada(c.id, titulo(c), false).catch(() => undefined)}
+              >
+                <IconoLlamar />
+              </button>
+              <button
+                className="icono-cab"
+                aria-label="Videollamada" title="Videollamada"
+                onClick={() => void iniciarLlamada(c.id, titulo(c), true).catch(() => undefined)}
+              >
+                <IconoVideo />
+              </button>
+            </>
+          )}
+          <button
+            className={`icono-cab ${c.temporalesSegundos ? 'activo' : ''}`}
+            aria-label="Mensajes temporales"
+            title={c.temporalesSegundos ? `Mensajes temporales: ${DuracionMensaje.texto(c.temporalesSegundos)}` : 'Mensajes temporales'}
+            onClick={() => setVerTemporales(true)}
+          >
+            <IconoTemporal />
+            {c.temporalesSegundos ? <span className="temporal-txt">{DuracionMensaje.texto(c.temporalesSegundos)}</span> : null}
+          </button>
+          <button className="icono-cab" aria-label="Verificar cifrado" title="Verificar cifrado" onClick={() => setVerHuellas(true)}>
+            <IconoCifrado />
+          </button>
+        </span>
       </header>
       {!!c.identidadCambio?.length && (
         <div className="cambio" role="alert">
