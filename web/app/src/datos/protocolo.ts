@@ -27,6 +27,16 @@ export interface Boton {
   valor: string;
 }
 
+/** La historia (estado) que un mensaje responde (protocol/Sobre.kt: CitaHistoria). */
+export interface CitaHistoria {
+  historiaId: string;
+  clase: string;
+  /** Un trozo del texto, o el pie si era foto. */
+  previa: string;
+  /** Miniatura JPEG en base64, si la historia era foto o video. */
+  miniatura: string;
+}
+
 export interface CargaTexto {
   type: typeof TIPO_TEXTO;
   cuerpo: string;
@@ -34,7 +44,7 @@ export interface CargaTexto {
   respondeTexto: string | null;
   respondeAutor: string | null;
   reenviadoDe: string | null;
-  historia: unknown;
+  historia: CitaHistoria | null;
   silencioso: boolean;
   previa: unknown;
   baliza: string | null;

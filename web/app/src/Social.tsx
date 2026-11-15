@@ -5,9 +5,19 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import {
   agruparHistorias, instantaneaHistorias, marcarVistaHistoria, mediaDeHistoria, publicarFoto, publicarTexto,
   retirarHistoria, sincronizarHistorias, suscribirHistorias, vistasDeHistoria, FONDOS_HISTORIA, TOPE_TEXTO_HISTORIA,
-  type GrupoHistorias,
+  type GrupoHistorias, type HistoriaLocal,
 } from './datos/historias';
-import { sesionActual } from './datos/motor';
+import { responderHistoria, sesionActual } from './datos/motor';
+import type { CitaHistoria } from './datos/protocolo';
+
+/** Reacciones rápidas a un estado (espejo de REACCIONES_HISTORIA de la app). */
+const REACCIONES_HISTORIA = ['❤️', '😂', '😮', '😢', '🔥', '👏'];
+
+/** La cita que viaja en la respuesta a un estado (para que el autor sepa a cuál). */
+function citaDe(h: HistoriaLocal): CitaHistoria {
+  const previa = (h.clase === 'imagen' ? (h.texto || 'Foto') : (h.texto || '')).slice(0, 140);
+  return { historiaId: h.historiaId, clase: h.clase, previa, miniatura: h.adjunto?.miniatura ?? '' };
+}
 
 const usarHistorias = () => useSyncExternalStore(suscribirHistorias, instantaneaHistorias);
 
@@ -105,6 +115,8 @@ function Visor({ grupos, indiceInicial, onCerrar }: { grupos: GrupoHistorias[]; 
   const [pausa, setPausa] = useState(false);
   const [media, setMedia] = useState<string | null>(null);
   const [verVistas, setVerVistas] = useState(false);
+  const [resp, setResp] = useState('');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   const grupo = grupos[ig];
   const h = grupo?.historias[ih];
@@ -122,6 +134,14 @@ function Visor({ grupos, indiceInicial, onCerrar }: { grupos: GrupoHistorias[]; 
     if (ih > 0) { setIh(ih - 1); return; }
     if (ig > 0) { const g = grupos[ig - 1]; setIg(ig - 1); setIh(Math.max(0, g.historias.length - 1)); return; }
   };
+
+  const mandar = (texto: string) => {
+    if (!h || !grupo) return;
+    void responderHistoria(grupo.autorUsername, citaDe(h), texto)
+      .then(() => { setResp(''); setAviso('Enviado ✓'); setTimeout(() => setAviso(null), 1500); })
+      .catch((x: Error) => setAviso(x.message));
+  };
+  const reaccionar = (emoji: string) => mandar(emoji);
 
   // Marcar vista + cargar media al mostrar cada historia.
   useEffect(() => {
@@ -190,7 +210,30 @@ function Visor({ grupos, indiceInicial, onCerrar }: { grupos: GrupoHistorias[]; 
             Eliminar
           </button>
         </footer>
-      ) : null}
+      ) : (
+        <footer className="visor-responder" onPointerDown={(e) => e.stopPropagation()}>
+          {aviso && <span className="visor-aviso">{aviso}</span>}
+          <div className="reacc-rapidas">
+            {REACCIONES_HISTORIA.map((e) => (
+              <button key={e} onClick={() => reaccionar(e)}>{e}</button>
+            ))}
+          </div>
+          <form
+            className="visor-resp-caja"
+            onSubmit={(ev) => { ev.preventDefault(); if (resp.trim()) mandar(resp); }}
+          >
+            <input
+              value={resp}
+              onChange={(e) => setResp(e.target.value)}
+              onFocus={() => setPausa(true)}
+              onBlur={() => setPausa(false)}
+              placeholder={`Responder a @${grupo.autorUsername}…`}
+              aria-label="Responder al estado"
+            />
+            <button type="submit" disabled={!resp.trim()}>Enviar</button>
+          </form>
+        </footer>
+      )}
 
       {verVistas && <HojaVistas historiaId={h.historiaId} onCerrar={() => { setVerVistas(false); setPausa(false); }} />}
     </div>

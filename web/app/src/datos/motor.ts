@@ -14,7 +14,7 @@ import {
   aBytes, adjunto, b64, deBytes, edicion, esAdjunto, esConClave, esEdicion, esHistoria, esHistorial, esTexto, mencionesEn,
   esLlamadaOferta, esLlamadaRespuesta, esLlamadaCandidato, esLlamadaFin,
   nuevoId, respuesta, texto, TIPO_CIFRADO,
-  type Bajada, type Boton, type Carga, type ConversacionResumen, type CopiaCifrada, type Destino, type PaqueteClaves,
+  type Bajada, type Boton, type Carga, type CitaHistoria, type ConversacionResumen, type CopiaCifrada, type Destino, type PaqueteClaves,
   type Subida, type UsuarioPublico, type VincularHecho,
 } from './protocolo';
 import { mimeParaReproducir, type NotaGrabada } from './grabadora';
@@ -87,6 +87,8 @@ export interface Mensaje {
   venceEn?: number;
   /** Menú de botones de un bot. Al tocar uno se envía su `valor` como texto. */
   botones?: Boton[];
+  /** La historia (estado) que este mensaje responde, si responde una. */
+  citaHistoria?: CitaHistoria;
 }
 
 export interface Conversacion extends ConversacionResumen {
@@ -1132,6 +1134,22 @@ export async function enviarTexto(conversacionId: string, cuerpo: string, citado
 /** Una nota de voz: un archivo de clase `nota_voz`, con su onda y su duración. */
 export const enviarNotaDeVoz = (conversacionId: string, n: NotaGrabada) => enviarArchivo(conversacionId, n.archivo, '', n);
 
+/**
+ * Responder o reaccionar a un estado: un mensaje directo al autor que cita la
+ * historia. Abre (o reusa) el chat directo con esa persona y manda el texto.
+ */
+export async function responderHistoria(autorUsername: string, cita: CitaHistoria, cuerpo: string): Promise<void> {
+  const s = estado.sesion;
+  const t = cuerpo.trim();
+  if (!s || !t) return;
+  const convId = await empezarChat(autorUsername);
+  await guardarMensaje({
+    id: nuevoId(), conversacionId: convId, autor: s.username, esMio: true, texto: t,
+    creadoEn: siguienteHora(convId), estado: 'pendiente', leidoPorMi: true, citaHistoria: cita,
+  });
+  pedirDespacho();
+}
+
 export async function enviarArchivo(conversacionId: string, f: File, pie: string, voz?: NotaGrabada): Promise<void> {
   const s = estado.sesion;
   if (!s) return;
@@ -1407,7 +1425,11 @@ function cargaDe(m: Mensaje): Carga {
       onda: a.onda ?? '',
     });
   }
-  return m.cita ? respuesta(m.texto, m.cita) : texto(m.texto);
+  const base = m.cita ? respuesta(m.texto, m.cita) : texto(m.texto);
+  // Responder a un estado: el mensaje cita la historia (el autor ve a qué
+  // contesta). Reutiliza el mismo sobre que un texto normal.
+  if (m.citaHistoria) base.historia = m.citaHistoria;
+  return base;
 }
 
 async function despacharUno(m: Mensaje): Promise<void> {
