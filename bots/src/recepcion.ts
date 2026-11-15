@@ -184,8 +184,23 @@ const TEMAS: Tema[] = [
 /** El menú de temas: la lista de lo que el bot sabe explicar, numerada. */
 export function menu(): string {
   const lineas = TEMAS.map((t, i) => `  ${i + 1}. ${t.titulo}`);
-  return ['Puedo ayudarte con:', ...lineas, '', 'Escribime el número o contame qué necesitás (ej: "cómo creo un bot", "perdí mi contraseña").'].join('\n');
+  return ['Puedo ayudarte con:', ...lineas, '', 'Tocá una opción, o escribime el número o qué necesitás (ej: "cómo creo un bot", "perdí mi contraseña").'].join('\n');
 }
+
+/** Un botón de menú (estructuralmente igual a `Boton` del protocolo). */
+export interface BotonMenu {
+  etiqueta: string;
+  valor: string;
+}
+
+/**
+ * Los botones del menú: uno por tema. La etiqueta es el título; al tocarlo se
+ * manda ese mismo título como mensaje, que `responder` matchea por palabra clave.
+ */
+export const BOTONES_MENU: BotonMenu[] = TEMAS.map((t) => ({ etiqueta: t.titulo, valor: t.titulo }));
+
+/** Botón para volver al menú, que se adjunta a la respuesta de un tema. */
+export const BOTON_MENU: BotonMenu = { etiqueta: '⬅️ Menú', valor: 'menú' };
 
 /** Bienvenida del primer contacto: quién soy + el menú. */
 export function bienvenida(c: CfgRecepcion = {}): string {

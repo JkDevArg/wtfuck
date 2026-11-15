@@ -92,6 +92,13 @@ data class NotasVersion(val version: String, val fecha: String, val cambios: Lis
 object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
+            version = "0.12.3",
+            fecha = "14/11/2026",
+            cambios = listOf(
+                Cambio(TipoCambio.NUEVO, "Botones de menú en los chats: los bots ahora pueden mostrarte opciones tocables (como el teclado de Telegram). Tocás una y se envía como tu mensaje; el bot responde. Todo sigue cifrado de punta a punta. Probalo escribiéndole a @rootbot."),
+            ),
+        ),
+        NotasVersion(
             version = "0.12.2",
             fecha = "12/11/2026",
             cambios = listOf(

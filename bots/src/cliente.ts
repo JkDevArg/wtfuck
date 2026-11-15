@@ -24,6 +24,7 @@ import {
   texto as cargaTexto,
   TIPO_CIFRADO,
   type Bajada,
+  type Boton,
   type Carga,
   type CargaAdjunto,
   type CopiaCifrada,
@@ -379,7 +380,7 @@ export class Cliente {
   // ------------------------------------------------------------------
 
   /** Manda un texto a una conversacion. Cifra una copia por aparato destino. */
-  async responder(conversacionId: string, texto: string): Promise<void> {
+  async responder(conversacionId: string, texto: string, botones?: Boton[]): Promise<void> {
     const sobreId = nuevoId();
     // Diagnóstico: cada respuesta que sale, con su destino y un extracto.
     this.cfg.log(`-> ${conversacionId.slice(0, 8)}: ${texto.slice(0, 40).replace(/\n/g, ' ')}`);
@@ -393,7 +394,10 @@ export class Cliente {
       clase: '',
     });
 
-    const carga: Carga = cargaTexto(texto);
+    const carga = cargaTexto(texto);
+    // Botones de menú (estilo Telegram): viajan DENTRO del sobre cifrado, como
+    // cualquier campo de la carga. Un cliente viejo los ignora y ve solo el texto.
+    if (botones && botones.length) carga.botones = botones;
     const ds = await this.destinos(conversacionId);
     const copias: CopiaCifrada[] = [];
     const claro = aBytes(carga);

@@ -14,7 +14,7 @@ import {
   aBytes, adjunto, b64, deBytes, edicion, esAdjunto, esConClave, esEdicion, esHistorial, esTexto, mencionesEn,
   esLlamadaOferta, esLlamadaRespuesta, esLlamadaCandidato, esLlamadaFin,
   nuevoId, respuesta, texto, TIPO_CIFRADO,
-  type Bajada, type Carga, type ConversacionResumen, type CopiaCifrada, type Destino, type PaqueteClaves,
+  type Bajada, type Boton, type Carga, type ConversacionResumen, type CopiaCifrada, type Destino, type PaqueteClaves,
   type Subida, type UsuarioPublico, type VincularHecho,
 } from './protocolo';
 import { mimeParaReproducir, type NotaGrabada } from './grabadora';
@@ -84,6 +84,8 @@ export interface Mensaje {
   deHistorial?: boolean;
   /** Mensajes temporales: epoch ms tras el cual se borra solo. 0/ausente = permanente. */
   venceEn?: number;
+  /** Menú de botones de un bot. Al tocar uno se envía su `valor` como texto. */
+  botones?: Boton[];
 }
 
 export interface Conversacion extends ConversacionResumen {
@@ -826,6 +828,9 @@ async function recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
       if (carga.respondeA && carga.respondeTexto != null) {
         m.cita = { id: carga.respondeA, texto: carga.respondeTexto, autor: carga.respondeAutor ?? '' };
       }
+      // Botones de un bot: solo de mensajes ajenos (los míos no los muestro como
+      // menú) y solo si vienen con contenido.
+      if (!esMio && Array.isArray(carga.botones) && carga.botones.length) m.botones = carga.botones.slice(0, 12);
     } else {
       const clase = (Object.keys(LIMITES).includes(carga.clase) ? carga.clase : 'documento') as Clase;
       // Igual que la app: "ver una vez" no trae ni pie ni miniatura que mostrar,

@@ -624,6 +624,13 @@ function Burbuja({ m, esGrupo, onResponder, onEditar, onReenviar }: {
         {m.editado && <span>editado</span>}
         {hora(m.creadoEn)} <Estado m={m} />
       </span>
+      {!!m.botones?.length && (
+        <span className="botones-msj">
+          {m.botones.map((b, i) => (
+            <button key={i} onClick={() => void enviarTexto(m.conversacionId, b.valor)}>{b.etiqueta}</button>
+          ))}
+        </span>
+      )}
       {m.estado === 'fallido' && m.motivo && <span className="motivo">{m.motivo}</span>}
       {!!m.reacciones?.length && (
         <span className="reacciones">

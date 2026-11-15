@@ -139,6 +139,22 @@ data class CitaHistoria(
 )
 
 /**
+ * Un boton de menu, estilo "teclado" de Telegram, que un bot adjunta a un
+ * mensaje de texto. Al tocarlo, el cliente MANDA [valor] como un mensaje normal
+ * (visible, del usuario): no hay tipo de carga nuevo ni callback oculto, asi que
+ * el bot lo procesa como cualquier texto. Va DENTRO del sobre cifrado: el
+ * servidor no lo ve. Un cliente viejo ignora el campo y muestra solo el texto,
+ * por eso el menu viaja TAMBIEN escrito en el cuerpo. Ver `Carga.Texto.botones`.
+ */
+@Serializable
+data class Boton(
+    /** Lo que se dibuja en el boton (puede llevar emoji). */
+    val etiqueta: String,
+    /** Lo que se envia como mensaje al tocarlo (una palabra clave para el bot). */
+    val valor: String,
+)
+
+/**
  * Lo que va DENTRO del cuerpo, una vez descifrado.
  * Solo los clientes conocen este tipo. El servidor nunca lo deserializa.
  */
@@ -187,6 +203,13 @@ sealed interface Carga {
          * como "(no se pudo descifrar)". Ver `MiBaliza`.
          */
         val baliza: String? = null,
+        /**
+         * Menu de botones que adjunta un bot (ver [Boton]). Al tocar uno, el
+         * cliente manda su `valor` como mensaje normal. Va aqui y no en un tipo
+         * de carga nuevo para que un cliente viejo lo ignore y muestre el texto,
+         * que ya trae el menu escrito. `null` o vacio = mensaje de texto a secas.
+         */
+        val botones: List<Boton>? = null,
     ) : Carga
 
     /**

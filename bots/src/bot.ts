@@ -21,7 +21,7 @@ import type { Orquestador, PasoPlan } from './orquestador.ts';
 import type { Agente, LimitesAgente } from './agente.ts';
 import { planearEgress, type MotorContenedor } from './sandbox.ts';
 import { Alcance } from './alcance.ts';
-import { bienvenida, menu, responder as responderRecepcion } from './recepcion.ts';
+import { bienvenida, menu, responder as responderRecepcion, BOTONES_MENU, BOTON_MENU, type BotonMenu } from './recepcion.ts';
 
 export type Modo = 'eco' | 'charla' | 'herramienta' | 'recepcion';
 
@@ -135,8 +135,8 @@ export class Bot {
     this.cliente.cerrar();
   }
 
-  private responder(conversacionId: string, texto: string): Promise<void> {
-    return this.cliente.responder(conversacionId, texto.slice(0, TOPE_CHAT)).catch((e) => this.o.log(`no se pudo responder: ${(e as Error).message}`));
+  private responder(conversacionId: string, texto: string, botones?: BotonMenu[]): Promise<void> {
+    return this.cliente.responder(conversacionId, texto.slice(0, TOPE_CHAT), botones).catch((e) => this.o.log(`no se pudo responder: ${(e as Error).message}`));
   }
 
   private async alRecibir(m: MensajeEntrante): Promise<void> {
@@ -246,14 +246,24 @@ export class Bot {
 
     if (!this.saludadas.has(conv)) {
       this.saludadas.add(conv);
-      await this.responder(conv, bienvenida(cfg));
+      await this.responder(conv, bienvenida(cfg), BOTONES_MENU);
       // Si además trajo una pregunta concreta, la contesto (sin repetir el menú,
       // que ya va en la bienvenida).
       const r = responderRecepcion(m.texto, cfg);
-      if (r !== menu()) await this.responder(conv, r);
+      if (r !== menu()) await this.responder(conv, r, this.botonesRecepcion(r));
       return;
     }
-    return this.responder(conv, responderRecepcion(m.texto, cfg));
+    const r = responderRecepcion(m.texto, cfg);
+    return this.responder(conv, r, this.botonesRecepcion(r));
+  }
+
+  /**
+   * Qué botones adjuntar a una respuesta de recepción: si incluye el menú (lo
+   * pidió o no entendí), los botones del menú; si fue un tema concreto, el botón
+   * de volver al menú.
+   */
+  private botonesRecepcion(r: string): BotonMenu[] {
+    return r.includes(menu()) ? BOTONES_MENU : [BOTON_MENU];
   }
 
   // ------------------------------------------------------------------

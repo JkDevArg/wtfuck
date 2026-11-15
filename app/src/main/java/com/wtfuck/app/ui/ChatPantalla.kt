@@ -93,6 +93,7 @@ import com.wtfuck.app.datos.emojiSolo
 import com.wtfuck.app.datos.ApiCliente
 import com.wtfuck.app.datos.EstadoConexion
 import com.wtfuck.app.datos.jsonApp
+import kotlinx.serialization.builtins.ListSerializer
 import com.wtfuck.app.datos.Media
 import com.wtfuck.app.datos.MensajeEnt
 import com.wtfuck.app.datos.ServicioGrabacionFg
@@ -1605,6 +1606,14 @@ private fun ChatAbierto(
                         // Deslizar la burbuja hacia la derecha: el mismo
                         // destino que el "Responder" del menu, por otro camino.
                         onResponder = { respondiendoA = m },
+                        // Tocar un boton de menu de un bot: se envia su valor
+                        // como un mensaje normal, igual que si lo escribieras.
+                        onBoton = { valor ->
+                            ambito.launch {
+                                runCatching { app.repo.enviarTexto(conversacionId, valor) }
+                                    .onFailure { aviso = it.message }
+                            }
+                        },
                     )
                 }
             }
@@ -2352,6 +2361,8 @@ private fun Burbuja(
     /** Volver a llamar desde el resumen de una llamada. El booleano es el video. */
     onDevolverLlamada: (Boolean) -> Unit,
     onResponder: () -> Unit,
+    /** Tocar un botón de menú de un bot: envía su `valor` como mensaje normal. */
+    onBoton: (String) -> Unit = {},
 ) {
     val estado = runCatching { EstadoEnvio.valueOf(m.estado) }.getOrDefault(EstadoEnvio.PENDIENTE)
     val fallido = estado == EstadoEnvio.FALLIDO
@@ -2740,8 +2751,50 @@ private fun Burbuja(
             }
         }
 
+        FilaBotones(m.botonesJson, onBoton)
         FilaReacciones(reacciones, onReaccion)
     }
+    }
+}
+
+/**
+ * Los botones de menú que adjuntó un bot (estilo teclado de Telegram). Al tocar
+ * uno se envía su `valor` como mensaje normal (ver `onBoton`). Van apilados a lo
+ * ancho de la burbuja. Si el JSON viene raro, no se dibuja nada: un formato
+ * inesperado no debe romper el chat.
+ */
+@Composable
+private fun FilaBotones(botonesJson: String, onBoton: (String) -> Unit) {
+    if (botonesJson.isBlank()) return
+    val botones = remember(botonesJson) {
+        runCatching {
+            jsonApp.decodeFromString(ListSerializer(com.wtfuck.protocol.Boton.serializer()), botonesJson)
+        }.getOrDefault(emptyList())
+    }
+    if (botones.isEmpty()) return
+    Column(
+        Modifier.fillMaxWidth().padding(top = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        for (b in botones) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Cian.copy(alpha = 0.12f))
+                    .clickable { onBoton(b.valor) }
+                    .padding(vertical = 10.dp, horizontal = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    b.etiqueta,
+                    color = Cian,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
     }
 }
 

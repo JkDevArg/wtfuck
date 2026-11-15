@@ -8,6 +8,7 @@ import com.wtfuck.app.contenido.recortado
 import com.wtfuck.app.contenido.segura
 import com.wtfuck.protocol.FORMA_GIF_ID
 import com.wtfuck.protocol.*
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.CoroutineScope
@@ -1301,6 +1302,12 @@ class Repositorio(
                         especialJson = if (claseDe(carga).isEmpty()) "" else {
                             jsonApp.encodeToString(Carga.serializer(), carga!!)
                         },
+                        // Botones de menu de un bot: viajan en Carga.Texto (clase
+                        // TEXTO, por eso no caen en especialJson). Se guardan en su
+                        // propia columna; al tocar uno se envia su `valor`.
+                        botonesJson = cita?.botones?.takeIf { it.isNotEmpty() }
+                            ?.let { jsonApp.encodeToString(ListSerializer(Boton.serializer()), it) }
+                            .orEmpty(),
                     )
                 )
 

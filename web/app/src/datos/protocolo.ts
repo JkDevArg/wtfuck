@@ -20,6 +20,12 @@ export const TIPO_EDICION = 'com.wtfuck.protocol.Carga.Edicion';
 /** El único con @SerialName propio en el contrato (Adjuntos.kt). */
 export const TIPO_ADJUNTO = 'adjunto';
 
+/** Un botón de menú que un bot adjunta a un texto (protocol/Sobre.kt: Boton). */
+export interface Boton {
+  etiqueta: string;
+  valor: string;
+}
+
 export interface CargaTexto {
   type: typeof TIPO_TEXTO;
   cuerpo: string;
@@ -31,6 +37,8 @@ export interface CargaTexto {
   silencioso: boolean;
   previa: unknown;
   baliza: string | null;
+  /** Menú de botones de un bot. Al tocar uno se envía su `valor`. */
+  botones?: Boton[] | null;
 }
 
 export interface MensajeHistorico {
@@ -167,6 +175,7 @@ export function texto(cuerpo: string): CargaTexto {
     silencioso: false,
     previa: null,
     baliza: null,
+    botones: null,
   };
 }
 
