@@ -98,6 +98,7 @@ object Db {
         58 to "/db/V58__reseteo_de_password.sql",
         59 to "/db/V59__bots.sql",
         60 to "/db/V60__delegacion_bot.sql",
+        61 to "/db/V61__canal_oficial.sql",
     )
 
     /**

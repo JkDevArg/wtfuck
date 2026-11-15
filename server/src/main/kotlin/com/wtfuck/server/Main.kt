@@ -313,6 +313,14 @@ fun main() {
     // una ruta: una ruta de "hazme administrador" protegida por un secreto es
     // la clase de cosa que termina abierta en produccion.
     Panel.sembrarPropietario(System.getenv("WTFUCK_PROPIETARIO"))
+    // Canal oficial de anuncios (WTFuck Announces), si esta configurado. Lo crea
+    // si falta y auto-suscribe a todos. Idempotente. Ver Canales.sembrarCanalOficial.
+    runCatching {
+        Canales.sembrarCanalOficial(
+            System.getenv("WTFUCK_CANAL_OFICIAL"),
+            System.getenv("WTFUCK_CANAL_OFICIAL_NOMBRE"),
+        )
+    }.onFailure { bitacora.warn("No se pudo sembrar el canal oficial: ${it.message}") }
     // Modulo N. Sin WTFUCK_REDIS_URL no hace nada: una sola instancia es el
     // caso normal y no debe necesitar Redis para arrancar.
     Bus.iniciar { dispositivo, msg -> Hub.entregarDelBus(dispositivo, msg) }
@@ -1752,6 +1760,17 @@ fun Application.modulo() {
         post("$RUTA_PANEL/canales/{id}") {
             val yo = call.autenticarPanel()
             val avisos = Canales.revisar(yo, call.idRuta(), call.receive())
+            avisos.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        // Publicar un anuncio en el canal oficial (WTFuck Announces). La unica
+        // ruta de panel que escribe CONTENIDO: un anuncio oficial es justo lo
+        // que el panel SI puede decir. Exige nivel administrador.
+        post("$RUTA_PANEL/anuncios") {
+            val yo = call.autenticarPanel()
+            val req = call.receive<PublicarOficialReq>()
+            val avisos = Canales.publicarOficial(yo, req.cuerpo)
             avisos.forEach { (dispositivo, ev) -> Hub.empujar(dispositivo, ev) }
             call.respond(HttpStatusCode.NoContent)
         }

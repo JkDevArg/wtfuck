@@ -219,6 +219,10 @@ object Repo {
             }
         }
 
+        // Canal oficial de anuncios: todo usuario nuevo queda suscrito. Si no
+        // hay canal oficial, no hace nada. Nunca bloquea el registro.
+        runCatching { Canales.suscribirAlOficial(c, usuarioId) }
+
         SesionResp(emitirToken(c, dispositivoId, ip, agente), usuarioId.toString(), dispositivoId.toString(), user)
     }
 

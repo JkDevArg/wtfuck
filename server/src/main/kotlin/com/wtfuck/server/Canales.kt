@@ -751,7 +751,8 @@ object Canales {
                         WHERE p.conversacion_id = k.conversacion_id
                           AND p.usuario_id = ? AND p.salido_en IS NULL), ''),
                       k.estado, k.motivo_rechazo,
-                      coalesce(extract(epoch FROM v.avatar_actualizado) * 1000, 0)::bigint
+                      coalesce(extract(epoch FROM v.avatar_actualizado) * 1000, 0)::bigint,
+                      k.oficial
                FROM canal k JOIN conversacion v ON v.id = k.conversacion_id
                WHERE k.conversacion_id = ?"""
         ).use { st ->
@@ -786,6 +787,7 @@ object Canales {
                         estado = it.getString(10),
                         motivoRechazo = it.getString(11),
                         avatarVersion = it.getLong(12),
+                        oficial = it.getBoolean(13),
                     )
                 }
             }
@@ -1015,6 +1017,161 @@ object Canales {
             if (excepto != null) st.setObject(2, excepto)
             st.executeQuery().use { it.next() }
         }
+    }
+
+    // ------------------------------------------------------------------
+    //  Canal oficial de la instancia (WTFuck Announces)
+    // ------------------------------------------------------------------
+
+    /**
+     * Asegura que exista el canal oficial de anuncios y que todos los usuarios
+     * queden suscritos. Idempotente: se llama en cada arranque.
+     *
+     * Es un canal publico normal, pero `oficial`, aprobado, SOLO LECTURA
+     * (comentarios y reacciones apagados, y un suscriptor nunca pudo publicar) y
+     * auto-suscrito. Se crea a nombre del propietario (quien publica los
+     * anuncios); si esa cuenta aun no existe, no hace nada y reintenta al
+     * proximo arranque.
+     */
+    fun sembrarCanalOficial(aliasBruto: String?, nombreBruto: String?) {
+        val alias = normalizarAlias(aliasBruto) ?: return
+        val nombre = nombreBruto?.trim()?.takeIf { it.isNotEmpty() }?.take(64) ?: "WTFuck Announces"
+        Db.tx { c ->
+            val propietario = c.prepareStatement(
+                "SELECT id FROM usuario WHERE staff_nivel >= ? ORDER BY staff_nivel DESC LIMIT 1"
+            ).use { st ->
+                st.setInt(1, Moderacion.PROPIETARIO)
+                st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+            }
+            if (propietario == null) {
+                bitacoraCanales.info("Canal oficial: aun no hay propietario; se reintenta al proximo arranque")
+                return@tx
+            }
+
+            var convId = c.prepareStatement("SELECT conversacion_id FROM canal WHERE oficial").use { st ->
+                st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+            }
+
+            if (convId == null) {
+                if (aliasTomado(c, alias, null)) {
+                    bitacoraCanales.warn("Canal oficial: el alias @{} ya esta en uso; no se crea", alias)
+                    return@tx
+                }
+                convId = c.prepareStatement(
+                    "INSERT INTO conversacion (tipo, creador_id, nombre) VALUES ('canal', ?, ?) RETURNING id"
+                ).use { st ->
+                    st.setObject(1, propietario); st.setString(2, nombre)
+                    st.executeQuery().use { it.next(); it.getObject(1, UUID::class.java) }
+                }
+                c.prepareStatement(
+                    """INSERT INTO participante (conversacion_id, usuario_id, rol, rol_id)
+                       VALUES (?, ?, 'admin', ?)"""
+                ).use { st ->
+                    st.setObject(1, convId); st.setObject(2, propietario)
+                    st.setObject(3, rolSistema(c, "propietario")); st.executeUpdate()
+                }
+                c.prepareStatement(
+                    """INSERT INTO canal (conversacion_id, alias, publico, descripcion,
+                                          comentarios, reacciones, estado, oficial)
+                       VALUES (?, ?, true, ?, false, false, 'aprobado', true)"""
+                ).use { st ->
+                    st.setObject(1, convId); st.setString(2, alias)
+                    st.setString(3, "Anuncios oficiales y novedades."); st.executeUpdate()
+                }
+                bitacoraCanales.info("Canal oficial creado: @{} ({})", alias, convId)
+            } else {
+                c.prepareStatement("UPDATE conversacion SET nombre = ? WHERE id = ?").use { st ->
+                    st.setString(1, nombre); st.setObject(2, convId); st.executeUpdate()
+                }
+                c.prepareStatement(
+                    """UPDATE canal SET alias = ?, publico = true, comentarios = false,
+                              reacciones = false, estado = 'aprobado' WHERE conversacion_id = ?"""
+                ).use { st -> st.setString(1, alias); st.setObject(2, convId); st.executeUpdate() }
+            }
+
+            // Auto-suscribir a TODOS los que no tengan ya una fila. Respeta a
+            // quien se dio de baja (tiene fila con salido_en): no se le reinserta.
+            val nuevos = c.prepareStatement(
+                """INSERT INTO participante (conversacion_id, usuario_id, rol, rol_id)
+                   SELECT ?, u.id, 'miembro', ?
+                   FROM usuario u
+                   WHERE u.desactivado_en IS NULL
+                     AND NOT EXISTS (SELECT 1 FROM participante p
+                                     WHERE p.conversacion_id = ? AND p.usuario_id = u.id)"""
+            ).use { st ->
+                st.setObject(1, convId); st.setObject(2, rolSistema(c, "suscriptor")); st.setObject(3, convId)
+                st.executeUpdate()
+            }
+            if (nuevos > 0) bitacoraCanales.info("Canal oficial: {} usuarios auto-suscritos", nuevos)
+        }
+    }
+
+    /** Suscribe a un usuario recien creado al canal oficial, si existe. */
+    fun suscribirAlOficial(c: Connection, usuarioId: UUID) {
+        val convId = c.prepareStatement("SELECT conversacion_id FROM canal WHERE oficial").use { st ->
+            st.executeQuery().use { rs -> rs.primero { it.getObject(1, UUID::class.java) } }
+        } ?: return
+        c.prepareStatement(
+            """INSERT INTO participante (conversacion_id, usuario_id, rol, rol_id)
+               VALUES (?, ?, 'miembro', ?) ON CONFLICT (conversacion_id, usuario_id) DO NOTHING"""
+        ).use { st ->
+            st.setObject(1, convId); st.setObject(2, usuarioId)
+            st.setObject(3, rolSistema(c, "suscriptor")); st.executeUpdate()
+        }
+    }
+
+    /**
+     * Publica un anuncio en el canal oficial, desde el panel (staff, nivel
+     * administrador). Es la excepcion declarada al "el panel no manda mensajes":
+     * un anuncio oficial es justo lo que el panel SI puede decir. La publicacion
+     * se atribuye al dueno del canal y habla "como el canal" (comoCanal=true).
+     */
+    fun publicarOficial(yo: Auth, cuerpoBruto: String): List<Pair<UUID, Bajada.Evento>> = Db.tx { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId, Moderacion.ADMINISTRADOR)
+        val fila = c.prepareStatement(
+            """SELECT k.conversacion_id, v.creador_id, u.username
+               FROM canal k JOIN conversacion v ON v.id = k.conversacion_id
+               JOIN usuario u ON u.id = v.creador_id
+               WHERE k.oficial"""
+        ).use { st ->
+            st.executeQuery().use { rs ->
+                rs.primero {
+                    Triple(
+                        it.getObject(1, UUID::class.java),
+                        it.getObject(2, UUID::class.java),
+                        it.getString(3),
+                    )
+                }
+            }
+        } ?: throw ErrorNegocio(409, "No hay canal oficial configurado (WTFUCK_CANAL_OFICIAL).")
+        val (convId, autorId, autorUsername) = fila
+
+        val cuerpo = cuerpoBruto.trim()
+        if (cuerpo.isEmpty()) throw ErrorNegocio(400, "El anuncio no puede estar vacio.")
+        if (cuerpo.length > 8192) throw ErrorNegocio(400, "El anuncio no puede pasar de 8192 caracteres.")
+
+        val msgId = UUID.randomUUID()
+        c.prepareStatement(
+            "INSERT INTO mensaje_meta (id, conversacion_id, autor_id) VALUES (?, ?, ?)"
+        ).use { st ->
+            st.setObject(1, msgId); st.setObject(2, convId); st.setObject(3, autorId); st.executeUpdate()
+        }
+        c.prepareStatement(
+            """INSERT INTO publicacion_contenido (mensaje_id, conversacion_id, cuerpo, como_canal)
+               VALUES (?, ?, ?, true)"""
+        ).use { st ->
+            st.setObject(1, msgId); st.setObject(2, convId); st.setString(3, cuerpo); st.executeUpdate()
+        }
+        Autz.auditar(c, yo.usuarioId, "canal.anuncio", "conversacion", convId, detalle = """{"largo":${cuerpo.length}}""")
+
+        val suscriptores = c.prepareStatement(
+            """SELECT usuario_id FROM participante
+               WHERE conversacion_id = ? AND salido_en IS NULL AND usuario_id <> ?"""
+        ).use { st ->
+            st.setObject(1, convId); st.setObject(2, autorId)
+            st.executeQuery().use { rs -> rs.mapear { it.getObject(1, UUID::class.java) } }
+        }
+        Eventos.emitir(c, suscriptores, "canal_publicacion", convId, autorUsername, detalle = cuerpo.take(140))
     }
 
     private fun rolSistema(c: Connection, clave: String): UUID =

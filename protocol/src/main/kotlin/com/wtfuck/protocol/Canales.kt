@@ -103,7 +103,19 @@ data class ConfigCanal(
      * eso convierte una decision en un muro. La base lo exige con un CHECK.
      */
     val motivoRechazo: String? = null,
+
+    /**
+     * Canal OFICIAL de la instancia (ej. "WTFuck Announces"): anuncios y
+     * changelog. Es un canal publico normal, pero auto-suscrito para todos,
+     * solo lectura (sin comentarios ni reacciones) y publicado desde el panel.
+     * La interfaz lo marca con una insignia. Ver `Canales.sembrarCanalOficial`.
+     */
+    val oficial: Boolean = false,
 )
+
+/** Publicar un anuncio en el canal oficial, desde el panel (solo staff). */
+@Serializable
+data class PublicarOficialReq(val cuerpo: String)
 
 @Serializable
 data class ConfigCanalReq(

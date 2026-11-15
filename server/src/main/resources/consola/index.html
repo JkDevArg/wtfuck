@@ -129,6 +129,7 @@
     <button data-v="cola">Denuncias</button>
     <button data-v="personas">Personas</button>
     <button data-v="canales">Canales</button>
+    <button data-v="anuncios">Anuncios</button>
     <button data-v="grupos">Grupos</button>
     <button data-v="limites">Limites</button>
     <button data-v="bitacora">Bitacora</button>
@@ -232,6 +233,7 @@ async function pintar(v) {
     else if (v === 'cola') await vistaCola(m);
     else if (v === 'personas') vistaPersonas(m);
     else if (v === 'canales') await vistaCanales(m);
+    else if (v === 'anuncios') vistaAnuncios(m);
     else if (v === 'grupos') vistaGrupos(m);
     else if (v === 'limites') await vistaLimites(m);
     else if (v === 'bitacora') vistaBitacora(m);
@@ -387,6 +389,36 @@ window.revisarCanal = async (id, aprobado) => {
     pintar('canales');
   } catch (e) { alert(e.message); }
 };
+
+function vistaAnuncios(m) {
+  m.innerHTML =
+    '<div class="tarjeta"><b>Publicar un anuncio</b>' +
+    '<p class="men">Se publica en el canal oficial (WTFuck Announces), que todos ' +
+    'ven en la app y la web. Habla "como el canal" y es solo lectura. Ideal para ' +
+    'novedades y changelog.</p>' +
+    '<textarea id="anTexto" rows="8" placeholder="Escribí el anuncio..." ' +
+    'style="width:100%;box-sizing:border-box;font:inherit;padding:10px;' +
+    'background:var(--fondo,#0e1313);color:inherit;border:1px solid var(--slate,#2a3434);' +
+    'border-radius:10px;resize:vertical"></textarea>' +
+    '<div class="fila" style="margin-top:10px"><span class="men crece" id="anEstado"></span>' +
+    '<button class="acc" id="anPublicar">Publicar</button></div></div>';
+  el('anPublicar').onclick = async () => {
+    const cuerpo = el('anTexto').value.trim();
+    if (!cuerpo) { el('anEstado').textContent = 'El anuncio no puede estar vacío.'; return; }
+    if (!confirm('¿Publicar este anuncio para todos los usuarios?')) return;
+    el('anPublicar').disabled = true;
+    el('anEstado').textContent = 'Publicando...';
+    try {
+      await api('/v1/panel/anuncios', { metodo: 'POST', cuerpo: { cuerpo: cuerpo } });
+      el('anTexto').value = '';
+      el('anEstado').textContent = 'Publicado ✓';
+    } catch (e) {
+      el('anEstado').textContent = e.message;
+    } finally {
+      el('anPublicar').disabled = false;
+    }
+  };
+}
 
 function vistaGrupos(m) {
   m.innerHTML =
