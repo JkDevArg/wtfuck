@@ -117,6 +117,7 @@ function Visor({ grupos, indiceInicial, onCerrar }: { grupos: GrupoHistorias[]; 
   const [verVistas, setVerVistas] = useState(false);
   const [resp, setResp] = useState('');
   const [aviso, setAviso] = useState<string | null>(null);
+  const mediaRef = useRef<HTMLVideoElement & HTMLAudioElement>(null);
 
   const grupo = grupos[ig];
   const h = grupo?.historias[ih];
@@ -143,21 +144,28 @@ function Visor({ grupos, indiceInicial, onCerrar }: { grupos: GrupoHistorias[]; 
   };
   const reaccionar = (emoji: string) => mandar(emoji);
 
-  // Marcar vista + cargar media al mostrar cada historia.
+  // Texto e imagen avanzan por tiempo (5 s). Video y audio duran lo suyo: el
+  // progreso lo marca el propio medio (abajo), no este timer.
+  const conMedio = !!h && (h.clase === 'imagen' || h.clase === 'video' || h.clase === 'audio') && !!h.adjunto;
+  const porTiempo = !!h && (h.clase === 'texto' || h.clase === 'imagen');
+
+  // Marcar vista + cargar el medio (imagen/video/audio) al mostrar cada historia.
   useEffect(() => {
     if (!h) return;
     void marcarVistaHistoria(h.historiaId);
-    if (h.clase === 'imagen' && h.adjunto) {
+    if (conMedio) {
       let vivo = true;
+      setMedia(null);
       void mediaDeHistoria(h).then((u) => { if (vivo) setMedia(u); }).catch(() => {});
       return () => { vivo = false; };
     }
     return;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [h]);
 
-  // Autoavance (texto e imagen: 5 s).
+  // Autoavance por tiempo (texto e imagen).
   useEffect(() => {
-    if (!h || pausa || verVistas) return;
+    if (!h || pausa || verVistas || !porTiempo) return;
     const t = setInterval(() => {
       setAvance((a) => {
         const n = a + 50 / DURACION_MS;
@@ -166,10 +174,24 @@ function Visor({ grupos, indiceInicial, onCerrar }: { grupos: GrupoHistorias[]; 
       });
     }, 50);
     return () => clearInterval(t);
-  }, [h, pausa, verVistas, siguiente]);
+  }, [h, pausa, verVistas, porTiempo, siguiente]);
+
+  // Video/audio: pausar/reanudar el medio con la pausa del visor.
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el) return;
+    if (pausa || verVistas) el.pause();
+    else void el.play().catch(() => {});
+  }, [pausa, verVistas, media]);
+
+  const alAvanzarMedio = () => {
+    const el = mediaRef.current;
+    if (el && el.duration > 0) setAvance(el.currentTime / el.duration);
+  };
 
   if (!h) return null;
-  const fondo = h.clase === 'imagen' ? '#000' : (/^#[0-9a-fA-F]{6}$/.test(h.fondo ?? '') ? h.fondo : '#1D9E75');
+  const colorValido = /^#[0-9a-fA-F]{6}$/.test(h.fondo ?? '') ? h.fondo! : '#1D9E75';
+  const fondo = h.clase === 'imagen' || h.clase === 'video' ? '#000' : colorValido;
 
   return (
     <div className="visor" style={{ background: fondo }}>
@@ -195,10 +217,20 @@ function Visor({ grupos, indiceInicial, onCerrar }: { grupos: GrupoHistorias[]; 
         <span className="visor-zona der" onClick={siguiente} aria-label="Siguiente" />
         {h.clase === 'imagen' ? (
           media ? <img src={media} alt="" className="visor-img" /> : <span className="visor-cargando">Cargando…</span>
+        ) : h.clase === 'video' ? (
+          media
+            ? <video ref={mediaRef} src={media} className="visor-img" autoPlay playsInline onTimeUpdate={alAvanzarMedio} onEnded={siguiente} />
+            : <span className="visor-cargando">Cargando…</span>
+        ) : h.clase === 'audio' ? (
+          <div className="visor-audio">
+            <span className="visor-audio-icono" aria-hidden="true">♪</span>
+            <span>{media ? 'Nota de voz' : 'Cargando…'}</span>
+            {media && <audio ref={mediaRef} src={media} autoPlay onTimeUpdate={alAvanzarMedio} onEnded={siguiente} />}
+          </div>
         ) : (
           <p className="visor-texto">{h.texto}</p>
         )}
-        {h.clase === 'imagen' && h.texto && <p className="visor-pie">{h.texto}</p>}
+        {(h.clase === 'imagen' || h.clase === 'video') && h.texto && <p className="visor-pie">{h.texto}</p>}
       </div>
 
       {grupo.esMia ? (

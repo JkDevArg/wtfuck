@@ -485,3 +485,7 @@ input:focus-visible { outline: none; border-color: var(--cian); }
 .visor-resp-caja input::placeholder { color: rgb(255 255 255 / .6); }
 .visor-resp-caja input:focus-visible { outline: none; border-color: #fff; }
 .visor-resp-caja button { background: var(--cian); color: var(--sobre-cian); border: 0; border-radius: 999px; padding: 0 16px; font-weight: 600; cursor: pointer; }
+
+/* Estado de audio en el visor: círculo con nota musical sobre el color. */
+.visor-audio { display: grid; place-items: center; gap: 14px; color: #fff; text-align: center; }
+.visor-audio-icono { width: 96px; height: 96px; border-radius: 50%; background: rgb(255 255 255 / .18); display: grid; place-items: center; font-size: 44px; }
