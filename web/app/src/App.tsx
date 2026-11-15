@@ -185,7 +185,13 @@ function Principal() {
   const [descubrir, setDescubrir] = useState(false);
   const [invitar, setInvitar] = useState(false);
   const [nuevo, setNuevo] = useState(false);
+  const [filtro, setFiltro] = useState('');
   const solicitudes = e.conversaciones.filter((c) => c.esSolicitud);
+  // Filtro del buscador: por nombre del chat o por el último mensaje. Vacío = todo.
+  const q = filtro.trim().toLowerCase();
+  const coincide = (c: Conversacion) =>
+    !q || titulo(c).toLowerCase().includes(q) || (c.ultimo?.texto ?? '').toLowerCase().includes(q);
+  const chats = e.conversaciones.filter((c) => !c.esSolicitud && coincide(c));
 
   async function desvincular() {
     // Si la cuenta nacio en esta web, este navegador es su UNICO aparato:
@@ -220,6 +226,19 @@ function Principal() {
             Desvincular
           </button>
         </div>
+        <div className="buscador">
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="lupa">
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            type="search"
+            value={filtro}
+            onChange={(ev) => setFiltro(ev.target.value)}
+            placeholder="Buscar"
+            aria-label="Buscar un chat"
+          />
+          {filtro && <button className="limpiar" onClick={() => setFiltro('')} aria-label="Limpiar búsqueda">×</button>}
+        </div>
         <Avisos />
         <button className="nuevo" onClick={() => setNuevo(true)}>Nuevo chat</button>
         <div className="avisos">
@@ -236,10 +255,12 @@ function Principal() {
           </>
         )}
         <ul>
-          {e.conversaciones.filter((c) => !c.esSolicitud).map((c) => (
+          {chats.map((c) => (
             <FilaChat key={c.id} c={c} activa={c.id === abierta} onAbrir={() => setAbierta(c.id)} />
           ))}
-          {!e.conversaciones.length && <li className="vacio">Todavía no hay chats.</li>}
+          {!chats.length && (
+            <li className="vacio">{q ? 'Nada coincide con la búsqueda.' : 'Todavía no hay chats.'}</li>
+          )}
         </ul>
       </aside>
       <section className="chat">

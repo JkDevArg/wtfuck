@@ -134,6 +134,19 @@ form button[type=submit], .escribir button {
 .previa { color: var(--secundario); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .globo { background: var(--cian); color: var(--sobre-cian); border-radius: 999px; font-size: 11px; font-weight: 700; min-width: 20px; height: 20px; padding: 0 6px; display: grid; place-items: center; }
 
+/* Buscador de chats: campo redondeado con lupa, como en la app. */
+.buscador { position: relative; display: flex; align-items: center; margin: 2px 16px 10px; }
+.buscador .lupa { position: absolute; left: 12px; width: 16px; height: 16px; fill: none; stroke: var(--terciario); stroke-width: 1.8; stroke-linecap: round; pointer-events: none; }
+.buscador input {
+  width: 100%; background: var(--fondo); border: 1px solid var(--borde); border-radius: 999px;
+  padding: 9px 32px 9px 36px; font-size: 14px; color: var(--texto); transition: border-color .12s ease;
+}
+.buscador input::placeholder { color: var(--terciario); }
+.buscador input:focus-visible { outline: none; border-color: var(--cian); }
+.buscador input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+.buscador .limpiar { position: absolute; right: 7px; width: 24px; height: 24px; border: 0; background: none; color: var(--terciario); font-size: 19px; line-height: 1; cursor: pointer; border-radius: 50%; padding: 0; }
+.buscador .limpiar:hover { color: var(--texto); }
+
 .chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .sin-chat { margin: auto; max-width: 420px; padding: 16px; color: var(--secundario); text-align: center; }
 .cabecera { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--borde); background: var(--superficie); }
@@ -224,6 +237,16 @@ form button[type=submit], .escribir button {
   .principal:not(.con-chat) .chat { display: none; }
   .atras { display: inline-block; }
   .burbuja { max-width: 86%; }
+  /* La lista se siente más como la app: marca grande, chrome compacto y el
+     buscador arriba, con los chats ocupando el resto. */
+  .lista header { padding: 14px 16px 2px; }
+  .lista header .marca { font-size: 30px; letter-spacing: -.5px; }
+  .yo { padding: 2px 16px 10px; }
+  .buscador { margin-top: 0; margin-bottom: 8px; }
+  .buscador input { padding-top: 11px; padding-bottom: 11px; }
+  .lista .nuevo { padding: 13px 16px; font-size: 15px; }
+  .fila { padding: 11px 16px; }
+  .avatar { width: 46px; height: 46px; }
 }
 
 /* --- Canales -------------------------------------------------------- */
