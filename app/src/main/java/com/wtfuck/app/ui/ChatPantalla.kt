@@ -459,6 +459,10 @@ private fun ChatAbierto(
     var consulta by rememberSaveable { mutableStateOf("") }
     var hallazgos by remember { mutableStateOf<List<MensajeEnt>>(emptyList()) }
     var cualHallazgo by remember { mutableIntStateOf(0) }
+    // Al tocar el banner de "mensaje fijado" se salta a él y se resalta un
+    // momento, para que se note a cuál llevó (como el buscador). El id se limpia
+    // solo a los segundos.
+    var resaltadoFijado by remember { mutableStateOf<String?>(null) }
 
     // --- modulo D: adjuntos ---
     var hojaAdjuntar by remember { mutableStateOf(false) }
@@ -1442,8 +1446,16 @@ private fun ChatAbierto(
                     .fillMaxWidth()
                     .background(BgElev)
                     .clickable {
-                        val i = mensajes.indexOfFirst { it.id == fijado.id }
-                        if (i >= 0) ambito.launch { lista.animateScrollToItem(enLista(i)) }
+                        ambito.launch {
+                            // Posición fiable (igual que el buscador): no depende
+                            // de que el fijado esté en la ventana ya pintada.
+                            runCatching {
+                                lista.animateScrollToItem(enLista(app.repo.posicionDe(conversacionId, fijado)))
+                            }
+                            resaltadoFijado = fijado.id
+                            delay(2200)
+                            if (resaltadoFijado == fijado.id) resaltadoFijado = null
+                        }
                     }
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1552,7 +1564,7 @@ private fun ChatAbierto(
                         esGrupo = chat?.tipo == "grupo",
                         miUsuario = app.sesion.username.orEmpty(),
                         nombreDe = { u -> nombresDeGente[u] ?: u },
-                        resaltado = buscando && hallazgos.getOrNull(cualHallazgo)?.id == m.id,
+                        resaltado = (buscando && hallazgos.getOrNull(cualHallazgo)?.id == m.id) || m.id == resaltadoFijado,
                         cierraRafaga = cierra,
                         abreRafaga = abre,
                         onReintentar = {

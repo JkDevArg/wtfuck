@@ -96,6 +96,7 @@ object Novedades {
             fecha = "14/11/2026",
             cambios = listOf(
                 Cambio(TipoCambio.NUEVO, "Botones de menú en los chats: los bots ahora pueden mostrarte opciones tocables (como el teclado de Telegram). Tocás una y se envía como tu mensaje; el bot responde. Todo sigue cifrado de punta a punta. Probalo escribiéndole a @rootbot."),
+                Cambio(TipoCambio.ARREGLO, "Mensaje fijado: tocar la barra de \"mensaje fijado\" ahora te lleva al mensaje y lo resalta un momento."),
             ),
         ),
         NotasVersion(
