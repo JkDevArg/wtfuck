@@ -17,6 +17,7 @@ export const TIPO_TEXTO = 'com.wtfuck.protocol.Carga.Texto';
 export const TIPO_CON_CLAVE = 'com.wtfuck.protocol.Carga.ConClaveGrupo';
 export const TIPO_HISTORIAL = 'com.wtfuck.protocol.Carga.Historial';
 export const TIPO_EDICION = 'com.wtfuck.protocol.Carga.Edicion';
+export const TIPO_HISTORIA = 'com.wtfuck.protocol.Carga.Historia';
 /** El único con @SerialName propio en el contrato (Adjuntos.kt). */
 export const TIPO_ADJUNTO = 'adjunto';
 
@@ -126,6 +127,20 @@ export interface CargaLlamadaFin {
   motivo: string;
 }
 
+/**
+ * Una historia (estado) cifrada (protocol/Sobre.kt: Carga.Historia). Viaja en un
+ * sobre por destinatario, igual que un mensaje. `fondo` es el color de un estado
+ * de texto; `adjunto` la foto/video/audio (con su clave y miniatura dentro).
+ */
+export interface CargaHistoria {
+  type: typeof TIPO_HISTORIA;
+  historiaId: string;
+  clase: string;
+  texto: string;
+  fondo: string;
+  adjunto: CargaAdjunto | null;
+}
+
 /** Cualquier otra carga: la web todavía no la muestra, pero la acusa. */
 export interface CargaOtra {
   type: string;
@@ -138,6 +153,7 @@ export type Carga =
   | CargaConClave
   | CargaEdicion
   | CargaAdjunto
+  | CargaHistoria
   | CargaLlamadaOferta
   | CargaLlamadaRespuesta
   | CargaLlamadaCandidato
@@ -175,7 +191,6 @@ export function texto(cuerpo: string): CargaTexto {
     silencioso: false,
     previa: null,
     baliza: null,
-    botones: null,
   };
 }
 
@@ -213,11 +228,24 @@ export function adjunto(c: Pick<CargaAdjunto, 'adjuntoId' | 'clase' | 'clave' | 
   };
 }
 
+/** Una historia (estado) para cifrar y mandar en un sobre. */
+export function historia(c: { historiaId: string; clase: string; texto?: string; fondo?: string; adjunto?: CargaAdjunto | null }): CargaHistoria {
+  return {
+    type: TIPO_HISTORIA,
+    historiaId: c.historiaId,
+    clase: c.clase,
+    texto: c.texto ?? '',
+    fondo: c.fondo ?? '',
+    adjunto: c.adjunto ?? null,
+  };
+}
+
 export const esTexto = (c: Carga): c is CargaTexto => c.type === TIPO_TEXTO;
 export const esHistorial = (c: Carga): c is CargaHistorial => c.type === TIPO_HISTORIAL;
 export const esConClave = (c: Carga): c is CargaConClave => c.type === TIPO_CON_CLAVE;
 export const esEdicion = (c: Carga): c is CargaEdicion => c.type === TIPO_EDICION;
 export const esAdjunto = (c: Carga): c is CargaAdjunto => c.type === TIPO_ADJUNTO;
+export const esHistoria = (c: Carga): c is CargaHistoria => c.type === TIPO_HISTORIA;
 export const esLlamadaOferta = (c: Carga): c is CargaLlamadaOferta => c.type === TIPO_LLAMADA_OFERTA;
 export const esLlamadaRespuesta = (c: Carga): c is CargaLlamadaRespuesta => c.type === TIPO_LLAMADA_RESPUESTA;
 export const esLlamadaCandidato = (c: Carga): c is CargaLlamadaCandidato => c.type === TIPO_LLAMADA_CANDIDATO;
@@ -407,6 +435,36 @@ export interface CopiaCifrada {
 }
 
 export const TIPO_CIFRADO = { SESION: 2, PREPARADO: 3, GRUPO: 7 } as const;
+
+// ---------------------------------------------------------------------------
+//  Historias / estados (protocol/Historias.kt)
+// ---------------------------------------------------------------------------
+
+export const RUTA_HISTORIAS = '/v1/historias';
+export const ClaseHistoria = { TEXTO: 'texto', IMAGEN: 'imagen', VIDEO: 'video', AUDIO: 'audio' } as const;
+
+/** Una historia dirigida a mí (metadato, sin contenido; el contenido llega por sobre). */
+export interface HistoriaInfo {
+  historiaId: string;
+  autorUsername: string;
+  clase: string;
+  creadaEn: number;
+  expiraEn: number;
+  vista: boolean;
+}
+
+/** Una historia mía, con cuenta de vistas (null si las confirmaciones están apagadas). */
+export interface HistoriaMia {
+  historiaId: string;
+  clase: string;
+  creadaEn: number;
+  expiraEn: number;
+  destinatarios: number;
+  vistas: number | null;
+}
+
+export interface VistaDeHistoria { username: string; nombreMostrado: string; vistaEn: number; }
+export interface VistasDeHistoria { vistas: VistaDeHistoria[]; motivo: string | null; }
 
 export type Subida =
   | { type: 'enviar'; sobreId: string; conversacionId: string; creadoEn: number; copias: CopiaCifrada[] }

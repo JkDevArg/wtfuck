@@ -17,6 +17,7 @@ import { CapaLlamada } from './Llamada';
 import { iniciarLlamada } from './datos/llamadas';
 import { PanelGifs } from './Gifs';
 import { PanelStickers } from './Stickers';
+import { Social } from './Social';
 
 const usarMotor = () => useSyncExternalStore(motor.suscribir, motor.instantanea);
 
@@ -298,7 +299,7 @@ function Principal() {
         />
       )}
       {verNovedades && <Novedades onCerrar={() => setVerNovedades(false)} />}
-      {verSocial && <ProximamenteSocial onCerrar={() => setVerSocial(false)} />}
+      {verSocial && <Social onCerrar={() => setVerSocial(false)} />}
       {/* Navegación inferior (solo mobile; se oculta dentro de un chat). */}
       <nav className="nav-inferior" aria-label="Secciones">
         <button className={!abierta ? 'on' : ''} onClick={() => setAbierta(null)}>
@@ -350,21 +351,6 @@ function Novedades({ onCerrar }: { onCerrar: () => void }) {
             <ul>{n.items.map((it, i) => <li key={i}>{it}</li>)}</ul>
           </div>
         ))}
-        <button onClick={onCerrar}>Cerrar</button>
-      </div>
-    </div>
-  );
-}
-
-function ProximamenteSocial({ onCerrar }: { onCerrar: () => void }) {
-  return (
-    <div className="velo" role="dialog" aria-modal="true" aria-label="Social" onClick={onCerrar}>
-      <div className="panel" onClick={(ev) => ev.stopPropagation()}>
-        <h2>Social · Estados</h2>
-        <p className="tenue">
-          Los estados (historias que se borran en 24 h) ya están en la app del teléfono. Llegan pronto a la
-          versión web.
-        </p>
         <button onClick={onCerrar}>Cerrar</button>
       </div>
     </div>

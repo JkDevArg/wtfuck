@@ -11,7 +11,7 @@ import { ErrorApi, cuandoSePierdaLaSesion, pedir, usarToken } from './api';
 import { borrar, guardar, leer, todas, vaciarTodo } from './boveda';
 import * as cripto from './cripto';
 import {
-  aBytes, adjunto, b64, deBytes, edicion, esAdjunto, esConClave, esEdicion, esHistorial, esTexto, mencionesEn,
+  aBytes, adjunto, b64, deBytes, edicion, esAdjunto, esConClave, esEdicion, esHistoria, esHistorial, esTexto, mencionesEn,
   esLlamadaOferta, esLlamadaRespuesta, esLlamadaCandidato, esLlamadaFin,
   nuevoId, respuesta, texto, TIPO_CIFRADO,
   type Bajada, type Boton, type Carga, type ConversacionResumen, type CopiaCifrada, type Destino, type PaqueteClaves,
@@ -19,6 +19,7 @@ import {
 } from './protocolo';
 import { mimeParaReproducir, type NotaGrabada } from './grabadora';
 import * as recuperacion from './recuperacion';
+import { guardarContenidoHistoria } from './historias';
 import {
   cifrarArchivo, claseDe, descifrarArchivo, LIMITES, miniaturaSegura, nombreSeguro, prepararImagen, prepararVideo, SOBRECOSTO,
   tamanoLegible, type Clase,
@@ -860,6 +861,11 @@ async function recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
         creadoEn: h.creadoEn, estado: h.esMio ? 'entregado' : 'leido', leidoPorMi: true, deHistorial: true,
       });
     }
+  } else if (esHistoria(carga)) {
+    // Una historia (estado): no es un mensaje de chat; su contenido va al store
+    // de historias (que lo persiste y lo muestra en Social). conversacionId llega
+    // vacío a propósito.
+    await guardarContenidoHistoria(e.origenUsername, carga, e.creadoEn);
   }
   mandar({ type: 'acuse', sobreIds: [e.sobreId] });
 }
@@ -1367,6 +1373,30 @@ async function asegurarSesion(d: Destino, conversacionId: string): Promise<boole
     return false;
   }
 }
+
+/** Los destinatarios (dispositivos) a los que puede ir una historia ahora. */
+export async function destinosHistoria(): Promise<Destino[]> {
+  const r = await pedir<{ destinos: Destino[] }>('GET', '/v1/historias/destinos');
+  return r.destinos;
+}
+
+/**
+ * Cifra una carga de historia por pares (un sobre por dispositivo de la
+ * audiencia), igual que la app. Devuelve las copias para POST .../{id}/sobres.
+ */
+export async function cifrarHistoriaPara(ds: Destino[], carga: Carga): Promise<CopiaCifrada[]> {
+  const claro = aBytes(carga);
+  const copias: CopiaCifrada[] = [];
+  for (const d of ds) {
+    if (!(await asegurarSesion(d, ''))) continue;
+    const c = await cripto.cifrar(d.dispositivoId, claro);
+    copias.push({ destinos: [d.dispositivoId], cuerpo: c.cuerpo, tipo: c.tipo });
+  }
+  return copias;
+}
+
+/** La sesión actual (username/dispositivo), para el módulo de historias. */
+export const sesionActual = () => estado.sesion;
 
 function cargaDe(m: Mensaje): Carga {
   const a = m.adjunto;
