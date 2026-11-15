@@ -242,6 +242,11 @@ form button[type=submit], .escribir button {
 .burbuja.retirada { font-style: italic; opacity: .6; }
 .cita { display: grid; gap: 1px; border-left: 3px solid var(--ambar); padding: 2px 8px; border-radius: 4px; background: rgb(0 0 0 / .12); font-size: 13px; }
 .cita span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* Cita de un ESTADO (respuesta a una historia): miniatura + "respondió a tu estado". */
+.cita-estado { display: flex; gap: 8px; align-items: center; }
+.cita-estado img { width: 32px; height: 42px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.cita-estado-txt { display: grid; gap: 1px; min-width: 0; }
+.cita-estado-txt span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-line-clamp: 1; }
 .adjunto { display: block; border: 0; padding: 0; border-radius: 10px; overflow: hidden; max-width: 320px; width: 100%; background: rgb(0 0 0 / .2); color: inherit; position: relative; }
 .adjunto.imagen img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .adjunto.spoiler img { filter: blur(24px); }

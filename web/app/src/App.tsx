@@ -759,6 +759,15 @@ function Burbuja({ m, esGrupo, onResponder, onEditar, onReenviar }: {
       {m.cita && (
         <span className="cita"><b>@{m.cita.autor}</b><span>{m.cita.texto}</span></span>
       )}
+      {m.citaHistoria && (
+        <span className="cita cita-estado">
+          {m.citaHistoria.miniatura && <img src={`data:image/jpeg;base64,${m.citaHistoria.miniatura}`} alt="" />}
+          <span className="cita-estado-txt">
+            <b>{m.esMio ? 'Respondiste a un estado' : 'Respondió a tu estado'}</b>
+            {m.citaHistoria.previa && <span>{m.citaHistoria.previa}</span>}
+          </span>
+        </span>
+      )}
       {m.adjunto && <Adjunto m={m} />}
       {m.texto && <span className="texto">{m.texto}</span>}
       <span className="pie">

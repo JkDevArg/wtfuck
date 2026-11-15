@@ -831,6 +831,9 @@ async function recibir(e: Extract<Bajada, { type: 'entrega' }>): Promise<void> {
       if (carga.respondeA && carga.respondeTexto != null) {
         m.cita = { id: carga.respondeA, texto: carga.respondeTexto, autor: carga.respondeAutor ?? '' };
       }
+      // Respuesta a un estado: el mensaje cita la historia. Se guarda para
+      // pintar "respondió a tu estado" en la burbuja.
+      if (carga.historia) m.citaHistoria = carga.historia;
       // Botones de un bot: solo de mensajes ajenos (los míos no los muestro como
       // menú) y solo si vienen con contenido.
       if (!esMio && Array.isArray(carga.botones) && carga.botones.length) m.botones = carga.botones.slice(0, 12);
