@@ -106,7 +106,12 @@ form button[type=submit], .escribir button {
 .conexion { font-size: 12px; color: var(--terciario); text-align: right; }
 .conexion.en-linea, .conexion.otra-pestana { color: var(--cian); }
 .conexion.sin-red { color: var(--ambar); }
-.yo { padding: 0 16px 10px; color: var(--terciario); font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.yo { width: 100%; background: none; border: 0; text-align: left; cursor: pointer; padding: 2px 16px 10px; color: var(--terciario); font-size: 12px; display: flex; gap: 10px; align-items: center; }
+.yo:hover .yo-texto { color: var(--secundario); }
+.yo-texto { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yo-mas { color: var(--terciario); font-size: 16px; }
+.avatar.chico { width: 30px; height: 30px; font-size: 11px; }
+.avatar.grande { width: 72px; height: 72px; font-size: 24px; }
 .enlace { background: none; border: 0; color: var(--coral); padding: 0; font-size: 12px; }
 .lista ul { list-style: none; margin: 0; padding: 0; overflow-y: auto; overflow-x: hidden; flex: 1; }
 .vacio { color: var(--terciario); padding: 24px 16px; }
@@ -161,6 +166,27 @@ form button[type=submit], .escribir button {
   font-size: 11px; font-weight: 700; color: var(--sobre-cian); background: var(--cian);
   border-radius: 999px; padding: 1px 8px; letter-spacing: .02em;
 }
+
+/* --- Perfil (modal) --------------------------------------------------- */
+.panel.perfil { text-align: left; max-height: 85vh; overflow-y: auto; }
+.perfil-cab { display: flex; gap: 14px; align-items: center; }
+.perfil-id .nombre { font-size: 17px; }
+.panel .seccion { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--terciario); font-weight: 600; margin: 6px 0 0; }
+.panel .avisos { padding: 0; }
+.panel .op-perfil {
+  width: 100%; justify-self: stretch; display: flex; justify-content: space-between; align-items: center;
+  background: var(--fondo); border: 1px solid var(--borde); border-radius: 10px; padding: 12px 14px;
+  color: var(--texto); font-weight: 600; cursor: pointer;
+}
+.panel .op-perfil:hover { background: var(--superficie); }
+.panel .op-perfil.peligro { color: var(--coral); border-color: color-mix(in srgb, var(--coral) 40%, var(--borde)); }
+.op-perfil .mas { color: var(--terciario); font-size: 16px; }
+.novedad { margin-bottom: 4px; }
+.novedad-ver { color: var(--cian); font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+.novedad ul { margin: 0; padding-left: 18px; color: var(--secundario); font-size: 13px; display: grid; gap: 3px; }
+
+/* --- Navegación inferior (solo mobile) -------------------------------- */
+.nav-inferior { display: none; }
 
 .chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .sin-chat { margin: auto; max-width: 420px; padding: 16px; color: var(--secundario); text-align: center; }
@@ -250,11 +276,25 @@ form button[type=submit], .escribir button {
 
 /* En un teléfono: una columna, y el chat tapa la lista. */
 @media (max-width: 760px) {
-  .principal { grid-template-columns: 1fr; }
+  .principal { display: flex; flex-direction: column; }
+  .principal > .lista, .principal > .chat { flex: 1; min-height: 0; }
   .principal.con-chat .lista { display: none; }
   .principal:not(.con-chat) .chat { display: none; }
   .atras { display: inline-block; }
   .burbuja { max-width: 86%; }
+  /* Barra inferior: visible en la lista, oculta dentro de un chat. */
+  .nav-inferior {
+    display: flex; flex: none; border-top: 1px solid var(--borde); background: var(--superficie);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .principal.con-chat .nav-inferior { display: none; }
+  .nav-inferior button {
+    flex: 1; background: none; border: 0; color: var(--terciario); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0 9px;
+    font-size: 10.5px; font-weight: 600; transition: color .12s ease;
+  }
+  .nav-inferior button.on { color: var(--cian); }
+  .nav-inferior svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   /* La lista se siente más como la app: marca grande, chrome compacto y el
      buscador arriba, con los chats ocupando el resto. */
   .lista header { padding: 14px 16px 2px; }

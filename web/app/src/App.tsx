@@ -187,6 +187,9 @@ function Principal() {
   const [nuevo, setNuevo] = useState(false);
   const [filtro, setFiltro] = useState('');
   const [tab, setTab] = useState<'todos' | 'noleidos' | 'grupos'>('todos');
+  const [verPerfil, setVerPerfil] = useState(false);
+  const [verNovedades, setVerNovedades] = useState(false);
+  const [verSocial, setVerSocial] = useState(false);
   const solicitudes = e.conversaciones.filter((c) => c.esSolicitud);
   // Filtro del buscador: por nombre del chat o por el último mensaje. Vacío = todo.
   const q = filtro.trim().toLowerCase();
@@ -225,12 +228,11 @@ function Principal() {
           <span className="marca">wtfuck</span>
           <span className={`conexion ${e.conexion}`}>{TEXTO_CONEXION[e.conexion]}</span>
         </header>
-        <div className="yo">
-          @{e.sesion!.username} · {e.sesion!.etiqueta}
-          <button className="enlace" onClick={() => void desvincular()}>
-            Desvincular
-          </button>
-        </div>
+        <button className="yo" onClick={() => setVerPerfil(true)} title="Tu perfil y ajustes">
+          <span className="avatar chico">{(e.sesion!.username).slice(0, 2).toUpperCase()}</span>
+          <span className="yo-texto">@{e.sesion!.username} · {e.sesion!.etiqueta}</span>
+          <span className="yo-mas">›</span>
+        </button>
         <div className="buscador">
           <svg viewBox="0 0 24 24" aria-hidden="true" className="lupa">
             <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
@@ -288,6 +290,110 @@ function Principal() {
       {invitar && <Invitaciones onCerrar={() => setInvitar(false)} />}
       {nuevo && <NuevoChat onCerrar={() => setNuevo(false)} onAbrir={(id) => { setNuevo(false); setAbierta(id); }} />}
       {descubrir && <DescubrirCanales onCerrar={() => setDescubrir(false)} onAbrir={(id) => { setDescubrir(false); setAbierta(id); }} />}
+      {verPerfil && (
+        <Perfil
+          onCerrar={() => setVerPerfil(false)}
+          onDesvincular={() => { setVerPerfil(false); void desvincular(); }}
+          onNovedades={() => { setVerPerfil(false); setVerNovedades(true); }}
+        />
+      )}
+      {verNovedades && <Novedades onCerrar={() => setVerNovedades(false)} />}
+      {verSocial && <ProximamenteSocial onCerrar={() => setVerSocial(false)} />}
+      {/* Navegación inferior (solo mobile; se oculta dentro de un chat). */}
+      <nav className="nav-inferior" aria-label="Secciones">
+        <button className={!abierta ? 'on' : ''} onClick={() => setAbierta(null)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8M5 10v10h14V10" /></svg><span>Chats</span>
+        </button>
+        <button onClick={() => setVerSocial(true)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg><span>Social</span>
+        </button>
+        <button onClick={() => setDescubrir(true)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v10H7l-4 4z" /></svg><span>Canales</span>
+        </button>
+        <button onClick={() => setVerPerfil(true)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg><span>Perfil</span>
+        </button>
+      </nav>
+    </div>
+  );
+}
+
+/** Novedades de la versión web (changelog corto). */
+const NOVEDADES_WEB: { v: string; items: string[] }[] = [
+  {
+    v: 'Noviembre 2026',
+    items: [
+      'Botones de menú en los chats, como el teclado de Telegram.',
+      'Buscador y pestañas (Todos / No leídos / Grupos) en la lista.',
+      'Rediseño visual y canal oficial de anuncios (WTFuck Announces).',
+      'Perfil y navegación por secciones en el teléfono.',
+    ],
+  },
+  {
+    v: 'Octubre 2026',
+    items: [
+      'Notas de voz, GIFs y stickers desde el navegador.',
+      'Mensajes temporales, reenvío y menciones en grupos.',
+      'Llamadas y videollamadas cifradas desde la web.',
+    ],
+  },
+];
+
+function Novedades({ onCerrar }: { onCerrar: () => void }) {
+  return (
+    <div className="velo" role="dialog" aria-modal="true" aria-label="Novedades" onClick={onCerrar}>
+      <div className="panel" onClick={(ev) => ev.stopPropagation()}>
+        <h2>Novedades</h2>
+        {NOVEDADES_WEB.map((n) => (
+          <div key={n.v} className="novedad">
+            <div className="novedad-ver">{n.v}</div>
+            <ul>{n.items.map((it, i) => <li key={i}>{it}</li>)}</ul>
+          </div>
+        ))}
+        <button onClick={onCerrar}>Cerrar</button>
+      </div>
+    </div>
+  );
+}
+
+function ProximamenteSocial({ onCerrar }: { onCerrar: () => void }) {
+  return (
+    <div className="velo" role="dialog" aria-modal="true" aria-label="Social" onClick={onCerrar}>
+      <div className="panel" onClick={(ev) => ev.stopPropagation()}>
+        <h2>Social · Estados</h2>
+        <p className="tenue">
+          Los estados (historias que se borran en 24 h) ya están en la app del teléfono. Llegan pronto a la
+          versión web.
+        </p>
+        <button onClick={onCerrar}>Cerrar</button>
+      </div>
+    </div>
+  );
+}
+
+/** Perfil y ajustes: notificaciones, novedades, seguridad y desvincular. */
+function Perfil({ onCerrar, onDesvincular, onNovedades }: {
+  onCerrar: () => void; onDesvincular: () => void; onNovedades: () => void;
+}) {
+  const e = usarMotor();
+  return (
+    <div className="velo" role="dialog" aria-modal="true" aria-label="Perfil" onClick={onCerrar}>
+      <div className="panel perfil" onClick={(ev) => ev.stopPropagation()}>
+        <div className="perfil-cab">
+          <span className="avatar grande">{e.sesion!.username.slice(0, 2).toUpperCase()}</span>
+          <div className="perfil-id">
+            <div className="nombre">@{e.sesion!.username}</div>
+            <div className="tenue">{e.sesion!.etiqueta}</div>
+          </div>
+        </div>
+        <h3 className="seccion">Notificaciones</h3>
+        <Avisos />
+        <h3 className="seccion">Más</h3>
+        <button className="op-perfil" onClick={onNovedades}><span>Novedades</span><span className="mas">›</span></button>
+        <Confianza />
+        <button className="op-perfil peligro" onClick={onDesvincular}>Desvincular este navegador</button>
+        <button onClick={onCerrar}>Cerrar</button>
+      </div>
     </div>
   );
 }
