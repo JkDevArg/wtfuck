@@ -32,6 +32,8 @@ export interface ConfigCanal {
   cifrado: boolean;
   estado: string;
   motivoRechazo: string | null;
+  /** Canal oficial de la instancia (WTFuck Announces). */
+  oficial?: boolean;
 }
 
 export interface Publicacion {

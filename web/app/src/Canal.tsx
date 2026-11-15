@@ -143,8 +143,9 @@ export function Canal({ c, onAtras }: { c: Conversacion; onAtras: () => void }) 
       <header className="cabecera">
         <button className="atras" onClick={onAtras} aria-label="Volver a la lista">←</button>
         <span className="nombre">{titulo(c)}</span>
+        {cfg?.oficial && <span className="insignia-oficial" title="Canal oficial de la instancia">Oficial</span>}
         {cfg && <span className="miembros">{cfg.suscriptores} suscriptores</span>}
-        {cfg?.suscrito && !cfg.puedoGestionar && <button className="enlace derecha" onClick={() => void salir()}>Dejar de seguir</button>}
+        {cfg?.suscrito && !cfg.puedoGestionar && !cfg.oficial && <button className="enlace derecha" onClick={() => void salir()}>Dejar de seguir</button>}
       </header>
       {cfg && !cfg.cifrado && (
         <div className="cambio">Canal público: el contenido no va cifrado de extremo a extremo. Lo puede leer cualquiera.</div>

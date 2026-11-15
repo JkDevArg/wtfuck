@@ -147,6 +147,21 @@ form button[type=submit], .escribir button {
 .buscador .limpiar { position: absolute; right: 7px; width: 24px; height: 24px; border: 0; background: none; color: var(--terciario); font-size: 19px; line-height: 1; cursor: pointer; border-radius: 50%; padding: 0; }
 .buscador .limpiar:hover { color: var(--texto); }
 
+/* Pestañas de la lista: Todos / No leídos / Grupos. */
+.tabs-chats { display: flex; gap: 4px; padding: 0 12px 8px; }
+.tabs-chats button {
+  flex: 1; border: 0; background: none; color: var(--terciario); font-weight: 600;
+  font-size: 13px; padding: 7px 4px; border-radius: 9px; cursor: pointer; transition: color .12s ease, background .12s ease;
+}
+.tabs-chats button:hover { color: var(--secundario); }
+.tabs-chats button.on { color: var(--cian); background: color-mix(in srgb, var(--cian) 10%, transparent); }
+
+/* Insignia de canal oficial (WTFuck Announces). */
+.insignia-oficial {
+  font-size: 11px; font-weight: 700; color: var(--sobre-cian); background: var(--cian);
+  border-radius: 999px; padding: 1px 8px; letter-spacing: .02em;
+}
+
 .chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .sin-chat { margin: auto; max-width: 420px; padding: 16px; color: var(--secundario); text-align: center; }
 .cabecera { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--borde); background: var(--superficie); }
@@ -154,6 +169,9 @@ form button[type=submit], .escribir button {
 .miembros { color: var(--terciario); font-size: 12px; }
 .atras { display: none; background: none; border: 0; color: var(--texto); font-size: 20px; padding: 0 4px; }
 .mensajes { flex: 1; overflow-y: auto; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; background: var(--lienzo); }
+/* Separador de día entre mensajes ("Hoy", "Ayer", la fecha). */
+.dia-sep { align-self: center; margin: 10px 0 6px; }
+.dia-sep span { background: var(--elevada); color: var(--secundario); border: 1px solid var(--borde); border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 600; }
 .burbuja {
   max-width: min(72%, 560px); padding: 8px 12px 6px; border-radius: 16px; display: grid; gap: 2px;
   white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 1px 2px rgb(0 0 0 / .25);

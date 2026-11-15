@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
 import {
   abrirConversacion, activarAvisosCerrado, decidirSolicitud, soyElUnicoAparato, avisosConQuien, desactivarAvisosCerrado, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarNotaDeVoz, enviarTexto,
   cambiarTemporales, huellasDe, identidadRevisada, motor, pedirPermisoDeAvisos, reaccionar, reenviar, retirar, salir, titulo, vincular,
@@ -186,12 +186,17 @@ function Principal() {
   const [invitar, setInvitar] = useState(false);
   const [nuevo, setNuevo] = useState(false);
   const [filtro, setFiltro] = useState('');
+  const [tab, setTab] = useState<'todos' | 'noleidos' | 'grupos'>('todos');
   const solicitudes = e.conversaciones.filter((c) => c.esSolicitud);
   // Filtro del buscador: por nombre del chat o por el último mensaje. Vacío = todo.
   const q = filtro.trim().toLowerCase();
   const coincide = (c: Conversacion) =>
     !q || titulo(c).toLowerCase().includes(q) || (c.ultimo?.texto ?? '').toLowerCase().includes(q);
-  const chats = e.conversaciones.filter((c) => !c.esSolicitud && coincide(c));
+  // Pestañas: Todos, No leídos, o solo conversaciones de varios (grupos y canales).
+  const pasaTab = (c: Conversacion) =>
+    tab === 'todos' ? true : tab === 'noleidos' ? c.noLeidos > 0 : c.tipo === 'grupo' || c.tipo === 'canal';
+  const noLeidosTotal = e.conversaciones.filter((c) => !c.esSolicitud && c.noLeidos > 0).length;
+  const chats = e.conversaciones.filter((c) => !c.esSolicitud && coincide(c) && pasaTab(c));
 
   async function desvincular() {
     // Si la cuenta nacio en esta web, este navegador es su UNICO aparato:
@@ -239,6 +244,13 @@ function Principal() {
           />
           {filtro && <button className="limpiar" onClick={() => setFiltro('')} aria-label="Limpiar búsqueda">×</button>}
         </div>
+        <div className="tabs-chats" role="tablist">
+          <button role="tab" aria-selected={tab === 'todos'} className={tab === 'todos' ? 'on' : ''} onClick={() => setTab('todos')}>Todos</button>
+          <button role="tab" aria-selected={tab === 'noleidos'} className={tab === 'noleidos' ? 'on' : ''} onClick={() => setTab('noleidos')}>
+            No leídos{noLeidosTotal > 0 ? ` ${noLeidosTotal}` : ''}
+          </button>
+          <button role="tab" aria-selected={tab === 'grupos'} className={tab === 'grupos' ? 'on' : ''} onClick={() => setTab('grupos')}>Grupos</button>
+        </div>
         <Avisos />
         <button className="nuevo" onClick={() => setNuevo(true)}>Nuevo chat</button>
         <div className="avisos">
@@ -259,7 +271,9 @@ function Principal() {
             <FilaChat key={c.id} c={c} activa={c.id === abierta} onAbrir={() => setAbierta(c.id)} />
           ))}
           {!chats.length && (
-            <li className="vacio">{q ? 'Nada coincide con la búsqueda.' : 'Todavía no hay chats.'}</li>
+            <li className="vacio">
+              {q ? 'Nada coincide con la búsqueda.' : tab === 'noleidos' ? 'No tenés chats sin leer.' : tab === 'grupos' ? 'No estás en ningún grupo ni canal.' : 'Todavía no hay chats.'}
+            </li>
           )}
         </ul>
       </aside>
@@ -378,6 +392,20 @@ function hora(ms: number): string {
   return d.toDateString() === hoy.toDateString()
     ? d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
     : d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
+}
+
+/** La fecha del separador entre días del chat: "Hoy", "Ayer" o la fecha. */
+function diaDe(ms: number): string {
+  const d = new Date(ms);
+  const hoy = new Date();
+  const ayer = new Date(hoy);
+  ayer.setDate(hoy.getDate() - 1);
+  if (d.toDateString() === hoy.toDateString()) return 'Hoy';
+  if (d.toDateString() === ayer.toDateString()) return 'Ayer';
+  return d.toLocaleDateString('es-PE', {
+    day: '2-digit', month: 'long',
+    ...(d.getFullYear() === hoy.getFullYear() ? {} : { year: 'numeric' }),
+  });
 }
 
 function FilaChat({ c, activa, onAbrir }: { c: Conversacion; activa: boolean; onAbrir: () => void }) {
@@ -832,12 +860,19 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
       {reenviando && <DialogoReenviar m={reenviando} actual={c.id} onCerrar={() => setReenviando(null)} />}
       {verTemporales && <DialogoTemporales actual={c.temporalesSegundos ?? 0} conversacionId={c.id} onCerrar={() => setVerTemporales(false)} />}
       <div className="mensajes" role="log" aria-live="polite">
-        {mensajes.map((m) => (
-          <Burbuja key={m.id} m={m} esGrupo={esGrupo}
-            onResponder={() => { setEditando(null); setCitado(m); caja.current?.focus(); }}
-            onEditar={() => { setCitado(null); setEditando(m); setBorrador(m.texto); caja.current?.focus(); }}
-            onReenviar={() => setReenviando(m)} />
-        ))}
+        {mensajes.map((m, i) => {
+          const prev = mensajes[i - 1];
+          const nuevoDia = !prev || new Date(prev.creadoEn).toDateString() !== new Date(m.creadoEn).toDateString();
+          return (
+            <Fragment key={m.id}>
+              {nuevoDia && <div className="dia-sep"><span>{diaDe(m.creadoEn)}</span></div>}
+              <Burbuja m={m} esGrupo={esGrupo}
+                onResponder={() => { setEditando(null); setCitado(m); caja.current?.focus(); }}
+                onEditar={() => { setCitado(null); setEditando(m); setBorrador(m.texto); caja.current?.focus(); }}
+                onReenviar={() => setReenviando(m)} />
+            </Fragment>
+          );
+        })}
         <div ref={fin} />
       </div>
       {(citado || editando || errorArchivo) && (
