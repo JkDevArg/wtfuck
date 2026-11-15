@@ -27,7 +27,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -139,31 +141,10 @@ fun PanelPantalla(
                 // desde que hay metricas de plataforma, es el panel.
                 title = { Text("Panel", color = TextoPrimario, maxLines = 1) },
                 actions = {
-                    // H.6. Solo para administrador (80) o mas: el servidor
-                    // responde 404 a un moderador, asi que ofrecer el boton
-                    // seria ofrecer una puerta cerrada.
-                    if ((resumen?.miNivel ?: 0) >= 80) {
-                        IconButton(onClick = onConsolaWeb) {
-                            Icon(Icons.Filled.Computer, "Consola web", tint = TextoSecundario)
-                        }
-                        IconButton(onClick = onConversaciones) {
-                            Icon(Icons.Filled.Groups, "Grupos y canales", tint = TextoSecundario)
-                        }
-                        // BC. Con el resto de administrador (80), que es lo
-                        // que pide el servidor para repartir codigos.
-                        IconButton(onClick = onInvitaciones) {
-                            Icon(Icons.Filled.MailOutline, "Invitaciones", tint = TextoSecundario)
-                        }
-                        IconButton(onClick = onAlcance) {
-                            Icon(Icons.Filled.GpsFixed, "Alcances de bots", tint = TextoSecundario)
-                        }
-                        IconButton(onClick = onLimites) {
-                            Icon(Icons.Filled.Speed, "Limites", tint = TextoSecundario)
-                        }
-                        IconButton(onClick = onBitacora) {
-                            Icon(Icons.Filled.History, "Bitacora", tint = TextoSecundario)
-                        }
-                    }
+                    // Las herramientas de administrador (consola, grupos,
+                    // invitaciones, alcances, limites, bitacora) ya no se apinan
+                    // aca: viven en la grilla "Herramientas" del cuerpo, que en
+                    // un telefono se lee mucho mejor. Ver [GrillaHerramientas].
                     IconButton(onClick = { ambito.launch { recargar() } }) {
                         Icon(Icons.Filled.Refresh, "Actualizar", tint = TextoSecundario)
                     }
@@ -190,6 +171,17 @@ fun PanelPantalla(
                 resumen?.let { rs ->
                     item {
                         Tablero(rs)
+                        Spacer(Modifier.height(18.dp))
+                    }
+                }
+                // Herramientas de administrador como grilla de tarjetas (antes
+                // eran seis iconos apretados en la barra). Solo admin (80+): el
+                // servidor responde 404 a un moderador.
+                if ((resumen?.miNivel ?: 0) >= 80) {
+                    item {
+                        GrillaHerramientas(
+                            onConsolaWeb, onConversaciones, onInvitaciones, onAlcance, onLimites, onBitacora,
+                        )
                         Spacer(Modifier.height(18.dp))
                     }
                 }
@@ -421,6 +413,64 @@ fun PanelPantalla(
             text = { Text(msg, color = TextoSecundario) },
             confirmButton = { TextButton(onClick = { aviso = null }) { Text("Cerrar", color = Cian) } },
         )
+    }
+}
+
+/**
+ * Las herramientas de administrador como una grilla de tarjetas (estilo
+ * dashboard), en vez de seis iconos apretados en la barra. Cada tarjeta lleva a
+ * su pantalla. Solo se muestra a administradores (lo decide quien llama).
+ */
+@Composable
+private fun GrillaHerramientas(
+    onConsolaWeb: () -> Unit,
+    onConversaciones: () -> Unit,
+    onInvitaciones: () -> Unit,
+    onAlcance: () -> Unit,
+    onLimites: () -> Unit,
+    onBitacora: () -> Unit,
+) {
+    val tools = listOf(
+        Triple("Consola web", Icons.Filled.Computer, onConsolaWeb),
+        Triple("Grupos", Icons.Filled.Groups, onConversaciones),
+        Triple("Invitar", Icons.Filled.MailOutline, onInvitaciones),
+        Triple("Alcances", Icons.Filled.GpsFixed, onAlcance),
+        Triple("Límites", Icons.Filled.Speed, onLimites),
+        Triple("Bitácora", Icons.Filled.History, onBitacora),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "HERRAMIENTAS",
+            color = TextoSecundario,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        tools.chunked(3).forEach { fila ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                fila.forEach { (etq, icono, accion) ->
+                    TileHerramienta(etq, icono, accion, Modifier.weight(1f))
+                }
+                // Si la última fila tiene menos de 3, se rellena para que las
+                // tarjetas conserven su ancho (no se estiren).
+                repeat(3 - fila.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TileHerramienta(etq: String, icono: ImageVector, onClick: () -> Unit, modifier: Modifier) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(BgSurface)
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Icon(icono, null, tint = Cian, modifier = Modifier.size(22.dp))
+        Text(etq, color = TextoSecundario, fontSize = 12.sp, maxLines = 1, textAlign = TextAlign.Center)
     }
 }
 
