@@ -198,6 +198,8 @@ form button[type=submit], .escribir button {
 /* Separador de día entre mensajes ("Hoy", "Ayer", la fecha). */
 .dia-sep { align-self: center; margin: 10px 0 6px; }
 .dia-sep span { background: var(--elevada); color: var(--secundario); border: 1px solid var(--borde); border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 600; }
+/* Aviso de que hay más historial arriba (paginación tipo WhatsApp). */
+.cargar-mas { align-self: center; color: var(--terciario); font-size: 12px; padding: 6px 0 10px; }
 .burbuja {
   max-width: min(72%, 560px); padding: 8px 12px 6px; border-radius: 16px; display: grid; gap: 2px;
   white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 1px 2px rgb(0 0 0 / .25);

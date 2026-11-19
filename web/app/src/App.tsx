@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react';
 import {
   abrirConversacion, activarAvisosCerrado, decidirSolicitud, soyElUnicoAparato, avisosConQuien, desactivarAvisosCerrado, cerrarAviso, cuandoSeToqueUnAviso, descargar, editar, enviarArchivo, enviarNotaDeVoz, enviarTexto,
   cambiarTemporales, huellasDe, identidadRevisada, motor, pedirPermisoDeAvisos, reaccionar, reenviar, retirar, salir, titulo, vincular,
@@ -817,6 +817,9 @@ function Burbuja({ m, esGrupo, onResponder, onEditar, onReenviar }: {
   );
 }
 
+/** Cuántos mensajes se muestran de entrada; subir carga otra tanda (como WhatsApp). */
+const VENTANA_MSJS = 40;
+
 function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; onAtras: () => void }) {
   const [borrador, setBorrador] = useState('');
   const [verHuellas, setVerHuellas] = useState(false);
@@ -831,7 +834,16 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
   const fin = useRef<HTMLDivElement>(null);
   const caja = useRef<HTMLTextAreaElement>(null);
   const selector = useRef<HTMLInputElement>(null);
+  const cajaMsjs = useRef<HTMLDivElement>(null);
+  // Al cargar más (subir), la altura crece por arriba: se guarda la altura
+  // previa para reponer el scroll y que la vista no salte.
+  const ancla = useRef<number | null>(null);
+  const [limite, setLimite] = useState(VENTANA_MSJS);
   const esGrupo = c.tipo === 'grupo';
+
+  // Solo se dibujan los últimos `limite` mensajes; los viejos no están en el DOM
+  // (es lo que evita el lag en chats largos). Subir carga otra tanda.
+  const visibles = mensajes.length > limite ? mensajes.slice(mensajes.length - limite) : mensajes;
 
   useEffect(() => {
     fin.current?.scrollIntoView({ block: 'end' });
@@ -841,7 +853,27 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
     setCitado(null);
     setEditando(null);
     setMencion(null);
+    setLimite(VENTANA_MSJS);
   }, [c.id]);
+
+  // Al acercarse al tope, cargar una tanda más (si queda historial).
+  function alScroll() {
+    const el = cajaMsjs.current;
+    if (!el || ancla.current != null) return;
+    if (el.scrollTop < 80 && limite < mensajes.length) {
+      ancla.current = el.scrollHeight;
+      setLimite((l) => Math.min(l + VENTANA_MSJS, mensajes.length));
+    }
+  }
+
+  // Tras cargar más, repone el scroll para que no salte.
+  useLayoutEffect(() => {
+    const el = cajaMsjs.current;
+    if (el && ancla.current != null) {
+      el.scrollTop += el.scrollHeight - ancla.current;
+      ancla.current = null;
+    }
+  }, [limite]);
 
   // En un grupo, al teclear @ se ofrecen los miembros que coincidan.
   const sugerencias = mencion && esGrupo && !editando
@@ -960,9 +992,12 @@ function Chat({ c, mensajes, onAtras }: { c: Conversacion; mensajes: Mensaje[]; 
       {verStickers && <PanelStickers conversacionId={c.id} onCerrar={() => setVerStickers(false)} />}
       {reenviando && <DialogoReenviar m={reenviando} actual={c.id} onCerrar={() => setReenviando(null)} />}
       {verTemporales && <DialogoTemporales actual={c.temporalesSegundos ?? 0} conversacionId={c.id} onCerrar={() => setVerTemporales(false)} />}
-      <div className="mensajes" role="log" aria-live="polite">
-        {mensajes.map((m, i) => {
-          const prev = mensajes[i - 1];
+      <div className="mensajes" role="log" aria-live="polite" ref={cajaMsjs} onScroll={alScroll}>
+        {limite < mensajes.length && (
+          <div className="cargar-mas"><span>Cargando mensajes anteriores…</span></div>
+        )}
+        {visibles.map((m, i) => {
+          const prev = visibles[i - 1];
           const nuevoDia = !prev || new Date(prev.creadoEn).toDateString() !== new Date(m.creadoEn).toDateString();
           return (
             <Fragment key={m.id}>
