@@ -251,6 +251,49 @@ object Panel {
         }
     }
 
+    /**
+     * Los usuarios suspendidos AHORA (vigentes): para la pantalla que se abre al
+     * tocar la metrica "Suspendidos". Mismo formato que [usuarios], pero filtra
+     * por suspension vigente y ordena por la mas reciente.
+     */
+    fun suspendidos(yo: Auth, limite: Int = 100): List<UsuarioPanel> = Db.query { c ->
+        Moderacion.exigirStaff(c, yo.usuarioId)
+        c.prepareStatement(
+            """SELECT u.username,
+                      (EXTRACT(EPOCH FROM u.creado_en) * 1000)::bigint,
+                      u.staff_nivel,
+                      (EXTRACT(EPOCH FROM u.suspendido_hasta) * 1000)::bigint,
+                      u.suspendido_motivo,
+                      (SELECT count(*) FROM advertencia a
+                        WHERE a.usuario_id = u.id AND a.revocada_en IS NULL
+                          AND (a.vence_en IS NULL OR a.vence_en > now())),
+                      (SELECT count(*) FROM denuncia d WHERE d.objetivo_usuario_id = u.id),
+                      (SELECT count(*) FROM denuncia d WHERE d.denunciante_id = u.id)
+               FROM usuario u
+               WHERE u.suspendido_en IS NOT NULL
+                 AND (u.suspendido_hasta IS NULL OR u.suspendido_hasta > now())
+               ORDER BY u.suspendido_en DESC
+               LIMIT ?"""
+        ).use { st ->
+            st.setInt(1, limite.coerceIn(1, 200))
+            st.executeQuery().use { rs ->
+                rs.mapear {
+                    UsuarioPanel(
+                        username = it.getString(1),
+                        creadoEn = it.getLong(2),
+                        staffNivel = it.getInt(3),
+                        suspendido = true,
+                        suspendidoHasta = it.getLong(4).takeIf { v -> v > 0 },
+                        suspensionMotivo = it.getString(5),
+                        advertenciasVigentes = it.getInt(6),
+                        denunciasRecibidas = it.getInt(7),
+                        denunciasHechas = it.getInt(8),
+                    )
+                }
+            }
+        }
+    }
+
     /** Suspender a mano. Solo administrador: es lo que no se deshace del todo. */
     fun suspender(yo: Auth, username: String, req: SuspenderReq): UsuarioPanel {
         Db.tx { c ->

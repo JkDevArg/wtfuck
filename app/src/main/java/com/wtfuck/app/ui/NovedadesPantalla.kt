@@ -93,9 +93,10 @@ object Novedades {
     val historial: List<NotasVersion> = listOf(
         NotasVersion(
             version = "0.12.4",
-            fecha = "15/11/2026",
+            fecha = "19/11/2026",
             cambios = listOf(
                 Cambio(TipoCambio.MEJORA, "Panel de moderación (solo moderadores): las herramientas pasan de íconos apretados en la barra a una grilla de tarjetas tipo dashboard, que en el teléfono se usa mucho mejor."),
+                Cambio(TipoCambio.NUEVO, "Panel de moderación: tocar la tarjeta \"Suspendidos\" abre la lista de suspendidos vigentes (con hasta cuándo y el motivo), y desde ahí se puede quitar la suspensión o cambiarle el tiempo."),
             ),
         ),
         NotasVersion(

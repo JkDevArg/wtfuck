@@ -4591,6 +4591,10 @@ class Repositorio(
     suspend fun buscarUsuariosPanel(q: String): List<UsuarioPanel> =
         runCatching { api.usuariosPanel(q).usuarios }.getOrElse { emptyList() }
 
+    /** Los usuarios suspendidos ahora mismo (para la pantalla de suspendidos). */
+    suspend fun suspendidosPanel(): List<UsuarioPanel> =
+        runCatching { api.suspendidosPanel().usuarios }.getOrElse { emptyList() }
+
     suspend fun suspenderUsuario(username: String, motivo: String, horas: Int?): Result<UsuarioPanel> =
         runCatching { api.suspenderUsuario(username, SuspenderReq(motivo, horas)) }
 

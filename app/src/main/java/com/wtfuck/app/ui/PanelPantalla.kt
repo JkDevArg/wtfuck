@@ -83,6 +83,10 @@ fun PanelPantalla(
     var consulta by rememberSaveable { mutableStateOf("") }
     var personas by remember { mutableStateOf<List<UsuarioPanel>>(emptyList()) }
     var suspendiendo by remember { mutableStateOf<UsuarioPanel?>(null) }
+    // Al tocar la metrica "Suspendidos": la lista de suspendidos vigentes, con
+    // quitar la suspension o cambiarle el tiempo.
+    var verSuspendidos by remember { mutableStateOf(false) }
+    var suspendidos by remember { mutableStateOf<List<UsuarioPanel>>(emptyList()) }
 
     // F.7: la cola de canales. Solo la ve el propietario, asi que la pestana
     // tambien: ofrecer una pestana que devuelve 404 es peor que no ofrecerla.
@@ -170,7 +174,12 @@ fun PanelPantalla(
             if (pestana == 0) {
                 resumen?.let { rs ->
                     item {
-                        Tablero(rs)
+                        Tablero(rs, onSuspendidos = {
+                            ambito.launch {
+                                suspendidos = app.repo.suspendidosPanel()
+                                verSuspendidos = true
+                            }
+                        })
                         Spacer(Modifier.height(18.dp))
                     }
                 }
@@ -399,7 +408,12 @@ fun PanelPantalla(
                 // Se reemplaza la fila en la lista en vez de rebuscar: la
                 // respuesta del servidor YA trae el estado nuevo.
                 personas = personas.map { if (it.username == nueva.username) nueva else it }
-                ambito.launch { recargar() }
+                ambito.launch {
+                    recargar()
+                    // Si estamos mirando la lista de suspendidos, se refresca:
+                    // quien se restauró sale, y quien cambió de plazo se actualiza.
+                    if (verSuspendidos) suspendidos = app.repo.suspendidosPanel()
+                }
             },
             onError = { suspendiendo = null; aviso = it },
         )
@@ -413,6 +427,42 @@ fun PanelPantalla(
             text = { Text(msg, color = TextoSecundario) },
             confirmButton = { TextButton(onClick = { aviso = null }) { Text("Cerrar", color = Cian) } },
         )
+    }
+
+    // Pantalla de suspendidos (al tocar la métrica). Reusa FilaPersona + la hoja
+    // de acciones (HojaPersona), que ya tiene "Restaurar" (quitar) y re-suspender
+    // con un plazo nuevo (24 h / 7 días / sin fin = agregar/cambiar tiempo).
+    if (verSuspendidos) {
+        Surface(Modifier.fillMaxSize(), color = BgBase) {
+            Column {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = BgSurface),
+                    navigationIcon = {
+                        IconButton(onClick = { verSuspendidos = false }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atras", tint = TextoPrimario)
+                        }
+                    },
+                    title = { Text("Suspendidos (${suspendidos.size})", color = TextoPrimario, maxLines = 1) },
+                    actions = {
+                        IconButton(onClick = { ambito.launch { suspendidos = app.repo.suspendidosPanel() } }) {
+                            Icon(Icons.Filled.Refresh, "Actualizar", tint = TextoSecundario)
+                        }
+                    },
+                )
+                if (suspendidos.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        Text("No hay nadie suspendido ahora.", color = TextoTerciario)
+                    }
+                } else {
+                    LazyColumn(contentPadding = PaddingValues(14.dp)) {
+                        items(suspendidos, key = { it.username }) { u ->
+                            FilaPersona(u) { suspendiendo = u }
+                            Spacer(Modifier.height(10.dp))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -475,7 +525,7 @@ private fun TileHerramienta(etq: String, icono: ImageVector, onClick: () -> Unit
 }
 
 @Composable
-private fun Tablero(rs: ResumenPanel) {
+private fun Tablero(rs: ResumenPanel, onSuspendidos: () -> Unit = {}) {
     Column {
         Row {
             Metrica("Pendientes", rs.denunciasPendientes, Ambar, Modifier.weight(1f))
@@ -486,7 +536,7 @@ private fun Tablero(rs: ResumenPanel) {
         Row {
             Metrica("Cerradas hoy", rs.denunciasResueltasHoy, Slate, Modifier.weight(1f))
             Spacer(Modifier.width(10.dp))
-            Metrica("Suspendidos", rs.usuariosSuspendidos, Coral, Modifier.weight(1f))
+            Metrica("Suspendidos", rs.usuariosSuspendidos, Coral, Modifier.weight(1f), onClick = onSuspendidos)
         }
         Spacer(Modifier.height(10.dp))
         Row {
@@ -594,8 +644,14 @@ private fun Tablero(rs: ResumenPanel) {
 }
 
 @Composable
-private fun Metrica(titulo: String, valor: Int, color: androidx.compose.ui.graphics.Color, modifier: Modifier) {
-    MetricaTexto(titulo, miles(valor.toLong()), color, modifier)
+private fun Metrica(
+    titulo: String,
+    valor: Int,
+    color: androidx.compose.ui.graphics.Color,
+    modifier: Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    MetricaTexto(titulo, miles(valor.toLong()), color, modifier, onClick = onClick)
 }
 
 /**
@@ -613,11 +669,21 @@ private fun MetricaTexto(
     color: androidx.compose.ui.graphics.Color,
     modifier: Modifier,
     pie: String? = null,
+    onClick: (() -> Unit)? = null,
 ) {
-    Surface(color = BgSurface, shape = RoundedCornerShape(12.dp), modifier = modifier) {
+    Surface(
+        color = BgSurface,
+        shape = RoundedCornerShape(12.dp),
+        modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier,
+    ) {
         Column(Modifier.padding(14.dp)) {
             Text(valor, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = color)
-            Text(titulo, style = MaterialTheme.typography.labelSmall, color = TextoTerciario)
+            // La flechita avisa que la tarjeta se puede tocar (abre una lista).
+            Text(
+                if (onClick != null) "$titulo  ›" else titulo,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextoTerciario,
+            )
             if (pie != null) {
                 Text(pie, style = MaterialTheme.typography.labelSmall, color = TextoTerciario)
             }
@@ -984,6 +1050,17 @@ private fun FilaPersona(u: UsuarioPanel, onAbrir: () -> Unit) {
                 style = MaterialTheme.typography.labelSmall,
                 color = TextoTerciario,
             )
+            if (u.suspendido) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    buildString {
+                        append(u.suspendidoHasta?.let { "Suspendido hasta ${fechaLarga(it)}" } ?: "Suspendido sin fecha de fin")
+                        u.suspensionMotivo?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Coral,
+                )
+            }
             Spacer(Modifier.height(8.dp))
             Row {
                 Dato("advertencias", u.advertenciasVigentes, if (u.advertenciasVigentes > 0) Ambar else Slate)

@@ -981,6 +981,9 @@ class ApiCliente(private val sesion: Sesion) {
         return pedir("$RUTA_PANEL/usuarios?q=$q", "GET", null, true)
     }
 
+    suspend fun suspendidosPanel(): UsuariosPanel =
+        pedir("$RUTA_PANEL/suspendidos", "GET", null, true)
+
     suspend fun suspenderUsuario(username: String, req: SuspenderReq): UsuarioPanel =
         pedir("$RUTA_PANEL/usuarios/$username/suspender", "POST", jsonApp.encodeToString(req), true)
 

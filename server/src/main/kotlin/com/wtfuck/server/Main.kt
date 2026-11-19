@@ -1781,6 +1781,11 @@ fun Application.modulo() {
             call.respond(UsuariosPanel(Panel.usuarios(yo, q)))
         }
 
+        // Los suspendidos vigentes, para la pantalla que abre la metrica.
+        get("$RUTA_PANEL/suspendidos") {
+            call.respond(UsuariosPanel(Panel.suspendidos(call.autenticarPanel())))
+        }
+
         get("$RUTA_PANEL/usuarios/{username}") {
             val yo = call.autenticarPanel()
             call.respond(Panel.ficha(yo, call.parameters["username"].orEmpty()))
